@@ -16,7 +16,7 @@ interface DocumentCommandOptions extends DocumentUploadContext {
 
 function addUploadOptions(command: Command): Command {
   return command
-    .option('--tenant-id <id>', 'Use a specific tenant with the current user login')
+    .option('--tenant-id <id>', 'Use a specific workspace with the current user login')
     .option('--storage-target <target>', 'Curate storage target (resourceapi); requires app/workflow or project context')
     .option('--business-request-id <id>', 'Existing authorized Curate business request')
     .option('--planning-application-id <id>', 'Existing authorized Curate planning-application resource')

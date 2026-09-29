@@ -49,15 +49,15 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -101,7 +101,7 @@ evidence.
 
 ## Safety Rules
 
-1. Do not copy private brand guides, logos, screenshots, client names, tenant
+1. Do not copy private brand guides, logos, screenshots, client names, workspace
    IDs, or internal marks into a public Gofer bundle.
 2. In the public `eai-gofer` repo, ship only neutral placeholders and reusable
    template tokens.
@@ -282,7 +282,7 @@ npx marp path/to/deck.md --preview=false --allow-local-files
 Validation fails if:
 
 - `brand-profile.json` is invalid JSON.
-- Private credentials or tenant-specific secrets appear in the brand profile.
+- Private credentials or workspace-specific secrets appear in the brand profile.
 - A logo path is referenced as approved but does not exist.
 - A generated stakeholder document lacks an executive summary.
 - A diagram/deck becomes unreadable without the brand assets.

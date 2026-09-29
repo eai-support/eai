@@ -298,7 +298,7 @@ export async function getActiveAuthConfigMismatch(
     `Current auth target: tenant=${authConfig.tenantName} (${authConfig.tenantId}), client=${authConfig.clientId}`,
     tokenAudience ? `Stored token audience: ${tokenAudience}` : 'Stored token audience: unavailable',
     `Mismatch: ${mismatches.join('; ')}`,
-    'Run `eai login` again for this environment before using tenant or provisioning commands.',
+    'Run `eai login` again for this environment before using workspace or provisioning commands.',
   ].join(' ');
 }
 

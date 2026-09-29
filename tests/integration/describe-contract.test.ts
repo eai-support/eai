@@ -37,7 +37,7 @@ const TOP_LEVEL_COMMANDS = [
   "logout",
   "env",
   "types",
-  "tenant",
+  "workspace",
   "user",
   "resources",
   "app",
@@ -391,7 +391,7 @@ describe("built CLI discovery and error contracts", () => {
     },
     {
       code: "E101",
-      args: ["tenant", "list"],
+      args: ["workspace", "list"],
       message: /not logged in/i,
       suggestion: /eai login/i,
     },

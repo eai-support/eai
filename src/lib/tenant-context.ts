@@ -239,8 +239,8 @@ export function buildPublicApiEnvSyncNotice(
     return {
       level: "warn",
       message:
-        "Active tenant homeRegion is missing; regional PublicAPI routing may fall back. " +
-        "Ask a tenant or platform admin to repair tenant metadata before provisioning resources.",
+        "Active workspace region is missing; regional PublicAPI routing may fall back. " +
+        "Ask a workspace or platform admin to repair workspace metadata before provisioning resources.",
     };
   }
 
@@ -251,14 +251,14 @@ export function buildPublicApiEnvSyncNotice(
     return {
       level: "warn",
       message:
-        `.env.local ${target} for active tenant homeRegion ${result.homeRegion} ` +
+        `.env.local ${target} for active workspace region ${result.homeRegion} ` +
         `(was ${result.previousPublicApiUrl}).`,
     };
   }
 
   return {
     level: "success",
-    message: `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
+    message: `.env.local ${target} for active workspace region ${result.homeRegion}.`,
   };
 }
 
@@ -410,7 +410,7 @@ async function readTenantManagementRecord(
 
   const payload = await response.json();
   if (!isRecord(payload)) {
-    throw new Error(`Tenant ${tenantId} returned an invalid response.`);
+    throw new Error(`Workspace ${tenantId} returned an invalid response.`);
   }
   return payload;
 }
@@ -748,7 +748,7 @@ export async function fetchTenantAdminMemberships(
       throw new TenantMembershipAuthError(response.status);
     }
     throw new Error(
-      `Failed to load tenant memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
+      `Failed to load workspace memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
     );
   }
 
@@ -850,7 +850,7 @@ async function promptForTenantSelection(
 
   const selected = memberships.find((tenant) => tenant.id === tenantId);
   if (!selected) {
-    throw new Error("Selected tenant was not found.");
+    throw new Error("Selected workspace was not found.");
   }
 
   return selected;
@@ -915,7 +915,7 @@ export async function resolveActiveTenantContext(options?: {
 
   if (memberships.length === 0) {
     throw new Error(
-      "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+      "No active workspace admin memberships found for the current login. Run `eai workspace list` to inspect your access.",
     );
   }
 
@@ -927,7 +927,7 @@ export async function resolveActiveTenantContext(options?: {
     );
     if (!selected) {
       throw new Error(
-        `Tenant "${options.tenantId}" is not available in your active tenant-admin memberships.`,
+        `Workspace "${options.tenantId}" is not available in your active workspace admin memberships.`,
       );
     }
   } else if (!options?.forcePrompt && tokens.activeTenantId) {
@@ -945,7 +945,7 @@ export async function resolveActiveTenantContext(options?: {
       !process.stdout.isTTY
     ) {
       throw new Error(
-        "Multiple active tenant-admin memberships found. Run `eai tenant select` to choose one.",
+        "Multiple active workspace admin memberships found. Run `eai workspace select` to choose one.",
       );
     } else {
       selected = await promptForTenantSelection(memberships, fetched.publicApiUrl);

@@ -1669,7 +1669,7 @@ describe('eai app', () => {
       'planning-portal',
       '--format',
       'json',
-    ], { from: 'user' })).rejects.toThrow('Tenant "other-tenant" is not available');
+    ], { from: 'user' })).rejects.toThrow('Workspace "other-tenant" is not available');
 
     expect(fetchMock).not.toHaveBeenCalledWith(
       expect.stringContaining('/apps'),

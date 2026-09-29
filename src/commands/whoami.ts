@@ -1,5 +1,5 @@
 /**
- * eai whoami — show auth status and tenant info.
+ * eai whoami — show auth status and workspace info.
  */
 
 import { Command } from 'commander';
@@ -11,7 +11,7 @@ import { getActiveProfile } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 export const whoamiCommand = new Command('whoami')
-  .description('Show auth status and tenant info')
+  .description('Show auth status and workspace info')
   .action(async () => {
     const tokens = await loadTokens();
     const authenticated = await isAuthenticated();
@@ -41,8 +41,8 @@ export const whoamiCommand = new Command('whoami')
       ['CLI Client ID', chalk.dim(authConfig.clientId)],
       ['Authority Tenant', tokens.tenantName],
       ['Authority Tenant ID', chalk.dim(tokens.tenantId)],
-      ['Active Tenant', activeTenant ? activeTenant.displayName : chalk.dim('not selected')],
-      ['Active Tenant ID', activeTenant ? chalk.dim(activeTenant.id) : chalk.dim('not selected')],
+      ['Active Workspace', activeTenant ? activeTenant.displayName : chalk.dim('not selected')],
+      ['Active Workspace ID', activeTenant ? chalk.dim(activeTenant.id) : chalk.dim('not selected')],
       ['PublicAPI', publicApiUrl],
       ['Expires', new Date(tokens.expiresAt).toLocaleString()],
       ['Status', authenticated ? chalk.green('Active') : chalk.red('Expired')],
@@ -54,11 +54,11 @@ export const whoamiCommand = new Command('whoami')
     }
 
     if (!activeTenant) {
-      out.info(`Run ${chalk.cyan('eai tenant select')} to choose the tenant to work with.`);
+      out.info(`Run ${chalk.cyan('eai workspace select')} to choose the workspace to work with.`);
     } else {
       try {
         const memberships = await fetchTenantAdminMemberships(publicApiUrl);
-        out.info(`Tenant-admin memberships: ${memberships.memberships.length}`);
+        out.info(`Workspace memberships: ${memberships.memberships.length}`);
       } catch {
         // whoami should still work even if the membership lookup fails
       }

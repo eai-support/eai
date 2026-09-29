@@ -119,7 +119,7 @@ describe('eai resources command guidance', () => {
     const output = joinedConsoleOutput(errSpy);
     expect(output).toContain('Search vector embedding endpoint is not configured');
     expect(output).toContain(
-      'Semantic resource search is not ready for this tenant.',
+      'Semantic resource search is not ready for this workspace.',
     );
     expect(output).toContain('eai resources storage doctor --format json');
     expect(output).toContain('eai resources search "<query>" --fulltext');

@@ -498,7 +498,7 @@ describe('app object-type publish helpers', () => {
 
     await expect(
       trySeedViaAppManifestPublish(client, 'post-pilot', '5dd8db37-0993-f01c-0487-e8f0fae6c3d7', [objectType]),
-    ).rejects.toThrow(/tenant app Object Types must use app-owned storage bindings/);
+    ).rejects.toThrow(/workspace app Object Types must use app-owned storage bindings/);
   });
 
   test('does not fall back to direct object-type writes when manifest route is missing', async () => {

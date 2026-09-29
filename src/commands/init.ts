@@ -86,7 +86,10 @@ export function describeAppCreationFailure(error: ParsedApiError): string {
     message: error.message,
   });
 
-  const lines = [`App creation failed: ${error.message}`];
+  const headline = error.code === "TENANT_ADMIN_REQUIRED"
+    ? "Workspace admin access is required to create this app."
+    : error.message;
+  const lines = [`App creation failed: ${headline}`];
   if (guidance) {
     lines.push("", formatGuidanceText(guidance));
   } else {
@@ -95,7 +98,7 @@ export function describeAppCreationFailure(error: ParsedApiError): string {
       "Try next:",
       "1. eai whoami [read-only]",
       "   Confirm the signed-in account and selected workspace.",
-      "2. eai tenant list --all --format json [read-only]",
+      "2. eai workspace list --all --format json [read-only]",
       "   Check that the account can access the workspace.",
       "3. eai errors list [read-only]",
       "   Inspect known recovery guidance before retrying.",
@@ -492,20 +495,20 @@ export const initCommand = new Command("init")
   )
   .option(
     "--tenant <id>",
-    "Main company tenant ID (deprecated alias for --company-tenant)",
+    "Main company workspace ID (compatibility alias for --company-workspace)",
   )
-  .option("--company-tenant <id>", "Main company tenant ID that owns this app")
+  .option("--company-workspace, --company-tenant <id>", "Main company workspace ID that owns this app")
   .option(
     "--parent-tenant <id>",
-    "Immediate parent company tenant ID for the new child company",
+    "Immediate parent company workspace ID for the new child company",
   )
   .option(
     "--child-tenant <name>",
-    "Create or reuse a child company tenant display name for the app runtime boundary",
+    "Create or reuse a child company workspace display name for the app runtime boundary",
   )
   .option(
     "--create-child-tenant",
-    "Prompt for a child company tenant instead of using the selected company tenant",
+    "Prompt for a child company workspace instead of using the selected company workspace",
   )
   .option("--no-gofer", "Skip installing Gofer AI CLI assets")
   .option("--no-install", "Skip installing the generated app dependencies")
@@ -988,8 +991,8 @@ Use --no-gofer only when you need a bare app scaffold.
     out.heading("  Next steps:");
     out.blank();
     if (initOptions.tenantId) {
-      out.nestedDim(`Main company tenant: ${chalk.cyan(initOptions.parentTenantId)}`);
-      out.nestedDim(`Bound to tenant: ${chalk.cyan(initOptions.tenantId)}`);
+      out.nestedDim(`Main company workspace: ${chalk.cyan(initOptions.parentTenantId)}`);
+      out.nestedDim(`Bound to workspace: ${chalk.cyan(initOptions.tenantId)}`);
     }
     if (!entraProvisioned) {
       out.nestedDim(
@@ -1068,20 +1071,20 @@ export const createCommand = new Command("create")
   )
   .option(
     "--tenant <id>",
-    "Main company tenant ID (deprecated alias for --company-tenant)",
+    "Main company workspace ID (compatibility alias for --company-workspace)",
   )
-  .option("--company-tenant <id>", "Main company tenant ID that owns this app")
+  .option("--company-workspace, --company-tenant <id>", "Main company workspace ID that owns this app")
   .option(
     "--parent-tenant <id>",
-    "Immediate parent company tenant ID for the new child company",
+    "Immediate parent company workspace ID for the new child company",
   )
   .option(
     "--child-tenant <name>",
-    "Create or reuse a child company tenant display name for the app runtime boundary",
+    "Create or reuse a child company workspace display name for the app runtime boundary",
   )
   .option(
     "--create-child-tenant",
-    "Prompt for a child company tenant instead of using the selected company tenant",
+    "Prompt for a child company workspace instead of using the selected company workspace",
   )
   .option("--no-gofer", "Skip installing Gofer AI CLI assets")
   .option("--no-install", "Skip installing the generated app dependencies")
@@ -1113,7 +1116,7 @@ Guided setup:
   4. Create the app with Gofer AI CLI assets
   5. Check builder readiness and hand off to /0_business_scenario
 
-The command does not create a root tenant. Complete Website signup first so
+The command does not create a root workspace. Complete Website signup first so
 the CLI can use the onboarding-created company workspace.
 
 Use --skip-onboarding for the legacy scaffold prompts, or use eai init for
@@ -1217,7 +1220,7 @@ function validateCreateAiTool(value: string | undefined): CreateAiTool | undefin
  * Resolve the workspace for guided create.
  *
  * An explicit --company-tenant/--tenant is passed through as `tenantId` so the
- * membership is validated and the cached active tenant cannot silently replace
+ * membership is validated and the cached active workspace cannot silently replace
  * the operator's choice on a state-changing app create.
  */
 export function resolveCreateTenantContext(
@@ -1246,7 +1249,7 @@ export function buildForwardedInitArgs(
   // `tenantId` is the validated resolution of the explicit options, so the two
   // can no longer disagree; prefer it because it is always a canonical ID.
   const companyTenant = tenantId || options.companyTenant || options.tenant;
-  if (companyTenant) args.push("--company-tenant", companyTenant);
+  if (companyTenant) args.push("--company-workspace", companyTenant);
   if (options.appKey) args.push("--app-key", options.appKey);
   if (options.templateVersion !== undefined)
     args.push("--template-version", options.templateVersion);
@@ -1505,7 +1508,7 @@ export function buildCreateCompletionSummary(
     heading: `${chalk.yellow("!")} Project created; builder setup is not confirmed yet`,
     steps: [
       `Re-check with ${chalk.cyan("eai doctor")} inside the project folder.`,
-      `If it stays unavailable, ask your workspace tenant-admin to finish setup: ${ONBOARDING_DOCS_URL}`,
+      `If it stays unavailable, ask a workspace admin to finish setup: ${ONBOARDING_DOCS_URL}`,
       `Once readiness reports available, start ${toolLabel} with ${chalk.cyan("eai start")}.`,
     ],
   };
@@ -1533,7 +1536,7 @@ function resolvePackageProfile(value: unknown): PackageProfile {
 
 /**
  * Provision an Entra app registration inline at the end of `eai init`, bound
- * to the tenant the user selected in the tenant-binding prompt. Returns true
+ * to the workspace the user selected in the workspace-binding prompt. Returns true
  * on success. Non-fatal: logs a warning and returns false on any failure.
  */
 async function provisionEntraInline(
@@ -1560,9 +1563,9 @@ async function provisionEntraInline(
         !result.tenantAuthorization.added &&
         !result.tenantAuthorization.alreadyAuthorized)
     ) {
-      spinner.fail("Tenant data-plane authorization incomplete.");
+      spinner.fail("Workspace data access authorization is incomplete.");
       out.warn(
-        `The app registration ${result.clientId} exists, but the tenant allowlist was not updated. Run \`eai provision entra --force --debug\` after platform access is fixed.`,
+        `The app registration ${result.clientId} exists, but the workspace allowlist was not updated. Run \`eai provision entra --force --debug\` after platform access is fixed.`,
       );
       return false;
     }
@@ -1704,7 +1707,7 @@ async function promptCompanyTenantForInit(
 
   if (!interactive && !activeTenant) {
     out.error(
-      "A main company tenant is required. Pass `--company-tenant <id>` after completing onboarding.",
+      "A main company workspace is required. Pass `--company-workspace <workspace-id>` after completing onboarding (`--company-tenant` remains a compatibility alias).",
     );
     process.exit(1);
   }
@@ -1729,12 +1732,12 @@ async function promptCompanyTenantForInit(
       name: "Default (currently selected)",
       value: "default",
       disabled:
-        "no active tenant — run `eai login` and complete onboarding first",
+        "no active workspace — run `eai login` and complete onboarding first",
     });
   }
 
   choices.push({
-    name: "Other main company tenant (enter ID)",
+    name: "Other main company workspace (enter ID)",
     value: "other",
   });
 
@@ -1742,7 +1745,7 @@ async function promptCompanyTenantForInit(
     {
       type: "select",
       name: "mode",
-      message: "Which main company tenant should own this app?",
+      message: "Which EAI workspace should own this app?",
       choices,
     },
   ]);
@@ -1760,10 +1763,10 @@ async function promptCompanyTenantForInit(
     const selectedTenantId = await promptForTenantFromHierarchy(
       buildTenantHierarchy(selectableMemberships),
       {
-        message: "Choose the main company tenant for this app",
+        message: "Choose the EAI workspace for this app",
         extraChoices: [
           {
-            name: "Other main company tenant (enter ID manually)",
+            name: "Other main company workspace (enter ID manually)",
             value: "__manual__",
           },
         ],
@@ -1779,9 +1782,9 @@ async function promptCompanyTenantForInit(
       {
         type: "input",
         name: "otherId",
-        message: "Main company tenant ID:",
+        message: "Main company workspace ID:",
         validate: (input: string) =>
-          input.trim().length > 0 || "Main company tenant ID is required",
+          input.trim().length > 0 || "Main company workspace ID is required",
       },
     ]);
     trimmed = String(otherId).trim();
@@ -1847,7 +1850,7 @@ export function selectExistingAppSelection(
     nonEmptyString(data.tenantId);
   if (!runtimeTenantId) {
     throw new Error(
-      `The platform record for app ${appKey} does not identify a runtime tenant. Choose Create a new app or ask a company administrator to repair the app record.`,
+      `The platform record for app ${appKey} does not identify a runtime workspace. Choose Create a new app or ask a company administrator to repair the app record.`,
     );
   }
 
@@ -1931,7 +1934,7 @@ async function reuseTenantAppForInit(
   }
 
   out.nestedInfo(
-    `Using existing app ${chalk.cyan(selection.appKey)} in company tenant ${chalk.cyan(companyTenantId)}; no new platform app will be created.`,
+    `Using existing app ${chalk.cyan(selection.appKey)} in company workspace ${chalk.cyan(companyTenantId)}; no new platform app will be created.`,
   );
   return {
     appKey: selection.appKey,
@@ -1983,11 +1986,11 @@ async function createTenantAppForInit(
       {
         type: "select",
         name: "appTenantScope",
-        message: "App tenant scope:",
+        message: "App workspace scope:",
         default: "current",
         choices: [
-          { name: "Current company tenant", value: "current" },
-          { name: "New child company tenant", value: "child" },
+          { name: "Current company workspace", value: "current" },
+          { name: "New child company workspace", value: "child" },
         ],
       },
     ]);
@@ -2015,17 +2018,17 @@ async function createTenantAppForInit(
       {
         type: "input",
         name: "childTenantDisplayName",
-        message: "Child company tenant name:",
+        message: "Child company workspace name:",
         default: appSeed.displayName,
         validate: (input: string) =>
-          input.trim().length > 0 || "Child company tenant name is required",
+          input.trim().length > 0 || "Child company workspace name is required",
       },
     ]);
     childTenantDisplayName = String(answer.childTenantDisplayName).trim();
   }
   if (shouldCreateChildTenant && !childTenantDisplayName) {
     out.error(
-      "A child company tenant name is required. Pass `--child-tenant <name>`.",
+      "A child company workspace name is required. Pass `--child-tenant <name>`.",
     );
     process.exit(1);
   }
@@ -2059,7 +2062,7 @@ async function createTenantAppForInit(
       : "";
   if (!childTenantId) {
     out.nestedInfo(
-      `Created app ${chalk.cyan(appSeed.slug)} under company tenant ${chalk.cyan(immediateParentTenantId)}.`,
+      `Created app ${chalk.cyan(appSeed.slug)} under company workspace ${chalk.cyan(immediateParentTenantId)}.`,
     );
     return {
       appKey: appSeed.slug,
@@ -2070,7 +2073,7 @@ async function createTenantAppForInit(
   }
 
   out.nestedInfo(
-    `Created app ${chalk.cyan(appSeed.slug)} under main company ${chalk.cyan(companyTenantId)} with child company ${chalk.cyan(childTenantId)}.`,
+    `Created app ${chalk.cyan(appSeed.slug)} under company workspace ${chalk.cyan(companyTenantId)} with child workspace ${chalk.cyan(childTenantId)}.`,
   );
   const childTenantHomeRegion =
     childTenant && typeof childTenant === "object"
@@ -2279,9 +2282,9 @@ BASE_URL_PUBLIC_API=
 
 # =============================================================================
 # Tenant configuration
-# EAI_PARENT_TENANT_ID is the onboarding-created company tenant that owns
+# EAI_PARENT_TENANT_ID is the onboarding-created company workspace that owns
 # the platform app entry.
-# EAI_TENANT_ID is the server-side company tenant this app binds to — read by
+# EAI_TENANT_ID is the server-side company workspace this app binds to — read by
 # the template in src/app/page.tsx and src/app/api/eai/[[...rest]]/route.ts.
 # TENANT_KEYS + TENANT_<KEY>_ID support the multi-tenant config resolver at
 # src/app/api/eai/config/route.ts. Both keys are kept in sync by eai init.
@@ -2950,7 +2953,7 @@ await client.resources.create('MyType', { title: 'Hello' });
 | Command | Purpose |
 |---------|---------|
 | \`eai dev\` | Start local dev server |
-| \`eai tenant select\` | Choose the active tenant for platform commands |
+| \`eai workspace select\` | Choose the active workspace for platform commands |
 | \`eai types validate\` | Validate Object Types |
 | \`eai types seed\` | Push types to platform |
 | \`eai types diff\` | Compare local vs remote |

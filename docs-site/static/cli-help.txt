@@ -36,14 +36,16 @@ Commands:
   create [options] [name]      Guide a new builder through EAI setup and create
                                an application
   dev [options]                Start local development server
-  login [options]              Authenticate with Entra CIAM
+  login [options]              Authenticate with Entra CIAM using your
+                               configured sign-in directory
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions
-  tenant                       Manage tenants on the platform
+  workspace|tenant             Manage EAI workspaces (the tenant command remains
+                               available for compatibility)
   user                         Manage users on the platform
   resources                    CRUD operations on platform resources
-  app|vertical                 Manage apps under the active company tenant
+  app|vertical                 Manage apps under the active company workspace
   chat                         Chat with AI workflows
   workflow                     Provision app workflow configs and inspect AI
                                runtime workflow bindings
@@ -53,7 +55,7 @@ Commands:
                                contract
   verify [options]             Run platform connectivity checks
   doctor [options]             Diagnose common issues and suggest fixes
-  whoami                       Show auth status and tenant info
+  whoami                       Show auth status and workspace info
   update [options]             Check for and install CLI updates
   provision                    Provision platform resources for this app
   gofer                        Inspect and refresh Gofer-managed project assets
@@ -67,7 +69,7 @@ Commands:
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
-                               enable, and delete tenant document classifiers
+                               enable, and delete workspace document classifiers
   help [command]               display help for command
 
 Getting Started:
@@ -84,7 +86,7 @@ Development Workflows:
   # Define your types, validate them, then publish them
   eai types validate && eai types seed
 
-  # See what is published for the active tenant
+  # See what is published for the active workspace
   eai resources schema
   eai app create "My App" --template eai-app-template
 
@@ -97,7 +99,7 @@ Development Workflows:
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
 
-  # Check login, tenant, and API connectivity
+  # Check login, workspace, and API connectivity
   eai verify && eai doctor
 
 Deployment:
@@ -115,7 +117,7 @@ Deployment:
 Machine-Readable Output:
   # Get structured JSON output for automation
   eai resources list User --format json
-  eai tenant list --format json | jq
+  eai workspace list --format json | jq
   eai verify calls --format json
   eai errors explain E101 --format json
 
@@ -172,44 +174,29 @@ Usage: eai init [options] [name]
 Scaffold a new application
 
 Arguments:
-  name                            Name for the app (kebab-case)
+  name                                        Name for the app (kebab-case)
 
 Options:
-  --from <repo>                   GitHub repo URL or local path for template
-                                  (default:
-                                  "https://github.com/eai-support/eai-app-template.git")
-  --trust-template-scripts        Allow a custom template to run its Object Type
-                                  generator (default: false)
-  --skip-prompts                  Use defaults without interactive prompts
-                                  (default: false)
-  --current-dir                   Scaffold into the current directory instead of
-                                  creating ./<name> (default: false)
-  --tenant <id>                   Main company tenant ID (deprecated alias for
-                                  --company-tenant)
-  --company-tenant <id>           Main company tenant ID that owns this app
-  --parent-tenant <id>            Immediate parent company tenant ID for the new
-                                  child company
-  --child-tenant <name>           Create or reuse a child company tenant display
-                                  name for the app runtime boundary
-  --create-child-tenant           Prompt for a child company tenant instead of
-                                  using the selected company tenant
-  --no-gofer                      Skip installing Gofer AI CLI assets
-  --no-install                    Skip installing the generated app dependencies
-  --package-profile <profile>     Package profile to record for block catalog
-                                  discovery: external, internal, or hybrid
-                                  (default: "external")
-  --display-name <name>           Display name for the app
-  --description <description>     One-sentence description for the app
-  --binding-receipt <path>        Write private init acknowledgement outside the
-                                  project (explicit noninteractive use)
-  --binding-receipt-nonce <uuid>  Fresh UUID binding this invocation to its
-                                  private receipt
-  --app-key <key>                 Bind the local project to an existing app
-                                  instead of creating a new app
-  --template-version <tag>        Scaffold from a specific published
-                                  app-template release (for example v1.2.0)
-  --no-splash                     Skip the interactive EAI wordmark
-  -h, --help                      display help for command
+  --from <repo>                               GitHub repo URL or local path for template (default: "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts                    Allow a custom template to run its Object Type generator (default: false)
+  --skip-prompts                              Use defaults without interactive prompts (default: false)
+  --current-dir                               Scaffold into the current directory instead of creating ./<name> (default: false)
+  --tenant <id>                               Main company workspace ID (compatibility alias for --company-workspace)
+  --company-workspace, --company-tenant <id>  Main company workspace ID that owns this app
+  --parent-tenant <id>                        Immediate parent company workspace ID for the new child company
+  --child-tenant <name>                       Create or reuse a child company workspace display name for the app runtime boundary
+  --create-child-tenant                       Prompt for a child company workspace instead of using the selected company workspace
+  --no-gofer                                  Skip installing Gofer AI CLI assets
+  --no-install                                Skip installing the generated app dependencies
+  --package-profile <profile>                 Package profile to record for block catalog discovery: external, internal, or hybrid (default: "external")
+  --display-name <name>                       Display name for the app
+  --description <description>                 One-sentence description for the app
+  --binding-receipt <path>                    Write private init acknowledgement outside the project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>              Fresh UUID binding this invocation to its private receipt
+  --app-key <key>                             Bind the local project to an existing app instead of creating a new app
+  --template-version <tag>                    Scaffold from a specific published app-template release (for example v1.2.0)
+  --no-splash                                 Skip the interactive EAI wordmark
+  -h, --help                                  display help for command
 
 Gofer AI CLI assets are installed by default:
   .specify/ commands, scripts, templates, hooks, and memory folders

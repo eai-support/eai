@@ -45,15 +45,15 @@ describe('agent guide', () => {
       'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     );
     expect(guide.operatingRules).toContain(
-      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
+      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
     );
   });
 
-  test('catalog tells agents to use user invite for normal tenant member management', () => {
+  test('catalog tells agents to use user invite for normal workspace member management', () => {
     const guide = getAgentGuide();
 
     expect(guide.operatingRules).toContain(
-      'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
+      'For normal workspace user/admin addition, use eai user invite --email <email> --workspace <workspace-id> --role <role>; use workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     );
     expect(guide.operatingRules).toContain(
       'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
@@ -61,14 +61,14 @@ describe('agent guide', () => {
     expect(guide.commonWorkflows).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          title: 'Tenant member management',
+          title: 'Workspace member management',
           commands: expect.arrayContaining([
             expect.objectContaining({
-              command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json',
+              command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin --format json',
               mutates: true,
             }),
             expect.objectContaining({
-              command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json',
+              command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json',
               mutates: true,
             }),
           ]),
@@ -96,7 +96,7 @@ describe('agent guide', () => {
               mutates: true,
             }),
             expect.objectContaining({
-              command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>',
+              command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <workspace-id>',
               mutates: true,
             }),
           ]),

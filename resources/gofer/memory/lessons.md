@@ -8,7 +8,7 @@ correction.
 
 ## 2026-08-12: Trace the actual client before assigning ownership
 
-**Incident**: A production tenant-member invitation failed from an EAI CLI
+**Incident**: A production workspace-member invitation failed from an EAI CLI
 command, but the first explanation treated the request as though it originated
 in Admin Portal.
 

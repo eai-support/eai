@@ -218,7 +218,7 @@ decision-rights audience:
 | `presentations/business.marp.md` | Business owner | User journey, operational value, adoption path |
 | `presentations/internal-delivery.marp.md` | Internal delivery | Delivery sequence, red/green loop, implementation risk |
 | `presentations/enterprise-architecture.marp.md` | Enterprise architecture | Platform fit, context bundle, contract pack, reuse decisions |
-| `presentations/ciso.marp.md` | CISO | Identity, tenant boundaries, controls, residual risk |
+| `presentations/ciso.marp.md` | CISO | Identity, workspace boundaries, controls, residual risk |
 | `presentations/data-architecture.marp.md` | Data architecture | Object types, lineage, data quality, governance |
 | `presentations/cio.marp.md` | CIO | Platform strategy, operating model, reusable capability roadmap |
 | `presentations/cfo.marp.md` | CFO | Investment case, benefit tracking, delivery and run cost |

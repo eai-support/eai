@@ -48,7 +48,7 @@ const guide: AgentGuide = {
     {
       command: 'eai whoami',
       mutates: false,
-      purpose: 'Check login status and active tenant before tenant-scoped operations.',
+      purpose: 'Check login status and active workspace before workspace-scoped operations.',
     },
   ],
   operatingRules: [
@@ -57,14 +57,14 @@ const guide: AgentGuide = {
     'Use named eai commands before calling eai publicapi directly.',
     'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',
-    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing tenant members, Entra, or role definitions.',
-    'For normal tenant user/admin addition, use eai user invite --email <email> --tenant <tenant-id> --role <role>; do not use tenant bootstrap-admin.',
+    'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
+    'For normal workspace user/admin addition, use eai user invite --email <email> --workspace <workspace-id> --role <role>; use workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
     'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
     'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
-    'Use eai tenant bootstrap-admin only for first-admin repair on an immediate child tenant.',
+    'Use eai workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'Do not loop indefinitely; follow retry and stop conditions from eai errors explain.',
-    'Do not expose tokens, secrets, local env files, tenant identifiers, or request IDs unless the user explicitly asks to collect escalation evidence.',
+    'Do not expose tokens, secrets, local env files, workspace identifiers, or request IDs unless the user explicitly asks to collect escalation evidence.',
   ],
   recoveryLoop: [
     {
@@ -92,7 +92,7 @@ const guide: AgentGuide = {
         {
           command: 'eai whoami',
           mutates: false,
-          purpose: 'Check login and selected tenant.',
+          purpose: 'Check login and selected workspace.',
         },
         {
           command: 'eai verify calls --format json',
@@ -126,16 +126,16 @@ const guide: AgentGuide = {
         { command: 'eai init', mutates: true, purpose: 'Scaffold a new app.' },
         { command: 'eai login', mutates: true, purpose: 'Authenticate with the EAI identity flow.' },
         { command: 'eai provision entra', mutates: true, purpose: 'Provision app sign-in configuration.' },
-        { command: 'eai types seed', mutates: true, purpose: 'Publish object types for the selected tenant.' },
+        { command: 'eai types seed', mutates: true, purpose: 'Publish object types for the selected workspace.' },
         { command: 'eai dev', mutates: true, purpose: 'Start local development.' },
       ],
     },
     {
       step: 2,
       title: 'Existing project health',
-      instruction: 'Check login, tenant, CLI release, project assets, and platform-facing contracts.',
+      instruction: 'Check login, workspace, CLI release, project assets, and platform-facing contracts.',
       commands: [
-        { command: 'eai whoami', mutates: false, purpose: 'Show current user and tenant context.' },
+        { command: 'eai whoami', mutates: false, purpose: 'Show current user and workspace context.' },
         { command: 'eai update --check', mutates: false, purpose: 'Check CLI release plus Gofer/template currency.' },
         { command: 'eai doctor --check-updates', mutates: false, purpose: 'Check CLI, Gofer, and template drift.' },
         { command: 'eai verify calls --format json', mutates: false, purpose: 'Audit platform-facing contracts.' },
@@ -144,7 +144,7 @@ const guide: AgentGuide = {
     {
       step: 3,
       title: 'Type and resource readiness',
-      instruction: 'Validate local type definitions, compare with the selected tenant, and seed only when needed.',
+      instruction: 'Validate local type definitions, compare with the selected workspace, and seed only when needed.',
       commands: [
         { command: 'eai types validate', mutates: false, purpose: 'Validate local object type files.' },
         { command: 'eai types diff', mutates: false, purpose: 'Compare local and published object types.' },
@@ -154,13 +154,13 @@ const guide: AgentGuide = {
     },
     {
       step: 4,
-      title: 'Tenant member management',
-      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as tenant admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm tenant-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
+      title: 'Workspace member management',
+      instruction: 'List available roles, invite or refresh the user by email with the intended role, and verify membership. This is the correct path for "add this person as workspace admin/member" requests. If prerequisite platform user lookups fail with MISSING_TENANT, first confirm workspace-scoped /v4/platform/tenants/<tenant-id>/... routes and deployed API versions.',
       commands: [
-        { command: 'eai user roles --tenant <tenant-id> --format json', mutates: false, purpose: 'Discover assignable tenant roles before choosing a role.' },
-        { command: 'eai user invite --email <email> --tenant <tenant-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign tenant-admin.' },
-        { command: 'eai user list --tenant <tenant-id> --search <email> --format json', mutates: false, purpose: 'Verify the user membership and role after invite.' },
-        { command: 'eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json', mutates: true, purpose: 'Repair the role on an existing direct member when invite/add fails and the member ID has been verified.' },
+        { command: 'eai user roles --workspace <workspace-id> --format json', mutates: false, purpose: 'Discover assignable workspace roles before choosing a role.' },
+        { command: 'eai user invite --email <email> --workspace <workspace-id> --role tenant-admin --format json', mutates: true, purpose: 'Add or refresh a user membership and assign workspace admin access (platform role ID tenant-admin).' },
+        { command: 'eai user list --workspace <workspace-id> --search <email> --format json', mutates: false, purpose: 'Verify the user membership and role after invite.' },
+        { command: 'eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json', mutates: true, purpose: 'Repair workspace admin access for an existing direct member after verifying the member ID.' },
       ],
     },
     {
@@ -171,7 +171,7 @@ const guide: AgentGuide = {
         { command: 'eai docs upload <file>', mutates: true, purpose: 'Submit once for full processing with authorised app/workflow or project context; poll the returned job.' },
         { command: 'eai docs classify <file>', mutates: true, purpose: 'Submit once for classification with paired --vertical-key and --workflow-key or authorised project context; do not upload the file first.' },
         { command: 'eai docs index <document-id>', mutates: true, purpose: 'Index a document so AI/RAG workflows can answer from it.' },
-        { command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <tenant-id>', mutates: true, purpose: 'Attach a file to an existing typed resource object file property.' },
+        { command: 'eai resources file upload <type> <id> <property> <path> --tenant-id <workspace-id>', mutates: true, purpose: 'Attach a file to an existing typed resource object file property.' },
       ],
     },
     {
@@ -179,14 +179,14 @@ const guide: AgentGuide = {
       title: 'App auth cleanup',
       instruction: 'When a smoke or test app created an Entra registration that should be removed, deauthorize it explicitly and verify local credentials are gone.',
       commands: [
-        { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove tenant authorization, delete the app registration, and remove local Entra credentials.' },
+        { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove workspace authorization, delete the app registration, and remove local Entra credentials.' },
         { command: 'eai env list', mutates: false, purpose: 'Confirm local project env no longer contains the removed Entra credential keys.' },
       ],
     },
   ],
   stopConditions: [
     'The same error repeats after the guidance retry limit.',
-    'A command reports a paid plan, tenant role, or platform-side server blocker that the current user cannot change.',
+    'A command reports a paid plan, workspace role, or platform-side server blocker that the current user cannot change.',
     'A mutating command is not listed in the guidance entry for this error.',
     'The command would require editing secrets or local env files without explicit user approval.',
   ],

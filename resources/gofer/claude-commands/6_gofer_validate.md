@@ -49,15 +49,15 @@ Before any Gofer stage/helper command does pipeline work:
 1. Treat durable delivery as EAI Platform delivery by default, with Azure second
    and every other stack only by explicit exception.
 2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active tenant is visible.
+   and an active workspace is visible.
 3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   tenant is available, stop and run `/gofer:eai-first-run` or ask the user to
+   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
    approve login/setup before continuing.
 4. For EAI app delivery, do not continue into research, specification, planning,
    tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, tenant, template,
+   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
    app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private tenant IDs, or local `.env` values into
+5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
    Gofer artifacts; record only product-safe readiness status and evidence.
 
 ## Token And Cost Policy
@@ -1119,9 +1119,9 @@ or visual-test evidence.
 - Traceability: each visual links to the requirement, plan, contract, code/test,
   EAI service/template asset, or validation evidence it summarizes.
 - Freshness: validation must check whether visuals changed or were reapproved
-  after spec, plan, code, tenant/auth, or validation changes; stale visuals fail
+  after spec, plan, code, workspace/auth, or validation changes; stale visuals fail
   Category 7 even when the code passes.
-- Public safety: visuals must not expose tenant-private data, secrets, customer
+- Public safety: visuals must not expose workspace-private data, secrets, customer
   identifiers, internal-only architecture names, or screenshots containing
   private content.
 
@@ -1910,7 +1910,7 @@ review report are written:
      on `validation-report.md`, `blast-radius-report.md`,
      `goal-rebaseline-report.md`, and `loop-audit-report.md`.
    - Fill Internal FAQ CISO / Risk with data handled, identity controls,
-     tenant boundaries, secrets handling, residual risks, validation evidence,
+     workspace boundaries, secrets handling, residual risks, validation evidence,
      and launch gates.
    - Update "What happens if something goes wrong?" with rollback/support
      evidence from validation and blast-radius analysis.
@@ -1919,7 +1919,7 @@ review report are written:
 3. Create or update `{FEATURE_DIR}/ciso-security-summary.md` from
    `.specify/templates/ciso-security-summary-template.md` using
    `validation-report.md`, `blast-radius-report.md`, `audit-history.md`,
-   `visuals/risk-heatmap.md`, auth/tenant evidence, secrets/data handling
+   `visuals/risk-heatmap.md`, auth/workspace evidence, secrets/data handling
    evidence, and loop audit evidence.
 4. Refresh `{FEATURE_DIR}/business-owner-summary.md` with final validation
    status, business value confidence, and any validated/disproven assumptions.

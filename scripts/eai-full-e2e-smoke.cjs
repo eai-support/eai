@@ -10,7 +10,7 @@ const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
 const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.md');
 
 const TRACEABILITY_BASE = [
-  ['eai init', 'create', 'live', 'Scaffolds a disposable app workspace and creates the app binding in the test tenant.'],
+  ['eai init', 'create', 'live', 'Scaffolds a disposable app workspace and creates the app binding in the test workspace.'],
   ['eai start', 'read/launch-local', 'live', 'Detects supported local AI workspaces in release smoke; provider launch remains user-confirmed.'],
   ['eai create', 'create', 'help', 'Guided first-run wrapper is covered by focused onboarding tests and help/contract checks; release live smoke uses the non-interactive eai init path to avoid browser auth.'],
   ['eai dev', 'read', 'help', 'Runtime server command is validated by help/contract checks; live release smoke does not start a long-running dev server.'],
@@ -24,19 +24,19 @@ const TRACEABILITY_BASE = [
   ['eai types diff', 'read', 'live', 'Compares local and remote Object Types after seed.'],
   ['eai types pull', 'read', 'live', 'Downloads remote Object Types into the disposable workspace.'],
   ['eai types define', 'create', 'help', 'Interactive builder is coming soon; help/contract only until it has a non-interactive path.'],
-  ['eai tenant storage list', 'read', 'live', 'Lists published storage bindings for the test tenant.'],
-  ['eai tenant storage verify', 'read', 'live', 'Verifies tenant storage readiness after sync.'],
-  ['eai tenant list', 'read', 'live', 'Resolves the dedicated parent test tenant.'],
-  ['eai tenant select', 'update-local', 'live', 'Selects the dedicated test tenant/profile context.'],
-  ['eai tenant info', 'read', 'live', 'Reads selected test tenant details.'],
-  ['eai tenant create', 'create', 'live-optional', 'Runs only when EAI_E2E_CREATE_CHILD_TENANT=1; default flow uses an existing dedicated test tenant.'],
-  ['eai tenant bootstrap-admin', 'create/update', 'live-optional', 'Runs only for child-tenant smoke because it mutates membership.'],
-  ['eai tenant delete', 'delete', 'live-optional', 'Runs only for child-tenant cleanup when the smoke created the child tenant.'],
+  ['eai workspace storage list', 'read', 'live', 'Lists published storage bindings for the test workspace.'],
+  ['eai workspace storage verify', 'read', 'live', 'Verifies workspace storage readiness after sync.'],
+  ['eai workspace list', 'read', 'live', 'Resolves the dedicated parent test workspace.'],
+  ['eai workspace select', 'update-local', 'live', 'Selects the dedicated test workspace/profile context.'],
+  ['eai workspace info', 'read', 'live', 'Reads selected test workspace details.'],
+  ['eai workspace create', 'create', 'live-optional', 'Runs only when EAI_E2E_CREATE_CHILD_TENANT=1; default flow uses an existing dedicated test workspace.'],
+  ['eai workspace bootstrap-admin', 'create/update', 'live-optional', 'Runs only for child-workspace smoke because it mutates membership.'],
+  ['eai workspace delete', 'delete', 'live-optional', 'Runs only for child-workspace cleanup when the smoke created the workspace.'],
   ['eai user invite', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set.'],
-  ['eai user list', 'read', 'live', 'Verifies tenant membership visibility after invite/provision flows.'],
-  ['eai user roles', 'read', 'live', 'Discovers assignable tenant roles before invite.'],
+  ['eai user list', 'read', 'live', 'Verifies workspace membership visibility after invite/provision flows.'],
+  ['eai user roles', 'read', 'live', 'Discovers assignable workspace roles before invite.'],
   ['eai user role set', 'create/update', 'live-optional', 'Runs only when EAI_E2E_INVITE_TEST_USER is set; email-based assignment uses the V4 invite/add flow.'],
-  ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test tenant.'],
+  ['eai user provision-me', 'create/update', 'live', 'Ensures the authenticated test user is provisioned to the test workspace.'],
   ['eai resources list', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources batch-create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 and is cleaned up by batch/per-resource delete.'],
   ['eai resources batch-import', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against PostgreSQL-backed smoke Object Types for high-throughput ingest.'],
@@ -83,7 +83,7 @@ const TRACEABILITY_BASE = [
   ['eai chat send', 'create/read', 'live-optional', 'Runs only when EAI_E2E_WORKFLOW_KEY is configured and workflow status is available.'],
   ['eai chat stream', 'create/read', 'help', 'Interactive streaming is validated by help/contract; non-interactive chat send covers AI request path.'],
   ['eai workflow provision', 'create/update', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_PROVISION=1 because workflow provisioning may require runtime/provider setup.'],
-  ['eai workflow readiness', 'read', 'live', 'Checks tenant workflow readiness.'],
+  ['eai workflow readiness', 'read', 'live', 'Checks workspace workflow readiness.'],
   ['eai workflow status', 'read', 'live-optional', 'Runs when EAI_E2E_WORKFLOW_KEY is configured.'],
   ['eai workflow request', 'create', 'live-optional', 'Runs only when explicitly enabled because it creates operator-facing requests.'],
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
@@ -99,11 +99,11 @@ const TRACEABILITY_BASE = [
   ['eai verify storage', 'read', 'live', 'Verifies storage status and doctor contracts.'],
   ['eai verify calls', 'read', 'live', 'Audits platform-facing CLI call contracts.'],
   ['eai doctor', 'read', 'live', 'Runs diagnostics in the smoke workspace.'],
-  ['eai whoami', 'read', 'live', 'Confirms dedicated test identity and active tenant context.'],
+  ['eai whoami', 'read', 'live', 'Confirms dedicated test identity and active workspace context.'],
   ['eai update', 'read/update', 'check-only', 'Runs `update --check`; installing over the release candidate is not safe inside release smoke. Release preflight also runs update checks from the packed canonical and eai-cli alias install paths.'],
   ['eai provision entra', 'create/update/delete', 'live-optional', 'Runs only when EAI_E2E_PROVISION_ENTRA=1 because it creates/rotates/deletes app credentials.'],
   ['eai provision resourceapi-refresh', 'create/update', 'live-optional', 'Runs when passive ResourceAPI bundle/env is configured.'],
-  ['eai provision storage', 'create/update', 'live', 'Provisions storage for the active test tenant.'],
+  ['eai provision storage', 'create/update', 'live', 'Provisions storage for the active test workspace.'],
   ['eai provision resourceapi-bundle', 'create-local', 'live', 'Creates a customer-hosted storage schema bundle in the disposable workspace.'],
   ['eai gofer refresh', 'read/update-local', 'live', 'Runs check mode by default; apply mode can be enabled in disposable workspace.'],
   ['eai template check', 'read', 'live', 'Checks app template drift in the scaffolded app.'],
@@ -124,7 +124,7 @@ const TRACEABILITY_BASE = [
 
 const SMOKE_CALLS = {
   'eai init': [
-    'eai init <app-name> --skip-prompts --current-dir --company-tenant <tenant-id> --package-profile external',
+    'eai init <app-name> --skip-prompts --current-dir --company-workspace <workspace-id> --package-profile external',
   ],
   'eai start': [
     'eai start --check --format json',
@@ -151,200 +151,200 @@ const SMOKE_CALLS = {
     'EAI_E2E_ENV_MUTATION=1 eai env push --env test --label <app-name> --key NEXT_PUBLIC_EAI_TENANT_ID',
   ],
   'eai types seed': [
-    'eai types seed --tenant-id <tenant-id> --tenant-key <app-name> --dry-run --format json',
-    'eai types seed --tenant-id <tenant-id> --tenant-key <app-name> --format json',
+    'eai types seed --tenant-id <workspace-id> --tenant-key <app-name> --dry-run --format json',
+    'eai types seed --tenant-id <workspace-id> --tenant-key <app-name> --format json',
   ],
   'eai types validate': [
     'eai types validate',
-    'eai types validate --tenant-id <tenant-id> --tenant-key <app-name>',
+    'eai types validate --tenant-id <workspace-id> --tenant-key <app-name>',
   ],
   'eai types diff': [
-    'eai types diff --tenant-id <tenant-id> --tenant-key <app-name> --format json',
+    'eai types diff --tenant-id <workspace-id> --tenant-key <app-name> --format json',
   ],
   'eai types pull': [
-    'eai types pull --tenant-id <tenant-id> --output src/eai.config/object-types.generated.ts',
+    'eai types pull --tenant-id <workspace-id> --output src/eai.config/object-types.generated.ts',
   ],
   'eai types define': [
     'eai types define --help',
   ],
-  'eai tenant storage list': [
-    'eai tenant storage list --format json',
+  'eai workspace storage list': [
+    'eai workspace storage list --format json',
   ],
-  'eai tenant storage verify': [
-    'eai tenant storage verify --format json',
+  'eai workspace storage verify': [
+    'eai workspace storage verify --format json',
   ],
-  'eai tenant list': [
-    'eai tenant list --parent <tenant-id> --all --debug --format json',
+  'eai workspace list': [
+    'eai workspace list --parent <workspace-id> --all --debug --format json',
   ],
-  'eai tenant select': [
-    'eai tenant select <tenant-id>',
+  'eai workspace select': [
+    'eai workspace select <workspace-id>',
   ],
-  'eai tenant info': [
-    'eai tenant info <tenant-id> --format json',
+  'eai workspace info': [
+    'eai workspace info <workspace-id> --format json',
   ],
-  'eai tenant create': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai tenant create --name <child-name> --slug <child-slug> --parent <tenant-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --home-region <region> --format json',
+  'eai workspace create': [
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --home-region <region> --format json',
   ],
-  'eai tenant bootstrap-admin': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai tenant bootstrap-admin --parent <tenant-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
+  'eai workspace bootstrap-admin': [
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
   ],
-  'eai tenant delete': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai tenant delete <child-tenant-id> --force --format json',
+  'eai workspace delete': [
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --force --format json',
   ],
   'eai user invite': [
-    'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --workspace <workspace-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
   ],
   'eai user list': [
-    'eai user list --tenant <tenant-id> --search <email> --page 1 --limit 25 --sort email --format json',
+    'eai user list --workspace <workspace-id> --search <email> --page 1 --limit 25 --sort email --format json',
   ],
   'eai user roles': [
-    'eai user roles --tenant <tenant-id> --format json',
+    'eai user roles --workspace <workspace-id> --format json',
   ],
   'eai user role set': [
-    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --tenant <tenant-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
+    'EAI_E2E_INVITE_TEST_USER=<email> eai user role set --email <email> --workspace <workspace-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
   ],
   'eai user provision-me': [
-    'eai user provision-me --tenant <tenant-id> --format json',
+    'eai user provision-me --workspace <workspace-id> --format json',
   ],
   'eai resources list': [
-    'eai resources list <object-type> --tenant-id <tenant-id> --page 1 --limit 20 --sort -created_at --where {"status":{"equals":"updated"}} --format json',
+    'eai resources list <object-type> --tenant-id <workspace-id> --page 1 --limit 20 --sort -created_at --where {"status":{"equals":"updated"}} --format json',
   ],
   'eai resources batch-create': [
-    'eai resources batch-create <object-type> --tenant-id <tenant-id> --file batch-create.json --format json',
-    'eai resources batch-create <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
+    'eai resources batch-create <object-type> --tenant-id <workspace-id> --file batch-create.json --format json',
+    'eai resources batch-create <object-type> --tenant-id <workspace-id> --data [{"title":"batch smoke"}] --format json',
   ],
   'eai resources batch-import': [
-    'eai resources batch-import <object-type> --tenant-id <tenant-id> --file batch-import.json --projection-mode deferred --format json',
-    'eai resources batch-import <object-type> --tenant-id <tenant-id> --data [{"title":"batch smoke"}] --format json',
+    'eai resources batch-import <object-type> --tenant-id <workspace-id> --file batch-import.json --projection-mode deferred --format json',
+    'eai resources batch-import <object-type> --tenant-id <workspace-id> --data [{"title":"batch smoke"}] --format json',
   ],
   'eai resources batch-update': [
-    'eai resources batch-update <object-type> --tenant-id <tenant-id> --file batch-update.json --format json',
-    'eai resources batch-update <object-type> --tenant-id <tenant-id> --data [{"id":"<id>","version":1,"data":{"status":"updated"}}] --format json',
+    'eai resources batch-update <object-type> --tenant-id <workspace-id> --file batch-update.json --format json',
+    'eai resources batch-update <object-type> --tenant-id <workspace-id> --data [{"id":"<id>","version":1,"data":{"status":"updated"}}] --format json',
   ],
   'eai resources batch-delete': [
-    'eai resources batch-delete <object-type> --tenant-id <tenant-id> --file batch-delete.json --force --format json',
-    'eai resources batch-delete <object-type> --tenant-id <tenant-id> --ids <id1,id2> --force --format json',
-    'eai resources batch-delete <object-type> --tenant-id <tenant-id> --data [{"id":"<id>"}] --force --format json',
+    'eai resources batch-delete <object-type> --tenant-id <workspace-id> --file batch-delete.json --force --format json',
+    'eai resources batch-delete <object-type> --tenant-id <workspace-id> --ids <id1,id2> --force --format json',
+    'eai resources batch-delete <object-type> --tenant-id <workspace-id> --data [{"id":"<id>"}] --force --format json',
   ],
   'eai resources aggregate': [
-    'eai resources aggregate <object-type> --tenant-id <tenant-id> --group-by status --metrics {"total":{"function":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
+    'eai resources aggregate <object-type> --tenant-id <workspace-id> --group-by status --metrics {"total":{"function":"count"}} --where {"status":{"exists":true}} --limit 1000 --format json',
   ],
   'eai resources get': [
-    'eai resources get <object-type> <resource-id> --tenant-id <tenant-id> --format json',
+    'eai resources get <object-type> <resource-id> --tenant-id <workspace-id> --format json',
   ],
   'eai resources create': [
-    'eai resources create <object-type> --tenant-id <tenant-id> --data {"title":"smoke"} --format json',
-    'eai resources create <object-type> --tenant-id <tenant-id> --file resource.json --format json',
+    'eai resources create <object-type> --tenant-id <workspace-id> --data {"title":"smoke"} --format json',
+    'eai resources create <object-type> --tenant-id <workspace-id> --file resource.json --format json',
   ],
   'eai resources update': [
-    'eai resources update <object-type> <resource-id> --tenant-id <tenant-id> --data {"title":"updated","status":"updated"} --version 1 --format json',
+    'eai resources update <object-type> <resource-id> --tenant-id <workspace-id> --data {"title":"updated","status":"updated"} --version 1 --format json',
   ],
   'eai resources delete': [
-    'eai resources delete <object-type> <resource-id> --tenant-id <tenant-id> --force --format json',
+    'eai resources delete <object-type> <resource-id> --tenant-id <workspace-id> --force --format json',
   ],
   'eai resources query': [
-    'eai resources query --tenant-id <tenant-id> --types <type-a,type-b> --where {"status":{"exists":true}} --limit 20 --format json',
+    'eai resources query --tenant-id <workspace-id> --types <type-a,type-b> --where {"status":{"exists":true}} --limit 20 --format json',
   ],
   'eai resources storage status': [
-    'eai resources storage status --tenant-id <tenant-id> --format json',
+    'eai resources storage status --tenant-id <workspace-id> --format json',
   ],
   'eai resources storage doctor': [
-    'eai resources storage doctor --tenant-id <tenant-id> --format json',
+    'eai resources storage doctor --tenant-id <workspace-id> --format json',
   ],
   'eai resources search': [
-    'eai resources search <query> --tenant-id <tenant-id> --types <search-type> --mode fulltext --fulltext --limit 10 --format json',
-    'eai resources search <query> --tenant-id <tenant-id> --types <search-type> --mode hybrid --hybrid --limit 10 --format json',
-    'eai resources search <query> --tenant-id <tenant-id> --types <search-type> --mode vector --vector --limit 10 --format json',
+    'eai resources search <query> --tenant-id <workspace-id> --types <search-type> --mode fulltext --fulltext --limit 10 --format json',
+    'eai resources search <query> --tenant-id <workspace-id> --types <search-type> --mode hybrid --hybrid --limit 10 --format json',
+    'eai resources search <query> --tenant-id <workspace-id> --types <search-type> --mode vector --vector --limit 10 --format json',
   ],
   'eai resources file upload': [
-    'eai resources file upload <object-type> <resource-id> attachment smoke-file.txt --tenant-id <tenant-id> --format json',
+    'eai resources file upload <object-type> <resource-id> attachment smoke-file.txt --tenant-id <workspace-id> --format json',
   ],
   'eai resources file get': [
-    'eai resources file get <object-type> <resource-id> attachment --tenant-id <tenant-id> --output smoke-file-downloaded.txt',
+    'eai resources file get <object-type> <resource-id> attachment --tenant-id <workspace-id> --output smoke-file-downloaded.txt',
   ],
   'eai resources file delete': [
-    'eai resources file delete <object-type> <resource-id> attachment --tenant-id <tenant-id> --force --format json',
+    'eai resources file delete <object-type> <resource-id> attachment --tenant-id <workspace-id> --force --format json',
   ],
   'eai resources schema': [
-    'eai resources schema --tenant-id <tenant-id> --format json',
+    'eai resources schema --tenant-id <workspace-id> --format json',
   ],
   'eai resources sync-schema': [
-    'eai resources sync-schema --tenant-id <tenant-id> --backend documentdb --dry-run --format json',
-    'EAI_E2E_SYNC_SCHEMA_APPLY=1 eai resources sync-schema --tenant-id <tenant-id> --format json',
+    'eai resources sync-schema --tenant-id <workspace-id> --backend documentdb --dry-run --format json',
+    'EAI_E2E_SYNC_SCHEMA_APPLY=1 eai resources sync-schema --tenant-id <workspace-id> --format json',
   ],
   'eai resources doctor': [
-    'eai resources doctor --tenant-id <tenant-id> --format json',
+    'eai resources doctor --tenant-id <workspace-id> --format json',
   ],
   'eai resources performance-status': [
-    'eai resources performance-status --tenant-id <tenant-id> --format json',
+    'eai resources performance-status --tenant-id <workspace-id> --format json',
   ],
   'eai resources indexes-plan': [
-    'eai resources indexes-plan --tenant-id <tenant-id> --format json',
+    'eai resources indexes-plan --tenant-id <workspace-id> --format json',
   ],
   'eai resources indexes-apply': [
-    'eai resources indexes-apply --tenant-id <tenant-id> --confirm --format json',
+    'eai resources indexes-apply --tenant-id <workspace-id> --confirm --format json',
   ],
   'eai resources cache-refresh': [
-    'eai resources cache-refresh --tenant-id <tenant-id> --reason <change-ticket> --confirm --format json',
+    'eai resources cache-refresh --tenant-id <workspace-id> --reason <change-ticket> --confirm --format json',
   ],
   'eai app list': [
-    'eai app list --tenant-id <tenant-id> --limit 50 --format json',
+    'eai app list --tenant-id <workspace-id> --limit 50 --format json',
   ],
   'eai app auth status': [
-    'EAI_E2E_PROVISION_ENTRA=1 eai app auth status <app-key> --tenant-id <tenant-id> --client-id <entra-client-id> --format json',
+    'EAI_E2E_PROVISION_ENTRA=1 eai app auth status <app-key> --tenant-id <workspace-id> --client-id <entra-client-id> --format json',
   ],
   'eai app create': [
-    'eai app create <name> --tenant-id <tenant-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
-    'eai app create <name> --tenant-id <tenant-id> --parent-tenant <tenant-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
+    'eai app create <name> --tenant-id <workspace-id> --key <app-key> --template eai-app-template --source eai-cli --app-url https://example.invalid --status pending --format json',
+    'eai app create <name> --tenant-id <workspace-id> --parent-tenant <workspace-id> --child-tenant <child-name> --child-tenant-slug <child-slug> --key <app-key> --format json',
   ],
   'eai app delete': [
-    'eai app delete <app-key> --tenant-id <tenant-id> --confirm <app-key> --non-interactive --format json',
+    'eai app delete <app-key> --tenant-id <workspace-id> --confirm <app-key> --non-interactive --format json',
   ],
   'eai app connect-existing': [
-    'eai app connect-existing <app-key> --tenant-id <tenant-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+    'eai app connect-existing <app-key> --tenant-id <workspace-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
   ],
   'eai app adopt-observed': [
-    'eai app adopt-observed <app-key> --tenant-id <tenant-id> --repo <owner/repo> --url https://app.example.test --environment production --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+    'eai app adopt-observed <app-key> --tenant-id <workspace-id> --repo <owner/repo> --url https://app.example.test --environment production --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
   ],
   'eai app workflow-setup': [
-    'eai app workflow-setup <app-key> --tenant-id <tenant-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
+    'eai app workflow-setup <app-key> --tenant-id <workspace-id> --environment preview --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config-hash sha256:config --format json',
   ],
   'eai app workflow-evidence': [
-    'eai app workflow-evidence <app-key> --tenant-id <tenant-id> --evidence-file <canonical-workflow-evidence.json> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
+    'eai app workflow-evidence <app-key> --tenant-id <workspace-id> --evidence-file <canonical-workflow-evidence.json> --github-oidc-token <token> --github-oidc-audience api://enterprise-ai-publicapi/source-unknown --format json',
   ],
   'eai app deploy-source-unknown': [
-    'eai app deploy-source-unknown <app-key> --tenant-id <tenant-id> --operation-id <operation-id> --environment preview --repo <owner/repo> --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --workflow-run-id <run-id> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
+    'eai app deploy-source-unknown <app-key> --tenant-id <workspace-id> --operation-id <operation-id> --environment preview --repo <owner/repo> --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --workflow-run-id <run-id> --config-hash sha256:config --artifact-digest sha256:<artifact> --image-digest sha256:<image> --target-kind tenantinfra --release-channel preview --format json',
   ],
   'eai app deploy-source-unknown-status': [
-    'eai app deploy-source-unknown-status <app-key> --tenant-id <tenant-id> --format json',
+    'eai app deploy-source-unknown-status <app-key> --tenant-id <workspace-id> --format json',
   ],
   'eai app select': [
-    'eai app select <app-key> --tenant-id <tenant-id> --skip-validate --format json',
+    'eai app select <app-key> --tenant-id <workspace-id> --skip-validate --format json',
   ],
   'eai app provision': [
-    'eai app provision <app-key> --tenant-id <tenant-id> --backend all --dry-run --format json',
-    'eai app provision <app-key> --tenant-id <tenant-id> --backend all --select --format json',
+    'eai app provision <app-key> --tenant-id <workspace-id> --backend all --dry-run --format json',
+    'eai app provision <app-key> --tenant-id <workspace-id> --backend all --select --format json',
   ],
   'eai classifier delete': [
-    'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <tenant-id> --format json',
+    'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <workspace-id> --format json',
   ],
   'eai classifier disable': [
-    'eai classifier disable <classifier-key> --tenant-id <tenant-id> --format json',
+    'eai classifier disable <classifier-key> --tenant-id <workspace-id> --format json',
   ],
   'eai classifier enable': [
-    'eai classifier enable <classifier-key> --tenant-id <tenant-id> --format json',
+    'eai classifier enable <classifier-key> --tenant-id <workspace-id> --format json',
   ],
   'eai classifier list': [
-    'eai classifier list --tenant-id <tenant-id> --format json',
+    'eai classifier list --tenant-id <workspace-id> --format json',
   ],
   'eai classifier save': [
-    'eai classifier save --file classifier.json --tenant-id <tenant-id> --format json',
+    'eai classifier save --file classifier.json --tenant-id <workspace-id> --format json',
   ],
   'eai classifier publish': [
-    'eai classifier publish <classifier-key> --tenant-id <tenant-id> --format json',
+    'eai classifier publish <classifier-key> --tenant-id <workspace-id> --format json',
   ],
   'eai classifier target': [
-    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --document-lifecycle business-document-v1 --tenant-id <tenant-id> --format json',
+    'eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --version <version> --document-lifecycle business-document-v1 --tenant-id <workspace-id> --format json',
   ],
   'eai chat send': [
     'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai chat send --workflow <workflow-id> --stage chat --conversation-id <conversation-id>',
@@ -353,16 +353,16 @@ const SMOKE_CALLS = {
     'eai chat stream --workflow <workflow-id> --stage chat --conversation-id <conversation-id> --help',
   ],
   'eai workflow provision': [
-    'EAI_E2E_WORKFLOW_PROVISION=1 eai workflow provision <workflow-key> --app <app-key> --tenant <tenant-id> --display-name <name> --usecase generic --scope-key generic:<workflow-key> --stage chat:Chat --stage-env NEXT_PUBLIC_WORKFLOW_ID=chat --workflow-env-key NEXT_PUBLIC_WORKFLOW_ID --bind-ai-runtime --ai-provider azure-openai --ai-model gpt-4.1 --ai-profile-key <profile-key> --stage-prompt chat=Hello --status active --write-local-env --env test --label <app-name> --format json',
+    'EAI_E2E_WORKFLOW_PROVISION=1 eai workflow provision <workflow-key> --app <app-key> --workspace <workspace-id> --display-name <name> --usecase generic --scope-key generic:<workflow-key> --stage chat:Chat --stage-env NEXT_PUBLIC_WORKFLOW_ID=chat --workflow-env-key NEXT_PUBLIC_WORKFLOW_ID --bind-ai-runtime --ai-provider azure-openai --ai-model gpt-4.1 --ai-profile-key <profile-key> --stage-prompt chat=Hello --status active --write-local-env --env test --label <app-name> --format json',
   ],
   'eai workflow readiness': [
-    'eai workflow readiness --tenant <tenant-id> --format json',
+    'eai workflow readiness --workspace <workspace-id> --format json',
   ],
   'eai workflow status': [
-    'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai workflow status <workflow-id> --tenant <tenant-id> --format json',
+    'EAI_E2E_WORKFLOW_KEY=<workflow-id> eai workflow status <workflow-id> --workspace <workspace-id> --format json',
   ],
   'eai workflow request': [
-    'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --tenant <tenant-id> --display-name <name> --reason smoke --format json',
+    'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --workspace <workspace-id> --display-name <name> --reason smoke --format json',
   ],
   'eai docs upload': [],
   'eai docs classify': [
@@ -396,10 +396,10 @@ const SMOKE_CALLS = {
     'eai runtime validate --format json',
   ],
   'eai verify storage': [
-    'eai verify storage --tenant-id <tenant-id> --format json',
+    'eai verify storage --tenant-id <workspace-id> --format json',
   ],
   'eai verify calls': [
-    'eai verify calls --tenant-id <tenant-id> --resource-type <object-type> --resource-id <resource-id> --workflow <workflow-id> --stage chat --tenant-record <tenant-id> --user-email <email> --chat-message "Smoke test" --format json',
+    'eai verify calls --tenant-id <workspace-id> --resource-type <object-type> --resource-id <resource-id> --workflow <workflow-id> --stage chat --tenant-record <workspace-id> --user-email <email> --chat-message "Smoke test" --format json',
   ],
   'eai doctor': [
     'eai doctor --check-updates',
@@ -416,15 +416,15 @@ const SMOKE_CALLS = {
     'EAI_E2E_PROVISION_ENTRA=1 EAI_E2E_CLEANUP=1 eai provision entra --deauthorize --client-id <client-id> --force --debug',
   ],
   'eai provision resourceapi-refresh': [
-    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
+    'EAI_E2E_RESOURCEAPI_REFRESH=1 eai provision resourceapi-refresh --tenant-id <workspace-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --force-overwrite --reason smoke --change-ticket E2E-SMOKE --product <app-key> --schema-version 1 --format json',
   ],
   'eai provision storage': [
-    'eai provision storage --tenant-id <tenant-id> --backend all --dry-run --format json',
-    'eai provision storage --tenant-id <tenant-id> --backend all --format json',
+    'eai provision storage --tenant-id <workspace-id> --backend all --dry-run --format json',
+    'eai provision storage --tenant-id <workspace-id> --backend all --format json',
   ],
   'eai provision resourceapi-bundle': [
-    'eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --backend all --product <app-key> --schema-version 1 --out resourceapi-bundle.json --format json',
-    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <tenant-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
+    'eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <workspace-id> --install-id <install-id> --backend all --product <app-key> --schema-version 1 --out resourceapi-bundle.json --format json',
+    'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY=1 eai provision resourceapi-bundle --schema smoke-object-types.json --tenant-id <workspace-id> --install-id <install-id> --apply --dry-run --backend all --rebuild-search --product <app-key> --schema-version 1 --format json',
   ],
   'eai gofer refresh': [
     'eai gofer refresh --check --format json',
@@ -450,16 +450,16 @@ const SMOKE_CALLS = {
   'eai publicapi get': [
     'EAI_E2E_DOCS=1 eai publicapi get /v4/data/documents/jobs/<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
     'EAI_E2E_DOCS=1 eai publicapi get /v4/data/documents/records/<document-id>?storage_target=resourceapi&job_id=<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
-    'eai publicapi get /v4/data/resources/object-types --tenant-id <tenant-id> --param limit=1 --include-headers --format json',
+    'eai publicapi get /v4/data/resources/object-types --tenant-id <workspace-id> --param limit=1 --include-headers --format json',
   ],
   'eai publicapi post': [
-    'EAI_E2E_PUBLICAPI_POST_PATH=<path> eai publicapi post <path> --tenant-id <tenant-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
+    'EAI_E2E_PUBLICAPI_POST_PATH=<path> eai publicapi post <path> --tenant-id <workspace-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
   ],
   'eai publicapi patch': [
-    'EAI_E2E_PUBLICAPI_PATCH_PATH=<path> eai publicapi patch <path> --tenant-id <tenant-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
+    'EAI_E2E_PUBLICAPI_PATCH_PATH=<path> eai publicapi patch <path> --tenant-id <workspace-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
   ],
   'eai publicapi put': [
-    'EAI_E2E_PUBLICAPI_PUT_PATH=<path> eai publicapi put <path> --tenant-id <tenant-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
+    'EAI_E2E_PUBLICAPI_PUT_PATH=<path> eai publicapi put <path> --tenant-id <workspace-id> --data {} --file body.json --param dryRun=true --include-headers --format json',
   ],
   'eai publicapi delete': [
     'EAI_E2E_DOCS=1 eai publicapi delete /v4/data/documents/records/<document-id>?storage_target=resourceapi&job_id=<job-id> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --format json',
@@ -505,15 +505,16 @@ const OPTION_DECISIONS = {
     '--binding-receipt-nonce': 'Paired canonical UUIDv4, fresh no-overwrite reservation, exact request actor/gateway and stale/race rejection are owned by init-app-binding and native Installer tests; mapped Installer qualification remains a separate authorized journey.',
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',
     '--trust-template-scripts': 'Security opt-in for reviewed custom templates; integration tests prove custom scripts are blocked by default and allowed only after explicit trust.',
-    '--tenant': 'Deprecated alias for --company-tenant; kept as backward-compatible vocabulary and not used in new smoke calls.',
-    '--parent-tenant': 'Covered by app create child-tenant flow; init live smoke keeps one direct company-tenant binding unless child tenant smoke is explicitly enabled.',
-    '--child-tenant': 'Covered by app create child-tenant flow and opt-in child tenant smoke.',
-    '--create-child-tenant': 'Interactive prompt path; non-interactive smoke uses explicit company tenant and app create covers child creation options.',
+    '--tenant': 'Deprecated compatibility alias for --company-workspace; release smoke uses the workspace flag.',
+    '--company-workspace,': 'Binds the app to the selected EAI workspace; release smoke uses the dedicated workspace ID.',
+    '--parent-tenant': 'Compatibility flag covered by the workspace hierarchy flow; live smoke keeps one direct workspace binding unless child-workspace smoke is explicitly enabled.',
+    '--child-tenant': 'Compatibility flag covered by app create child-workspace flow and opt-in child-workspace smoke.',
+    '--create-child-tenant': 'Compatibility flag for the interactive child-workspace prompt; app create covers child-workspace options.',
     '--no-gofer': 'Negative scaffold mode is covered by unit tests; release live smoke keeps Gofer assets installed so follow-up refresh can run.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--display-name': 'Guided eai create collects the display name and forwards it to the non-interactive init path; release smoke uses the default humanized name.',
     '--description': 'Guided eai create collects the business description and forwards it to the non-interactive init path; release smoke uses the default description.',
-    '--app-key': 'Existing-app binding is covered by the init integration contract; live release smoke keeps the default create-new-app path to avoid changing tenant state.',
+    '--app-key': 'Existing-app binding is covered by the init integration contract; live release smoke keeps the default create-new-app path to avoid changing workspace state.',
     '--no-install': 'Dependency installation is covered by init integration tests; release smoke keeps the generated workspace setup bounded and uses the default install behavior.',
   },
   'eai create': {
@@ -522,11 +523,11 @@ const OPTION_DECISIONS = {
     '--skip-prompts': 'Automation escape hatch forwards directly to the legacy init command and is covered by init integration tests.',
     '--skip-onboarding': 'Compatibility escape hatch intentionally delegates to the legacy init prompt flow; focused create tests cover argument forwarding.',
     '--current-dir': 'Current-folder scaffold mode is covered by init integration tests; guided setup asks this question interactively.',
-    '--tenant': 'Deprecated alias for --company-tenant; retained for compatibility and not used by the guided path.',
-    '--company-tenant': 'Guided setup resolves the active signup workspace and forwards its ID; direct override is retained for automation.',
-    '--parent-tenant': 'Child-company hierarchy is covered by init and tenant integration tests; guided setup defaults to the selected signup workspace.',
-    '--child-tenant': 'Child-company creation is covered by init and tenant integration tests; guided setup keeps the standard workspace boundary by default.',
-    '--create-child-tenant': 'Interactive child-company creation is an explicit opt-in and is covered by init integration tests.',
+    '--tenant': 'Deprecated compatibility alias for --company-workspace; retained for existing automation.',
+    '--company-workspace,': 'Guided setup resolves the active signup workspace and forwards its ID; direct override is retained for automation.',
+    '--parent-tenant': 'Compatibility flag for child-workspace hierarchy; guided setup defaults to the selected signup workspace.',
+    '--child-tenant': 'Compatibility flag for child-workspace creation; guided setup keeps the standard workspace boundary by default.',
+    '--create-child-tenant': 'Compatibility flag for interactive child-workspace creation; the opt-in path is covered by init integration tests.',
     '--no-gofer': 'Bare scaffold mode is covered by init integration tests; guided setup installs Gofer by default.',
     '--package-profile': 'Package profile is forwarded to init; release smoke uses the external default.',
     '--tool': 'AI-tool selection is covered by the guided onboarding contract; all four supported tool surfaces are installed as Gofer assets.',
@@ -547,19 +548,27 @@ const OPTION_DECISIONS = {
   'eai env list': {
     '--show-secrets': 'Intentionally not used in release smoke to avoid printing secrets.',
   },
-  'eai tenant list': {
+  'eai workspace list': {
     '--raw-user': 'Debug payload mode can include identity metadata; not printed during release smoke.',
   },
-  'eai tenant create': {
+  'eai workspace create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
-  'eai tenant delete': {
+  'eai workspace delete': {
     '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
   },
   'eai user invite': {
+    '--workspace,': 'Preferred workspace selector; invite behavior is covered by user integration tests and optional dedicated-workspace smoke.',
     '--role-definition-id': 'Custom role definition assignment is contract-tested; release smoke uses canonical base roles for portability.',
   },
+  'eai user list': {
+    '--workspace,': 'Preferred workspace selector; workspace membership visibility is covered by integration tests and dedicated-workspace smoke.',
+  },
+  'eai user roles': {
+    '--workspace,': 'Preferred workspace selector; role discovery is covered by integration tests and dedicated-workspace smoke.',
+  },
   'eai user role set': {
+    '--workspace,': 'Preferred workspace selector; direct membership role updates are contract-tested.',
     '--member-id': 'Direct member-id role update is contract-tested; release smoke uses email-based assignment to cover existing and new user flows consistently.',
   },
   'eai resources list': {
@@ -624,9 +633,22 @@ const OPTION_DECISIONS = {
   'eai app deploy-source-unknown-status': {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
+  'eai user provision-me': {
+    '--workspace,': 'Preferred workspace selector; current-user membership provisioning is covered by the dedicated-workspace smoke.',
+  },
   'eai workflow provision': {
+    '--workspace,': 'Preferred workspace selector; optional workflow provisioning smoke uses a dedicated test workspace.',
     '--vertical': 'Deprecated alias for --app; not used by new V4-native/app vocabulary smoke.',
     '--write-app-config': 'Writes cloud configuration; opt-in outside the default destructive smoke.',
+  },
+  'eai workflow readiness': {
+    '--workspace,': 'Preferred workspace selector; readiness checks use the dedicated test workspace.',
+  },
+  'eai workflow status': {
+    '--workspace,': 'Preferred workspace selector; optional status checks use a dedicated test workspace.',
+  },
+  'eai workflow request': {
+    '--workspace,': 'Preferred workspace selector; optional request smoke creates an operator request in a dedicated test workspace.',
   },
   'eai verify calls': {
     '--include-chat': 'Creates a chat conversation; optional workflow/chat smoke covers it when EAI_E2E_WORKFLOW_KEY is set.',
@@ -694,17 +716,17 @@ const ARTIFACT_CLEANUP = {
     cleanupMechanism: 'No Object Type delete/deprovision command yet; use dedicated smoke tenant',
     cleanupVerified: 'No - cleanup gap documented',
   },
-  'eai tenant create': {
+  'eai workspace create': {
     createsExternalArtifact: 'Yes - child tenant',
-    cleanupMechanism: 'eai tenant delete <child-tenant-id> --force',
+    cleanupMechanism: 'eai workspace delete <child-tenant-id> --force',
     cleanupVerified: 'Yes when EAI_E2E_CREATE_CHILD_TENANT=1 and cleanup succeeds',
   },
-  'eai tenant bootstrap-admin': {
+  'eai workspace bootstrap-admin': {
     createsExternalArtifact: 'Yes - membership/role assignment',
     cleanupMechanism: 'Child tenant deletion when smoke created the child tenant',
     cleanupVerified: 'Yes when child-tenant cleanup is enabled',
   },
-  'eai tenant delete': {
+  'eai workspace delete': {
     createsExternalArtifact: 'No - cleanup command',
     cleanupMechanism: 'Deletes smoke-created child tenant',
     cleanupVerified: 'Yes when command returns success',
@@ -1521,9 +1543,9 @@ function runLiveSmoke(cliPath) {
     }
   }
 
-  eai(['init', appName, '--skip-prompts', '--current-dir', '--company-tenant', parentTenantId]);
-  eai(['user', 'provision-me', '--tenant', parentTenantId, '--format', 'json']);
-  eai(['user', 'roles', '--tenant', parentTenantId, '--format', 'json']);
+  eai(['init', appName, '--skip-prompts', '--current-dir', '--company-workspace', parentTenantId]);
+  eai(['user', 'provision-me', '--workspace', parentTenantId, '--format', 'json']);
+  eai(['user', 'roles', '--workspace', parentTenantId, '--format', 'json']);
   eai([
     'user',
     'list',

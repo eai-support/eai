@@ -122,7 +122,7 @@ function printServerDetail(
 
 function printProvisionFallback(reference: string): void {
   out.info(`Reference: ${reference}`);
-  out.info('Retry after confirming you are logged in and have selected the correct tenant.');
+  out.info('Retry after confirming you are logged in and have selected the correct workspace.');
   out.info('If this continues, contact your platform administrator.');
   out.info('Manual fallback: set ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET in .env.local.');
 }
@@ -151,7 +151,7 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
   const status = ctx.status;
 
   if (status === 404) {
-    out.error('Entra provisioning is not available for this tenant or platform instance.');
+    out.error('Entra provisioning is not available for this workspace or platform instance.');
     printServerDetail(ctx, diag, { includeServerMessage: false, includeServerCode: false });
     printProvisionFallback('EAI-PROVISION-UNAVAILABLE');
     process.exit(1);
@@ -163,9 +163,9 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
     process.exit(1);
   }
   if (status === 403) {
-    out.error(`Permission denied for tenant ${tenantLabel(diag)}.`);
+    out.error(`Permission denied for workspace ${tenantLabel(diag)}.`);
     printServerDetail(ctx, diag);
-    out.info('Confirm role with: eai whoami --verbose && eai tenant list');
+    out.info('Confirm role with: eai whoami --verbose && eai workspace list');
     if (diag.userOid) {
       const tenantId = diag.tenantId ?? '<tenant-id>';
       out.info(
@@ -177,7 +177,7 @@ function handleProvisionError(err: unknown, diag: DiagnosticsContext): never {
     process.exit(1);
   }
   if (status === 409) {
-    out.error('The maximum number of app registrations for this tenant has been reached.');
+    out.error('The maximum number of app registrations for this workspace has been reached.');
     printServerDetail(ctx, diag);
     out.info('Reference: EAI-PROVISION-LIMIT');
     out.info('Contact your platform administrator.');
@@ -194,7 +194,7 @@ function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): neve
   out.error('Entra client secret rotation failed.');
   printServerDetail(ctx, diag);
   out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
-  out.info('Confirm you are a tenant admin and ENTRA_CLIENT_ID belongs to the active tenant.');
+  out.info('Confirm you have workspace admin access and ENTRA_CLIENT_ID belongs to the active workspace.');
   process.exit(1);
 }
 
@@ -203,7 +203,7 @@ function handleDeprovisionError(err: unknown, diag: DiagnosticsContext): never {
   out.error('Entra app deprovisioning failed.');
   printServerDetail(ctx, diag);
   out.info('Reference: EAI-PROVISION-DEAUTHORIZE-FAILED');
-  out.info('Confirm you are a tenant admin and the client id belongs to the active tenant.');
+  out.info('Confirm you have workspace admin access and the client id belongs to the active workspace.');
   process.exit(1);
 }
 
@@ -261,9 +261,9 @@ provisionCommand
   .description('Create an Entra app registration for end-user auth (Auth.js)')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
-  .option('--deauthorize', 'Remove tenant authorization and delete the Entra app registration for cleanup', false)
+  .option('--deauthorize', 'Remove workspace authorization and delete the Entra app registration for cleanup', false)
   .option('--client-id <id>', 'Client ID to deauthorize; defaults to ENTRA_CLIENT_ID in .env.local')
-  .option('--keep-registration', 'Only remove tenant authorization; do not delete the Entra app registration', false)
+  .option('--keep-registration', 'Only remove workspace authorization; do not delete the Entra app registration', false)
   .option(
     '--redirect-uri <uri>',
     'Additional OAuth redirect URI to register (e.g. a deployed callback). Repeatable. Registered alongside the local callback; the platform merges with existing URIs.',
@@ -334,8 +334,8 @@ Diagnostics:
         out.info('Run `eai login` again after sourcing the intended environment, then retry provisioning.');
         process.exit(1);
       }
-      out.error('Failed to resolve active tenant.');
-      out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai tenant select')} first.`);
+      out.error('Failed to resolve the active workspace.');
+      out.info(`Run ${chalk.cyan('eai login')} and ${chalk.cyan('eai workspace select')} first.`);
       process.exit(1);
     }
 
@@ -382,7 +382,7 @@ Diagnostics:
         out.success(`Entra app cleanup complete for ${chalk.cyan(appName)}`);
         out.table([
           ['Client ID', chalk.dim(result.clientId)],
-          ['Tenant authorization removed', result.tenantDeauthorization.removed ? chalk.green('yes') : chalk.yellow('already absent')],
+          ['Workspace authorization removed', result.tenantDeauthorization.removed ? chalk.green('yes') : chalk.yellow('already absent')],
           ['App registration found', result.appRegistrationFound ? 'yes' : 'no'],
           ['App registration deleted', result.appRegistrationDeleted ? 'yes' : options.keepRegistration ? 'kept' : 'already absent'],
           ['Local env cleaned', localEnvCleaned ? 'ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET' : 'not changed'],
@@ -577,7 +577,7 @@ Diagnostics:
 provisionCommand
   .command('resourceapi-refresh')
   .description('Refresh a passive customer storage schema snapshot through PublicAPI v4')
-  .option('--tenant-id <id>', 'Tenant ID the refresh is scoped to')
+  .option('--tenant-id <id>', 'Workspace ID the refresh is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
   .option('--apply', 'Apply the refreshed snapshot after planning', false)
   .option('--dry-run', 'With --apply, ask the storage service to plan schema application without writing', false)
@@ -585,11 +585,11 @@ provisionCommand
   .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
   .option('--force-overwrite', 'Allow the passive snapshot to overwrite an existing schema version', false)
   .option('--no-verify', 'Skip storage schema-status verification after apply')
-  .option('--no-update-install-registry', 'Do not update the tenant install registry schema hash after apply')
+  .option('--no-update-install-registry', 'Do not update the workspace install registry schema hash after apply')
   .option('--reason <text>', 'Human-readable reason for a real schema refresh apply')
   .option('--change-ticket <id>', 'Support/change ticket for audit trail')
   .option('--product <key>', 'Product/app key this refresh enables')
-  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--schema-version <version>', 'Workspace schema version to stamp into metadata', '1')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
@@ -680,7 +680,7 @@ Notes:
     }
 
     out.success(options.apply ? 'Passive customer storage schema refresh applied' : 'Passive customer storage schema refresh planned');
-    out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+    out.info(`Workspace: ${chalk.cyan(payload.tenantId)}`);
     out.info(`Install: ${chalk.dim(payload.installId)}`);
     out.info(`Object Types: ${payload.objectTypeCount}`);
     out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
@@ -773,9 +773,9 @@ function reportSigninCompleteness(
   out.warn('Remediation:');
   out.warn(`  1. Azure portal → Microsoft Entra ID → App registrations → ${chalk.cyan(clientId)}`);
   out.warn('  2. API permissions → Add a permission → APIs my organization uses → select PublicAPI → Delegated permissions → access_token → Add');
-  out.warn('  3. Grant admin consent for the directory tenant');
+  out.warn('  3. Grant admin consent for the Entra directory');
   out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
-  out.warn('Or: ask your platform team to review the public provisioning support reference for this tenant.');
+  out.warn('Or: ask your platform team to review the public provisioning support reference for this workspace.');
   process.exit(1);
 }
 
@@ -784,8 +784,8 @@ function reportTenantAuthorization(
   clientId: string,
 ): void {
   if (!summary) {
-    out.warn('Tenant data-plane authorization status was not reported by PublicAPI.');
-    out.warn('Run `eai user provision-me` after provisioning to verify tenant access.');
+    out.warn('Workspace data access status was not reported by PublicAPI.');
+    out.warn('Run `eai user provision-me` after provisioning to verify workspace access.');
     return;
   }
 
@@ -803,8 +803,8 @@ function reportTenantAuthorization(
 
   out.success(
     summary.added
-      ? 'Tenant data-plane authorization complete: app was added to the tenant allowlist.'
-      : 'Tenant data-plane authorization complete: app was already on the tenant allowlist.',
+      ? 'Workspace data access authorization complete: the app was added to the workspace allowlist.'
+      : 'Workspace data access authorization complete: the app was already on the workspace allowlist.',
   );
 }
 
@@ -833,8 +833,8 @@ async function readObjectTypeSlugsFromSchema(schemaPath: string): Promise<string
 
 provisionCommand
   .command('storage')
-  .description('Provision storage for the active tenant')
-  .option('--tenant-id <id>', 'Provision storage for a specific tenant')
+  .description('Provision storage for the active workspace')
+  .option('--tenant-id <id>', 'Provision storage for a specific workspace')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
@@ -867,7 +867,7 @@ provisionCommand
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
     const jsonOutput = options.json || options.format === 'json';
     if (!jsonOutput) {
-      out.info(`${options.dryRun ? 'Planning' : 'Provisioning'} storage for tenant ${tenantId}...`);
+      out.info(`${options.dryRun ? 'Planning' : 'Provisioning'} storage for workspace ${tenantId}...`);
     }
 
     const response = await client.provisionStorage({
@@ -912,14 +912,14 @@ provisionCommand
   .command('resourceapi-bundle')
   .description('Prepare a customer-hosted storage schema bundle')
   .option('--schema <file>', 'Object-types export JSON for local bundle generation')
-  .option('--tenant-id <id>', 'Tenant ID the bundle is scoped to')
+  .option('--tenant-id <id>', 'Workspace ID the bundle is scoped to')
   .option('--install-id <id>', 'Customer storage install registry ID')
   .option('--apply', 'Ask PublicAPI to push the signed bundle to the customer storage install', false)
   .option('--dry-run', 'Plan schema application without applying customer storage changes', false)
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--rebuild-search', 'Request search projection rebuild after schema sync', false)
   .option('--product <key>', 'Product/app key this bundle enables')
-  .option('--schema-version <version>', 'Tenant schema version to stamp into metadata', '1')
+  .option('--schema-version <version>', 'Workspace schema version to stamp into metadata', '1')
   .option('--out <file>', 'Write bundle JSON to this file')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1021,7 +1021,7 @@ Notes:
       } else {
         out.success('Storage schema bundle prepared through PublicAPI');
       }
-      out.info(`Tenant: ${chalk.cyan(payload.tenantId)}`);
+      out.info(`Workspace: ${chalk.cyan(payload.tenantId)}`);
       out.info(`Install: ${chalk.dim(payload.installId)}`);
       out.info(`Object Types: ${payload.objectTypeCount}`);
       out.info(`Storage Backends: ${payload.storageBackends.join(', ')}`);
@@ -1029,7 +1029,7 @@ Notes:
     }
 
     if (!schemaPath || !options.tenantId || !options.installId) {
-      out.error('--schema, --tenant-id, and --install-id are required for local bundle generation.');
+      out.error('--schema, --tenant-id (workspace ID), and --install-id are required for local bundle generation.');
       out.info('Omit --schema to let PublicAPI build the bundle from the platform schema source of truth.');
       process.exit(1);
     }
@@ -1058,7 +1058,7 @@ Notes:
     } else {
       out.info(JSON.stringify(bundle, null, 2));
     }
-    out.info(`Tenant: ${chalk.cyan(bundle.tenantId)}`);
+    out.info(`Workspace: ${chalk.cyan(bundle.tenantId)}`);
     out.info(`Install: ${chalk.dim(bundle.installId)}`);
     out.info(`Object Types: ${bundle.objectTypes.length}`);
     out.info(`Storage Backends: ${bundle.storageBackends.join(', ')}`);

@@ -58,14 +58,16 @@ Commands:
   create [options] [name]      Guide a new builder through EAI setup and create
                                an application
   dev [options]                Start local development server
-  login [options]              Authenticate with Entra CIAM
+  login [options]              Authenticate with Entra CIAM using your
+                               configured sign-in directory
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions
-  tenant                       Manage tenants on the platform
+  workspace|tenant             Manage EAI workspaces (the tenant command remains
+                               available for compatibility)
   user                         Manage users on the platform
   resources                    CRUD operations on platform resources
-  app|vertical                 Manage apps under the active company tenant
+  app|vertical                 Manage apps under the active company workspace
   chat                         Chat with AI workflows
   workflow                     Provision app workflow configs and inspect AI
                                runtime workflow bindings
@@ -75,7 +77,7 @@ Commands:
                                contract
   verify [options]             Run platform connectivity checks
   doctor [options]             Diagnose common issues and suggest fixes
-  whoami                       Show auth status and tenant info
+  whoami                       Show auth status and workspace info
   update [options]             Check for and install CLI updates
   provision                    Provision platform resources for this app
   gofer                        Inspect and refresh Gofer-managed project assets
@@ -89,7 +91,7 @@ Commands:
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
-                               enable, and delete tenant document classifiers
+                               enable, and delete workspace document classifiers
   help [command]               display help for command
 
 Getting Started:
@@ -106,7 +108,7 @@ Development Workflows:
   # Define your types, validate them, then publish them
   eai types validate && eai types seed
 
-  # See what is published for the active tenant
+  # See what is published for the active workspace
   eai resources schema
   eai app create "My App" --template eai-app-template
 
@@ -119,7 +121,7 @@ Development Workflows:
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
 
-  # Check login, tenant, and API connectivity
+  # Check login, workspace, and API connectivity
   eai verify && eai doctor
 
 Deployment:
@@ -137,7 +139,7 @@ Deployment:
 Machine-Readable Output:
   # Get structured JSON output for automation
   eai resources list User --format json
-  eai tenant list --format json | jq
+  eai workspace list --format json | jq
   eai verify calls --format json
   eai errors explain E101 --format json
 
@@ -193,44 +195,29 @@ Usage: eai init [options] [name]
 Scaffold a new application
 
 Arguments:
-  name                            Name for the app (kebab-case)
+  name                                        Name for the app (kebab-case)
 
 Options:
-  --from <repo>                   GitHub repo URL or local path for template
-                                  (default:
-                                  "https://github.com/eai-support/eai-app-template.git")
-  --trust-template-scripts        Allow a custom template to run its Object Type
-                                  generator (default: false)
-  --skip-prompts                  Use defaults without interactive prompts
-                                  (default: false)
-  --current-dir                   Scaffold into the current directory instead of
-                                  creating ./<name> (default: false)
-  --tenant <id>                   Main company tenant ID (deprecated alias for
-                                  --company-tenant)
-  --company-tenant <id>           Main company tenant ID that owns this app
-  --parent-tenant <id>            Immediate parent company tenant ID for the new
-                                  child company
-  --child-tenant <name>           Create or reuse a child company tenant display
-                                  name for the app runtime boundary
-  --create-child-tenant           Prompt for a child company tenant instead of
-                                  using the selected company tenant
-  --no-gofer                      Skip installing Gofer AI CLI assets
-  --no-install                    Skip installing the generated app dependencies
-  --package-profile <profile>     Package profile to record for block catalog
-                                  discovery: external, internal, or hybrid
-                                  (default: "external")
-  --display-name <name>           Display name for the app
-  --description <description>     One-sentence description for the app
-  --binding-receipt <path>        Write private init acknowledgement outside the
-                                  project (explicit noninteractive use)
-  --binding-receipt-nonce <uuid>  Fresh UUID binding this invocation to its
-                                  private receipt
-  --app-key <key>                 Bind the local project to an existing app
-                                  instead of creating a new app
-  --template-version <tag>        Scaffold from a specific published
-                                  app-template release (for example v1.2.0)
-  --no-splash                     Skip the interactive EAI wordmark
-  -h, --help                      display help for command
+  --from <repo>                               GitHub repo URL or local path for template (default: "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts                    Allow a custom template to run its Object Type generator (default: false)
+  --skip-prompts                              Use defaults without interactive prompts (default: false)
+  --current-dir                               Scaffold into the current directory instead of creating ./<name> (default: false)
+  --tenant <id>                               Main company workspace ID (compatibility alias for --company-workspace)
+  --company-workspace, --company-tenant <id>  Main company workspace ID that owns this app
+  --parent-tenant <id>                        Immediate parent company workspace ID for the new child company
+  --child-tenant <name>                       Create or reuse a child company workspace display name for the app runtime boundary
+  --create-child-tenant                       Prompt for a child company workspace instead of using the selected company workspace
+  --no-gofer                                  Skip installing Gofer AI CLI assets
+  --no-install                                Skip installing the generated app dependencies
+  --package-profile <profile>                 Package profile to record for block catalog discovery: external, internal, or hybrid (default: "external")
+  --display-name <name>                       Display name for the app
+  --description <description>                 One-sentence description for the app
+  --binding-receipt <path>                    Write private init acknowledgement outside the project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>              Fresh UUID binding this invocation to its private receipt
+  --app-key <key>                             Bind the local project to an existing app instead of creating a new app
+  --template-version <tag>                    Scaffold from a specific published app-template release (for example v1.2.0)
+  --no-splash                                 Skip the interactive EAI wordmark
+  -h, --help                                  display help for command
 
 Gofer AI CLI assets are installed by default:
   .specify/ commands, scripts, templates, hooks, and memory folders
@@ -647,7 +634,7 @@ control.
 # EAI CLI
 
 `eai` is the supported command-line interface for building and operating apps on
-the EAI platform. It wraps authentication, tenant context, Object Types,
+the EAI platform. It wraps authentication, workspace context, Object Types,
 ResourceAPI data, document processing, chat workflows, deployment, diagnostics,
 and gofer asset refresh.
 
@@ -699,14 +686,14 @@ npm install -g @enterpriseai/cli
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <workspace-slug>
 eai whoami
 
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai resources schema --tenant-id <tenant-id> --format json
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
@@ -735,7 +722,7 @@ construction.
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
 | `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
-| `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
+| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai tenant` remains available as a compatibility alias.     |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
@@ -753,8 +740,8 @@ construction.
 Use machine-readable output for automation:
 
 ```bash
-eai tenant list --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai workspace list --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai whoami --simple
 eai doctor --no-color
 ```
@@ -767,9 +754,9 @@ Prefer product-shaped commands before `eai publicapi`:
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
 | Start AI workspace   | `eai start --check`, then `eai start`                    |
-| Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
+| Select workspace        | `eai workspace list`, `eai workspace select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
-| Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
+| Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
@@ -884,7 +871,7 @@ For app work, gofer plans should capture:
 # EAI App Template
 
 The EAI App Template is the canonical public scaffold used by `eai init`. It is
-a Next.js app template for tenant-scoped applications on the EAI platform.
+a Next.js app template for workspace-scoped applications on the EAI platform.
 
 ## Quick Start
 
@@ -896,25 +883,29 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Then connect it to a tenant:
+The template keeps technical code names such as `tenantId`, `tenants`, and
+`tenantConfigs` for compatibility. Their values and configuration represent an
+EAI workspace.
+
+Then connect it to a workspace:
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <workspace-slug>
 eai whoami
 eai types validate
-eai types diff --tenant-key template --tenant-id <tenant-id>
-eai types seed --tenant-key template --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai types diff --tenant-key template --tenant-id <workspace-id>
+eai types seed --tenant-key template --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 ```
 
 ## App Structure
 
 | Path                             | Purpose                                                                         |
 | -------------------------------- | ------------------------------------------------------------------------------- |
-| `src/eai.config/default.ts`      | Default tenant config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`        | Tenant key to config registry.                                                  |
+| `src/eai.config/default.ts`      | Default workspace config, store slices, API paths, storage keys, and layout slots. |
+| `src/eai.config/index.ts`        | Workspace configuration key to config registry.                                                  |
 | `src/eai.config/object-types.ts` | Object Type definitions for ResourceAPI-backed data.                            |
 | `src/eai.blocks.tsx`             | Component registry and app-local block extension point.                         |
 | `src/hooks/useResources.ts`      | ResourceAPI-backed business data.                                               |
@@ -926,14 +917,14 @@ eai resources schema --tenant-id <tenant-id> --format json
 
 - Browser code calls the app BFF at `/api/eai/...`.
 - Browser streaming calls use `/api/eai/stream/...`.
-- Server helpers attach auth, tenant, and correlation headers.
+- Server helpers attach auth, workspace context, and correlation headers.
 - The browser never receives raw database, blob, search, PublicAPI, or model
   provider credentials.
 - Use PublicAPI V4 routes for direct platform calls.
 
 ## Data Model
 
-Object Types are the contract for tenant business data. Use `postgresql` for
+Object Types are the contract for workspace business data. Use `postgresql` for
 most canonical structured resources unless another backend is clearly required.
 
 Each definition keeps a PascalCase source/model `name` and an explicit exact
@@ -971,7 +962,7 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 | Need                    | App Pattern                    | CLI Verification                                         |
 | ----------------------- | ------------------------------ | -------------------------------------------------------- |
-| Tenant business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
+| Workspace business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
 | Documents and RAG       | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
 | Resource file property  | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
 | AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
@@ -1011,12 +1002,12 @@ cd <app-name>
 npm install
 
 eai login
-eai tenant select <tenant-slug>
+eai workspace select <workspace-slug>
 eai types validate
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type <object-type-slug>
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
+eai verify calls --tenant-id <workspace-id> --resource-type <object-type-slug>
 
 eai dev
 ```
@@ -1038,6 +1029,9 @@ search, and PublicAPI patterns.
 This example creates a small task tracker using the EAI CLI, EAI App Template,
 Object Types, and ResourceAPI hooks.
 
+The template keeps `tenantId`, `tenants`, and `tenantConfigs` as code contract
+names. Their values and configurations represent EAI workspaces.
+
 ## 1. Scaffold
 
 ```bash
@@ -1046,16 +1040,16 @@ cd task-tracker
 npm install
 ```
 
-## 2. Connect A Tenant
+## 2. Connect A Workspace
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <workspace-slug>
 eai whoami
 ```
 
-## 3. Configure The Tenant
+## 3. Configure The Workspace
 
 Create `src/eai.config/tenants/tracker.config.ts`:
 
@@ -1063,7 +1057,7 @@ Create `src/eai.config/tenants/tracker.config.ts`:
 import { defineConfig } from "@enterpriseaigroup/core/config/server";
 
 export const trackerConfig = defineConfig({
-  tenantId: "task-tracker",
+  tenantId: "task-tracker", // Stable field name; this value identifies the EAI workspace.
   workflowId: "task-workflow",
   defaultEmail: "support@example.com",
   meta: {
@@ -1183,10 +1177,10 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type task
+eai types diff --tenant-key task-tracker --tenant-id <workspace-id>
+eai types seed --tenant-key task-tracker --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
+eai verify calls --tenant-id <workspace-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.
@@ -1253,15 +1247,18 @@ export function TaskList() {
 This example adds streaming chat and document-backed RAG to an EAI App Template
 project.
 
-## 1. Confirm Tenant And Workflow
+The template's `tenantId` code field carries the EAI workspace ID. Keep this
+technical field name unchanged.
+
+## 1. Confirm Workspace And Workflow
 
 ```bash
 eai login
-eai tenant select <tenant-slug>
-eai workflow status <workflow-key> --tenant <tenant-id>
+eai workspace select <workspace-slug>
+eai workflow status <workflow-key> --workspace <workspace-id>
 ```
 
-Use the workflow ID from the platform tenant configuration. Store runtime values
+Use the workflow ID from the platform workspace configuration. Store runtime values
 in local or deployment environment configuration, not in committed source.
 
 ## 2. Stream Chat From A Client Component
@@ -1420,6 +1417,9 @@ after confirming the route is an authorized PublicAPI V4 surface.
 Use these patterns when choosing how an app, eai-gofer, or terminal automation
 should call EAI platform capabilities.
 
+The template's `tenantId` field and `--tenant-id` option are stable contract
+names. Their values identify an EAI workspace.
+
 ## Boundary Rules
 
 - Browser code calls the app BFF at `/api/eai/...`.
@@ -1438,7 +1438,7 @@ should call EAI platform capabilities.
 | -------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
 | Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry | `eai gofer refresh` installs guidance                                                       | Keep config data-only; callbacks belong in overrides. |
 | Data model           | Object Types in `src/eai.config/object-types.ts`                 | `eai types validate`, `eai types seed`, `eai types diff`                                    | Object Types define resource contracts.               |
-| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for tenant business data.                     |
+| Structured resources | `useResources(type)` or `client.resources`                       | `eai resources list/get/create/update/delete/query`                                         | Default for workspace business data.                     |
 | Resource actions     | `client.resources.executeAction(type, id, action)`               | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...` | Actions enforce Object Type rules.                    |
 | Resource search      | helper around PublicAPI resource search if SDK support is absent | `eai resources search "<query>" --mode hybrid`                                              | Search is a projection over canonical data.           |
 | Resource files       | helper around resource file routes                               | `eai resources file upload/get/delete`                                                      | Use for file fields on typed resource objects.        |
@@ -1543,6 +1543,9 @@ For workflow steps, AI-agent questions, and prompting guidance, see
 This guide explains how an app should handle uploaded files, documents, and AI
 workflows on the PublicAPI v4 surface.
 
+The template retains code fields such as `tenantId` and request fields such as
+`tenant_id` for compatibility. These carry an EAI workspace ID.
+
 ## Choose The Right Model
 
 | User goal | Use this model | App API | CLI |
@@ -1635,7 +1638,7 @@ an alias for planning scope.
 
 Every upload sends exactly one `tenant_id` from the SDK client, one
 `storage_target=resourceapi` and one `processing_mode`. Metadata cannot
-override the tenant. Conflicting aliases, storage downgrades, blank scope,
+override the workspace. Conflicting aliases, storage downgrades, blank scope,
 incomplete app/workflow pairs, and unsupported metadata are rejected before
 fetch. `classify` rejects a conflicting processing mode. Calling
 `classify(files)` without context gives an actionable error; it never calls
@@ -1738,11 +1741,11 @@ CLI equivalent:
 
 ```bash
 eai resources create ApplicationDocument \
-  --tenant-id <tenant-id> \
+  --tenant-id <workspace-id> \
   --data '{"title":"supporting-document.pdf","applicationId":"app-123"}'
 
 eai resources file upload ApplicationDocument <resource-id> file ./supporting-document.pdf \
-  --tenant-id <tenant-id>
+  --tenant-id <workspace-id>
 ```
 
 The PublicAPI route behind this workflow is:
@@ -1795,7 +1798,7 @@ questions before choosing an API:
 ```text
 1. Is the uploaded file a document to process with AI, or an attachment to a business record?
 2. Should AI answer from the file content, classify it, or just keep it as evidence?
-3. Which tenant, workflow, and workflow stage should use the document?
+3. Which workspace, workflow, and workflow stage should use the document?
 4. If this is an attachment, which Object Type, resource ID, and file property owns it?
 5. What should happen when the user deletes the resource or document?
 ```
@@ -1832,9 +1835,9 @@ Use these checks while developing:
 
 ```bash
 eai whoami
-eai resources schema --tenant-id <tenant-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai docs --help
-eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <tenant-id>
+eai resources file upload <ObjectType> <resource-id> <property> ./sample.pdf --tenant-id <workspace-id>
 ```
 
 Use named commands first. Use `eai publicapi <method> /v4/...` only when an
@@ -1846,15 +1849,18 @@ authorized v4 route has no named SDK or CLI command yet.
 
 # Config-Driven UI
 
-Use config-driven UI when an app needs tenant-specific layout, copy, feature
-flags, store state, or service wiring without forking page code per tenant.
+Use config-driven UI when an app needs workspace-specific layout, copy, feature
+flags, store state, or service wiring without forking page code per workspace.
+
+The template retains `tenants`, `tenantId`, and `tenantConfigs` as technical
+code names. These values represent EAI workspace configuration.
 
 ## Source Files
 
 | File                        | Purpose                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------- |
-| `src/eai.config/default.ts` | Default tenant config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`   | Maps tenant keys to config objects.                                             |
+| `src/eai.config/default.ts` | Default workspace config, store slices, API paths, storage keys, and layout slots. |
+| `src/eai.config/index.ts`   | Maps workspace keys to config objects.                                             |
 | `src/eai.blocks.tsx`        | Registers app-local or package components that config can reference by name.    |
 | `src/app/providers.tsx`     | Provides auth/session context and the EAI config runtime.                       |
 | `src/hooks/useResources.ts` | ResourceAPI-backed business data access.                                        |
@@ -1863,7 +1869,7 @@ flags, store state, or service wiring without forking page code per tenant.
 
 ## Construction Pattern
 
-1. Put tenant-specific data in config: branding, feature flags, API endpoints,
+1. Put workspace-specific data in config: branding, feature flags, API endpoints,
    storage keys, initial store state, and layout slots.
 2. Register renderable components in `src/eai.blocks.tsx`.
 3. Reference components from config by their registered string name.
@@ -1894,7 +1900,7 @@ Rules:
 
 - `component` must match a registered component name.
 - Lower `priority` renders first.
-- `props` are static, tenant-configurable values.
+- `props` are static, workspace-configurable values.
 - `storeBindings` map store paths to component prop paths. Dot notation is
   supported on both sides.
 - `showWhen` supports `equals`, `notEquals`, `exists`, and compound `and` or
@@ -1946,7 +1952,7 @@ store: {
 }
 ```
 
-Persist only tenant-safe UI or workflow state. Never place access tokens,
+Persist only workspace-safe UI or workflow state. Never place access tokens,
 platform credentials, database connection details, blob credentials, search
 credentials, or model provider credentials in config or store state.
 
@@ -1977,7 +1983,7 @@ callbacks, render props, React nodes, and any other non-serializable value.
 ## Overview
 
 For normal public use, the EAI CLI should need very little configuration.
-After `eai login`, the CLI uses your signed-in account and selected tenant to
+After `eai login`, the CLI uses your signed-in account and selected workspace to
 route requests automatically. Public documentation must not describe private
 environment names, endpoint hostnames, internal routing, cloud resources, or
 platform infrastructure behind the public API.
@@ -2003,9 +2009,9 @@ Configuration is loaded with this public-facing precedence:
 | `.env.local` | Optional developer-local app values |
 | CLI defaults | Built-in public behavior |
 
-The CLI may keep local auth and tenant state on your machine after login. Treat
+The CLI may keep local auth and workspace state on your machine after login. Treat
 that state as private and manage it through CLI commands such as `eai login`,
-`eai logout`, `eai whoami`, and `eai tenant select`.
+`eai logout`, `eai whoami`, and `eai workspace select`.
 
 ---
 
@@ -2015,12 +2021,12 @@ Most configuration starts with sign-in:
 
 ```bash
 eai login
-eai tenant select
+eai workspace select
 eai whoami
 ```
 
-`eai whoami` is the safest way to confirm which account and tenant the CLI is
-using. If you need to change tenant, run `eai tenant select`. If you need to
+`eai whoami` is the safest way to confirm which account and workspace the CLI is
+using. If you need to change workspace, run `eai workspace select`. If you need to
 clear local sign-in state, run `eai logout`.
 
 ---
@@ -2044,8 +2050,8 @@ plain text today.
 Examples:
 
 ```bash
-eai tenant list --format json
-eai tenant list --simple
+eai workspace list --format json
+eai workspace list --simple
 eai doctor --no-color
 ```
 
@@ -2066,7 +2072,7 @@ Public documentation only describes generic runtime environment variables:
 `EAI_NO_SPLASH` and `EAI_NO_ANIMATION` are local terminal preferences read from
 the CLI process only. They have no App Configuration or infrastructure mapping.
 
-Do not put credentials, tokens, endpoint URLs, or tenant-specific values into
+Do not put credentials, tokens, endpoint URLs, or workspace-specific values into
 committed files. Automation credentials should be stored in your CI provider's
 secret store and supplied according to your organization's onboarding guide.
 
@@ -2091,7 +2097,7 @@ NODE_ENV=development
 Rules:
 
 1. Keep `.env.local` in `.gitignore`.
-2. Do not commit tokens, API keys, client secrets, tenant-specific values, or
+2. Do not commit tokens, API keys, client secrets, workspace-specific values, or
    endpoint URLs.
 3. Use your deployment provider's secret management for deployed applications.
 
@@ -2134,7 +2140,7 @@ Never commit secrets. That includes:
 2. API keys
 3. Client secrets
 4. Private endpoint URLs
-5. Tenant-specific identifiers
+5. Workspace-specific identifiers
 6. Generated credentials
 
 For local development, keep private values in ignored local files. For CI/CD and
@@ -2166,7 +2172,7 @@ flowchart TB
 
 ## Troubleshooting
 
-**Not sure which account or tenant is active?**
+**Not sure which account or workspace is active?**
 
 Run:
 
@@ -2174,12 +2180,12 @@ Run:
 eai whoami
 ```
 
-**Need to switch tenant?**
+**Need to switch workspace?**
 
 Run:
 
 ```bash
-eai tenant select
+eai workspace select
 ```
 
 **Need to clear local sign-in state?**
@@ -2203,7 +2209,7 @@ eai doctor
 Run a data-returning subcommand that advertises JSON output:
 
 ```bash
-eai tenant list --format json
+eai workspace list --format json
 ```
 
 ---
@@ -2215,7 +2221,7 @@ Before committing a project that uses the EAI CLI:
 1. `.env.local` is ignored.
 2. No secrets or tokens are committed.
 3. No private endpoint URLs are committed.
-4. No tenant-specific identifiers are committed.
+4. No workspace-specific identifiers are committed.
 5. `eai.config.ts` contains only public-safe project metadata.
 6. `eai doctor` runs successfully for your local setup.
 
@@ -2240,20 +2246,20 @@ are explicitly listed, and stop when a stop condition matches.
 | `E101` | `not_logged_in` | Not logged in. |
 | `E102` | `access_token_expired` | Access token expired. |
 | `E204` | `permission_denied` | Permission denied. |
-| `E205` | `child_relation_invalid` | The supplied tenant is not an immediate child of the supplied parent. |
-| `E245` | `user_invite_external_service_existing_member` | Tenant member invite failed, but an existing member role repair may be available. |
-| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing tenant context. |
-| `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the tenant. |
-| `E242` | `tenant_authorization_incomplete` | Tenant data-plane authorization incomplete. |
-| `E243` | `tenant_authorization_platform_error` | Tenant app authorization could not be completed because the platform returned a server error. |
-| `E250` | `paid_upgrade_required` | Tenant plan does not allow this builder operation. |
+| `E205` | `child_relation_invalid` | The supplied workspace is not an immediate child of the supplied parent. |
+| `E245` | `user_invite_external_service_existing_member` | workspace member invite failed, but an existing member role repair may be available. |
+| `E246` | `app_token_tenant_context_required` | App-token platform user lookup is missing workspace context. |
+| `E247` | `calling_application_not_authorized` | The application making this request is not authorized for the workspace. |
+| `E242` | `tenant_authorization_incomplete` | Workspace data access authorization is incomplete. |
+| `E243` | `tenant_authorization_platform_error` | workspace app authorization could not be completed because the platform returned a server error. |
+| `E250` | `paid_upgrade_required` | workspace plan does not allow this builder operation. |
 | `E260` | `object_type_validation_failed` | Object Type validation failed. |
 | `E261` | `app_manifest_validation_failed` | The app Object Type manifest request did not match the deployed platform contract. |
-| `E270` | `object_type_not_published` | Object Type is not published for the active tenant. |
-| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this tenant. |
+| `E270` | `object_type_not_published` | Object Type is not published for the active workspace. |
+| `E275` | `resource_search_embedding_required` | Semantic resource search is not ready for this workspace. |
 | `E276` | `resource_mutation_contract_invalid` | The PublicAPI v4 resource mutation contract is invalid. |
 | `E280` | `workflow_operator_required` | Workflow runtime binding requires operator assistance. |
-| `E244` | `tenant_data_install_no_match` | Tenant data/schema setup is not fully provisioned. |
+| `E244` | `tenant_data_install_no_match` | workspace data/schema setup is not fully provisioned. |
 
 ## E001: Not in an EAI project.
 
@@ -2302,12 +2308,12 @@ are explicitly listed, and stop when a stop condition matches.
 
 - The CLI does not have a usable local sign-in token.
 - The token may have expired or been created for a different local profile.
-- The command needs a user session before it can resolve tenant access.
+- The command needs a user session before it can resolve workspace access.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Show the current login and active tenant status.
-- `eai tenant list --format json` (read-only) — Confirm tenant memberships after login succeeds. After eai login succeeds.
+- `eai whoami` (read-only) — Show the current login and active workspace status.
+- `eai workspace list --format json` (read-only) — Confirm workspace memberships after login succeeds. After eai login succeeds.
 
 ### Fixes
 
@@ -2323,7 +2329,7 @@ are explicitly listed, and stop when a stop condition matches.
 - signed-in email
 - CLI version
 - active profile
-- tenant list output without secrets
+- workspace list output without secrets
 
 ## E102: Access token expired.
 
@@ -2337,7 +2343,7 @@ are explicitly listed, and stop when a stop condition matches.
 
 - The saved user session is older than the identity provider allows.
 - The CLI cannot refresh the session silently in this environment.
-- The command needs a fresh user token before it can call tenant-scoped APIs.
+- The command needs a fresh user token before it can call workspace-scoped APIs.
 
 ### Diagnostics
 
@@ -2368,33 +2374,33 @@ are explicitly listed, and stop when a stop condition matches.
 ### Why This Might Happen
 
 - The signed-in user can authenticate, but does not have the role required for this action.
-- The active tenant may not be the tenant where the user has the needed role.
-- The app or resource may require a tenant-admin or builder-level action.
+- The active workspace may not be the workspace where the user has the needed role.
+- The app or resource may require workspace admin or builder access.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm the signed-in user and active tenant.
-- `eai tenant list --all --format json` (read-only) — List visible tenant memberships and roles.
+- `eai whoami` (read-only) — Confirm the signed-in user and active workspace.
+- `eai workspace list --all --format json` (read-only) — List visible workspace memberships and roles.
 
 ### Fixes
 
-- `eai tenant select <tenant>` (changes state) — Switch to a tenant where the user has the required role.
-- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a tenant role when you are already tenant-admin for that tenant. Use for normal "add this person as a tenant member/admin" requests.
-- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable tenant roles before choosing a role for an invite.
-- `eai tenant bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair first tenant-admin access for an immediate child tenant. Only when the target tenant is an immediate child of the supplied parent and does not already have usable tenant-admin access.
+- `eai workspace select <workspace>` (changes state) — Switch to a workspace where the user has the required role.
+- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or refresh a user membership and assign a workspace role when you already have workspace admin access. Use for normal "add this person as a workspace member/admin" requests.
+- `eai user roles --workspace <workspace-id> --format json` (read-only) — List assignable workspace roles before choosing a role for an invite.
+- `eai workspace bootstrap-admin --parent <parent-id> --child <child-id>` (changes state) — Repair workspace admin access for an immediate child workspace. Only when the target workspace is an immediate child of the supplied parent and does not already have usable workspace admin access.
 
 ### Stop Conditions
 
-- The user lacks the required tenant role. Retrying will not change authorization.
+- The user lacks the required workspace role. Retrying will not change authorization.
 
 ### Escalation Evidence
 
 - signed-in email
-- active tenant slug
+- active workspace slug
 - requested command
 - request ID if present
 
-## E205: The supplied tenant is not an immediate child of the supplied parent.
+## E205: The supplied workspace is not an immediate child of the supplied parent.
 
 | Field | Value |
 | --- | --- |
@@ -2404,20 +2410,20 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Why This Might Happen
 
-- The child-tenant bootstrap command is intentionally narrow.
-- It only works when the parent ID is the direct parent of the child tenant.
-- This error often appears when an agent uses bootstrap-admin for normal user addition instead of the tenant member invite flow.
+- The child-workspace bootstrap command is intentionally narrow.
+- It only works when the parent ID is the direct parent of the child workspace.
+- This error often appears when an agent uses bootstrap-admin for normal user addition instead of the workspace member invite flow.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm the signed-in user and active tenant.
-- `eai tenant info <tenant-id> --format json` (read-only) — Inspect the target tenant before retrying a tenant relationship command.
-- `eai user roles --tenant <tenant-id> --format json` (read-only) — List assignable roles when the intended task is adding or updating a user.
+- `eai whoami` (read-only) — Confirm the signed-in user and active workspace.
+- `eai workspace info <workspace-id> --format json` (read-only) — Inspect the target workspace before retrying a workspace relationship command.
+- `eai user roles --workspace <workspace-id> --format json` (read-only) — List assignable roles when the intended task is adding or updating a user.
 
 ### Fixes
 
-- `eai user invite --email <email> --tenant <tenant-id> --role tenant-admin` (changes state) — Add or update a user as tenant-admin on an existing tenant. Use when the goal is to add a person to a tenant or app context.
-- `eai tenant bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child tenant repair, not normal member management.
+- `eai user invite --email <email> --workspace <workspace-id> --role tenant-admin` (changes state) — Add or update a user as a workspace admin. Use when the goal is to add a person to a workspace or app context.
+- `eai workspace bootstrap-admin --parent <direct-parent-id> --child <immediate-child-id>` (changes state) — Retry the child bootstrap repair with the direct parent and immediate child IDs. Use only for first-admin child workspace repair, not normal member management.
 
 ### Stop Conditions
 
@@ -2426,11 +2432,11 @@ are explicitly listed, and stop when a stop condition matches.
 ### Escalation Evidence
 
 - signed-in email
-- active tenant slug
-- target tenant slug
+- active workspace slug
+- target workspace slug
 - requested command
 
-## E245: Tenant member invite failed, but an existing member role repair may be available.
+## E245: workspace member invite failed, but an existing member role repair may be available.
 
 | Field | Value |
 | --- | --- |
@@ -2441,26 +2447,26 @@ are explicitly listed, and stop when a stop condition matches.
 ### Why This Might Happen
 
 - The invite/add flow reached an external identity or notification dependency that returned a server-side failure.
-- The target person may already exist as a direct tenant member with a lower role, so retrying the same invite can fail without changing access.
+- The target person may already exist as a direct workspace member with a lower role, so retrying the same invite can fail without changing access.
 - When a member record already exists, the supported recovery is to update that member through EAI CLI instead of editing data stores or cloud portals directly.
-- Applications may cache tenant role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
+- Applications may cache workspace role claims in their Auth.js session or JWT, so the user may need to sign out and sign back in after a role change.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm the signed-in user, active tenant, and profile before changing membership.
-- `eai user roles --tenant <tenant-id> --format json` (read-only) — Confirm the target role is assignable in this tenant.
-- `eai user list --tenant <tenant-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct tenant member and capture the member ID.
+- `eai whoami` (read-only) — Confirm the signed-in user, active workspace, and profile before changing membership.
+- `eai user roles --workspace <workspace-id> --format json` (read-only) — Confirm the target role is assignable in this workspace.
+- `eai user list --workspace <workspace-id> --search <email> --format json` (read-only) — Check whether the person already exists as a direct workspace member and capture the member ID.
 
 ### Fixes
 
-- `eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the existing direct member to tenant-admin through the approved EAI tenant-member role endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
-- `eai user invite --email <email> --tenant <tenant-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the tenant and role.
+- `eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json` (changes state) — Update the direct workspace member role through the approved EAI endpoint. Use only after eai user list confirms the existing member ID and the user approves the role change.
+- `eai user invite --email <email> --workspace <workspace-id> --role <role> --format json` (changes state) — Retry the normal invite/add flow when no existing direct member is found and the failure was transient. Use only within the retry limit and after read-only diagnostics confirm the workspace and role.
 
 ### Stop Conditions
 
 - The same external service error repeats after bounded retry.
 - The existing member is found but role update is not approved by the user.
-- The signed-in user is not allowed to change tenant membership.
+- The signed-in user is not allowed to change workspace membership.
 
 ### Escalation Evidence
 
@@ -2468,10 +2474,10 @@ are explicitly listed, and stop when a stop condition matches.
 - HTTP status
 - server code
 - CLI version
-- active tenant slug
+- active workspace slug
 - redacted command shape
 
-## E246: App-token platform user lookup is missing tenant context.
+## E246: App-token platform user lookup is missing workspace context.
 
 | Field | Value |
 | --- | --- |
@@ -2481,30 +2487,30 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Why This Might Happen
 
-- The platform call authenticated, but the request did not carry the tenant context required for app-token user or membership operations.
+- The platform call authenticated, but the request did not carry the workspace context required for app-token user or membership operations.
 - This is commonly seen as MISSING_TENANT or "Tenant context required for app tokens" on platform user lookup or membership prerequisite calls.
-- Do not treat this as the first signal to edit tenant members, role definitions, Entra configuration, databases, or cloud portals.
-- For platform automation app-token flows outside tenant app runtime, use the tenant-scoped platform routes instead of root user lookup routes.
-- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds tenant-scoped routing hardening.
+- Do not treat this as the first signal to edit workspace members, role definitions, Entra configuration, databases, or cloud portals.
+- For platform automation app-token flows outside workspace app runtime, use the workspace-scoped platform routes instead of root user lookup routes.
+- If the same route works in current main but fails in an environment, the deployed PublicAPI/AdminAPI may be behind the release that adds workspace-scoped routing hardening.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm login, active tenant, profile, and PublicAPI context.
-- `eai tenant list --format json` (read-only) — Confirm the target tenant is visible before retrying tenant-scoped calls.
-- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the tenant-scoped platform route.
-- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the tenant-scoped platform route.
+- `eai whoami` (read-only) — Confirm login, active workspace, profile, and PublicAPI context.
+- `eai workspace list --format json` (read-only) — Confirm the target workspace is visible before retrying workspace-scoped calls.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Verify user lookup through the workspace-scoped platform route.
+- `eai publicapi get /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Verify membership lookup through the workspace-scoped platform route.
 
 ### Fixes
 
-- `eai tenant select <tenant>` (changes state) — Select the tenant that should provide app-token context.
-- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the tenant-scoped V4 route in platform automation app-token flows.
-- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the tenant-scoped V4 route in platform automation app-token flows.
-- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep tenant member and role-definition reads on the tenant-scoped V4 surface.
+- `eai workspace select <workspace>` (changes state) — Select the workspace that should provide app-token context.
+- `Use /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>` (read-only) — Replace root platform user lookup with the workspace-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/users/<oid>/memberships` (read-only) — Replace root platform membership lookup with the workspace-scoped V4 route in platform automation app-token flows.
+- `Use /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions` (read-only) — Keep workspace member and role-definition reads on the workspace-scoped V4 surface.
 
 ### Stop Conditions
 
-- The tenant-scoped route returns the same MISSING_TENANT result.
-- The environment is running older PublicAPI/AdminAPI versions than the release with tenant-scoped platform routing hardening.
+- The workspace-scoped route returns the same MISSING_TENANT result.
+- The environment is running older PublicAPI/AdminAPI versions than the release with workspace-scoped platform routing hardening.
 
 ### Escalation Evidence
 
@@ -2512,10 +2518,10 @@ are explicitly listed, and stop when a stop condition matches.
 - redacted route shape
 - HTTP status
 - server code
-- active tenant slug
+- active workspace slug
 - deployed PublicAPI/AdminAPI versions if visible
 
-## E247: The application making this request is not authorized for the tenant.
+## E247: The application making this request is not authorized for the workspace.
 
 | Field | Value |
 | --- | --- |
@@ -2526,13 +2532,13 @@ are explicitly listed, and stop when a stop condition matches.
 ### Why This Might Happen
 
 - The authorization decision applies to the client ID in the current CLI token.
-- It does not evaluate a different tenant app client, even when provision-me was run while diagnosing that app.
+- It does not evaluate a different workspace app client, even when provision-me was run while diagnosing that app.
 - If the current user already has direct membership, provisioning is unnecessary.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm the current CLI identity, active tenant, and calling client context.
-- `eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json` (read-only) — Inspect a different app client without changing tenant authorization.
+- `eai whoami` (read-only) — Confirm the current CLI identity, active workspace, and calling client context.
+- `eai app auth status <app-key> --tenant-id <tenant-id> --client-id <app-client-id> --format json` (read-only) — Inspect a different app client without changing workspace authorization.
 
 ### Fixes
 
@@ -2546,11 +2552,11 @@ are explicitly listed, and stop when a stop condition matches.
 
 - request ID
 - CLI version
-- tenant ID
+- workspace ID
 - callingApplication.clientId
 - reason code
 
-## E242: Tenant data-plane authorization incomplete.
+## E242: Workspace data access authorization is incomplete.
 
 | Field | Value |
 | --- | --- |
@@ -2560,20 +2566,20 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Why This Might Happen
 
-- The app registration exists, but the selected tenant has not completed app authorization.
-- The active tenant may not be the tenant this app was provisioned for.
+- The app registration exists, but the selected workspace has not completed app authorization.
+- The active workspace may not be the workspace this app was provisioned for.
 - The authorization retry may need to run again after sign-in wiring is refreshed.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm login, active tenant, profile, and public API context.
-- `eai tenant list --format json` (read-only) — Confirm the intended tenant is visible to the user.
+- `eai whoami` (read-only) — Confirm login, active workspace, profile, and public API context.
+- `eai workspace list --format json` (read-only) — Confirm the intended workspace is visible to the user.
 
 ### Fixes
 
-- `eai tenant select <tenant>` (changes state) — Select the tenant that should own the app.
-- `eai provision entra --force --debug` (changes state) — Refresh sign-in wiring and retry app authorization for the active tenant.
-- `eai user provision-me` (changes state) — Create or refresh the current user membership after app authorization succeeds. Run only after provision entra no longer reports incomplete tenant authorization.
+- `eai workspace select <workspace>` (changes state) — Select the workspace that should own the app.
+- `eai provision entra --force --debug` (changes state) — Refresh sign-in wiring and retry app authorization for the active workspace.
+- `eai user provision-me` (changes state) — Create or refresh the current user membership after app authorization succeeds. Run only after provision entra no longer reports incomplete workspace authorization.
 
 ### Stop Conditions
 
@@ -2583,11 +2589,11 @@ are explicitly listed, and stop when a stop condition matches.
 
 - request ID
 - CLI version
-- active tenant slug
+- active workspace slug
 - command
 - reason code
 
-## E243: Tenant app authorization could not be completed because the platform returned a server error.
+## E243: workspace app authorization could not be completed because the platform returned a server error.
 
 | Field | Value |
 | --- | --- |
@@ -2597,14 +2603,14 @@ are explicitly listed, and stop when a stop condition matches.
 
 ### Why This Might Happen
 
-- The CLI tried to authorize the app for the selected tenant, but the platform returned a server-side failure.
+- The CLI tried to authorize the app for the selected workspace, but the platform returned a server-side failure.
 - This is usually not fixed by changing local files or repeatedly rotating app credentials.
 - The safest next step is a bounded retry followed by escalation with the request evidence.
 
 ### Diagnostics
 
 - `eai provision entra --force --debug` (changes state) — Retry once with product-safe diagnostics and request identifiers.
-- `eai whoami` (read-only) — Confirm the active tenant and profile are still correct.
+- `eai whoami` (read-only) — Confirm the active workspace and profile are still correct.
 
 ### Fixes
 
@@ -2620,9 +2626,9 @@ None.
 - HTTP status
 - CLI version
 - command
-- active tenant slug
+- active workspace slug
 
-## E250: Tenant plan does not allow this builder operation.
+## E250: workspace plan does not allow this builder operation.
 
 | Field | Value |
 | --- | --- |
@@ -2632,14 +2638,14 @@ None.
 
 ### Why This Might Happen
 
-- The tenant is reachable, but the requested builder operation is gated by the tenant plan.
-- The CLI cannot self-upgrade a tenant plan.
+- The workspace is reachable, but the requested builder operation is gated by the workspace plan.
+- The CLI cannot self-upgrade a workspace plan.
 - Read-only checks may still work while write/build actions are blocked.
 
 ### Diagnostics
 
-- `eai workflow readiness --format json` (read-only) — Confirm whether builder operations are available for the active tenant.
-- `eai whoami` (read-only) — Confirm the active tenant before asking an admin to change plan state.
+- `eai workflow readiness --format json` (read-only) — Confirm whether builder operations are available for the active workspace.
+- `eai whoami` (read-only) — Confirm the active workspace before asking an admin to change plan state.
 
 ### Fixes
 
@@ -2647,11 +2653,11 @@ None.
 
 ### Stop Conditions
 
-- The readiness reason is paid_upgrade_required. Retrying does not activate the tenant plan.
+- The readiness reason is paid_upgrade_required. Retrying does not activate the workspace plan.
 
 ### Escalation Evidence
 
-- active tenant slug
+- active workspace slug
 - command
 - readiness reason code
 
@@ -2672,7 +2678,7 @@ None.
 ### Diagnostics
 
 - `eai types validate` (read-only) — Validate local Object Types without publishing them.
-- `eai types diff` (read-only) — Compare local definitions with published tenant state after validation passes.
+- `eai types diff` (read-only) — Compare local definitions with published workspace state after validation passes.
 
 ### Fixes
 
@@ -2706,13 +2712,13 @@ None.
 ### Diagnostics
 
 - `eai update --check` (read-only) — Check whether the installed CLI includes app-manifest compatibility support.
-- `eai types validate --tenant-key <key> --tenant-id <tenant-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
-- `eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended tenant scope without changing platform state.
+- `eai types validate --tenant-key <key> --tenant-id <workspace-id>` (read-only) — Validate source names, slugs, relationships, and storage metadata without publishing.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --dry-run --format json` (read-only) — Confirm the CLI can load the intended workspace scope without changing platform state.
 
 ### Fixes
 
 - `eai update` (changes state) — Install the CLI release that negotiates the deployed app-manifest request shape. Run when eai update --check reports an older CLI.
-- `eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
+- `eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json` (changes state) — Publish once through the maintained compatibility adapter. Run after update and local validation succeed.
 
 ### Stop Conditions
 
@@ -2723,11 +2729,11 @@ None.
 
 - CLI version
 - app key
-- tenant ID
+- workspace ID
 - Object Type names only
 - request IDs for both rejected requests
 
-## E270: Object Type is not published for the active tenant.
+## E270: Object Type is not published for the active workspace.
 
 | Field | Value |
 | --- | --- |
@@ -2737,19 +2743,19 @@ None.
 
 ### Why This Might Happen
 
-- The resource command is asking for a type that is not available in the active tenant schema.
+- The resource command is asking for a type that is not available in the active workspace schema.
 - The local Object Types may not have been published yet.
-- The active tenant may not be the tenant where the Object Type was published.
+- The active workspace may not be the workspace where the Object Type was published.
 
 ### Diagnostics
 
-- `eai resources schema --format json` (read-only) — List published Object Types visible to the active tenant.
+- `eai resources schema --format json` (read-only) — List published Object Types visible to the active workspace.
 - `eai types validate` (read-only) — Check local definitions before publishing.
 
 ### Fixes
 
-- `eai types seed` (changes state) — Publish local Object Types to the active tenant.
-- `eai tenant select <tenant>` (changes state) — Switch to the tenant where the Object Type was published. Use when the active tenant is wrong.
+- `eai types seed` (changes state) — Publish local Object Types to the active workspace.
+- `eai workspace select <workspace>` (changes state) — Switch to the workspace where the Object Type was published. Use when the active workspace is wrong.
 
 ### Stop Conditions
 
@@ -2758,11 +2764,11 @@ None.
 ### Escalation Evidence
 
 - Object Type name
-- active tenant slug
+- active workspace slug
 - CLI version
 - types seed summary
 
-## E275: Semantic resource search is not ready for this tenant.
+## E275: Semantic resource search is not ready for this workspace.
 
 | Field | Value |
 | --- | --- |
@@ -2779,8 +2785,8 @@ None.
 
 ### Diagnostics
 
-- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active tenant.
-- `eai resources schema --format json` (read-only) — Confirm the tenant has published Object Types to search.
+- `eai resources storage doctor --format json` (read-only) — Check whether fulltext, hybrid, and vector search are ready for the active workspace.
+- `eai resources schema --format json` (read-only) — Confirm the workspace has published Object Types to search.
 
 ### Fixes
 
@@ -2793,7 +2799,7 @@ None.
 
 ### Escalation Evidence
 
-- active tenant slug
+- active workspace slug
 - search mode used
 - storage doctor search capabilities
 - CLI version
@@ -2845,18 +2851,18 @@ None.
 
 ### Why This Might Happen
 
-- The tenant and workflow key are recognized, but an executable runtime binding is not available yet.
+- The workspace and workflow key are recognized, but an executable runtime binding is not available yet.
 - Some workflow bindings require an operator-assisted request before chat or workflow execution can run.
 - The CLI should request the binding only when readiness reports operator_required.
 
 ### Diagnostics
 
-- `eai workflow readiness <workflow-key> --format json` (read-only) — Check tenant, plan, and workflow readiness.
+- `eai workflow readiness <workflow-key> --format json` (read-only) — Check workspace, plan, and workflow readiness.
 - `eai workflow status <workflow-key> --format json` (read-only) — Check whether the workflow has an executable runtime binding.
 
 ### Fixes
 
-- `eai workflow request <workflow-key> --reason "<reason>"` (changes state) — Request operator-assisted runtime binding for this tenant and workflow. Run only when readiness or status reports operator_required.
+- `eai workflow request <workflow-key> --reason "<reason>"` (changes state) — Request operator-assisted runtime binding for this workspace and workflow. Run only when readiness or status reports operator_required.
 
 ### Stop Conditions
 
@@ -2866,10 +2872,10 @@ None.
 
 - workflow key
 - request ID
-- active tenant slug
+- active workspace slug
 - CLI version
 
-## E244: Tenant data/schema setup is not fully provisioned.
+## E244: workspace data/schema setup is not fully provisioned.
 
 | Field | Value |
 | --- | --- |
@@ -2879,14 +2885,14 @@ None.
 
 ### Why This Might Happen
 
-- The platform could not resolve an active data/schema install for this tenant.
-- This is a tenant setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this tenant.
-- Object Type publish (eai types seed) and schema reads cannot complete until the tenant setup is completed. Retrying does not create that setup.
+- The platform could not resolve an active data/schema install for this workspace.
+- This is a workspace setup issue, not a transient outage: the data/schema capability is reachable but has no active install registered for this workspace.
+- Object Type publish (eai types seed) and schema reads cannot complete until the workspace setup is completed. Retrying does not create that setup.
 
 ### Diagnostics
 
-- `eai whoami` (read-only) — Confirm the active tenant that failed to resolve a data/schema install.
-- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this tenant.
+- `eai whoami` (read-only) — Confirm the active workspace that failed to resolve a data/schema install.
+- `eai verify` (read-only) — Confirm whether the data/schema service can resolve an install for this workspace.
 
 ### Fixes
 
@@ -2894,11 +2900,11 @@ None.
 
 ### Stop Conditions
 
-- The response indicates no active tenant data/schema install. Retrying does not provision the tenant setup — it must be fixed by platform support.
+- The response indicates no active workspace data/schema install. Retrying does not provision the workspace setup — it must be fixed by platform support.
 
 ### Escalation Evidence
 
-- active tenant slug and id (eai whoami)
+- active workspace slug and id (eai whoami)
 - the command that failed
 - the request id from the error
 - the reason code from the error response
@@ -2911,17 +2917,19 @@ None.
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+Customer guidance uses **workspace**. Use `eai workspace`, `--workspace` for member and workflow commands, and `--company-workspace` for app setup. Tenant forms remain compatibility aliases. Data flags and `/tenants/` API paths retain their current names.
+
+The EAI CLI groups its commands into scaffolding, authentication, workspace and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
 | Prefix | Domain |
 |--------|--------|
-| `/v4/platform` | Tenants, users, capabilities, Entra app provisioning |
+| `/v4/platform` | Workspaces, users, capabilities, Entra app provisioning |
 | `/v4/identity` | Current-user identity, membership, self-provision |
 | `/v4/data/resources` | Object Types, resource CRUD, query, aggregate, search, storage |
 | `/v4/data/documents` | Document upload, classification, RAG indexing |
-| `/v4/ai` | Chat (scoped by tenant / workflow / stage) |
+| `/v4/ai` | Chat (scoped by workspace / workflow / stage) |
 | `/v4/workflows` | Runtime workflow status and binding requests |
 | `/v4/integrations` | Builder readiness |
 | `/v4/geo` | Geospatial lookup, reports, and dataset ingestion |
@@ -2947,11 +2955,11 @@ Scaffold a new application from the EAI app template.
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
-- `--company-tenant <id>` — Main company tenant ID that owns this app
-- `--tenant <id>` — Deprecated alias for `--company-tenant`
-- `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
-- `--child-tenant <name>` — Create or reuse a child company tenant (display name) for the app runtime boundary
-- `--create-child-tenant` — Prompt for a child company tenant instead of using the selected company tenant
+- `--company-workspace <id>` — Main company workspace ID that owns this app
+- `--company-tenant <id>` — Compatibility alias for `--company-workspace`
+- `--parent-tenant <id>` — Immediate parent company workspace ID for the new child company
+- `--child-tenant <name>` — Create or reuse a child company workspace (display name) for the app runtime boundary
+- `--create-child-tenant` — Prompt for a child company workspace instead of using the selected company workspace
 - `--no-gofer` — Skip installing Gofer AI CLI assets
 - `--package-profile <profile>` — Package profile for block-catalog discovery: `external`, `internal`, or `hybrid` (default: `external`)
 
@@ -2959,7 +2967,7 @@ Scaffold a new application from the EAI app template.
 1. Clones template repository or copies local template
 2. Installs Gofer AI assets (unless `--no-gofer`)
 3. Initializes git repository and installs npm dependencies
-4. Records the company/child tenant boundary and package profile in the project manifest
+4. Records the company/child workspace boundary and package profile in the project manifest
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
 can scaffold into the current folder when selected, and automation can use
@@ -2968,7 +2976,7 @@ existing files and Git metadata, and updates files that are part of the
 generated scaffold.
 
 **API calls** — when authenticated, `eai init` creates or binds the app under
-the selected company tenant and evaluates the tenant capabilities used by the
+the selected company workspace and evaluates the workspace capabilities used by the
 generated scaffold.
 
 ---
@@ -3006,52 +3014,52 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 ---
 
 #### `eai logout`
-Clear stored authentication tokens (deletes `~/.eai/tokens.json` and clears tenant context).
+Clear stored authentication tokens (deletes `~/.eai/tokens.json` and clears workspace context).
 
 **No API calls**
 
 ---
 
 #### `eai whoami`
-Show authentication status, active tenant, profile, and token expiry from local state.
+Show authentication status, active workspace, profile, and token expiry from local state.
 
 **No API calls**
 
 ---
 
-### Tenant Commands
+### Workspace Commands
 
-#### `eai tenant list`
-List tenants where the current user is a `tenant-admin` (default), or all roles with `--all`.
+#### `eai workspace list`
+List workspaces where the current user is a `tenant-admin` (default), or all roles with `--all`.
 
 **Options**:
-- `--parent <id>` — Parent tenant ID
-- `--all` — Include tenants where the user holds non-admin roles
-- `--debug` — Show debug diagnostics for tenant lookup
+- `--parent <id>` — Parent workspace ID
+- `--all` — Include workspaces where the user holds non-admin roles
+- `--debug` — Show debug diagnostics for workspace lookup
 - `--raw-user` — Print the raw membership payload in debug mode
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/identity/tenants` — fetch the current user's tenant memberships
+- `GET /v4/identity/tenants` — fetch the current user's workspace memberships
 
 ---
 
-#### `eai tenant select [tenant]`
-Choose the active tenant for platform operations (interactive if `[tenant]` is omitted).
+#### `eai workspace select [workspace]`
+Choose the active workspace for platform operations (interactive if `[workspace]` is omitted).
 
 **Arguments**:
-- `[tenant]` — Tenant ID or slug (optional)
+- `[workspace]` — Workspace ID or slug (optional)
 
 **Platform API Endpoints Used**:
 - `GET /v4/identity/tenants` — resolve memberships for selection
 
 ---
 
-#### `eai tenant info <id>`
-Show tenant details.
+#### `eai workspace info <id>`
+Show workspace details.
 
 **Arguments**:
-- `<id>` — Tenant ID or slug
+- `<id>` — Workspace ID or slug
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
@@ -3061,37 +3069,37 @@ Show tenant details.
 
 ---
 
-#### `eai tenant create`
-Create a new tenant and bootstrap admin access.
+#### `eai workspace create`
+Create a new workspace and bootstrap admin access.
 
 **Options**:
-- `--name <name>` — Tenant display name (required)
-- `--slug <slug>` — Tenant slug, kebab-case (required)
-- `--parent <id>` — Parent tenant ID (creates a child tenant)
+- `--name <name>` — Workspace display name (required)
+- `--slug <slug>` — Workspace slug, kebab-case (required)
+- `--parent <id>` — Parent workspace ID (creates a child workspace)
 - `--domain <domains>` — Comma-separated domain list
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
 - `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
 - `--home-region <region>` — Tenant home region (`au|ca|eu`); required with `--allow-root`, optional child override with `--parent`
-- `--allow-root` — Allow root tenant creation for administrative backfills
+- `--allow-root` — Allow root workspace creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
 **What it does**:
-1. Creates a child tenant under `--parent`, or a root tenant when `--allow-root` is set
-2. Bootstraps the current user as `tenant-admin` on the new child tenant
-3. Polls membership to confirm the tenant is usable, then auto-selects it
-4. For child tenants, sends the parent home region by default or the explicit `--home-region` override
-5. For root tenants, requires an explicit `--home-region` because there is no parent tenant to inherit from
+1. Creates a child workspace under `--parent`, or a root workspace when `--allow-root` is set
+2. Bootstraps the current user as `tenant-admin` on the new child workspace
+3. Polls membership to confirm the workspace is usable, then auto-selects it
+4. For child workspaces, sends the parent home region by default or the explicit `--home-region` override
+5. For root workspaces, requires an explicit `--home-region` because there is no parent workspace to inherit from
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{parentId}/children` — create child tenant (when `--parent` is given)
-- `POST /v4/platform/tenants` — create root tenant (requires `--allow-root`)
+- `POST /v4/platform/tenants/{parentId}/children` — create child workspace (when `--parent` is given)
+- `POST /v4/platform/tenants` — create root workspace (requires `--allow-root`)
 - `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — bootstrap current user as admin
 - `GET /v4/identity/tenants` — verify usable membership
 
 ---
 
-#### `eai tenant delete <id>`
+#### `eai workspace delete <id>`
 Soft-delete a tenant.
 
 **Arguments**:
@@ -3109,13 +3117,13 @@ Soft-delete a tenant.
 ### User Management Commands
 
 #### `eai user invite`
-Invite or provision a user into a tenant via the V4 tenant member-invite flow.
-Use this when a tenant admin needs to add a member or promote a trusted user to
+Invite or provision a user into a workspace via the V4 workspace member-invite flow.
+Use this when a workspace admin needs to add a member or promote a trusted user to
 `tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
 - `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
 - `--first-name <name>` — Optional first name for invite/provisioning context
@@ -3125,15 +3133,15 @@ Use this when a tenant admin needs to add a member or promote a trusted user to
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the workspace member with the requested role
 
 ---
 
 #### `eai user list`
-List members in the active tenant or an explicit tenant.
+List members in the active workspace or an explicit workspace.
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--search <query>` — Search by email or name
 - `--page <number>` — Page number (default: 1)
 - `--limit <number>` — Page size (default: 25)
@@ -3141,31 +3149,31 @@ List members in the active tenant or an explicit tenant.
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+- `GET /v4/platform/tenants/{tenantId}/members` — list workspace members
 
 ---
 
 #### `eai user roles`
-List role definitions available for tenant member invitation.
+List role definitions available for workspace member invitation.
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable workspace role definitions
 
 ---
 
 #### `eai user role set`
-Assign a tenant member role. Email-based role assignment uses the V4 invite/add
-flow so agents can handle "user already exists", "user is new to this tenant",
-and "user needs a tenant-admin role" with one command.
+Assign a workspace member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this workspace",
+and "user needs a workspace-admin role" with one command.
 
 **Options**:
 - `--email <email>` — Add or update a user by email through the invite/add flow
-- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--member-id <id>` — Existing workspace member/user ID for the direct role update endpoint
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
 - `--first-name <name>` — Optional first name for a new email invitation
 - `--last-name <name>` — Optional last name for a new email invitation
@@ -3179,18 +3187,18 @@ and "user needs a tenant-admin role" with one command.
 
 ---
 
-**Agent rule**: for normal user addition or tenant-admin assignment, use
-`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
-`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
-tenant.
+**Agent rule**: for normal user addition or workspace-admin assignment, use
+`eai user invite --email <email> --workspace <workspace-id> --role <role>`.
+`eai workspace bootstrap-admin` is only for first-admin repair on an immediate child
+workspace.
 
 ---
 
 #### `eai user provision-me`
-Provision yourself to a tenant (first-time setup).
+Provision yourself to a workspace (first-time setup).
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 
 **Platform API Endpoints Used**:
 - `POST /v4/identity/me/provision`
@@ -3203,15 +3211,15 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
-- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--deauthorize` — Remove workspace authorization and delete the app registration for cleanup; requires `--force`
 - `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
-- `--keep-registration` — Remove tenant authorization without deleting the app registration
+- `--keep-registration` — Remove workspace authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
-3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
+3. With `--deauthorize --force`, removes workspace authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
@@ -3221,7 +3229,7 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 ---
 
 #### `eai provision storage`
-Provision platform storage backends for the active tenant.
+Provision platform storage backends for the active workspace.
 
 **Options**:
 - `--tenant-id <id>` — Provision for a specific tenant
@@ -3305,8 +3313,8 @@ Push Object Types to the platform and verify convergence.
 
 **Options**:
 - `--env <environment>` — Target environment (default: `dev`)
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 - `--dry-run` — Show what would be seeded without making changes
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -3321,8 +3329,8 @@ Push Object Types to the platform and verify convergence.
 Compare local definitions with remote state.
 
 **Options**:
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
@@ -3343,7 +3351,7 @@ Download remote types to local TypeScript.
 
 ### Resource Commands
 
-All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is part of the path.
+All resource routes are workspace-scoped: the active workspace (or `--tenant-id`) is part of the path.
 
 #### `eai resources list <type>`
 List resources of a specific Object Type.
@@ -3352,7 +3360,7 @@ List resources of a specific Object Type.
 - `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--page <number>` — Page number (default: 1)
 - `--limit <number>` — Items per page (default: 20)
 - `--sort <field>` — Sort field; prefix with `-` for descending (default: `-created_at`)
@@ -3371,7 +3379,7 @@ Get a single resource.
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -3385,7 +3393,7 @@ Create a resource.
 **Arguments**: `<type>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Resource data as a JSON string
 - `--file <path>` — Resource data from a JSON file
 - `--format <format>` — Output format (text|json, default: text)
@@ -3401,7 +3409,7 @@ Update a resource with optimistic locking.
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Updated data as a JSON string
 - `--version <number>` — Resource version (auto-fetched if omitted)
 - `--format <format>` — Output format (text|json, default: text)
@@ -3422,7 +3430,7 @@ Delete a resource.
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--force` — Skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -3435,7 +3443,7 @@ Delete a resource.
 Cross-type query with filters.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
@@ -3452,7 +3460,7 @@ Run a server-side aggregate query.
 **Arguments**: `<type>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--group-by <fields>` — Comma-separated groupBy fields (required)
 - `--metrics <json>` — Aggregate metrics as JSON (required)
 - `--where <json>` — Structured where filter as JSON
@@ -3465,12 +3473,12 @@ Run a server-side aggregate query.
 ---
 
 #### `eai resources search <query>`
-Search tenant resource projections.
+Search workspace resource projections.
 
 **Arguments**: `<query>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
@@ -3483,10 +3491,10 @@ Search tenant resource projections.
 ---
 
 #### `eai resources schema`
-Show the published Object Types for a tenant.
+Show the published Object Types for a workspace.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -3500,7 +3508,7 @@ Bulk resource operations.
 **Arguments**: `<type>`
 
 **Options** (all three):
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Batch payload as a JSON array or object
 - `--file <path>` — Read the batch payload from a JSON file
 - `--format <format>` — Output format (text|json, default: text)
@@ -3523,7 +3531,7 @@ Bulk resource operations.
 Manage binary file properties on a resource.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--output <path>` — (`file get`) write to a specific path
 - `--force` — (`file delete`) skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
@@ -3536,10 +3544,10 @@ Manage binary file properties on a resource.
 ---
 
 #### `eai resources storage status` · `storage doctor` · `doctor` · `sync-schema`
-Inspect and reconcile tenant storage.
+Inspect and reconcile workspace storage.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--backend <backend>` — (`sync-schema`) limit to `postgresql|documentdb|blob|search`
 - `--dry-run` — (`sync-schema`) show the reconcile plan without mutating storage
 - `--format <format>` — Output format (text|json, default: text)
@@ -3553,7 +3561,7 @@ Inspect and reconcile tenant storage.
 
 ### AI Chat Commands
 
-Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
+Chat is scoped by **workspace / workflow / stage**. The workspace comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
 
 #### `eai chat send <message>`
 Send a single chat message.
@@ -3588,14 +3596,14 @@ Stream a chat response over SSE.
 ### Workflow Commands
 
 #### `eai workflow provision <workflow-key>`
-Provision a usecase-agnostic workflow config and bind it to a tenant app. Optionally creates the AI runtime records.
+Provision a usecase-agnostic workflow config and bind it to a workspace app. Optionally creates the AI runtime records.
 
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--app <key>` — Tenant app key that consumes this workflow (required)
+- `--app <key>` — Workspace app key that consumes this workflow (required)
 - `--vertical <key>` — Deprecated compatibility alias for `--app`
-- `--tenant <id>` — Tenant to provision against (default: active tenant)
+- `--workspace <id>` — Workspace to provision against (legacy alias: `--tenant`; default: active workspace)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
 - `--scope-key <scopeKey>` — Explicit workflow scope key (defaults to `<usecase>:<workflow-key>`)
@@ -3604,7 +3612,7 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 - `--stage-prompt <stage=prompt>` — Prompt content for a stage (repeatable)
 - `--workflow-env-key <key>` — Env key for the workflow id
 - `--bind-ai-runtime` — Also create `shared-ai-profile` and `shared-chatbot-config` records
-- `--ai-provider <integrationKey>` — Tenant integration key for the AI provider
+- `--ai-provider <integrationKey>` — Workspace integration key for the AI provider
 - `--ai-model <model>` — AI model/deployment name
 - `--ai-profile-key <key>` — Reusable `shared-ai-profile` key
 - `--status <status>` — `active` or `draft` (default: `active`)
@@ -3627,12 +3635,12 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 ---
 
 #### `eai workflow readiness [workflow-keys...]`
-Check tenant, plan, and workflow readiness for building an app.
+Check workspace, plan, and workflow readiness for building an app.
 
 **Arguments**: `[workflow-keys...]` (optional)
 
 **Options**:
-- `--tenant <id>` — Tenant to check (default: active tenant)
+- `--workspace <id>` — Workspace to check (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -3646,7 +3654,7 @@ Check whether a workflow key has an executable runtime binding.
 **Arguments**: `<workflow-key>`
 
 **Options**:
-- `--tenant <id>` — Tenant to check (default: active tenant)
+- `--workspace <id>` — Workspace to check (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -3662,7 +3670,7 @@ Request an operator-assisted runtime workflow binding.
 **Arguments**: `<workflow-key>`
 
 **Options**:
-- `--tenant <id>` — Tenant to request for (default: active tenant)
+- `--workspace <id>` — Workspace to request for (legacy alias: `--tenant`; default: active workspace)
 - `--display-name <name>` — Human-readable workflow display name
 - `--reason <reason>` — Short reason for the platform operator
 - `--format <format>` — Output format (text|json, default: text)
@@ -3682,7 +3690,7 @@ The CLI selects `storage_target=resourceapi` and refuses missing or incomplete
 context before reading the file. Both commands support `--tenant-id` and
 `--format json`. PublicAPI selects the lifecycle from the saved binding; callers
 cannot supply a lifecycle, storage mapping or owner override in upload fields.
-These options do not provision tenant schemas or enable a provider.
+These options do not provision workspace schemas or enable a provider.
 HTTP 202 means accepted; poll `/v4/data/documents/jobs/{jobId}` for completion
 and verify the saved result. Direct URL analysis is not this queued lifecycle.
 
@@ -3747,14 +3755,14 @@ advanced V4-only access layer for authorized users and operators when a route
 family does not yet have a polished command.
 
 #### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
-Call an authorized PublicAPI V4 path using the current login and active tenant
+Call an authorized PublicAPI V4 path using the current login and active workspace
 context.
 
 **Arguments**:
 - `<path>` — PublicAPI path. It must start with `/v4/`.
 
 **Options**:
-- `--tenant-id <tenantId>` — Use a specific tenant instead of the active tenant
+- `--tenant-id <tenant-id>` — Use a specific workspace instead of the active workspace
 - `--data <json>` — JSON request body
 - `--file <path>` — Read JSON request body from a file
 - `--param <key=value>` — Query parameter; repeat for multiple values
@@ -3783,7 +3791,7 @@ eai publicapi patch /v4/identity/me/profile --file profile.json
 - Any authorized route under `/v4/webhooks`
 
 The command does not bypass authorization. PublicAPI still validates the bearer
-token, tenant context, route policy, and platform tenant authorization for the
+token, workspace context, route policy, and platform workspace authorization for the
 called interface.
 
 ---
@@ -3872,10 +3880,10 @@ Validate the installed block catalog, or a manifest JSON file.
 `eai vertical ...` remains available as a compatibility alias during the migration window.
 
 #### `eai app list`
-List apps for the active company tenant.
+List apps for the active company workspace.
 
 **Options**:
-- `--tenant-id <id>` — Target company tenant
+- `--tenant-id <id>` — Target company workspace
 - `--limit <number>` — Items per page (default: 50)
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -3885,15 +3893,15 @@ List apps for the active company tenant.
 ---
 
 #### `eai app create <name>`
-Create an app under a company tenant.
+Create an app under a company workspace.
 
 **Arguments**: `<name>`
 
 **Options**:
-- `--tenant-id <id>` — Main company tenant ID that owns this app
-- `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
-- `--child-tenant <name>` — Create or reuse a child company tenant (display name)
-- `--child-tenant-slug <slug>` — Child company tenant key
+- `--tenant-id <id>` — Main company workspace ID that owns this app
+- `--parent-tenant <id>` — Immediate parent company workspace ID for the new child company
+- `--child-tenant <name>` — Create or reuse a child company workspace (display name)
+- `--child-tenant-slug <slug>` — Child company workspace key
 - `--key <key>` — Stable app key (defaults to kebab-case of `<name>`)
 - `--template <templateKey>` — Optional app-catalog template key
 - `--source <source>` — Creation source (default: `eai-cli`)
@@ -3912,7 +3920,7 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Validate against a specific company tenant
+- `--tenant-id <id>` — Validate against a specific company workspace
 - `--skip-validate` — Skip the remote lookup before writing `.env.local`
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -3927,7 +3935,7 @@ Prepare platform storage for an app.
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Target company tenant
+- `--tenant-id <id>` — Target company workspace
 - `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` (default: `all`)
 - `--dry-run` — Plan actions without applying changes
 - `--rebuild-search` — Request a search projection rebuild after provisioning
@@ -4099,21 +4107,21 @@ scripts. Existing presentation files remain protected references.
 ### Health
 - `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
 
-### Platform — Tenants
-- `POST /v4/platform/tenants` — Create root tenant
-- `POST /v4/platform/tenants/{parentId}/children` — Create child tenant
-- `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child tenant
+### Platform — Workspaces
+- `POST /v4/platform/tenants` — Create root workspace
+- `POST /v4/platform/tenants/{parentId}/children` — Create child workspace
+- `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child workspace
 - `POST /v4/platform/tenants/{tenantId}/delete` — Soft-delete tenant
 - `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
-- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a tenant context
-- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a tenant context
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
-- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
-- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
-- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
-- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
+- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a workspace context
+- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a workspace context
+- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a workspace
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a workspace member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List workspace members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable workspace role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a workspace member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)
@@ -4121,14 +4129,14 @@ scripts. Existing presentation files remain protected references.
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — Rotate the app secret
 
 ### Identity
-- `GET /v4/identity/tenants` — Current user's tenant memberships
+- `GET /v4/identity/tenants` — Current user's workspace memberships
 - `POST /v4/identity/me/provision` — Self-provision the current user
 
 ### Data — Object Types
 - `GET /v4/data/resources/object-types` — List Object Types
 - `POST /v4/data/resources/object-types` — Create an Object Type
 - `PATCH /v4/data/resources/object-types/{objectTypeId}` — Update an Object Type
-- `GET /v4/data/resources/schema/{tenantId}` — Published schema for a tenant
+- `GET /v4/data/resources/schema/{tenantId}` — Published schema for a workspace
 
 ### Data — Resources
 - `GET /v4/data/resources/{tenantId}/{objectType}` — List resources
@@ -4202,7 +4210,7 @@ The CLI uses structured error codes for consistent error handling. Each error ca
 | Code | Message | Suggestion |
 |------|---------|------------|
 | `E001` | Not in an EAI project | Run `eai init`, or navigate to an existing EAI project directory |
-| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Tenant selection comes from `eai login` / `eai tenant select`, not tenant IDs in `.env.local` |
+| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Workspace selection comes from `eai login` / `eai workspace select`, not workspace IDs in `.env.local` |
 | `E003` | Configuration file not found: `{file}` | Ensure `{file}` exists. Run `eai init` if this is a new project |
 | `E004` | Object Types file not found or invalid | Create `src/eai.config/object-types.ts` |
 | `E005` | Invalid project structure | Run `eai verify` to check your setup |
@@ -4264,7 +4272,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 eai resources list board-app-user --format json
 
 # Parse with jq
-eai tenant list --format json | jq '.tenants[].slug'
+eai workspace list --format json | jq '.tenants[].slug'
 
 # Use in scripts
 if eai verify calls --format json | jq -e '.summary.failed == 0' > /dev/null; then
