@@ -39,9 +39,10 @@ function canonicalPageUrl(value) {
   const rawSegments = rawPath(candidate).split("/");
   try {
     if (
-      rawSegments.some((segment) =>
-        [".", ".."].includes(decodeURIComponent(segment)),
-      )
+    rawSegments.some((segment) => {
+      const decoded = decodeURIComponent(segment);
+      return decoded.includes("\\") || [".", ".."].includes(decoded);
+    })
     )
       return null;
   } catch {

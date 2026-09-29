@@ -56,9 +56,9 @@ jobs:
 
       - name: Build Docusaurus docs site
         env:
-          EAI_DOCS_ASSISTANT_API_URL: /api/chat
-          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: /api/chat
-          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://eai-support.github.io/api/chat
         run: |
           cd docs-site
           npm run build

@@ -47,6 +47,8 @@ test("rejects unsafe route-only citations", () => {
     "https://evil.example/docs",
     "//evil.example/docs",
     "/docs/../admin",
+    "/docs\\..\\company/about",
+    "/docs/%5c..%5ccompany/about",
     "/docs/setup?token=x",
   ]) {
     assert.equal(sourceHref({ title: "Setup", route }), null, route);
