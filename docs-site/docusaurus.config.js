@@ -25,7 +25,7 @@ const config = {
     documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",
     docsAssistantApiUrl:
       process.env.EAI_DOCS_ASSISTANT_API_URL ||
-      "https://www.enterpriseaigroup.com/api/chat",
+      "/api/chat",
   },
   onBrokenLinks: "warn",
   markdown: {

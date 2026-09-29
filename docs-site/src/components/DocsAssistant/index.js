@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import useDocusaurusContext from "@docusaurus/useDocusaurusContext";
+import { sourceHref } from "./sourceUrl.mjs";
 import styles from "./styles.module.css";
 
 function score(item, query) {
@@ -20,35 +21,10 @@ function isGreeting(message) {
   return /^(hi|hello|hey)(?:\s+(?:there|eai|team))?[!.?]*$/i.test(message.trim());
 }
 
-const CANONICAL_SITE_ORIGIN = "https://www.enterpriseaigroup.com";
-
-function normaliseText(value) {
-  return String(value || "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .trim();
-}
-
-function sourceHref(source, docsItems) {
-  // The semantic index supplies canonicalPath for new content. Never expose storage URLs.
-  const canonicalPath = source.canonicalPath || source.path || source.route;
-  if (typeof canonicalPath === "string" && canonicalPath.startsWith("/")) {
-    return `${CANONICAL_SITE_ORIGIN}${canonicalPath}`;
-  }
-
-  // Existing Docs records predate canonical paths. Match only a known local Docs page.
-  const title = normaliseText(source.title);
-  const matchingDoc = docsItems.find((item) => {
-    const itemTitle = normaliseText(item.title);
-    return itemTitle && (title === itemTitle || title.includes(itemTitle));
-  });
-  return matchingDoc ? `${CANONICAL_SITE_ORIGIN}/docs/eai${matchingDoc.route}` : null;
-}
-
 export default function DocsAssistant() {
   const { siteConfig } = useDocusaurusContext();
   const baseUrl = siteConfig.baseUrl.replace(/\/$/, "");
-  const assistantApiUrl = siteConfig.customFields.docsAssistantApiUrl;
+  const assistantApiUrl = siteConfig.customFields.docsAssistantApiUrl || "/api/chat";
   const feedbackApiUrl = assistantApiUrl.replace(/\/api\/chat\/?$/, "/api/chat/feedback");
   const [isAskOpen, setIsAskOpen] = useState(false);
   const [query, setQuery] = useState("");
