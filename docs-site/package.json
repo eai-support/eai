@@ -8,7 +8,7 @@
     "start": "node scripts/start-local.mjs",
     "start:site": "docusaurus start",
     "build": "docusaurus build",
-    "test:assistant": "node --test scripts/source-url.test.mjs scripts/start-local.test.mjs",
+    "test:assistant": "node --test scripts/assistantBundleConfig.test.mjs scripts/source-url.test.mjs scripts/start-local.test.mjs",
     "test:assistant:bundle": "node scripts/test-docs-assistant-bundle.mjs",
     "swizzle": "docusaurus swizzle",
     "deploy": "docusaurus deploy",

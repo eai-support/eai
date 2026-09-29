@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { extractDocsAssistantApiUrls } from "./assistantBundleConfig.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(scriptDir, "../build");
@@ -23,9 +24,12 @@ async function collectJavaScript(directory) {
 const bundles = await collectJavaScript(path.join(buildDir, "assets", "js"));
 assert.ok(bundles.length > 0, "Docusaurus build did not produce JavaScript bundles.");
 const contents = (await Promise.all(bundles.map((file) => readFile(file, "utf8")))).join("\n");
-assert.ok(contents.includes(expectedUrl), `Generated bundles do not include the expected assistant URL: ${expectedUrl}`);
-if (forbiddenUrl) {
-  assert.ok(!contents.includes(forbiddenUrl), `Generated bundles contain a forbidden assistant URL: ${forbiddenUrl}`);
-}
+const configuredUrls = extractDocsAssistantApiUrls(contents);
+assert.deepEqual(
+  configuredUrls,
+  [expectedUrl],
+  `Expected exactly one serialized Docs assistant endpoint configuration: ${expectedUrl}`,
+);
+if (forbiddenUrl) assert.notEqual(expectedUrl, forbiddenUrl, "The configured assistant URL is forbidden.");
 
-console.log(`Checked ${bundles.length} JavaScript bundles for the assistant API URL.`);
+console.log(`Verified the configured assistant API URL in ${bundles.length} JavaScript bundles.`);
