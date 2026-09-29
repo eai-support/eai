@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { extractDocsAssistantApiUrls } from "./assistantBundleConfig.mjs";
+import { assertNoForbiddenAssistantUrl, extractDocsAssistantApiUrls } from "./assistantBundleConfig.mjs";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const buildDir = path.resolve(scriptDir, "../build");
@@ -30,6 +30,6 @@ assert.deepEqual(
   [expectedUrl],
   `Expected exactly one serialized Docs assistant endpoint configuration: ${expectedUrl}`,
 );
-if (forbiddenUrl) assert.notEqual(expectedUrl, forbiddenUrl, "The configured assistant URL is forbidden.");
+assertNoForbiddenAssistantUrl(contents, forbiddenUrl);
 
 console.log(`Verified the configured assistant API URL in ${bundles.length} JavaScript bundles.`);
