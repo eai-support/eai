@@ -22,6 +22,12 @@ on:
       - "scripts/generate-docs-experience-assets.cjs"
       - "scripts/verify-docs-experience-assets.cjs"
   workflow_dispatch:
+    inputs:
+      publish_github_pages:
+        description: Publish the public GitHub Pages copy (not required for Website-hosted Dev)
+        required: true
+        default: false
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -55,7 +61,17 @@ jobs:
         run: cd docs-site && npm ci
 
       - name: Build Docusaurus docs site
-        run: cd docs-site && npm run build
+        env:
+          EAI_DOCS_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://eai-support.github.io/api/chat
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
+
+      - name: Verify Docs assistant source and generated bundle
+        run: cd docs-site && npm run test:assistant
 
       - name: Verify required public assets
         run: |
@@ -98,7 +114,13 @@ jobs:
           npm run docs:experience-assets:verify
 
       - name: Build Docusaurus docs site
-        run: cd docs-site && npm run build
+        env:
+          EAI_DOCS_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
 
       - name: Verify generated site
         run: |
@@ -130,6 +152,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_github_pages }}
         uses: actions/deploy-pages@v5
 
       - name: Mint website docs PR token
@@ -159,9 +182,14 @@ jobs:
           # Hosted Docs must call the website API on the same origin. This avoids
           # a separate CORS and environment-endpoint deployment dependency.
           EAI_DOCS_ASSISTANT_API_URL: /api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: /api/chat
+          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
           EAI_DOCS_SITE_URL: https://www.enterpriseaigroup.com
           EAI_DOCS_BASE_URL: /docs/eai/
-        run: cd docs-site && npm run build
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
 
       - name: Verify hosted Docs use the same-origin assistant API
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
