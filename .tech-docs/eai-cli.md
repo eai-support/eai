@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.2 |
-| Released | 2026-09-28 |
-| Last Material Change | Fix macOS codesign metadata timeout |
-| Source Commit | `c5ef50d332aeff08170fc8db1d580ccd9e5776e0` |
+| Version | 3.18.3 |
+| Released | 2026-09-29 |
+| Last Material Change | Use workspace terminology in customer-facing guidance |
+| Source Commit | `d6a331b361a2bac6591ef56613434a6a8e42e698` |
 
 
 ## Install
