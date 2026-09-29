@@ -15,12 +15,10 @@ Windows, macOS, or Ubuntu/Debian computer.
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
 
-The current CLI release is **v3.18.0** (2026-09-23): Add safe template adoption plans and backed-up Gofer update maintenance.
-
 ## Connect An Existing Project
 
 Use [EAI App Template](./eai-app-template.md) when you already have a project
-and want to add EAI services, documents, or tenant-aware patterns.
+and want to add EAI services, documents, or workspace-aware patterns.
 
 ## Use Manual Or Managed Setup
 
