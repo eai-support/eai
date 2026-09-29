@@ -4,14 +4,20 @@ import { sourceHref } from "../src/components/DocsAssistant/sourceUrl.mjs";
 
 test("uses the canonical Website URL returned by the chat API", () => {
   assert.equal(
-    sourceHref({ title: "EAI Gofer", url: "https://enterpriseaigroup.com/docs/eai/docs/eai-gofer" }),
+    sourceHref({
+      title: "EAI Gofer",
+      url: "https://enterpriseaigroup.com/docs/eai/docs/eai-gofer",
+    }),
     "https://www.enterpriseaigroup.com/docs/eai/docs/eai-gofer",
   );
 });
 
 test("keeps Website page citations on the canonical site", () => {
   assert.equal(
-    sourceHref({ title: "About", url: "https://www.enterpriseaigroup.com/company/about" }),
+    sourceHref({
+      title: "About",
+      url: "https://www.enterpriseaigroup.com/company/about",
+    }),
     "https://www.enterpriseaigroup.com/company/about",
   );
 });
@@ -23,6 +29,28 @@ test("maps a legacy exact Docs title to its Website docs route", () => {
     ]),
     "https://www.enterpriseaigroup.com/docs/eai/docs/api-reference",
   );
+});
+
+test("keeps a validated route-only Docs citation clickable", () => {
+  assert.equal(
+    sourceHref({ title: "EAI CLI", route: "/docs/api-reference" }),
+    "https://www.enterpriseaigroup.com/docs/eai/docs/api-reference",
+  );
+  assert.equal(
+    sourceHref({ title: "EAI Setup", route: "/docs/eai/installer-setup" }),
+    "https://www.enterpriseaigroup.com/docs/eai/installer-setup",
+  );
+});
+
+test("rejects unsafe route-only citations", () => {
+  for (const route of [
+    "https://evil.example/docs",
+    "//evil.example/docs",
+    "/docs/../admin",
+    "/docs/setup?token=x",
+  ]) {
+    assert.equal(sourceHref({ title: "Setup", route }), null, route);
+  }
 });
 
 test("does not turn unsafe or external citations into guessed links", () => {
@@ -41,7 +69,9 @@ test("does not turn unsafe or external citations into guessed links", () => {
 
 test("does not match a Docs page from a partial title", () => {
   assert.equal(
-    sourceHref({ title: "EAI CLI" }, [{ title: "EAI CLI — API Reference", route: "/docs/api-reference" }]),
+    sourceHref({ title: "EAI CLI" }, [
+      { title: "EAI CLI — API Reference", route: "/docs/api-reference" },
+    ]),
     null,
   );
 });
