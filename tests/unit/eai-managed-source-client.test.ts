@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PlatformAPIClient, type CliManagedGithubLinkSession } from '../../src/lib/api.js';
 import * as auth from '../../src/lib/auth.js';
+import * as profile from '../../src/lib/profile.js';
 import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
 const scope: CliManagedSourceScope = { tenantId: 'company', appKey: 'my-app', targetTenantId: 'runtime', environment: 'preview', actorId: 'eai-user-oid' };
@@ -13,7 +14,7 @@ function session(status: CliManagedGithubLinkSession['status'] = 'verified'): Cl
   };
 }
 const response = (value: unknown): Response => new Response(JSON.stringify(value), { status: 200 });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); profile.setActiveProfile('default'); });
 
 describe('actor-bound GitHub linking', () => {
   test('uses existing verified identity without opening a browser or requiring local gh', async () => {
@@ -154,6 +155,43 @@ describe('managed publication authority and readiness', () => {
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(operation().upload!.url, expect.objectContaining({ method: 'POST', redirect: 'error', body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }), headers: { Authorization: 'Bearer fixture-eai-token', 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': 'one-use-upload-proof' } }));
     expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview');
     expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test.each(['different-profile', 'same-profile-reselected', 'profile-saved'])('profile capture change during token await blocks upload: %s', async (change) => {
+    vi.spyOn(profile, 'captureProfileConfig').mockReturnValue(null);
+    profile.setActiveProfile('original-profile');
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation');
+    let release!: (token: string) => void;
+    let signalTokenStarted!: () => void;
+    const started = new Promise<void>(resolve => { signalTokenStarted = resolve; });
+    const token = vi.spyOn(auth, 'getAccessToken').mockImplementation(() => {
+      signalTokenStarted(); return new Promise<string>(resolve => { release = resolve; });
+    });
+    const upload = vi.spyOn(globalThis, 'fetch');
+    const prepared = vi.fn(async () => {});
+    const pending = submitCliManagedSource(client, scope, session(), bundle, prepared);
+    await started;
+    if (change === 'profile-saved') {
+      const originalGeneration = profile.getProfileCaptureGeneration();
+      vi.spyOn(profile, 'getProfileCaptureGeneration').mockReturnValue(originalGeneration + 1);
+    } else profile.setActiveProfile(change === 'different-profile' ? 'other-profile' : 'original-profile');
+    release('different-profile-token');
+    await expect(pending).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN' });
+    expect(prepared).toHaveBeenCalledTimes(1); expect(token).toHaveBeenCalledTimes(1);
+    expect(upload).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled();
+  });
+
+  test('already changed client capture is rejected before reading any upload credential', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    const token = vi.spyOn(auth, 'getAccessToken');
+    const upload = vi.spyOn(globalThis, 'fetch');
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {
+      profile.setActiveProfile('default');
+    })).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN' });
+    expect(token).not.toHaveBeenCalled(); expect(upload).not.toHaveBeenCalled();
   });
 
   test.each(['source-unknown-abc123', 'cli-managed-source-123', 'cli-managed-' + 'a'.repeat(31), 'cli-managed-' + 'a'.repeat(33), 'cli-managed-' + 'A'.repeat(32)])('rejects crossed or noncanonical publication ID %s before persistence or upload', async operationId => {

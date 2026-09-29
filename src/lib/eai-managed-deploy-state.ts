@@ -27,6 +27,7 @@ import {
 } from './eai-managed-deploy-filesystem.js';
 import { isManagedDeploymentIdentifier } from './eai-managed-identifiers.js';
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
+import { getActiveProfile } from './profile.js';
 
 /** Keep the one-time nonce outside the application repository. */
 export function managedDeployStatePath(
@@ -40,6 +41,10 @@ export function managedDeployStatePath(
 }
 
 function validateManagedDeployState(state: ManagedDeployState): void {
+  if (!Object.hasOwn(state, 'profileName') || typeof state.profileName !== 'string'
+    || !state.profileName.trim() || state.profileName.length > 256 || state.profileName !== getActiveProfile()) {
+    throw new Error('Managed deployment original operation authority is missing or differs from the original EAI profile.');
+  }
   requireCommitSha(state.commitSha);
   requireConfigHash(state.configHash);
   requireBranch(state.branch);
@@ -106,7 +111,7 @@ export async function saveManagedDeployState(state: ManagedDeployState, baseDir?
   validateManagedDeployState(state);
   const fields = ['schema', 'tenantId', 'targetTenantId', 'appKey', 'operationId', 'nonce', 'repo', 'branch',
     'ref', 'commitSha', 'workflowPath', 'configHash', 'environment', 'installationId', 'actorId',
-    'githubLinkSessionId', 'githubUserId', 'githubLogin', 'githubProofId', 'publicApiUrl'] as const;
+    'githubLinkSessionId', 'githubUserId', 'githubLogin', 'githubProofId', 'publicApiUrl', 'profileName'] as const;
   if (state.schema !== 'eai.managed-deploy-state.v1' || fields.some(field => !Object.hasOwn(state, field))) {
     throw new Error('Managed deployment state is missing its original operation authority.');
   }
@@ -146,7 +151,7 @@ function managedDispatchBindingSha256(state: ManagedDeployState): string {
     state.tenantId, state.targetTenantId, state.appKey, state.operationId,
     state.repo, state.ref, state.commitSha, state.workflowPath, state.configHash,
     state.environment, state.installationId, state.actorId, state.githubLinkSessionId,
-    requireManagedPublicApiUrl(state.publicApiUrl),
+    requireManagedPublicApiUrl(state.publicApiUrl), state.profileName,
     state.githubUserId, state.githubLogin, state.githubProofId,
   ])).digest('hex')}`;
 }

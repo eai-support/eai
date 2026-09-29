@@ -158,11 +158,13 @@ async function uploadCliManagedSource(
   const signal = client.managedRequestSignal();
   let response: Response;
   try {
+    client.assertProfileAuthority();
     const token = await awaitManagedRequestDeadline(signal, getAccessToken());
     if (!token) {
       throw new ManagedSourceError("EAI_LOGIN_REQUIRED", "Sign in with eai login before submitting source.");
     }
     signal.throwIfAborted();
+    client.assertProfileAuthority();
     response = await fetch(url.href, {
       method: "POST",
       redirect: "error",

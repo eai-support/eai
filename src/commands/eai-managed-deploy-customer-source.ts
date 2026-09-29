@@ -1,4 +1,5 @@
 import { bindManagedProjectRoot } from "../lib/eai-managed-root-binding.js";
+import { getActiveProfile } from "../lib/profile.js";
 import type { CliManagedGithubLinkSession } from "../lib/api.js";
 import {
   assertManagedDeployStateMatchesOperation,
@@ -29,6 +30,7 @@ import {
   readExactOperation,
 } from "./eai-managed-deploy-operation.js";
 
+/** SECURITY: bind reviewed customer source, its original profile and one-use nonce before dispatch. */
 export async function startCustomerSource(
   execution: ManagedDeployExecutionContext,
   link: CliManagedGithubLinkSession,
@@ -152,6 +154,7 @@ export async function startCustomerSource(
       "Stop and inspect the PublicAPI/AdminAPI setup response.",
     );
   }
+  client.assertProfileAuthority();
   const state: ManagedDeployState = {
     schema: "eai.managed-deploy-state.v1",
     tenantId: context.tenantId,
@@ -173,6 +176,7 @@ export async function startCustomerSource(
     githubLogin: verifiedGithubUser.login,
     githubProofId: verifiedGithubUser.proofId,
     publicApiUrl: context.publicApiUrl,
+    profileName: getActiveProfile(),
   };
   await saveManagedDeployState(state);
   const issuedOperation = await readExactOperation(

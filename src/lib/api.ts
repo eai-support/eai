@@ -908,7 +908,8 @@ export class PlatformAPIClient {
     return fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
   }
 
-  private assertProfileAuthority(): void {
+  /** SECURITY: callers sending directly to a bound upload origin must recheck this after credential awaits. */
+  assertProfileAuthority(): void {
     if (this.profileCaptureGeneration !== getProfileCaptureGeneration()
       || this.profileName !== getActiveProfile()) {
       throw new Error('Private managed API client authority changed; create a new client for the selected profile.');

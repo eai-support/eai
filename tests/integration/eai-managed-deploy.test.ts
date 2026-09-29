@@ -10,6 +10,7 @@ import {
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_TENANT_ID,
   DEFAULT_PROD_AUTH_TENANT_NAME,
+  getActiveProfile,
   setActiveProfile,
 } from '../../src/lib/profile.js';
 import { loadManagedRetryAuthority, saveManagedRecoveryAuthority } from '../../src/commands/eai-managed-deploy-recovery.js';
@@ -131,7 +132,7 @@ function customerRetryState(options: {
   publicApiUrl?: string;
 } = {}): ManagedDeployState {
   return {
-    schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID,
+    profileName: 'default', schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID,
     targetTenantId: options.targetTenantId ?? TENANT_ID,
     appKey: 'planning-portal', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce',
     repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main',
@@ -198,7 +199,7 @@ describe('eai deploy app --target eai', () => {
     process.chdir(projectRoot);
     process.env.HOME = env.dir;
     process.env.USERPROFILE = env.dir;
-    await saveManagedRecoveryAuthority({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
+    await saveManagedRecoveryAuthority({ profileName: 'default', schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
     expect(managedDeployStatePath('source-unknown-fixture')).toContain(env.dir);
     process.env.BASE_URL_PUBLIC_API = API_BASE;
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
@@ -276,7 +277,7 @@ describe('eai deploy app --target eai', () => {
       }
       if (url.startsWith('https://dev-admin-portal.myenterprise.ai/')) {
         const authority = JSON.parse(await readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), 'utf8'));
-        expect(authority).toMatchObject({ schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', publicApiUrl: API_BASE, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid' });
+        expect(authority).toMatchObject({ profileName: 'default', schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', publicApiUrl: API_BASE, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid' });
         if (uploadOutcome === 'lost-response') throw new Error('provider response lost');
         uploaded = JSON.parse(String(init?.body)).bundle;
         expect(init?.redirect).toBe('error');
@@ -841,7 +842,7 @@ fi
 
     const configHash = await buildManagedDeployConfigHash(projectRoot);
     const retryState: ManagedDeployState = {
-      schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID, targetTenantId,
+      profileName: 'default', schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID, targetTenantId,
       appKey: 'planning-portal', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce',
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha,
       workflowPath: '.github/workflows/eai-app.yml', configHash, environment: 'preview', installationId: 12345,
@@ -1312,7 +1313,7 @@ fi
   test('refuses pre-evidence retry when protected state differs from server setup', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state: ManagedDeployState = {
-      schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID, targetTenantId: TENANT_ID,
+      profileName: 'default', schema: 'eai.managed-deploy-state.v1', tenantId: TENANT_ID, targetTenantId: TENANT_ID,
       appKey: 'planning-portal', operationId: 'source-unknown-abc123', nonce: 'original-nonce',
       repo: 'enterprise/planning-portal', branch: 'main', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
       workflowPath: '.github/workflows/eai-app.yml', configHash: `sha256:${'b'.repeat(64)}`,
@@ -1367,7 +1368,7 @@ fi
   test('tightens recovery directory before saving and reading original endpoint authority', async () => {
     const directory = join(env.dir, '.eai', 'managed-deployments');
     const authority = {
-      schema: 'eai.managed-recovery-authority.v1' as const, operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      profileName: 'default', schema: 'eai.managed-recovery-authority.v1' as const, operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
       actorId: 'test-user-oid', publicApiUrl: API_BASE,
     };
@@ -1381,7 +1382,7 @@ fi
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
   });
 
-  test.each(['schema', 'operationId', 'tenantId', 'targetTenantId', 'appKey', 'publicApiUrl', 'actorId'] as const)('never replaces an existing protected recovery binding with changed %s', async field => {
+  test.each(['schema', 'operationId', 'tenantId', 'targetTenantId', 'appKey', 'publicApiUrl', 'actorId', 'profileName'] as const)('never replaces an existing protected recovery binding with changed %s', async field => {
     const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     const authority = JSON.parse(await readFile(path, 'utf8'));
     const retained = { ...authority, [field]: field === 'publicApiUrl' ? 'https://test-api.ca.myenterprise.ai/public' : 'different-authority' };
@@ -1394,6 +1395,35 @@ fi
     expect(await readFile(path, 'utf8')).toBe(bytes);
     expect((await stat(path)).ino).toBe(before.ino);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each(['managed-source', 'customer-source'])('same-URL profile switches cannot select protected %s retry authority', async (source) => {
+    const origin = 'original-profile';
+    const named = { publicApiUrl: API_BASE, authTenantName: 'fixture', authTenantId: 'fixture', authClientId: 'fixture' };
+    await writeFile(join(env.dir, '.eai/config.json'), JSON.stringify({ profiles: { [origin]: named, other: named } }), { mode: 0o600 });
+    setActiveProfile(origin);
+    const operationId = source === 'managed-source' ? 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' : 'source-unknown-abc123';
+    if (source === 'managed-source') {
+      await rm(managedDeployStatePath(operationId));
+      await saveManagedRecoveryAuthority({ schema: 'eai.managed-recovery-authority.v1', profileName: origin,
+        operationId, tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', actorId: 'test-user-oid', publicApiUrl: API_BASE });
+    } else await saveManagedDeployState({ ...customerRetryState(), profileName: origin });
+    const path = managedDeployStatePath(operationId); const retained = await readFile(path, 'utf8');
+    const requests = vi.fn(); vi.stubGlobal('fetch', requests);
+    for (const replacement of ['default', 'other']) {
+      setActiveProfile(replacement);
+      await expect(loadManagedRetryAuthority(operationId, TENANT_ID, TENANT_ID, 'planning-portal'))
+        .rejects.toMatchObject({ code: 'RETRY_PROFILE_BINDING_MISMATCH' });
+      expect(getActiveProfile()).toBe(replacement); expect(requests).not.toHaveBeenCalled();
+      expect(await readFile(path, 'utf8')).toBe(retained);
+    }
+    setActiveProfile(origin);
+    await expect(loadManagedRetryAuthority(operationId, TENANT_ID, TENANT_ID, 'planning-portal')).resolves.toMatchObject({ publicApiUrl: API_BASE });
+    const legacy = JSON.parse(retained); delete legacy.profileName;
+    await writeFile(path, JSON.stringify(legacy), { mode: 0o600 });
+    await expect(loadManagedRetryAuthority(operationId, TENANT_ID, TENANT_ID, 'planning-portal'))
+      .rejects.toMatchObject({ code: 'RETRY_PROFILE_BINDING_MISMATCH' });
+    expect(requests).not.toHaveBeenCalled();
   });
 
   test('reuses identical recovery authority without replacing its bytes or inode', async () => {
@@ -1433,7 +1463,7 @@ fi
     await expect(loadManagedRetryAuthority('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', TENANT_ID, TENANT_ID, 'planning-portal'))
       .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
     await expect(saveManagedRecoveryAuthority({
-      schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+      profileName: 'default', schema: 'eai.managed-recovery-authority.v1', operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
       actorId: 'test-user-oid', publicApiUrl: API_BASE,
     })).rejects.toThrow('untrusted directory');

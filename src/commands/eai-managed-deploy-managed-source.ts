@@ -14,6 +14,7 @@ import {
   type ManagedDeployExecutionContext,
 } from "./eai-managed-deploy-contract.js";
 import { saveManagedRecoveryAuthority } from "./eai-managed-deploy-recovery.js";
+import { getActiveProfile } from "../lib/profile.js";
 import { printManagedSourceCompletion } from "./eai-managed-deploy-output.js";
 
 /** Resume only observes; upload retry requires the orchestrator's protected original receipt. */
@@ -72,6 +73,7 @@ export async function resumeManagedSource(
   );
 }
 
+/** SECURITY: save the original profile and actor authority before any managed source upload. */
 export async function startManagedSource(
   execution: ManagedDeployExecutionContext,
   link: CliManagedGithubLinkSession,
@@ -92,12 +94,16 @@ export async function startManagedSource(
     managedScope,
     link,
     bundle,
-    async (prepared) => saveManagedRecoveryAuthority({
-      schema: "eai.managed-recovery-authority.v1", operationId: prepared.operationId,
-      tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
-      appKey: managedScope.appKey, actorId: managedScope.actorId,
-      publicApiUrl: context.publicApiUrl,
-    }),
+    async (prepared) => {
+      client.assertProfileAuthority();
+      await saveManagedRecoveryAuthority({
+        schema: "eai.managed-recovery-authority.v1", operationId: prepared.operationId,
+        tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
+        appKey: managedScope.appKey, actorId: managedScope.actorId,
+        publicApiUrl: context.publicApiUrl,
+        profileName: getActiveProfile(),
+      });
+    },
   );
   const operation = await pollCliManagedSource(
     client,

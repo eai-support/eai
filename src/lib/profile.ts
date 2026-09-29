@@ -9,8 +9,11 @@
  * avoids threading profile through 20+ command action handlers.
  */
 
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { constants, closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
+import {
+  constants, closeSync, fsyncSync, fstatSync, lstatSync, mkdirSync, openSync,
+  readSync, realpathSync, renameSync, unlinkSync, writeFileSync, type Stats,
+} from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import { homedir } from 'node:os';
 import type { Command, OptionValues } from 'commander';
@@ -183,39 +186,130 @@ export function captureProfileConfig(name: string): ProfileConfig | null {
   return snapshot;
 }
 
-/**
- * Save or update a local profile.
- * Creates the file and directory if they don't exist.
- */
+const MAX_PROFILE_BYTES = 64 * 1024;
+
+function sameFile(left: Stats, right: Stats): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size
+    && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs
+    && left.mode === right.mode && left.uid === right.uid && left.nlink === right.nlink;
+}
+
+function assertPrivateFile(info: Stats): void {
+  if (!info.isFile() || info.nlink !== 1 || info.size > MAX_PROFILE_BYTES
+    || (process.platform !== 'win32' && (info.mode & 0o077) !== 0)
+    || (process.getuid && info.uid !== process.getuid())) {
+    throw new Error('Profile updates require an owner-only single-link regular file within 64 KiB.');
+  }
+}
+
+function assertProfileParent(path: string, expected: Stats): void {
+  const current = lstatSync(path);
+  if (!current.isDirectory() || current.isSymbolicLink() || realpathSync(path) !== path
+    || current.dev !== expected.dev || current.ino !== expected.ino || current.mode !== expected.mode
+    || current.uid !== expected.uid || (process.platform !== 'win32' && (current.mode & 0o022) !== 0)
+    || (process.getuid && current.uid !== process.getuid())) {
+    throw new Error('Profile update parent must remain owned and controlled by the current user.');
+  }
+}
+
+function readProfileUpdate(path: string): { raw: Buffer; info: Stats } | null {
+  let leaf: Stats;
+  try { leaf = lstatSync(path); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+  assertPrivateFile(leaf);
+  const descriptor = openSync(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+  try {
+    const opened = fstatSync(descriptor);
+    if (!sameFile(leaf, opened)) throw new Error('Profile settings changed during update.');
+    const buffer = Buffer.alloc(MAX_PROFILE_BYTES + 1);
+    let length = 0;
+    while (length < buffer.length) {
+      const count = readSync(descriptor, buffer, length, buffer.length - length, null);
+      if (count === 0) break;
+      length += count;
+    }
+    if (length !== opened.size || !sameFile(opened, fstatSync(descriptor)) || !sameFile(opened, lstatSync(path))) {
+      throw new Error('Profile settings changed during update.');
+    }
+    return { raw: buffer.subarray(0, length), info: opened };
+  } finally { closeSync(descriptor); }
+}
+
+/** SECURITY: config.json.lock is shared with other profile writers; contention fails without stale takeover. */
 export async function saveProfileConfig(name: string, config: ProfileConfig): Promise<void> {
   capturedProfiles.clear();
   captureGeneration += 1;
-  const dir = getEaiDir();
-  await mkdir(dir, { recursive: true });
-
-  const configPath = getConfigFilePath();
-  let file: ProfilesFile = { profiles: {} };
+  if (!constants.O_NOFOLLOW && process.platform !== 'win32') throw new Error('No-follow profile updates are unavailable.');
+  const dir = join(realpathSync(homedir()), '.eai');
+  mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const parent = lstatSync(dir);
+  assertProfileParent(dir, parent);
+  const configPath = join(dir, 'config.json');
+  const lockPath = configPath + '.lock';
+  const lockBytes = Buffer.from(JSON.stringify({ schema: 'eai.profile-config-writer-lock.v1', nonce: randomUUID(), pid: process.pid }) + '\n');
+  let lock: number;
   try {
-    const raw = await readFile(configPath, 'utf-8');
-    file = JSON.parse(raw) as ProfilesFile;
-  } catch {
-    // File doesn't exist or is invalid — start fresh
+    lock = openSync(lockPath, constants.O_RDWR | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  } catch (cause) {
+    throw new Error('Profile settings are locked or unsafe; retry after the active writer finishes. No stale lock is removed automatically.', { cause });
   }
-
-  file = {
-    ...file,
-    profiles: {
-      ...file.profiles,
-      [name]: config,
-    },
+  let ownedLock: Stats | undefined;
+  let temporary: { path: string; info: Stats } | undefined;
+  const assertLock = (): void => {
+    assertProfileParent(dir, parent);
+    const bound = lstatSync(lockPath);
+    const content = Buffer.alloc(lockBytes.length);
+    if (!ownedLock || !sameFile(ownedLock, bound) || !sameFile(ownedLock, fstatSync(lock))
+      || readSync(lock, content, 0, content.length, 0) !== content.length || !content.equals(lockBytes)) {
+      throw new Error('Profile writer lock ownership changed; no foreign lock is removed.');
+    }
   };
-
-  await writeFile(configPath, JSON.stringify(file, null, 2) + '\n', {
-    encoding: 'utf-8',
-    mode: 0o600,
-  });
-  capturedProfiles.clear();
-  captureGeneration += 1;
+  try {
+    assertPrivateFile(fstatSync(lock));
+    writeFileSync(lock, lockBytes);
+    fsyncSync(lock);
+    ownedLock = fstatSync(lock);
+    assertLock();
+    const before = readProfileUpdate(configPath);
+    const file = before ? JSON.parse(before.raw.toString('utf8')) as ProfilesFile : { profiles: {} };
+    if (!file || typeof file !== 'object' || Array.isArray(file) || !file.profiles
+      || typeof file.profiles !== 'object' || Array.isArray(file.profiles)) {
+      throw new Error('Local profile settings contain an invalid profiles object; refusing to overwrite.');
+    }
+    const prior = Object.hasOwn(file.profiles, name) ? file.profiles[name] : undefined;
+    if (prior !== undefined && (!prior || typeof prior !== 'object' || Array.isArray(prior))) {
+      throw new Error('Local profile settings contain an invalid profile; refusing to overwrite.');
+    }
+    const knownFields = new Set(['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId', 'authScope', 'managedDeploymentApiUrl']);
+    const preserved = Object.fromEntries(Object.entries(prior ?? {}).filter(([key]) => !knownFields.has(key)));
+    const output = JSON.stringify({ ...file, profiles: { ...file.profiles, [name]: { ...preserved, ...config } } }, null, 2) + '\n';
+    if (Buffer.byteLength(output) > MAX_PROFILE_BYTES) throw new Error('Profile settings exceed 64 KiB.');
+    const path = join(dir, `.config-${randomUUID()}.tmp`);
+    const descriptor = openSync(path, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+    temporary = { path, info: fstatSync(descriptor) };
+    try { writeFileSync(descriptor, output, 'utf8'); fsyncSync(descriptor); }
+    finally { temporary.info = fstatSync(descriptor); closeSync(descriptor); }
+    const current = readProfileUpdate(configPath);
+    if (before ? !current || !sameFile(before.info, current.info) || !before.raw.equals(current.raw) : current !== null) {
+      throw new Error('Profile settings changed during update; retry explicitly.');
+    }
+    assertLock();
+    if (!sameFile(temporary.info, lstatSync(path))) throw new Error('Profile update temporary file changed.');
+    renameSync(path, configPath);
+    temporary = undefined;
+  } finally {
+    try {
+      if (temporary) {
+        assertProfileParent(dir, parent);
+        if (sameFile(temporary.info, lstatSync(temporary.path))) unlinkSync(temporary.path);
+      }
+    } finally {
+      try { assertLock(); unlinkSync(lockPath); }
+      finally { closeSync(lock); capturedProfiles.clear(); captureGeneration += 1; }
+    }
+  }
 }
 
 /** Default OAuth scope when none is configured. */

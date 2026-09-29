@@ -160,7 +160,7 @@ async function put(root: string, path: string, content: string): Promise<void> {
 
 function retryState(): ManagedDeployState {
   return {
-    schema: "eai.managed-deploy-state.v1",
+    profileName: "default", schema: "eai.managed-deploy-state.v1",
     tenantId: "tenant-1",
     targetTenantId: "tenant-1",
     appKey: "planning-portal",

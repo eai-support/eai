@@ -2,8 +2,10 @@ import { loadManagedDeployState, managedDeployStatePath, type ManagedDeployState
 import { createPrivateFileNoFollow, readPrivateFileNoFollow } from "../lib/eai-managed-deploy-filesystem.js";
 import { prepareManagedDeployStateDirectory } from "../lib/eai-managed-deploy-state.js";
 import { requireManagedPublicApiUrl } from "../lib/managed-public-api.js";
+import { getActiveProfile } from "../lib/profile.js";
 import { fail, NEW_SOURCE_OPERATION_ACTION } from "./eai-managed-deploy-contract.js";
 
+/** SECURITY: retry credentials are pinned to the originating profile, actor, gateway and app scope. */
 export interface ManagedRecoveryAuthority {
   schema: "eai.managed-recovery-authority.v1";
   operationId: string;
@@ -12,11 +14,12 @@ export interface ManagedRecoveryAuthority {
   appKey: string;
   publicApiUrl: string;
   actorId: string;
+  profileName: string;
 }
 
-/** The first owner-only gateway/actor binding is immutable, including across repeated preparation. */
+/** SECURITY: the first owner-only endpoint/actor/profile binding is immutable; legacy unbound retry files fail closed. */
 export async function saveManagedRecoveryAuthority(authority: ManagedRecoveryAuthority): Promise<void> {
-  const fields = ["schema", "operationId", "tenantId", "targetTenantId", "appKey", "publicApiUrl", "actorId"] as const;
+  const fields = ["schema", "operationId", "tenantId", "targetTenantId", "appKey", "publicApiUrl", "actorId", "profileName"] as const;
   if (authority.schema !== "eai.managed-recovery-authority.v1" || fields.some(field =>
     !Object.hasOwn(authority, field) || typeof authority[field] !== "string"
     || !authority[field].trim() || authority[field].length > 256)) {
@@ -25,6 +28,9 @@ export async function saveManagedRecoveryAuthority(authority: ManagedRecoveryAut
   requireManagedPublicApiUrl(authority.publicApiUrl);
   const path = managedDeployStatePath(authority.operationId);
   await prepareManagedDeployStateDirectory();
+  if (authority.profileName !== getActiveProfile()) {
+    throw new Error("Managed deployment original recovery authority belongs to a different EAI profile.");
+  }
   const retained = Object.fromEntries(fields.map(field => [field, authority[field]]));
   try {
     await createPrivateFileNoFollow(path, `${JSON.stringify(retained)}\n`);
@@ -53,6 +59,11 @@ export async function loadManagedRetryAuthority(
     || authority.targetTenantId !== targetTenantId || authority.appKey !== appKey) {
     fail("RETRY_BINDING_MISMATCH", "Retry state does not match the requested tenant, target tenant, and app.", "Use the exact original tenant and app values.");
   }
+  if (!Object.hasOwn(authority, "profileName") || typeof authority.profileName !== "string"
+    || !authority.profileName.trim() || authority.profileName.length > 256
+    || authority.profileName !== getActiveProfile()) {
+    fail("RETRY_PROFILE_BINDING_MISMATCH", "Protected retry authority does not match the original EAI profile.", "Select the original EAI profile; unbound legacy state requires a new source operation.");
+  }
   const publicApiUrl = requireManagedPublicApiUrl(authority.publicApiUrl);
   if (authority.schema === "eai.managed-recovery-authority.v1" && authority.actorId) {
     return { publicApiUrl, actorId: authority.actorId };
@@ -60,6 +71,7 @@ export async function loadManagedRetryAuthority(
   if (authority.schema === "eai.managed-deploy-state.v1") {
     const state = await loadManagedDeployState(operationId);
     if (state.tenantId !== tenantId || state.targetTenantId !== targetTenantId || state.appKey !== appKey
+      || state.profileName !== authority.profileName
       || requireManagedPublicApiUrl(state.publicApiUrl) !== publicApiUrl) {
       fail("RETRY_BINDING_MISMATCH", "Retry authority changed during its bound read.", "Restore the original recovery authority before retrying.");
     }

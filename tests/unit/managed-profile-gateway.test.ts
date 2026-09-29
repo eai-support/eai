@@ -1,4 +1,4 @@
-import { mkdtemp, mkdir, chmod, writeFile, rm, symlink, link } from 'node:fs/promises';
+import { mkdtemp, mkdir, chmod, writeFile, readFile, readdir, stat, rm, symlink, link } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
@@ -7,10 +7,10 @@ const fixture = vi.hoisted(() => ({ home: '', token: vi.fn(async () => 'fixture-
 vi.mock('node:os', async (original) => ({ ...await original<typeof import('node:os')>(), homedir: () => fixture.home }));
 vi.mock('node:fs', async (original) => {
   const actual = await original<typeof import('node:fs')>();
-  return { ...actual, openSync: vi.fn(actual.openSync), readSync: vi.fn(actual.readSync) };
+  return { ...actual, openSync: vi.fn(actual.openSync), readSync: vi.fn(actual.readSync), renameSync: vi.fn(actual.renameSync), writeFileSync: vi.fn(actual.writeFileSync) };
 });
 vi.mock('../../src/lib/auth.js', async (original) => ({ ...await original<typeof import('../../src/lib/auth.js')>(), getAccessToken: fixture.token }));
-import { openSync, readSync } from 'node:fs';
+import { openSync, readSync, renameSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
 import { setActiveProfile, captureProfileConfig, loadProfileConfig, saveProfileConfig } from '../../src/lib/profile.js';
 import { requireManagedPublicApiUrl } from '../../src/lib/managed-public-api.js';
 import { PlatformAPIClient, probePublicApiReachability } from '../../src/lib/api.js';
@@ -149,5 +149,104 @@ describe('explicit private managed gateway authority', () => {
     if (kind === 'oversized') await writeFile(path, 'x'.repeat(64 * 1024 + 1));
     setActiveProfile('selected'); expect(() => captureProfileConfig('selected')).toThrow('safe owner-controlled');
     expect(fixture.token).not.toHaveBeenCalled();
+  });
+
+  test('atomic profile update preserves unrelated settings, profiles and token bytes', async () => {
+    const path = join(fixture.home, '.eai/config.json');
+    const old = { unrelated: { preserve: true }, profiles: { opaque: { futureField: ['preserved'] }, selected: { ...config(), futureField: 'preserved' } } };
+    await writeFile(path, JSON.stringify(old), { mode: 0o600 });
+    const tokenPath = join(fixture.home, '.eai/tokens.json');
+    await writeFile(tokenPath, 'opaque fixture token bytes', { mode: 0o600 });
+    await saveProfileConfig('selected', config('https://updated.example.test'));
+    const current = JSON.parse(await readFile(path, 'utf8'));
+    expect(current.unrelated).toEqual(old.unrelated);
+    expect(current.profiles.opaque).toEqual(old.profiles.opaque);
+    expect(current.profiles.selected).toEqual({ ...config('https://updated.example.test'), futureField: 'preserved' });
+    expect(await readFile(tokenPath, 'utf8')).toBe('opaque fixture token bytes');
+    expect((await stat(path)).mode & 0o077).toBe(0);
+    expect(await readdir(join(fixture.home, '.eai'))).toEqual(expect.arrayContaining(['config.json', 'tokens.json']));
+    expect((await readdir(join(fixture.home, '.eai'))).some((name) => name.endsWith('.lock') || name.endsWith('.tmp'))).toBe(false);
+  });
+  test('new config initialization is owner-only and does not overwrite another profile', async () => {
+    await saveProfileConfig('first', config());
+    await saveProfileConfig('second', config('https://second.example.test'));
+    const current = JSON.parse(await readFile(join(fixture.home, '.eai/config.json'), 'utf8'));
+    expect(current.profiles).toEqual({ first: config(), second: config('https://second.example.test') });
+  });
+  test('preserving unknown fields cannot retain an omitted managed authorization', async () => {
+    await profiles({ selected: { ...config(), futureField: 'preserved' } });
+    await saveProfileConfig('selected', config(prod, null));
+    const current = JSON.parse(await readFile(join(fixture.home, '.eai/config.json'), 'utf8'));
+    expect(current.profiles.selected).toEqual({ ...config(prod, null), futureField: 'preserved' });
+    expect(Object.hasOwn(current.profiles.selected, 'managedDeploymentApiUrl')).toBe(false);
+  });
+  test.each(['{', 'null', '[]', '{"profiles":[]}', '{"profiles":null}', '{"profiles":{"selected":[]}}'])('invalid existing config is never reset by save: %s', async (raw) => {
+    const path = join(fixture.home, '.eai/config.json');
+    await writeFile(path, raw, { mode: 0o600 });
+    await expect(saveProfileConfig('selected', config())).rejects.toThrow();
+    expect(await readFile(path, 'utf8')).toBe(raw);
+    expect(await readdir(join(fixture.home, '.eai'))).toEqual(['config.json']);
+  });
+  test.each(['symlink', 'hardlink', 'writable', 'oversized'])('unsafe existing file is never overwritten by save: %s', async (kind) => {
+    await profiles({ selected: config() });
+    const path = join(fixture.home, '.eai/config.json');
+    if (kind === 'symlink') { await rm(path); await writeFile(join(fixture.home, 'other'), '{}'); await symlink(join(fixture.home, 'other'), path); }
+    if (kind === 'hardlink') await link(path, join(fixture.home, 'alias'));
+    if (kind === 'writable') await chmod(path, 0o666);
+    if (kind === 'oversized') await writeFile(path, 'x'.repeat(64 * 1024 + 1));
+    const original = await readFile(path);
+    await expect(saveProfileConfig('selected', config())).rejects.toThrow('owner-only');
+    expect(await readFile(path)).toEqual(original);
+    expect((await readdir(join(fixture.home, '.eai'))).some((name) => name.endsWith('.lock') || name.endsWith('.tmp'))).toBe(false);
+  });
+  test.each(['held', 'stale', 'symlink', 'hardlink'])('contention leaves the %s lock and config untouched without takeover', async (kind) => {
+    await profiles({ selected: config() });
+    const path = join(fixture.home, '.eai/config.json');
+    const lockPath = path + '.lock';
+    const lock = JSON.stringify({ schema: 'eai.profile-config-writer-lock.v1', nonce: 'foreign-fixture', pid: kind === 'stale' ? -1 : process.pid });
+    await writeFile(lockPath, lock, { mode: 0o600 });
+    if (kind === 'symlink') { await rm(lockPath); await symlink(path, lockPath); }
+    if (kind === 'hardlink') await link(lockPath, join(fixture.home, 'lock-alias'));
+    const original = await readFile(path); const lockOriginal = await readFile(lockPath);
+    await expect(saveProfileConfig('selected', config('https://updated.example.test'))).rejects.toThrow('locked or unsafe');
+    expect(await readFile(path)).toEqual(original); expect(await readFile(lockPath)).toEqual(lockOriginal);
+  });
+  test('serialization bound fails before replacing a valid existing config', async () => {
+    await profiles({ selected: config() });
+    const path = join(fixture.home, '.eai/config.json'); const original = await readFile(path);
+    await expect(saveProfileConfig('selected', { ...config(), authScope: 'x'.repeat(64 * 1024) })).rejects.toThrow('64 KiB');
+    expect(await readFile(path)).toEqual(original);
+    expect(await readdir(join(fixture.home, '.eai'))).toEqual(['config.json']);
+  });
+  test('a non-cooperating edit before the final check is rejected and preserved', async () => {
+    await profiles({ selected: config() });
+    const path = join(fixture.home, '.eai/config.json');
+    const foreign = JSON.stringify({ profiles: { external: { preserve: true } } });
+    const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const write = vi.mocked(writeFileSync);
+    write.mockImplementationOnce((...args) => {
+      actual.writeFileSync(...args);
+      write.mockImplementationOnce((...temporaryArgs) => {
+        actual.writeFileSync(...temporaryArgs); actual.writeFileSync(path, foreign);
+      });
+    });
+    await expect(saveProfileConfig('selected', config())).rejects.toThrow('changed during update');
+    expect(await readFile(path, 'utf8')).toBe(foreign);
+    expect(await readdir(join(fixture.home, '.eai'))).toEqual(['config.json']);
+  });
+  test.each(['inode', 'nonce'])('release refuses a replaced %s lock instead of deleting it', async (kind) => {
+    await profiles({ selected: config() });
+    const path = join(fixture.home, '.eai/config.json'); const lockPath = path + '.lock';
+    const foreign = JSON.stringify({ schema: 'eai.profile-config-writer-lock.v1', nonce: 'replacement-fixture', pid: process.pid });
+    const actual = await vi.importActual<typeof import('node:fs')>('node:fs');
+    vi.mocked(renameSync).mockImplementationOnce((...args) => {
+      const owned = JSON.parse(readFileSync(lockPath, 'utf8'));
+      expect(owned.schema).toBe('eai.profile-config-writer-lock.v1'); expect(owned.nonce).toEqual(expect.any(String));
+      actual.renameSync(...args);
+      if (kind === 'inode') unlinkSync(lockPath);
+      actual.writeFileSync(lockPath, foreign, { mode: 0o600 });
+    });
+    await expect(saveProfileConfig('selected', config())).rejects.toThrow('lock ownership changed');
+    expect(await readFile(lockPath, 'utf8')).toBe(foreign);
   });
 });

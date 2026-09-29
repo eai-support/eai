@@ -159,7 +159,7 @@ async function dispatchFixture(): Promise<{ directory: string; marker: string; s
   const directory = await realpath(await mkdtemp(join(tmpdir(), "managed-claim-advance-")));
   cleanup.push(directory);
   const state: ManagedDeployState = {
-    schema: "eai.managed-deploy-state.v1", tenantId: "tenant-1", targetTenantId: "tenant-1",
+    profileName: "default", schema: "eai.managed-deploy-state.v1", tenantId: "tenant-1", targetTenantId: "tenant-1",
     appKey: "planning-portal", operationId: "source-unknown-abc123", nonce: "one-time-nonce",
     repo: "enterprise/planning-portal", branch: "main", ref: "refs/heads/main", commitSha: "a".repeat(40),
     workflowPath: EAI_MANAGED_WORKFLOW_PATH, configHash: `sha256:${"b".repeat(64)}`,
