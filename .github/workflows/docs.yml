@@ -22,6 +22,12 @@ on:
       - "scripts/generate-docs-experience-assets.cjs"
       - "scripts/verify-docs-experience-assets.cjs"
   workflow_dispatch:
+    inputs:
+      publish_github_pages:
+        description: Publish the public GitHub Pages copy (not required for Website-hosted Dev)
+        required: true
+        default: false
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
@@ -146,6 +152,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_github_pages }}
         uses: actions/deploy-pages@v5
 
       - name: Mint website docs PR token
