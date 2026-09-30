@@ -11,6 +11,8 @@ const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const SOURCE_PATH_PATTERN = /^src\/generated\/[a-zA-Z0-9][a-zA-Z0-9/_-]*\.(?:ts|tsx|css)$/;
 const MAX_MANIFEST_BYTES = 2_000_000;
 const MAX_ARTIFACT_BYTES = 2_000_000;
+const MAX_MANAGED_FILES = 256;
+const MAX_MANAGED_TOTAL_BYTES = 32_000_000;
 const execOptions = { timeout: 10_000, maxBuffer: 128_000 };
 
 interface ManagedFile {
@@ -137,16 +139,25 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
   }
   const managed = manifest.managedFiles.map(managedFile);
   const byPath = new Map(managed.map((item) => [item.path, item]));
-  if (byPath.size !== managed.length || !Array.isArray(manifest.generatedFileScope) ||
+  if (managed.length > MAX_MANAGED_FILES || byPath.size !== managed.length || !Array.isArray(manifest.generatedFileScope) ||
     manifest.generatedFileScope.length !== managed.length ||
     new Set(manifest.generatedFileScope).size !== managed.length ||
     manifest.generatedFileScope.some((path) => typeof path !== 'string' || !byPath.has(path))) {
     throw new Error('Generated-source managed file scope is inconsistent.');
   }
+  const managedBytes = new Map<string, Buffer>();
+  let totalBytes = 0;
+  for (const item of managed) {
+    const bytes = await readBoundedFile(root, item.path, MAX_ARTIFACT_BYTES);
+    totalBytes += bytes.byteLength;
+    if (totalBytes > MAX_MANAGED_TOTAL_BYTES || fileDigest(bytes) !== item.checksum) {
+      throw new Error(`Generated demo managed file differs from the manifest: ${item.path}`);
+    }
+    managedBytes.set(item.path, bytes);
+  }
   const artifactEntry = byPath.get(ARTIFACT_PATH);
   if (!artifactEntry) throw new Error('Generated-source manifest does not anchor the v2 demo artifact.');
-  const artifactBytes = await readBoundedFile(root, ARTIFACT_PATH, MAX_ARTIFACT_BYTES);
-  if (fileDigest(artifactBytes) !== artifactEntry.checksum) throw new Error('Generated demo artifact differs from the managed source manifest.');
+  const artifactBytes = managedBytes.get(ARTIFACT_PATH)!;
   const artifact = parseJson(artifactBytes, ARTIFACT_PATH);
   if (hasGeneratedDemo && digest(artifact) !== (generatedDemo as Record<string, unknown>).artifactDigest) {
     throw new Error('Generated demo artifact digest differs from the accepted manifest.');
@@ -184,7 +195,7 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     sourcePaths.add(file.path);
     const entry = byPath.get(file.path);
     if (!entry || entry.encoding !== 'utf8') throw new Error(`Generated demo source is not anchored by the manifest: ${file.path}`);
-    const bytes = await readBoundedFile(root, file.path, 128_000);
+    const bytes = managedBytes.get(file.path)!;
     if (bytes.toString('utf8') !== file.content || fileDigest(bytes) !== entry.checksum) {
       throw new Error(`Generated demo source differs from the accepted artifact: ${file.path}`);
     }

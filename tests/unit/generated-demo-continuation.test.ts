@@ -12,6 +12,7 @@ import { planGoferRefresh } from '../../src/lib/gofer-refresh.js';
 const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 const appSource = 'export default function GeneratedApp() { return null; }\n';
+const workflowSource = 'name: Generated demo\n';
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;
@@ -73,6 +74,7 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; ar
   const managedFiles = [
     { path: 'src/generated/app.tsx', checksum: hash(appSource), encoding: 'utf8', owner: 'admin-portal-generated' },
     { path: 'src/eai.config/generated-demo.json', checksum: hash(artifactContent), encoding: 'utf8', owner: 'admin-portal-generated' },
+    { path: '.github/workflows/eai-app.yml', checksum: hash(workflowSource), encoding: 'utf8', owner: 'admin-portal-generated' },
   ];
   const manifest: Record<string, unknown> = {
     schemaVersion: 'eai.generated_app_manifest.v1', sourceMode: 'admin-portal-generated',
@@ -87,6 +89,7 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; ar
   };
   await write(root, 'src/generated/app.tsx', appSource);
   await write(root, 'src/eai.config/generated-demo.json', artifactContent);
+  await write(root, '.github/workflows/eai-app.yml', workflowSource);
   await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
   await git(root, 'init', '-q');
   await git(root, 'remote', 'add', 'origin', 'git@github.com:eai3438-customer-van/fleet-demo.git');
@@ -126,7 +129,13 @@ describe('NCB demo continuation', () => {
     await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('previewFixtures digest');
     await git(root, 'checkout', '--', '.');
     await write(root, 'src/generated/app.tsx', `${appSource}// drift\n`);
-    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('source differs');
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('managed file differs');
+  });
+
+  it('rejects a changed deployment workflow even when the demo source is intact', async () => {
+    const { root } = await fixture();
+    await write(root, '.github/workflows/eai-app.yml', `${workflowSource}# unreviewed change\n`);
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('.github/workflows/eai-app.yml');
   });
 
   it('rejects a generated source that the managed manifest does not anchor', async () => {
