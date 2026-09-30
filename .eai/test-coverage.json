@@ -91,12 +91,15 @@
         },
         {
           "id": "ncb-demo-cli-continuation",
-          "description": "Read-only CLI handoff validates the cloned generated-demo artifact, inspects one user-authorized published app Object Type as a non-publishing operational candidate, and preserves NCB source ownership; Gofer refresh must fail before modifying an NCB-owned manifest.",
+          "description": "CLI continuation validates the cloned generated-demo artifact, inspects one user-authorized published app Object Type, and prepares a customer draft PR only from a signed operational reservation with exact managed source and reviewed workflow bytes. Completion reads the merged PR and waits for AdminAPI's post-ACTIVE signed receipt. All operational admission flags remain off pending qualification; Gofer refresh must fail before modifying an NCB-owned manifest.",
           "owned_paths": [
             "src/commands/continue-demo.ts",
             "src/commands/vertical.ts",
             "src/lib/generated-demo-continuation.ts",
             "src/lib/generated-demo-operational.ts",
+            "src/lib/generated-demo-operational-pr.ts",
+            "src/lib/generated-demo-operational-import.ts",
+            "resources/generated-operational/**",
             "src/lib/project-manifest.ts",
             "src/lib/gofer-refresh.ts",
             "tests/unit/generated-demo-continuation.test.ts",

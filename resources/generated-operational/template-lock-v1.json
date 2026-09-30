@@ -1,0 +1,63 @@
+{
+  "templateCommit": "f735346817f5d92737617d01d24953d8ab58e895",
+  "nullConfigChecksum": "sha256:38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
+  "files": {
+    "src/lib/generated-demo/operational-contract.ts": {
+      "baselineChecksum": "sha256:4f04f5eb13d1b8c43c57a6074969d02b5f7da14997b13a520ac5d94c9a0e3e2f",
+      "targetChecksum": "sha256:843f99fa53e2f476ea8c405a754b6306a92cc288b1d5512ebb575adaaea75c7e",
+      "previousTargetChecksum": "sha256:96e0b0c29acd0a7c46e801428a398db171c1ec84fc08531b03306a996604cdc6"
+    },
+    "src/lib/generated-demo/operational-runtime.ts": {
+      "baselineChecksum": "sha256:d11fe5bdffc090d96129f4e3a0881b791585a95c213fd19c4e931494f7b6a810",
+      "targetChecksum": "sha256:6ac631c5fa8a3fe36a7d12a7658475829d95aa0ea9cca2b738f04ca3eee061d5",
+      "previousTargetChecksum": "sha256:d11fe5bdffc090d96129f4e3a0881b791585a95c213fd19c4e931494f7b6a810"
+    },
+    "src/lib/generated-demo/operational-read.ts": {
+      "baselineChecksum": "sha256:af0d7ba5de12f8958b66565afc0be6f503f6fe69601639313f8ff57595fe6fda",
+      "targetChecksum": "sha256:629c99c294a5ac3455be8154fa36d00eeec0c34d281f3c3c5828cf30bc9035d8",
+      "previousTargetChecksum": "sha256:b6249e2bf4b2c5f25001c882aa8763a6bcebafd620ad2b006ba3bfded36c7c58"
+    },
+    "src/lib/generated-demo/operational-bridge.ts": {
+      "baselineChecksum": "sha256:5d87be780f2348f74a45e5c98263efcef8d297ca0b01201ec781f87ee9993991",
+      "targetChecksum": "sha256:3bc8edf83e5c1b8c32d77f33288819e31825c739b2297bb4c95e472f450a4ed7"
+    },
+    "src/app/api/eai/generated-operational/route.ts": {
+      "baselineChecksum": "sha256:3d57edfb2c6da84940f7b24739d9e043190b09547b5f267e7a17a6ef0702087c",
+      "targetChecksum": "sha256:62e6a8fcc10ff794549af9ac44a5b9dea10f4cb44c5e73fcfca3d85c9f9271ba"
+    },
+    "src/components/generated-demo/demo-host.tsx": {
+      "baselineChecksum": "sha256:1541c6c476666c7fa655c6c4fbfa7aca3d3ada2a0c5427d0a9c9782326307c8e",
+      "targetChecksum": "sha256:9081602547fe1dc4645590cfac5f14871a275914174ca89353f6bcc055f3b48c",
+      "previousTargetChecksum": "sha256:c355687d820c04992219561dfb2dd1554ac3acc32346dee69ccbf6b3c5fd89a1"
+    },
+    "src/components/generated-demo/demo-app.tsx": {
+      "baselineChecksum": "sha256:d711e4745c4d93971565799d3589abbd922a251fb25bb2204e71219e1b67951f",
+      "targetChecksum": "sha256:2dec363b7bb867f86052b1ad6ff2f81dee69b022cb2c11ebb1c6b97aa7800678"
+    },
+    "src/components/generated-demo/client-only-demo.tsx": {
+      "baselineChecksum": "sha256:61996f0125984745f3f2dc9b1bd9e42f391763d4a325124170be9acba4d3ebb9",
+      "targetChecksum": "sha256:9cc27635895b7052010546b7a3f3b1e137bee49030d4317365c6c0ba76942adf"
+    },
+    "src/app/eai-demo-frame/page.tsx": {
+      "baselineChecksum": "sha256:2fe393649690c5243f20d4c39d2e314910176b2a028ee395277bbade4885bbfa",
+      "targetChecksum": "sha256:fd682debca33c0952cfac9df3cdbe71a3e7402cab273df13b1af7746dc9e1c07"
+    },
+    "src/app/page.tsx": {
+      "baselineChecksum": "sha256:bcda45c00ff6256990bbe05d388d0302dca4e9943a25721f64732598d96fd7af",
+      "targetChecksum": "sha256:28847e0ad9518940110c9c2fab53275b83af99f0c07b21dd33863731a23c1ee5",
+      "previousTargetChecksum": "sha256:cac9d05c7573b7b7c92da8cdb1eb737a93e1b31754da4e59a24e0a17999aadc0"
+    },
+    "src/lib/generated-demo/operational-create.ts": {
+      "baselineChecksum": null,
+      "targetChecksum": "sha256:43cc6675e1e2b0e566fc443f3bb1c166b2a9b5a48576144d09f28676926d42e2"
+    },
+    "src/app/api/eai/generated-operational/create/route.ts": {
+      "baselineChecksum": null,
+      "targetChecksum": "sha256:fb2f3d5a67b5c91060fa448ecb2175200cc306e962d3a982f381d7546e90f3cd"
+    },
+    "scripts/validate-generated-demo.cjs": {
+      "baselineChecksum": "sha256:c4019bb1d93d9f89c1e4ebd27353216da7517d8d18a3c05a30dca4e3d48fefc2",
+      "targetChecksum": "sha256:4815c4c33e107711328c0a8f81f22732a47a9d7fc4a2a2abb547b0cd5405db76"
+    }
+  }
+}

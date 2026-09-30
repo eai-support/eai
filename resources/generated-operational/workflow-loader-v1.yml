@@ -1,0 +1,46 @@
+      - name: Load generated operational source operation
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const operation = JSON.parse(fs.readFileSync('__EAI_SOURCE_OPERATION_PATH__', 'utf8'));
+          const keys = [
+            'acceptedArtifactDigest', 'activeContainerAppName', 'activeDeploymentId',
+            'activeRevisionName', 'activeUrl', 'appArtifactMode', 'appKey', 'configHash',
+            'draftId', 'environment', 'githubInstallationId', 'operationId',
+            'operationalBindingDigest', 'predecessorIntegrityHash', 'predecessorOperationId',
+            'runtimeSecretReferencesDigest', 'schemaVersion', 'sourceRepositoryId',
+            'sourceRepositoryNodeId', 'tenantId',
+          ];
+          if (operation.schemaVersion !== 'eai.generated_source_operation.v2' ||
+              operation.appArtifactMode !== 'app-v2-operational' ||
+              JSON.stringify(Object.keys(operation).sort()) !== JSON.stringify(keys.sort())) {
+            throw new Error('The operational source operation is not the reserved v2 contract.');
+          }
+          for (const [key, value] of Object.entries(operation)) {
+            if (key === 'sourceRepositoryId') {
+              if (!Number.isSafeInteger(value) || value < 1) throw new Error('Invalid repository ID.');
+            } else if (typeof value !== 'string' || !value || /[\r\n]/.test(value)) {
+              throw new Error('Invalid operational source operation field: ' + key);
+            }
+          }
+          const base = process.env.EAI_WORKFLOW_EVIDENCE_BASE_URL;
+          const url = new URL(
+            'v4/platform/tenants/' + encodeURIComponent(operation.tenantId) +
+            '/apps/' + encodeURIComponent(operation.appKey) +
+            '/environments/' + encodeURIComponent(operation.environment) +
+            '/source-updates/' + encodeURIComponent(operation.operationId) + '/workflow-evidence',
+            base && base.endsWith('/') ? base : base + '/',
+          );
+          if (url.protocol !== 'https:' || !base) throw new Error('Protected evidence URL is invalid.');
+          const variables = {
+            EAI_APP_KEY: operation.appKey,
+            EAI_TENANT_ID: operation.tenantId,
+            EAI_SOURCE_OPERATION_ID: operation.operationId,
+            EAI_CONFIG_HASH: operation.configHash,
+            EAI_GITHUB_INSTALLATION_ID: operation.githubInstallationId,
+            EAI_WORKFLOW_EVIDENCE_URL: url.toString(),
+          };
+          for (const [name, value] of Object.entries(variables)) {
+            fs.appendFileSync(process.env.GITHUB_ENV, name + '=' + value + '\n');
+          }
+          NODE

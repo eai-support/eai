@@ -11,7 +11,7 @@ const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
 const SOURCE_PATH_PATTERN = /^src\/generated\/[a-zA-Z0-9][a-zA-Z0-9/_-]*\.(?:ts|tsx|css)$/;
 const MAX_MANIFEST_BYTES = 2_000_000;
 const MAX_ARTIFACT_BYTES = 2_000_000;
-const MAX_MANAGED_FILES = 256;
+const MAX_MANAGED_FILES = 511;
 const MAX_MANAGED_TOTAL_BYTES = 32_000_000;
 const execOptions = { timeout: 10_000, maxBuffer: 128_000 };
 
@@ -43,6 +43,26 @@ export interface GeneratedDemoContinuation {
   readonly sampleCollectionCount: number;
   readonly simulatedActionCount: number;
   readonly adapterStatus: 'demo-only';
+}
+
+/** Read the exact accepted definition again before preparing a live binding. */
+export async function readAcceptedObjectTypeDefinition(
+  projectPath: string,
+  inspection: GeneratedDemoContinuation,
+  slug: string,
+): Promise<Record<string, unknown>> {
+  const root = await realpath(resolve(projectPath));
+  const artifact = JSON.parse((await readBoundedFile(root, ARTIFACT_PATH, MAX_ARTIFACT_BYTES)).toString('utf8')) as unknown;
+  if (!isRecord(artifact) || digest(artifact) !== inspection.acceptedArtifactDigest ||
+    !Array.isArray(artifact.objectTypeDefinitions) ||
+    digest(artifact.objectTypeDefinitions) !== inspection.artifactDigests.objectTypeDefinitions) {
+    throw new Error('The accepted Object Type definition changed after source inspection.');
+  }
+  const matching = artifact.objectTypeDefinitions.filter(
+    (value: unknown) => isRecord(value) && value.slug === slug,
+  );
+  if (matching.length !== 1) throw new Error('The accepted Object Type selection is ambiguous.');
+  return matching[0] as Record<string, unknown>;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
