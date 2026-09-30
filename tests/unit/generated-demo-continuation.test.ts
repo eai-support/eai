@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { inspectGeneratedDemoContinuation } from '../../src/lib/generated-demo-continuation.js';
+import { planGeneratedDemoReadOnlyBinding } from '../../src/lib/generated-demo-operational.js';
 import { assertCliMayWriteProjectManifest, saveProjectManifest } from '../../src/lib/project-manifest.js';
 import { planGoferRefresh } from '../../src/lib/gofer-refresh.js';
 
@@ -63,7 +64,7 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; ar
       collections: { vehicles: [{ id: 'sample-1', name: 'Sample car' }] },
       actions: { reserve: { effect: 'session-local', message: 'Simulated booking' } },
     },
-    objectTypeDefinitions: [{ name: 'Vehicle', slug: 'vehicle', status: 'draft' }],
+    objectTypeDefinitions: [{ name: 'Vehicle', slug: 'vehicle', status: 'published' }],
   };
   const artifact: Record<string, unknown> = {
     schemaVersion: 'eai.generated_app_artifact.v2',
@@ -113,6 +114,8 @@ describe('NCB demo continuation', () => {
       appArtifactMode: 'app-v2-demo', acceptedArtifactDigest: hash(`${canonical(artifact)}\n`),
       runtimeBindingRecorded: false,
       objectTypeDefinitionCount: 1, sampleCollectionCount: 1, simulatedActionCount: 1,
+      proposedObjectTypes: [{ name: 'Vehicle', slug: 'vehicle', status: 'published' }],
+      fixtureCollections: ['vehicles'],
     });
     expect(result.commitSha).toMatch(/^[a-f0-9]{40}$/);
     expect(await readFile(join(root, '.eai-manifest.json'))).toEqual(before);
@@ -130,6 +133,45 @@ describe('NCB demo continuation', () => {
     await git(root, 'checkout', '--', '.');
     await write(root, 'src/generated/app.tsx', `${appSource}// drift\n`);
     await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('managed file differs');
+  });
+
+  it('plans one app-owned read without writing an operational binding', async () => {
+    const { root } = await fixture();
+    const before = await readFile(join(root, '.eai-manifest.json'));
+    const inspection = await inspectGeneratedDemoContinuation(root);
+    const tenantId = 'e2ff83b7-4635-6838-6de6-827484a6b01c';
+    const proposal = {
+      tenantId, appKey: 'fleet-demo', status: 'ready', validationErrors: [],
+      objectTypes: [{
+        name: 'Vehicle', slug: 'vehicle', status: 'published',
+        provisioningHints: { ncbOwner: { appKey: 'fleet-demo', enrollmentId: 'app-1' } },
+      }],
+      publishedObjectTypes: ['Vehicle'],
+    };
+    const plan = planGeneratedDemoReadOnlyBinding(inspection, {
+      tenantId, fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25,
+    }, proposal);
+    expect(plan).toMatchObject({
+      status: 'blocked-pending-operational-qualification',
+      config: {
+        tenantId, appKey: 'fleet-demo', actionsMode: 'simulated',
+        readBindings: [{ fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25 }],
+      },
+    });
+    expect(await readFile(join(root, '.eai-manifest.json'))).toEqual(before);
+    await expect(readFile(join(root, 'src/eai.config/generated-operational.json'))).rejects.toThrow();
+    expect(() => planGeneratedDemoReadOnlyBinding(inspection, {
+      tenantId, fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25,
+    }, {
+      ...proposal,
+      objectTypes: [{
+        name: 'Vehicle', slug: 'vehicle', status: 'published',
+        provisioningHints: { ncbOwner: { appKey: 'other-app', enrollmentId: 'app-2' } },
+      }],
+    })).toThrow('not owned');
+    expect(() => planGeneratedDemoReadOnlyBinding(inspection, {
+      tenantId, fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 51,
+    }, proposal)).toThrow('1 to 50 rows');
   });
 
   it('rejects a changed deployment workflow even when the demo source is intact', async () => {

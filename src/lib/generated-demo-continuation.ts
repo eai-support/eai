@@ -34,6 +34,12 @@ export interface GeneratedDemoContinuation {
   readonly acceptedArtifactDigest: string | null;
   readonly artifactDigests: Readonly<Record<'appDefinition' | 'sourceBundle' | 'previewFixtures' | 'objectTypeDefinitions', string>>;
   readonly objectTypeDefinitionCount: number;
+  readonly proposedObjectTypes: ReadonlyArray<{
+    readonly name: string;
+    readonly slug: string;
+    readonly status: 'published';
+  }>;
+  readonly fixtureCollections: readonly string[];
   readonly sampleCollectionCount: number;
   readonly simulatedActionCount: number;
   readonly adapterStatus: 'demo-only';
@@ -180,6 +186,17 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
   if (definitions.some((item) => ['sampleRows', 'fixtureRows', 'seedData', 'records'].some((key) => key in item))) {
     throw new Error('Object Type definitions must not contain sample records.');
   }
+  const proposedObjectTypes = definitions.map((item) => {
+    if (typeof item.name !== 'string' || !item.name ||
+      typeof item.slug !== 'string' || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(item.slug) ||
+      item.status !== 'published') {
+      throw new Error('Generated demo Object Type proposal has an invalid identifier or status.');
+    }
+    return { name: item.name, slug: item.slug, status: 'published' as const };
+  });
+  if (new Set(proposedObjectTypes.map((item) => item.slug)).size !== proposedObjectTypes.length) {
+    throw new Error('Generated demo Object Type proposals contain duplicate slugs.');
+  }
   const digestNames = ['appDefinition', 'sourceBundle', 'previewFixtures', 'objectTypeDefinitions'] as const;
   for (const name of digestNames) {
     if (typeof digests[name] !== 'string' || !SHA256_PATTERN.test(digests[name]) || digests[name] !== digest(artifact[name])) {
@@ -220,6 +237,8 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     acceptedArtifactDigest: hasGeneratedDemo ? (generatedDemo as Record<string, string>).artifactDigest : null,
     artifactDigests: Object.fromEntries(digestNames.map((name) => [name, digests[name]])) as GeneratedDemoContinuation['artifactDigests'],
     objectTypeDefinitionCount: definitions.length,
+    proposedObjectTypes,
+    fixtureCollections: Object.keys(fixtures.collections).sort(),
     sampleCollectionCount: Object.keys(fixtures.collections).length,
     simulatedActionCount: Object.keys(fixtures.actions).length,
     adapterStatus: 'demo-only',
