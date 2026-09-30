@@ -191,14 +191,15 @@ export function upgradeGeneratedWorkflow(
   const evidenceJob = original.slice(evidenceStart, reviewStart);
   if (!original.startsWith('name: EAI Generated App\n') || !original.includes('api://enterprise-ai-publicapi/generated-app') ||
     !original.includes('id-token: write') || !original.includes('persist-credentials: false') ||
-    !original.includes('actions/download-artifact@v4') || !original.includes('docker/build-push-action@v6') ||
+    !original.includes('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093') ||
+    !original.includes('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8') ||
     !original.includes('      - name: Verify GitHub run, source and image artifact\n') ||
     validationStart < 0 || evidenceStart <= validationStart || reviewStart <= evidenceStart ||
-    !validationJob.includes('actions/checkout@v4') ||
-    !validationJob.includes('docker/build-push-action@v6') ||
+    !validationJob.includes('actions/checkout@11d5960a326750d5838078e36cf38b85af677262') ||
+    !validationJob.includes('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8') ||
     /id-token:\s*write|EAI_ACCESS_TOKEN|ACTIONS_ID_TOKEN_REQUEST_TOKEN/.test(validationJob) ||
     !evidenceJob.includes('id-token: write') ||
-    !evidenceJob.includes('actions/download-artifact@v4') ||
+    !evidenceJob.includes('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093') ||
     /actions\/checkout@|docker\/build-push-action@|\bnpm\s+(?:ci|install|run)\b/.test(evidenceJob)) {
     throw new Error('Generated workflow is not the vetted source-review template.');
   }

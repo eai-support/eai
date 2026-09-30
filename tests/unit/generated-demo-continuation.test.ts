@@ -136,14 +136,14 @@ describe('NCB demo continuation', () => {
       'env:', '  EAI_GITHUB_OIDC_AUDIENCE: api://enterprise-ai-publicapi/generated-app',
       '  EAI_DEPLOYMENT_ENVIRONMENT: preview', '  EAI_RELEASE_CHANNEL: preview',
       'jobs:', '  validate-generated-source:', '    steps:',
-      '      - name: Checkout', '        uses: actions/checkout@v4',
+      '      - name: Checkout', '        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
       '        with:', '          persist-credentials: false',
       '      - name: Load generated source operation', '        run: old source-preparations/',
       '      - name: Prepare source evidence input', '        run: echo source',
-      '      - name: Build runtime image archive', '        uses: docker/build-push-action@v6',
+      '      - name: Build runtime image archive', '        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
       '  submit-eai-evidence:', '    environment: preview',
       '    permissions:', '      id-token: write', '    steps:',
-      '      - name: Download exact runtime image artifact', '        uses: actions/download-artifact@v4',
+      '      - name: Download exact runtime image artifact', '        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093',
       '      - name: Load generated source operation', '        run: old source-preparations/',
       '      - name: Verify GitHub run, source and image artifact', '        run: echo verified',
       '      - name: Submit validated Configurator Plus handover evidence', '        run: old source-unknown/workflow-evidence',
@@ -161,6 +161,9 @@ describe('NCB demo continuation', () => {
     expect(upgraded).not.toContain('__EAI_SOURCE_OPERATION_PATH__');
     expect(upgraded).not.toContain('complete-eai-managed-review:');
     expect(() => upgradeGeneratedWorkflow(workflow.replace('id-token: write', 'id-token: none'), loader, evidence, 'dev'))
+      .toThrow('vetted source-review template');
+    expect(() => upgradeGeneratedWorkflow(workflow.replace('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093',
+      'actions/download-artifact@v4'), loader, evidence, 'dev'))
       .toThrow('vetted source-review template');
     expect(() => upgradeGeneratedWorkflow(workflow.replace('      - name: Checkout',
       '      id-token: write\n      - name: Checkout'), loader, evidence, 'dev'))
