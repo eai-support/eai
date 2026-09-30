@@ -34,6 +34,7 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { continueDemoCommand } from './continue-demo.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -679,6 +680,8 @@ export const appCommand = new Command('app')
   .description('Manage apps under the active company workspace');
 
 export const verticalCommand = appCommand;
+
+verticalCommand.addCommand(continueDemoCommand);
 
 verticalCommand
   .command('list')

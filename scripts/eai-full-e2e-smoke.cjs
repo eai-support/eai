@@ -66,6 +66,7 @@ const TRACEABILITY_BASE = [
   ['eai app create', 'create', 'covered-by-init', 'The scaffold path calls the same app creation API; direct extra app creation is opt-in to avoid orphaned apps.'],
   ['eai app delete', 'delete', 'covered-by-cli', 'Exact-confirmation and verified receipt behavior are covered by integration tests; deployed destructive proof runs only on the disposable lifecycle harness.'],
   ['eai app connect-existing', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids overwriting source metadata on a dedicated tenant app.'],
+  ['eai app continue-demo', 'read', 'covered-by-cli', 'Read-only local integrity and lineage checks are covered by a generated-clone fixture; release smoke has no accepted NCB clone.'],
   ['eai app adopt-observed', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids marking app infrastructure observed without a managed redeploy path.'],
   ['eai app workflow-setup', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids issuing one-time source-unknown nonce state.'],
   ['eai app workflow-evidence', 'update', 'covered-by-cli', 'Command contract is covered by integration tests; live smoke avoids consuming source-unknown nonce state.'],
@@ -301,6 +302,9 @@ const SMOKE_CALLS = {
   ],
   'eai app connect-existing': [
     'eai app connect-existing <app-key> --tenant-id <workspace-id> --repo <owner/repo> --repo-url https://github.com/<owner>/<repo> --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
+  ],
+  'eai app continue-demo': [
+    'eai app continue-demo --path <generated-clone> --format json',
   ],
   'eai app adopt-observed': [
     'eai app adopt-observed <app-key> --tenant-id <workspace-id> --repo <owner/repo> --url https://app.example.test --environment production --branch main --workflow .github/workflows/eai-app.yml --ref refs/heads/main --commit <sha> --config src/eai.config/index.ts --runtime src/eai.runtime.ts --format json',
@@ -804,6 +808,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Updates app source metadata',
     cleanupMechanism: 'No source registration unlink command yet; command is covered by mocked integration tests',
     cleanupVerified: 'No - live smoke does not mutate source metadata',
+  },
+  'eai app continue-demo': {
+    createsExternalArtifact: 'No - verifies local generated-source integrity and lineage',
+    cleanupMechanism: 'Not required; read-only',
+    cleanupVerified: 'Yes - no mutation applied',
   },
   'eai app adopt-observed': {
     createsExternalArtifact: 'Updates app source metadata and observed deployment status',

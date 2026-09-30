@@ -90,6 +90,30 @@
           ]
         },
         {
+          "id": "ncb-demo-cli-continuation",
+          "description": "Read-only CLI handoff validates the cloned generated-demo artifact and preserves NCB source ownership; Gofer refresh must fail before modifying an NCB-owned manifest.",
+          "owned_paths": [
+            "src/commands/continue-demo.ts",
+            "src/commands/vertical.ts",
+            "src/lib/generated-demo-continuation.ts",
+            "src/lib/project-manifest.ts",
+            "src/lib/gofer-refresh.ts",
+            "tests/unit/generated-demo-continuation.test.ts",
+            "package.json"
+          ],
+          "required_repo_tests": [
+            "tests/unit/generated-demo-continuation.test.ts"
+          ],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["eai-cli"],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
+            }
+          ]
+        },
+        {
           "id": "eai-cli-command-contracts",
           "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
           "owned_paths": [
