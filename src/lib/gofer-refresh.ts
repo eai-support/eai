@@ -8,6 +8,7 @@ import {
   GOFER_RESOURCE_MAPPINGS,
   installClaudeHooks,
   renderGoferManagedTextFiles,
+  readGoferResourceVersion,
   resolveGoferResourcesPath,
   validateGoferResourceOverride,
   updateGitignore,
@@ -401,6 +402,13 @@ export async function readGoferBundleMetadata(): Promise<GoferBundleMetadata> {
 async function collectBundledCandidates(resourcesRoot: string): Promise<ManagedCandidate[]> {
   const candidates: ManagedCandidate[] = [];
   await assertCompleteGoferResources(resourcesRoot);
+
+  candidates.push({
+    relativePath: '.specify/.gofer-version',
+    contents: Buffer.from(`${await readGoferResourceVersion(resourcesRoot)}\n`, 'utf-8'),
+    source: 'bundled',
+    executable: false,
+  });
 
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
     const sourceRoot = join(resourcesRoot, mapping.sourceSubdirectory);
