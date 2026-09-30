@@ -38,6 +38,7 @@ const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
 export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
 export const MANAGED_PUBLIC_REQUEST_TIMEOUT_MS = 30_000;
+export const INIT_APP_CREATE_REQUEST_TIMEOUT_MS = 90_000;
 const managedResponseSignals = new WeakMap<Response, AbortSignal>();
 const managedTimeoutReasons = new WeakSet<object>();
 
@@ -967,8 +968,13 @@ export class PlatformAPIClient {
     body?: unknown,
     params?: Record<string, unknown>,
     initAuthority?: InitRequestAuthorityObserver,
+    initRequestCeilingMs?: number,
   ): Promise<Response> {
-    const signal = initAuthority ? this.managedRequestSignal() : undefined;
+    const signal = initAuthority
+      ? (initRequestCeilingMs === undefined
+        ? this.managedRequestSignal()
+        : this.boundedManagedRequestSignal(initRequestCeilingMs))
+      : undefined;
     const headers = signal ? await awaitManagedRequestDeadline(signal, this.initReceiptHeaders(initAuthority, signal))
       : await this.headers();
     signal?.throwIfAborted();
@@ -987,9 +993,14 @@ export class PlatformAPIClient {
     return response;
   }
 
-  /** Portal uploads use the same internal ceiling and existing command budget as PublicAPI. */
+  /** Shared managed requests keep the 30s ceiling. */
   managedRequestSignal(timeoutMs?: number): AbortSignal {
-    const budgets = [MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    return this.boundedManagedRequestSignal(MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, timeoutMs);
+  }
+
+  /** The init create POST may use a longer ceiling; client and per-read limits can only tighten it. */
+  private boundedManagedRequestSignal(ceilingMs: number, timeoutMs?: number): AbortSignal {
+    const budgets = [ceilingMs,
       this.requestOptions.managedRequestTimeoutMs, timeoutMs]
       .filter((value): value is number => value !== undefined);
     if (budgets.some((value) => !Number.isSafeInteger(value) || value < 1)) {
@@ -1703,6 +1714,7 @@ export class PlatformAPIClient {
       data,
       undefined,
       initAuthority,
+      INIT_APP_CREATE_REQUEST_TIMEOUT_MS,
     );
   }
 

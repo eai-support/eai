@@ -46,6 +46,7 @@ import {
   promptForTenantFromHierarchy,
 } from "../lib/tenant-hierarchy.js";
 import {
+  isManagedPublicRequestTimeout,
   parseApiError,
   readManagedPublicResponseText,
   PlatformAPIClient,
@@ -110,6 +111,16 @@ export function describeAppCreationFailure(error: ParsedApiError): string {
     `Getting started: ${ONBOARDING_DOCS_URL}`,
   );
   return lines.join("\n");
+}
+
+/** An aborted create can have committed server-side, so recovery must inspect before any retry. */
+export function describeAppCreationTimeout(appKey: string, companyTenantId: string): string {
+  return [
+    `App creation timed out waiting for ${appKey} in workspace ${companyTenantId}. The platform may already have created it; no second create request was sent.`,
+    "Check the exact workspace and app before trying again:",
+    `eai app list --tenant-id ${companyTenantId} --format json [read-only]`,
+    `If one exact ${appKey} enrollment exists, select that existing app with --app-key ${appKey} and a fresh init receipt. If none exists, retry creation with a fresh receipt.`,
+  ].join("\n");
 }
 
 export function describeCreateFlowFailure(error: unknown): string {
@@ -2044,8 +2055,17 @@ async function createTenantAppForInit(
     source: "eai-cli",
     usecase: "generic" as const,
   };
-  const res = receipt ? await client.createTenantApp(companyTenantId, createRequest, receipt.captureAuthority)
-    : await client.createTenantApp(companyTenantId, createRequest);
+  let res: Response;
+  try {
+    res = receipt ? await client.createTenantApp(companyTenantId, createRequest, receipt.captureAuthority)
+      : await client.createTenantApp(companyTenantId, createRequest);
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) {
+      out.error(describeAppCreationTimeout(appSeed.slug, companyTenantId));
+      process.exit(1);
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const error = await parseApiError(res);
@@ -2053,7 +2073,16 @@ async function createTenantAppForInit(
     process.exit(1);
   }
 
-  const payload = (receipt ? JSON.parse(await readManagedPublicResponseText(res)) : await res.json()) as Record<string, unknown>;
+  let payload: Record<string, unknown>;
+  try {
+    payload = (receipt ? JSON.parse(await readManagedPublicResponseText(res)) : await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) {
+      out.error(describeAppCreationTimeout(appSeed.slug, companyTenantId));
+      process.exit(1);
+    }
+    throw error;
+  }
   if (receipt) await receipt.acknowledge(acknowledgedCreatedAppBinding(payload, appSeed.slug, companyTenantId, immediateParentTenantId));
   const childTenant = payload.childTenant;
   const childTenantId =

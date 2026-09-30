@@ -13,6 +13,7 @@ import inquirer from "inquirer";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
 import {
   describeAppCreationFailure,
+  describeAppCreationTimeout,
   describeCloneFailure,
   describeCreateFlowFailure,
   describeGitCommitFailure,
@@ -1690,6 +1691,18 @@ describe("describeAppCreationFailure", () => {
 
     expect(message).toContain("eai errors list");
     expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
+describe("describeAppCreationTimeout", () => {
+  test("does not invite a second create after an ambiguous timeout", () => {
+    const message = describeAppCreationTimeout("incident-intake", "tenant-one");
+
+    expect(message).toContain("may already have created it");
+    expect(message).toContain("no second create request was sent");
+    expect(message).toContain("eai app list --tenant-id tenant-one --format json [read-only]");
+    expect(message).toContain("--app-key incident-intake");
+    expect(message).toContain("fresh init receipt");
   });
 });
 

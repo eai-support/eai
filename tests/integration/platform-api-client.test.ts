@@ -4,7 +4,7 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
@@ -743,6 +743,50 @@ describe('PlatformAPIClient', () => {
       childTenantDisplayName: 'IJK',
       source: 'eai-cli',
     })
+  })
+
+  test('gives only receipt-bound app creation a 90s ceiling without retrying the POST', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'exact-create-actor' })).toString('base64url')}.signature`
+    vi.mocked(getAccessToken).mockResolvedValueOnce(token).mockResolvedValueOnce(token)
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    const client = new PlatformAPIClient('http://localhost:18000', 'tenant-parent')
+    const capture = vi.fn()
+
+    await client.createTenantApp('tenant-parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    await client.listResources('tenant-vertical-enrollment', { where: { verticalKey: 'app' } }, capture)
+
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([
+      INIT_APP_CREATE_REQUEST_TIMEOUT_MS,
+      MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    ])
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'GET'])
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error', signal: expect.any(AbortSignal) })
+  })
+
+  test('a timed-out create POST is not retried or converted into a read acknowledgement', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'exact-create-actor' })).toString('base64url')}.signature`
+    vi.mocked(getAccessToken).mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal
+      if (!signal) throw new Error('The exact create request must carry a deadline')
+      return await new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    })
+    const client = new PlatformAPIClient('http://localhost:18000', 'tenant-parent', { managedRequestTimeoutMs: 20 })
+    const capture = vi.fn()
+
+    let failure: unknown
+    try {
+      await client.createTenantApp('tenant-parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    } catch (error) {
+      failure = error
+    }
+    expect(isManagedPublicRequestTimeout(failure)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'exact-create-actor' })
   })
 
   test('init acknowledgement captures the exact refreshed bearer actor once, without an identity read', async () => {
