@@ -518,8 +518,15 @@ export async function prepareGeneratedDemoOperationalReview(request: Operational
       },
     },
   ), 'Operational source reservation'), inspection, config, anchor, environment);
-  const updates = await prepareFileMap(root, inspection, reservation, anchor, environment);
-  return createReviewPr(root, reservation, updates, localSha);
+  try {
+    const updates = await prepareFileMap(root, inspection, reservation, anchor, environment);
+    return await createReviewPr(root, reservation, updates, localSha);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : 'unknown error';
+    throw new Error(`Source reservation ${reservation.operationId} remains active after PR preparation failed. ` +
+      `Retry the same preparation; if abandoning an unmerged review, use --abort-operational-pr with this operation ID. ${reason}`,
+    {cause: error});
+  }
 }
 
 /** Poll the service's exact post-ACTIVE verifier; local PR metadata is only a hint. */
