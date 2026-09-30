@@ -9,6 +9,7 @@ import { inspectGeneratedDemoContinuation } from '../../src/lib/generated-demo-c
 import { planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBinding } from '../../src/lib/generated-demo-operational.js';
 import { importGeneratedDemoData, parseBoundedImportRows } from '../../src/lib/generated-demo-operational-import.js';
 import {
+  abortGeneratedDemoOperationalReview,
   prepareGeneratedDemoOperationalReview,
   upgradeGeneratedWorkflow,
 } from '../../src/lib/generated-demo-operational-pr.js';
@@ -111,6 +112,30 @@ afterEach(async () => {
 });
 
 describe('NCB demo continuation', () => {
+  it('aborts only the exact uncommitted operational reservation through the tenant-scoped API', async () => {
+    const operationId = 'operational-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+    const calls: Array<{path: string; method?: string}> = [];
+    const client = {
+      requestPublicApi: async (path: string, options?: {method?: string}) => {
+        calls.push({path, method: options?.method});
+        return new Response(JSON.stringify({operationId, status: 'aborted'}), {status: 200});
+      },
+    } as unknown as PlatformAPIClient;
+    await expect(abortGeneratedDemoOperationalReview(client, 'tenant-1', 'fleet-demo', operationId))
+      .resolves.toEqual({operationId, status: 'aborted'});
+    expect(calls).toEqual([{
+      path: `/v4/platform/tenants/tenant-1/apps/fleet-demo/source-updates/${operationId}/abort`, method: 'POST',
+    }]);
+    await expect(abortGeneratedDemoOperationalReview(client, 'tenant-1', 'fleet-demo', 'other-operation'))
+      .rejects.toThrow('exact tenant, app and reserved operational source operation');
+    expect(calls).toHaveLength(1);
+    const committed = {
+      requestPublicApi: async () => new Response(JSON.stringify({detail: 'Commit already started.'}), {status: 409}),
+    } as unknown as PlatformAPIClient;
+    await expect(abortGeneratedDemoOperationalReview(committed, 'tenant-1', 'fleet-demo', operationId))
+      .rejects.toThrow('Operational source abort failed (HTTP 409)');
+  });
+
   it('parses bounded CSV and JSON imports and rejects ambiguous rows before any write', () => {
     expect(parseBoundedImportRows(Buffer.from('name,count\r\n"Car, one",2\r\n'), 'cars.csv'))
       .toEqual([{name: 'Car, one', count: '2'}]);

@@ -15,8 +15,8 @@ const WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const MANIFEST_PATH = '.eai-manifest.json';
 const OPERATIONAL_CONFIG_PATH = 'src/eai.config/generated-operational.json';
 const RESOURCE_ROOT = fileURLToPath(new URL('../../resources/generated-operational/', import.meta.url));
-const TEMPLATE_COMMIT = 'f735346817f5d92737617d01d24953d8ab58e895';
-const PRIOR_TEMPLATE_COMMITS = ['cd0dcdc', '5039499'];
+const TEMPLATE_COMMIT = '6047548bb8ea2b100334aa43cef1683127c90841';
+const PRIOR_TEMPLATE_COMMITS = ['cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895'];
 const TEMPLATE_PATHS = [
   'scripts/validate-generated-demo.cjs',
   'src/lib/generated-demo/operational-contract.ts',
@@ -70,6 +70,24 @@ export interface OperationalCompletionResult {
   readonly activeUrl: string;
   readonly containerAppName: string;
   readonly activeDeploymentId: string;
+}
+
+/** Explicitly release an uncommitted source reservation; a committed anchor cannot be rolled back here. */
+export async function abortGeneratedDemoOperationalReview(
+  client: PlatformAPIClient, tenantId: string, appKey: string, operationId: string,
+): Promise<{operationId: string; status: 'aborted'}> {
+  if (!tenantId || !appKey || !OPERATION.test(operationId)) {
+    throw new Error('Abort requires the exact tenant, app and reserved operational source operation.');
+  }
+  const endpoint = `/v4/platform/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}` +
+    `/source-updates/${encodeURIComponent(operationId)}/abort`;
+  const response = await client.requestPublicApi(endpoint, {method: 'POST'});
+  if (!response.ok) throw new Error(`Operational source abort failed (HTTP ${response.status}).`);
+  const receipt = await boundedResponse(response, 'Operational source abort');
+  if (receipt.status !== 'aborted' || receipt.operationId !== operationId) {
+    throw new Error('Operational source abort returned a mismatched receipt.');
+  }
+  return {operationId, status: 'aborted'};
 }
 
 function record(value: unknown): value is JsonObject {

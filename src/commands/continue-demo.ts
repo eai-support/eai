@@ -4,6 +4,7 @@ import { inspectGeneratedDemoContinuation, readAcceptedObjectTypeDefinition } fr
 import { planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBinding } from '../lib/generated-demo-operational.js';
 import { importGeneratedDemoData } from '../lib/generated-demo-operational-import.js';
 import {
+  abortGeneratedDemoOperationalReview,
   completeGeneratedDemoOperationalReview,
   prepareGeneratedDemoOperationalReview,
 } from '../lib/generated-demo-operational-pr.js';
@@ -17,6 +18,7 @@ interface ContinueDemoOptions {
   planReadOnly?: boolean;
   prepareOperationalPr?: boolean;
   completeOperationalPr?: boolean;
+  abortOperationalPr?: boolean;
   environment?: 'preview' | 'dev' | 'test' | 'prod';
   operationId?: string;
   prNumber?: string;
@@ -37,6 +39,7 @@ export const continueDemoCommand = new Command('continue-demo')
   .option('--plan-read-only', 'Inspect one candidate published Object Type binding without changing the app')
   .option('--prepare-operational-pr', 'Reserve one bounded read and open a draft source review PR (release-gated)')
   .option('--complete-operational-pr', 'Verify a merged review reached the same ACTIVE app and complete its signed source receipt')
+  .option('--abort-operational-pr', 'Release an uncommitted operational source reservation; never roll back a merged source')
   .option('--operation-id <id>', 'Reserved operational source operation to complete')
   .option('--pr-number <number>', 'Merged customer review pull request number')
   .option('--environment <environment>', 'Exact active deployment environment (preview|dev|test|prod)')
@@ -54,11 +57,12 @@ export const continueDemoCommand = new Command('continue-demo')
         throw new Error('Format must be text or json.');
       }
       if (Number(Boolean(options.planReadOnly)) + Number(Boolean(options.prepareOperationalPr)) +
-        Number(Boolean(options.completeOperationalPr)) + Number(Boolean(options.importFile)) > 1) {
+        Number(Boolean(options.completeOperationalPr)) + Number(Boolean(options.abortOperationalPr)) +
+        Number(Boolean(options.importFile)) > 1) {
         throw new Error('Choose only one continuation action.');
       }
       if (!options.planReadOnly && !options.prepareOperationalPr &&
-        !options.completeOperationalPr && !options.importFile &&
+        !options.completeOperationalPr && !options.abortOperationalPr && !options.importFile &&
         (options.tenantId || options.fixtureCollection || options.objectTypeSlug || options.environment)) {
         throw new Error('Binding options require a read-only plan or operational PR preparation.');
       }
@@ -72,11 +76,18 @@ export const continueDemoCommand = new Command('continue-demo')
         !['preview', 'dev', 'test', 'prod'].includes(options.environment || '')) {
         throw new Error('Operational source review requires an explicit --environment.');
       }
-      if (!options.completeOperationalPr && (options.operationId || options.prNumber)) {
-        throw new Error('--operation-id and --pr-number require --complete-operational-pr.');
+      if (!options.completeOperationalPr && !options.abortOperationalPr && options.operationId) {
+        throw new Error('--operation-id requires --complete-operational-pr or --abort-operational-pr.');
+      }
+      if (!options.completeOperationalPr && options.prNumber) {
+        throw new Error('--pr-number requires --complete-operational-pr.');
       }
       if (options.completeOperationalPr && (options.fixtureCollection || options.objectTypeSlug)) {
         throw new Error('Completion uses the previously reviewed binding; do not supply a new one.');
+      }
+      if (options.abortOperationalPr &&
+        (options.environment || options.fixtureCollection || options.objectTypeSlug || options.prNumber)) {
+        throw new Error('Abort uses only the exact tenant and operation ID.');
       }
       if ((options.enableSelectedCreate || options.createFields) &&
         (!options.prepareOperationalPr || !options.enableSelectedCreate || !options.createFields)) {
@@ -103,6 +114,23 @@ export const continueDemoCommand = new Command('continue-demo')
         return;
       }
       const result = await inspectGeneratedDemoContinuation(options.path);
+      if (options.abortOperationalPr) {
+        if (!options.tenantId || !options.operationId) {
+          throw new Error('--abort-operational-pr requires --tenant-id and --operation-id.');
+        }
+        const projectRoot = resolve(options.path);
+        const publicApiUrl = await resolvePublicApiUrl(projectRoot);
+        const context = await resolveActiveTenantContext({
+          projectRoot, publicApiUrl, tenantId: options.tenantId, interactive: false,
+        });
+        const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+        const receipt = await abortGeneratedDemoOperationalReview(
+          client, context.activeTenant.id, result.appKey, options.operationId,
+        );
+        if (options.format === 'json') out.json(receipt);
+        else out.success(`Uncommitted operational source reservation ${receipt.operationId} was aborted.`);
+        return;
+      }
       if (options.completeOperationalPr) {
         if (!options.tenantId || !options.operationId || !options.prNumber) {
           throw new Error('--complete-operational-pr requires --tenant-id, --operation-id and --pr-number.');
