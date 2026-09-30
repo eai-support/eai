@@ -28,6 +28,8 @@ export interface GeneratedDemoContinuation {
   readonly sourceMode: 'admin-portal-generated';
   readonly templateRepository: string | null;
   readonly runtimeBindingRecorded: boolean;
+  readonly appArtifactMode: 'app-v2-demo' | null;
+  readonly acceptedArtifactDigest: string | null;
   readonly artifactDigests: Readonly<Record<'appDefinition' | 'sourceBundle' | 'previewFixtures' | 'objectTypeDefinitions', string>>;
   readonly objectTypeDefinitionCount: number;
   readonly sampleCollectionCount: number;
@@ -116,12 +118,22 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     throw new Error('This repository has no supported NCB generated-source manifest.');
   }
   const binding = manifest.runtimeBinding;
-  const workflowTemplate = isRecord(binding) ? binding.workflowTemplate : undefined;
-  if (!isRecord(binding) || binding.schemaVersion !== 'eai.generated_app_runtime_binding.v1' ||
-    !isRecord(workflowTemplate) || typeof workflowTemplate.id !== 'string' || !workflowTemplate.id ||
-    !Number.isInteger(workflowTemplate.version) || (workflowTemplate.version as number) < 1 ||
-    typeof workflowTemplate.digest !== 'string' || !SHA256_PATTERN.test(workflowTemplate.digest)) {
-    throw new Error('The generated-source manifest lacks a valid hosted-app runtime binding.');
+  const generatedDemo = manifest.generatedDemo;
+  const hasGeneratedDemo = generatedDemo !== undefined;
+  if (hasGeneratedDemo) {
+    if (binding !== undefined || !isRecord(generatedDemo) ||
+      generatedDemo.schemaVersion !== 'eai.generated_app_artifact.v2' ||
+      typeof generatedDemo.artifactDigest !== 'string' || !SHA256_PATTERN.test(generatedDemo.artifactDigest)) {
+      throw new Error('The generated-source manifest has invalid or mixed demo authority.');
+    }
+  } else {
+    const workflowTemplate = isRecord(binding) ? binding.workflowTemplate : undefined;
+    if (!isRecord(binding) || binding.schemaVersion !== 'eai.generated_app_runtime_binding.v1' ||
+      !isRecord(workflowTemplate) || typeof workflowTemplate.id !== 'string' || !workflowTemplate.id ||
+      !Number.isInteger(workflowTemplate.version) || (workflowTemplate.version as number) < 1 ||
+      typeof workflowTemplate.digest !== 'string' || !SHA256_PATTERN.test(workflowTemplate.digest)) {
+      throw new Error('The generated-source manifest lacks a valid hosted-app runtime binding.');
+    }
   }
   const managed = manifest.managedFiles.map(managedFile);
   const byPath = new Map(managed.map((item) => [item.path, item]));
@@ -136,6 +148,9 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
   const artifactBytes = await readBoundedFile(root, ARTIFACT_PATH, MAX_ARTIFACT_BYTES);
   if (fileDigest(artifactBytes) !== artifactEntry.checksum) throw new Error('Generated demo artifact differs from the managed source manifest.');
   const artifact = parseJson(artifactBytes, ARTIFACT_PATH);
+  if (hasGeneratedDemo && digest(artifact) !== (generatedDemo as Record<string, unknown>).artifactDigest) {
+    throw new Error('Generated demo artifact digest differs from the accepted manifest.');
+  }
   const definition = artifact.appDefinition;
   const source = artifact.sourceBundle;
   const fixtures = artifact.previewFixtures;
@@ -189,7 +204,9 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     commitSha,
     sourceMode: 'admin-portal-generated',
     templateRepository: typeof manifest.templateRepository === 'string' ? manifest.templateRepository : null,
-    runtimeBindingRecorded: true,
+    runtimeBindingRecorded: !hasGeneratedDemo,
+    appArtifactMode: hasGeneratedDemo ? 'app-v2-demo' : null,
+    acceptedArtifactDigest: hasGeneratedDemo ? (generatedDemo as Record<string, string>).artifactDigest : null,
     artifactDigests: Object.fromEntries(digestNames.map((name) => [name, digests[name]])) as GeneratedDemoContinuation['artifactDigests'],
     objectTypeDefinitionCount: definitions.length,
     sampleCollectionCount: Object.keys(fixtures.collections).length,

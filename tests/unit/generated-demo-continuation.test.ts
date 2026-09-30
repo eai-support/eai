@@ -45,7 +45,7 @@ async function git(root: string, ...args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-async function fixture(): Promise<{ root: string; artifact: Record<string, unknown>; manifest: Record<string, unknown> }> {
+async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; artifact: Record<string, unknown>; manifest: Record<string, unknown> }> {
   const root = await mkdtemp(join(tmpdir(), 'eai-ncb-continuation-'));
   roots.push(root);
   const members = {
@@ -77,10 +77,12 @@ async function fixture(): Promise<{ root: string; artifact: Record<string, unkno
   const manifest: Record<string, unknown> = {
     schemaVersion: 'eai.generated_app_manifest.v1', sourceMode: 'admin-portal-generated',
     appKey: 'fleet-demo', templateRepository: 'eai-support/eai-app-template',
-    runtimeBinding: {
+    ...(mode === 'v2' ? { generatedDemo: {
+      schemaVersion: 'eai.generated_app_artifact.v2', artifactDigest: hash(`${canonical(artifact)}\n`),
+    } } : { runtimeBinding: {
       schemaVersion: 'eai.generated_app_runtime_binding.v1',
       workflowTemplate: { id: 'fleet-workflow', version: 1, digest: hash('workflow'), title: 'Fleet Demo' },
-    },
+    } }),
     managedFiles, generatedFileScope: managedFiles.map((item) => item.path),
   };
   await write(root, 'src/generated/app.tsx', appSource);
@@ -99,12 +101,14 @@ afterEach(async () => {
 
 describe('NCB demo continuation', () => {
   it('reports exact clone lineage and demo-only adapters without writing files', async () => {
-    const { root } = await fixture();
+    const { root, artifact } = await fixture();
     const before = await readFile(join(root, '.eai-manifest.json'));
     const result = await inspectGeneratedDemoContinuation(root);
     expect(result).toMatchObject({
       appKey: 'fleet-demo', repository: 'eai3438-customer-van/fleet-demo',
       sourceMode: 'admin-portal-generated', adapterStatus: 'demo-only',
+      appArtifactMode: 'app-v2-demo', acceptedArtifactDigest: hash(`${canonical(artifact)}\n`),
+      runtimeBindingRecorded: false,
       objectTypeDefinitionCount: 1, sampleCollectionCount: 1, simulatedActionCount: 1,
     });
     expect(result.commitSha).toMatch(/^[a-f0-9]{40}$/);
@@ -117,6 +121,7 @@ describe('NCB demo continuation', () => {
     const changed = `${JSON.stringify(artifact, null, 2)}\n`;
     await write(root, 'src/eai.config/generated-demo.json', changed);
     (manifest.managedFiles as Array<{ path: string; checksum: string }>)[1].checksum = hash(changed);
+    (manifest.generatedDemo as { artifactDigest: string }).artifactDigest = hash(`${canonical(artifact)}\n`);
     await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
     await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('previewFixtures digest');
     await git(root, 'checkout', '--', '.');
@@ -133,10 +138,31 @@ describe('NCB demo continuation', () => {
   });
 
   it('rejects continuation when the existing hosted-app runtime binding is missing', async () => {
-    const { root, manifest } = await fixture();
+    const { root, manifest } = await fixture('legacy');
     delete manifest.runtimeBinding;
     await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
     await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('runtime binding');
+  });
+
+  it('preserves legacy respondent binding evidence for existing generated source', async () => {
+    const { root } = await fixture('legacy');
+    expect(await inspectGeneratedDemoContinuation(root)).toMatchObject({
+      runtimeBindingRecorded: true, appArtifactMode: null, acceptedArtifactDigest: null,
+    });
+  });
+
+  it('rejects a v2 manifest with a tampered or mixed authority', async () => {
+    const { root, artifact, manifest } = await fixture();
+    (manifest.generatedDemo as { artifactDigest: string }).artifactDigest = hash('different');
+    await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('digest differs');
+    (manifest.generatedDemo as { artifactDigest: string }).artifactDigest = hash(`${canonical(artifact)}\n`);
+    manifest.runtimeBinding = {
+      schemaVersion: 'eai.generated_app_runtime_binding.v1',
+      workflowTemplate: { id: 'fleet-workflow', version: 1, digest: hash('workflow') },
+    };
+    await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('mixed demo authority');
   });
 
   it('prevents Gofer refresh or manifest save from replacing NCB source ownership', async () => {
