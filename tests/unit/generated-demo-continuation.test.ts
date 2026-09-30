@@ -165,6 +165,12 @@ describe('NCB demo continuation', () => {
     expect(() => upgradeGeneratedWorkflow(workflow.replace('actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093',
       'actions/download-artifact@v4'), loader, evidence, 'dev'))
       .toThrow('vetted source-review template');
+    expect(() => upgradeGeneratedWorkflow(workflow.replace('actions/checkout@11d5960a326750d5838078e36cf38b85af677262',
+      'actions/checkout@v4'), loader, evidence, 'dev'))
+      .toThrow('vetted source-review template');
+    expect(() => upgradeGeneratedWorkflow(workflow.replace('docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8',
+      'docker/build-push-action@v6'), loader, evidence, 'dev'))
+      .toThrow('vetted source-review template');
     expect(() => upgradeGeneratedWorkflow(workflow.replace('      - name: Checkout',
       '      id-token: write\n      - name: Checkout'), loader, evidence, 'dev'))
       .toThrow('vetted source-review template');
