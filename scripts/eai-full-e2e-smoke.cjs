@@ -590,6 +590,7 @@ const OPTION_DECISIONS = {
     '--plan-read-only': 'Read-only operational planning uses a signed generated-clone fixture in CLI tests; default release smoke has no accepted customer clone.',
     '--prepare-operational-pr': 'Creates a customer draft source-review PR only after signed reservation; controlled preview journey owns cleanup.',
     '--complete-operational-pr': 'Verifies a merged review and post-ACTIVE source receipt in controlled preview qualification, not default smoke.',
+    '--abort-operational-pr': 'Cancels only the exact actor-owned precommit reservation; controlled preview qualification and CLI contract tests cover this mutating recovery path.',
     '--operation-id': 'Completion binds the exact signed source reservation; covered by CLI contract tests.',
     '--pr-number': 'Completion binds the merged customer PR number; covered by CLI contract tests.',
     '--environment': 'The exact active deployment environment is checked against signed source authority; no mutable app is available in default smoke.',
