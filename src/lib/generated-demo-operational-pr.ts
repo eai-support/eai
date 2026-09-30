@@ -184,10 +184,22 @@ function replaceOne(source: string, start: string, end: string, replacement: str
 export function upgradeGeneratedWorkflow(
   original: string, loader: string, evidence: string, environment: Environment,
 ): string {
+  const validationStart = original.indexOf('  validate-generated-source:\n');
+  const evidenceStart = original.indexOf('  submit-eai-evidence:\n');
+  const reviewStart = original.indexOf('  complete-eai-managed-review:\n');
+  const validationJob = original.slice(validationStart, evidenceStart);
+  const evidenceJob = original.slice(evidenceStart, reviewStart);
   if (!original.startsWith('name: EAI Generated App\n') || !original.includes('api://enterprise-ai-publicapi/generated-app') ||
     !original.includes('id-token: write') || !original.includes('persist-credentials: false') ||
     !original.includes('actions/download-artifact@v4') || !original.includes('docker/build-push-action@v6') ||
-    !original.includes('      - name: Verify GitHub run, source and image artifact\n')) {
+    !original.includes('      - name: Verify GitHub run, source and image artifact\n') ||
+    validationStart < 0 || evidenceStart <= validationStart || reviewStart <= evidenceStart ||
+    !validationJob.includes('actions/checkout@v4') ||
+    !validationJob.includes('docker/build-push-action@v6') ||
+    /id-token:\s*write|EAI_ACCESS_TOKEN|ACTIONS_ID_TOKEN_REQUEST_TOKEN/.test(validationJob) ||
+    !evidenceJob.includes('id-token: write') ||
+    !evidenceJob.includes('actions/download-artifact@v4') ||
+    /actions\/checkout@|docker\/build-push-action@|\bnpm\s+(?:ci|install|run)\b/.test(evidenceJob)) {
     throw new Error('Generated workflow is not the vetted source-review template.');
   }
   if (original.split('      - name: Load generated source operation\n').length !== 3) {

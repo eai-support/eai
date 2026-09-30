@@ -162,6 +162,12 @@ describe('NCB demo continuation', () => {
     expect(upgraded).not.toContain('complete-eai-managed-review:');
     expect(() => upgradeGeneratedWorkflow(workflow.replace('id-token: write', 'id-token: none'), loader, evidence, 'dev'))
       .toThrow('vetted source-review template');
+    expect(() => upgradeGeneratedWorkflow(workflow.replace('      - name: Checkout',
+      '      id-token: write\n      - name: Checkout'), loader, evidence, 'dev'))
+      .toThrow('vetted source-review template');
+    expect(() => upgradeGeneratedWorkflow(workflow.replace('      - name: Verify GitHub run, source and image artifact',
+      '      - name: Execute customer source\n        run: npm run build\n      - name: Verify GitHub run, source and image artifact'),
+    loader, evidence, 'dev')).toThrow('vetted source-review template');
   });
 
   it('reports exact clone lineage and demo-only adapters without writing files', async () => {
