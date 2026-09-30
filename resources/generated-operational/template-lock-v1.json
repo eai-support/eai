@@ -1,5 +1,5 @@
 {
-  "templateCommit": "6047548bb8ea2b100334aa43cef1683127c90841",
+  "templateCommit": "b13767b2d4ee9a510d1596654b94e5ce7422312e",
   "nullConfigChecksum": "sha256:38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
   "files": {
     "src/lib/generated-demo/operational-contract.ts": {

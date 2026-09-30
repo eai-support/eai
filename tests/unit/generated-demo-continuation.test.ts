@@ -10,6 +10,7 @@ import { planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBindin
 import { importGeneratedDemoData, parseBoundedImportRows } from '../../src/lib/generated-demo-operational-import.js';
 import {
   abortGeneratedDemoOperationalReview,
+  isPendingOperationalSourceConflict,
   prepareGeneratedDemoOperationalReview,
   upgradeGeneratedWorkflow,
 } from '../../src/lib/generated-demo-operational-pr.js';
@@ -134,6 +135,20 @@ describe('NCB demo continuation', () => {
     } as unknown as PlatformAPIClient;
     await expect(abortGeneratedDemoOperationalReview(committed, 'tenant-1', 'fleet-demo', operationId))
       .rejects.toThrow('Operational source abort failed (HTTP 409)');
+  });
+
+  it('polls only the exact retryable pending ACTIVE contract', async () => {
+    const conflict = (detail: object) => new Response(JSON.stringify({detail}), {status: 409});
+    await expect(isPendingOperationalSourceConflict(conflict({
+      error: 'operational_source_pending_active', retryable: true,
+    }))).resolves.toBe(true);
+    await expect(isPendingOperationalSourceConflict(conflict({
+      error: 'operational_source_not_active', retryable: true,
+    }))).resolves.toBe(false);
+    await expect(isPendingOperationalSourceConflict(conflict({
+      error: 'NCB_SOURCE_FENCE_STALE', retryable: false,
+    }))).resolves.toBe(false);
+    await expect(isPendingOperationalSourceConflict(new Response('not json', {status: 409}))).resolves.toBe(false);
   });
 
   it('parses bounded CSV and JSON imports and rejects ambiguous rows before any write', () => {

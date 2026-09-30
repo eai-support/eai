@@ -15,8 +15,8 @@ const WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const MANIFEST_PATH = '.eai-manifest.json';
 const OPERATIONAL_CONFIG_PATH = 'src/eai.config/generated-operational.json';
 const RESOURCE_ROOT = fileURLToPath(new URL('../../resources/generated-operational/', import.meta.url));
-const TEMPLATE_COMMIT = '6047548bb8ea2b100334aa43cef1683127c90841';
-const PRIOR_TEMPLATE_COMMITS = ['cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895'];
+const TEMPLATE_COMMIT = 'b13767b2d4ee9a510d1596654b94e5ce7422312e';
+const PRIOR_TEMPLATE_COMMITS = ['cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
 const TEMPLATE_PATHS = [
   'scripts/validate-generated-demo.cjs',
   'src/lib/generated-demo/operational-contract.ts',
@@ -88,6 +88,17 @@ export async function abortGeneratedDemoOperationalReview(
     throw new Error('Operational source abort returned a mismatched receipt.');
   }
   return {operationId, status: 'aborted'};
+}
+
+/** Only a server-confirmed pending ACTIVE transition may be polled. */
+export async function isPendingOperationalSourceConflict(response: Response): Promise<boolean> {
+  if (response.status !== 409) return false;
+  const raw = await response.text();
+  if (Buffer.byteLength(raw, 'utf8') > 16_000) return false;
+  let value: unknown;
+  try { value = JSON.parse(raw); } catch { return false; }
+  const detail = record(value) ? value.detail : undefined;
+  return record(detail) && detail.error === 'operational_source_pending_active' && detail.retryable === true;
 }
 
 function record(value: unknown): value is JsonObject {
@@ -593,6 +604,9 @@ export async function completeGeneratedDemoOperationalReview(
     if (response.status === 503) throw new Error('Operational source admission is disabled.');
     if (response.status !== 409) {
       throw new Error(`Operational source completion failed (HTTP ${response.status}).`);
+    }
+    if (!await isPendingOperationalSourceConflict(response)) {
+      throw new Error('Operational source completion has a terminal conflict; inspect the signed source reservation and app state.');
     }
     if (attempt < 11) await new Promise(resolveDelay => setTimeout(resolveDelay, 15_000));
   }
