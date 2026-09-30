@@ -199,7 +199,7 @@ describe('NCB demo continuation', () => {
     const { root, artifact } = await fixture();
     const before = await readFile(join(root, '.eai-manifest.json'));
     const inspection = await inspectGeneratedDemoContinuation(root);
-    const tenantId = 'e2ff83b7-4635-6838-6de6-827484a6b01c';
+    const tenantId = 'e2ff83b7-4635-4838-8de6-827484a6b01c';
     const proposal = {
       tenantId, appKey: 'fleet-demo', status: 'ready', validationErrors: [],
       objectTypes: [{
@@ -245,7 +245,7 @@ describe('NCB demo continuation', () => {
   it('selects only accepted and published scalar create fields on the same Object Type', async () => {
     const {root} = await fixture();
     const inspection = await inspectGeneratedDemoContinuation(root);
-    const tenantId = 'e2ff83b7-4635-6838-6de6-827484a6b01c';
+    const tenantId = 'e2ff83b7-4635-4838-8de6-827484a6b01c';
     const request = {tenantId, fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25};
     const properties = [
       {name: 'name', type: 'text', required: true},
@@ -278,7 +278,7 @@ describe('NCB demo continuation', () => {
 
   it('imports only after signed operational completion and reads back each idempotent create', async () => {
     const {root, artifact, manifest} = await fixture();
-    const tenantId = 'e2ff83b7-4635-6838-6de6-827484a6b01c';
+    const tenantId = 'e2ff83b7-4635-4838-8de6-827484a6b01c';
     const definition = {name: 'Vehicle', slug: 'vehicle', status: 'published',
       properties: [{name: 'name', type: 'text', required: true}]};
     artifact.objectTypeDefinitions = [definition];
@@ -339,7 +339,7 @@ describe('NCB demo continuation', () => {
     const { root, artifact } = await fixture();
     const inspection = await inspectGeneratedDemoContinuation(root);
     const branch = await git(root, 'branch', '--show-current');
-    const tenantId = 'e2ff83b7-4635-6838-6de6-827484a6b01c';
+    const tenantId = 'e2ff83b7-4635-4838-8de6-827484a6b01c';
     const anchor = {
       status: 'completed', tenantId, appKey: 'fleet-demo',
       repoOwner: 'eai3438-customer-van', repoName: 'fleet-demo',
