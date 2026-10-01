@@ -57,6 +57,23 @@ export function getProjectManifestPath(projectRoot: string): string {
   return join(projectRoot, PROJECT_MANIFEST_RELATIVE_PATH);
 }
 
+/** Fail before CLI maintenance can replace the NCB source-ownership manifest. */
+export async function assertCliMayWriteProjectManifest(projectRoot: string): Promise<void> {
+  let raw: string;
+  try {
+    raw = await readFile(getProjectManifestPath(projectRoot), 'utf8');
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    throw error;
+  }
+  let existing: unknown;
+  try { existing = JSON.parse(raw); } catch { throw new Error('Existing .eai-manifest.json is invalid JSON; refusing to overwrite it.'); }
+  if (!existing || typeof existing !== 'object' || Array.isArray(existing) ||
+    (existing as Record<string, unknown>).schemaVersion !== 1) {
+    throw new Error('Existing .eai-manifest.json is not a CLI project manifest; Gofer refresh cannot replace it. For NCB source, run `eai app continue-demo` and make a reviewed change.');
+  }
+}
+
 export async function loadProjectManifest(
   projectRoot: string,
 ): Promise<ProjectManifest | null> {
@@ -304,6 +321,7 @@ export async function saveProjectManifest(
   projectRoot: string,
   manifest: ProjectManifest,
 ): Promise<void> {
+  await assertCliMayWriteProjectManifest(projectRoot);
   const manifestPath = getProjectManifestPath(projectRoot);
   await mkdir(dirname(manifestPath), { recursive: true });
   await writeFile(

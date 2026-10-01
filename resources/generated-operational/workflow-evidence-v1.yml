@@ -1,0 +1,78 @@
+      - name: Submit reserved operational source evidence
+        if: github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+        env:
+          ARTIFACT_DIGEST: ${{ needs.validate-generated-source.outputs.artifact_digest }}
+          IMAGE_ARCHIVE_DIGEST: ${{ needs.validate-generated-source.outputs.archive_digest }}
+          IMAGE_ARTIFACT_ID: ${{ needs.validate-generated-source.outputs.artifact_id }}
+          IMAGE_DIGEST: ${{ needs.validate-generated-source.outputs.image_digest }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          const crypto = require('node:crypto');
+          const env = process.env;
+          const operation = JSON.parse(fs.readFileSync('evidence-input/.eai/generated-source-operation.json', 'utf8'));
+          const manifestRaw = fs.readFileSync('evidence-input/.eai-manifest.json');
+          const manifest = JSON.parse(manifestRaw.toString('utf8'));
+          const event = JSON.parse(fs.readFileSync(env.GITHUB_EVENT_PATH, 'utf8'));
+          const pr = event.pull_request;
+          const digest = value => value && value.startsWith('sha256:') ? value : 'sha256:' + (value || '');
+          const sha256 = value => 'sha256:' + crypto.createHash('sha256').update(value).digest('hex');
+          const checksums = { '.eai-manifest.json': sha256(manifestRaw) };
+          if (!Array.isArray(manifest.managedFiles) || manifest.managedFiles.length < 1 ||
+              manifest.managedFiles.length > 511) throw new Error('Managed source inventory is invalid.');
+          for (const file of manifest.managedFiles) {
+            if (!file || typeof file.path !== 'string' || !/^[A-Za-z0-9._/-]+$/.test(file.path) ||
+                file.path.startsWith('/') || file.path.split('/').some(part => !part || part === '.' || part === '..') ||
+                file.owner !== 'admin-portal-generated' || !/^sha256:[a-f0-9]{64}$/.test(file.checksum) ||
+                checksums[file.path]) throw new Error('Managed source inventory contains an invalid file.');
+            checksums[file.path] = file.checksum;
+          }
+          if (!pr || pr.merged !== true || !Number.isSafeInteger(pr.number) || pr.number < 1 ||
+              !/^[a-f0-9]{40}$/.test(pr.head?.sha || '') || !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA || '') ||
+              !/^[0-9]+$/.test(env.IMAGE_ARTIFACT_ID || '') ||
+              ![env.ARTIFACT_DIGEST, env.IMAGE_ARCHIVE_DIGEST, env.IMAGE_DIGEST].every(
+                value => /^sha256:[a-f0-9]{64}$/.test(digest(value)))) {
+            throw new Error('Merged PR or immutable image evidence is incomplete.');
+          }
+          const [repoOwner, repoName] = (env.GITHUB_REPOSITORY || '').split('/');
+          if (operation.operationId !== env.EAI_SOURCE_OPERATION_ID ||
+              operation.appKey !== env.EAI_APP_KEY || operation.tenantId !== env.EAI_TENANT_ID ||
+              operation.environment !== env.EAI_DEPLOYMENT_ENVIRONMENT ||
+              pr.base?.ref !== env.GITHUB_REF_NAME || pr.head?.repo?.full_name !== env.GITHUB_REPOSITORY ||
+              !repoOwner || !repoName) throw new Error('Workflow run differs from reserved source authority.');
+          const evidence = {
+            operationId: operation.operationId,
+            environment: operation.environment,
+            sourceCommitSha: pr.head.sha,
+            pullRequestNumber: pr.number,
+            workflowHeadBranch: pr.head.ref,
+            workflowPath: '.github/workflows/eai-app.yml',
+            ref: env.GITHUB_REF,
+            commitSha: env.GITHUB_SHA,
+            artifactDigest: digest(env.ARTIFACT_DIGEST),
+            imageArtifact: {
+              id: env.IMAGE_ARTIFACT_ID,
+              name: 'eai-generated-app-image',
+              archiveDigest: digest(env.IMAGE_ARCHIVE_DIGEST),
+            },
+            imageDigest: digest(env.IMAGE_DIGEST),
+            sourceFileChecksums: checksums,
+          };
+          fs.mkdirSync('.eai-build/evidence', { recursive: true });
+          fs.writeFileSync('.eai-build/evidence/operational-source-workflow-evidence.json', JSON.stringify(evidence));
+          NODE
+          status="$(curl -sS -o .eai-build/evidence/operational-source-workflow-response.json -w '%{http_code}' -X POST "$EAI_WORKFLOW_EVIDENCE_URL" \
+            -H "Authorization: Bearer ${{ steps.github-oidc.outputs.token }}" \
+            -H 'Content-Type: application/json' \
+            --data @.eai-build/evidence/operational-source-workflow-evidence.json)"
+          test "$status" = 202
+
+      - name: Upload operational handoff evidence
+        if: always() && github.event_name == 'pull_request' && github.event.action == 'closed' && github.event.pull_request.merged == true
+        uses: actions/upload-artifact@v4
+        with:
+          name: eai-operational-source-handoff-${{ github.run_id }}
+          path: .eai-build/evidence
+          include-hidden-files: true
+          if-no-files-found: ignore
