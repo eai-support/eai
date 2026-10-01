@@ -587,6 +587,7 @@ const OPTION_DECISIONS = {
     '--skip-validate': 'Negative validation bypass; command integration tests cover the route while release smoke keeps app validation enabled.',
   },
   'eai app continue-demo': {
+    '--view-read': 'Reviewed view/component/fixture/Object Type tuples are covered by signed-clone CLI fixtures; default release smoke has no accepted customer clone or published app-owned Object Type.',
     '--plan-read-only': 'Read-only operational planning uses a signed generated-clone fixture in CLI tests; default release smoke has no accepted customer clone.',
     '--prepare-operational-pr': 'Creates a customer draft source-review PR only after signed reservation; controlled preview journey owns cleanup.',
     '--complete-operational-pr': 'Verifies a merged review and post-ACTIVE source receipt in controlled preview qualification, not default smoke.',
