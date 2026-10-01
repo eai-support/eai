@@ -11,6 +11,7 @@ import {
   planGeneratedDemoViewReadBindings,
 } from '../../src/lib/generated-demo-operational.js';
 import { importGeneratedDemoData, parseBoundedImportRows } from '../../src/lib/generated-demo-operational-import.js';
+import { readBoundedGeneratedResponse } from '../../src/lib/generated-demo-bounded-response.js';
 import {
   abortGeneratedDemoOperationalReview,
   isPendingOperationalSourceConflict,
@@ -25,6 +26,33 @@ const execFileAsync = promisify(execFile);
 const roots: string[] = [];
 const appSource = 'export default function GeneratedApp() { return null; }\n';
 const workflowSource = 'name: Generated demo\n';
+
+describe('bounded generated-source responses', () => {
+  it('retains only bounded chunks and cancels an oversized upstream body', async () => {
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode('12345'));
+        controller.enqueue(new TextEncoder().encode('678901'));
+      },
+      cancel() { cancelled = true; },
+    });
+    await expect(readBoundedGeneratedResponse(new Response(body), 10))
+      .rejects.toThrow('Response exceeded the byte limit.');
+    expect(cancelled).toBe(true);
+  });
+
+  it('preserves multibyte UTF-8 across response chunks', async () => {
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(Uint8Array.from([0xE2]));
+        controller.enqueue(Uint8Array.from([0x82, 0xAC]));
+        controller.close();
+      },
+    });
+    expect(await readBoundedGeneratedResponse(new Response(body), 3)).toBe('€');
+  });
+});
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`;

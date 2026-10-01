@@ -16,6 +16,7 @@ import {
 } from '../lib/generated-demo-operational-pr.js';
 import { PlatformAPIClient } from '../lib/api.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { GeneratedResponseTooLargeError, readBoundedGeneratedResponse } from '../lib/generated-demo-bounded-response.js';
 import * as out from '../lib/output.js';
 
 interface ContinueDemoOptions {
@@ -186,9 +187,13 @@ export const continueDemoCommand = new Command('continue-demo')
           `/v4/platform/tenants/${encodeURIComponent(context.activeTenant.id)}/apps/${encodeURIComponent(result.appKey)}/object-types/manifest`,
         );
         if (!response.ok) throw new Error(`The app Object Type manifest read failed (HTTP ${response.status}).`);
-        const responseText = await response.text();
-        if (Buffer.byteLength(responseText, 'utf8') > 1_000_000) {
-          throw new Error('The app Object Type manifest is too large to inspect.');
+        let responseText: string;
+        try { responseText = await readBoundedGeneratedResponse(response, 1_000_000); }
+        catch (error) {
+          if (error instanceof GeneratedResponseTooLargeError) {
+            throw new Error('The app Object Type manifest is too large to inspect.', {cause: error});
+          }
+          throw error;
         }
         let manifest: unknown;
         try { manifest = JSON.parse(responseText); } catch { throw new Error('The app Object Type manifest is invalid.'); }

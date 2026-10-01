@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import type { PlatformAPIClient } from './api.js';
 import { inspectGeneratedDemoContinuation, readAcceptedObjectTypeDefinition } from './generated-demo-continuation.js';
 import { assertPublishedReadOnlyObjectType } from './generated-demo-operational.js';
+import { GeneratedResponseTooLargeError, readBoundedGeneratedResponse } from './generated-demo-bounded-response.js';
 
 const MAX_IMPORT_BYTES = 1_000_000;
 const MAX_ROWS = 100;
@@ -70,8 +71,12 @@ async function readLocal(root: string, path: string): Promise<Buffer> {
 
 async function boundedJson(response: Response, name: string): Promise<JsonObject> {
   if (!response.ok) throw new Error(`${name} failed (HTTP ${response.status}).`);
-  const body = await response.text();
-  if (Buffer.byteLength(body, 'utf8') > MAX_IMPORT_BYTES) throw new Error(`${name} exceeded the response limit.`);
+  let body: string;
+  try { body = await readBoundedGeneratedResponse(response, MAX_IMPORT_BYTES); }
+  catch (error) {
+    if (error instanceof GeneratedResponseTooLargeError) throw new Error(`${name} exceeded the response limit.`, {cause: error});
+    throw error;
+  }
   let value: unknown;
   try { value = JSON.parse(body); } catch { throw new Error(`${name} returned invalid JSON.`); }
   if (!record(value)) throw new Error(`${name} returned an invalid contract.`);

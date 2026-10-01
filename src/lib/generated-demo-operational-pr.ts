@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import type { PlatformAPIClient } from './api.js';
 import type { GeneratedDemoContinuation } from './generated-demo-continuation.js';
 import type { GeneratedOperationalConfig } from './generated-demo-operational.js';
+import { GeneratedResponseTooLargeError, readBoundedGeneratedResponse } from './generated-demo-bounded-response.js';
 
 const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const COMMIT = /^[a-f0-9]{40}$/;
@@ -93,8 +94,12 @@ export async function abortGeneratedDemoOperationalReview(
 /** Only a server-confirmed pending ACTIVE transition may be polled. */
 export async function isPendingOperationalSourceConflict(response: Response): Promise<boolean> {
   if (response.status !== 409) return false;
-  const raw = await response.text();
-  if (Buffer.byteLength(raw, 'utf8') > 16_000) return false;
+  let raw: string;
+  try { raw = await readBoundedGeneratedResponse(response, 16_000); }
+  catch (error) {
+    if (error instanceof GeneratedResponseTooLargeError) return false;
+    throw error;
+  }
   let value: unknown;
   try { value = JSON.parse(raw); } catch { return false; }
   const detail = record(value) ? value.detail : undefined;
@@ -126,8 +131,12 @@ async function boundedResponse(response: Response, name: string): Promise<JsonOb
     if (response.status === 503) throw new Error('Operational source admission is disabled; no customer PR was created.');
     throw new Error(`${name} failed (HTTP ${response.status}); no customer PR was created.`);
   }
-  const raw = await response.text();
-  if (Buffer.byteLength(raw, 'utf8') > MAX_RESPONSE) throw new Error(`${name} response is too large.`);
+  let raw: string;
+  try { raw = await readBoundedGeneratedResponse(response, MAX_RESPONSE); }
+  catch (error) {
+    if (error instanceof GeneratedResponseTooLargeError) throw new Error(`${name} response is too large.`, {cause: error});
+    throw error;
+  }
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new Error(`${name} returned invalid JSON.`); }
   if (!record(value)) throw new Error(`${name} returned an invalid contract.`);

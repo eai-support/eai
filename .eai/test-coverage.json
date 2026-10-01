@@ -97,6 +97,7 @@
             "src/commands/vertical.ts",
             "src/lib/generated-demo-continuation.ts",
             "src/lib/generated-demo-operational.ts",
+            "src/lib/generated-demo-bounded-response.ts",
             "src/lib/generated-demo-operational-pr.ts",
             "src/lib/generated-demo-operational-import.ts",
             "resources/generated-operational/**",
