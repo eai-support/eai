@@ -96,7 +96,9 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2', withViewBindings = false): 
       workflow: { steps: [{ id: 'fleet', title: 'Fleet', viewId: 'fleet-view' }] },
       views: [{ id: 'fleet-view', title: 'Fleet', componentIds: ['fleet-table'],
         ...(withViewBindings ? {dataBindings: [{componentId: 'fleet-table', fixtureCollection: 'vehicles',
-          objectTypeSlug: 'vehicle'}]} : {}) }],
+          objectTypeSlug: 'vehicle'}], trustedLayout: {columns: 1, slots: [
+          {componentId: 'fleet-table', kind: 'read-table', title: 'Fleet cars'},
+        ]}} : {}) }],
       entryPath: 'src/generated/app.tsx',
     },
     sourceBundle: { schemaVersion: 'eai.generated_app_source.v1', files: [{ path: 'src/generated/app.tsx', content: appSource }] },
@@ -346,6 +348,8 @@ describe('NCB demo continuation', () => {
     const definition = (artifact.objectTypeDefinitions as Record<string, unknown>[])[0];
     expect(inspection.acceptedViewBindings).toEqual([{viewId: 'fleet-view', componentId: 'fleet-table',
       fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle'}]);
+    expect(inspection.acceptedTrustedSlots).toEqual([{viewId: 'fleet-view', componentId: 'fleet-table',
+      kind: 'read-table'}]);
     expect(planGeneratedDemoViewReadBindings(inspection, [request], manifest, [definition]))
       .toMatchObject({config: {schemaVersion: 'eai.generated_app_operational.v3',
         readBindings: [{viewId: 'fleet-view', componentId: 'fleet-table',
@@ -358,6 +362,9 @@ describe('NCB demo continuation', () => {
       .toThrow('not an accepted workflow component');
     expect(() => planGeneratedDemoViewReadBindings(inspection,
       [request, request], manifest, [definition, definition]))
+      .toThrow('not an accepted workflow component');
+    expect(() => planGeneratedDemoViewReadBindings({...inspection, acceptedTrustedSlots: []},
+      [request], manifest, [definition]))
       .toThrow('not an accepted workflow component');
   });
 

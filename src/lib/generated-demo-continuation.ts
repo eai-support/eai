@@ -47,6 +47,11 @@ export interface GeneratedDemoContinuation {
     readonly fixtureCollection: string;
     readonly objectTypeSlug: string;
   }>;
+  readonly acceptedTrustedSlots: ReadonlyArray<{
+    readonly viewId: string;
+    readonly componentId: string;
+    readonly kind: 'read-table' | 'static-copy';
+  }>;
   readonly sampleCollectionCount: number;
   readonly simulatedActionCount: number;
   readonly adapterStatus: 'demo-only';
@@ -225,6 +230,7 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     throw new Error('Generated demo Object Type proposals contain duplicate slugs.');
   }
   const acceptedViewBindings: GeneratedDemoContinuation['acceptedViewBindings'][number][] = [];
+  const acceptedTrustedSlots: GeneratedDemoContinuation['acceptedTrustedSlots'][number][] = [];
   const views = definition.views;
   const workflow = definition.workflow;
   const steps = isRecord(workflow) ? workflow.steps : null;
@@ -257,9 +263,40 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
         fixtureCollection: mapping.fixtureCollection, objectTypeSlug: mapping.objectTypeSlug,
       });
     }
+    if (view.trustedLayout !== undefined) {
+      const layout = view.trustedLayout;
+      if (!isRecord(layout) || Object.keys(layout).sort().join('|') !== 'columns|slots' ||
+        ![1, 2, 3].includes(layout.columns as number) ||
+        !Array.isArray(layout.slots) || layout.slots.length > 16) {
+        throw new Error('Generated demo trusted layout exceeds the accepted contract.');
+      }
+      const ids = new Set<string>();
+      for (const slot of layout.slots) {
+        if (!isRecord(slot) ||
+          Object.keys(slot).some(key => !['componentId', 'kind', 'title', 'columnSpan', 'text'].includes(key)) ||
+          typeof slot.componentId !== 'string' || !view.componentIds.includes(slot.componentId) ||
+          ids.has(slot.componentId) ||
+          (slot.kind !== 'read-table' && slot.kind !== 'static-copy') ||
+          typeof slot.title !== 'string' || !slot.title.trim() || slot.title.length > 120 ||
+          (slot.columnSpan !== undefined && (![1, 2, 3].includes(slot.columnSpan as number) ||
+            (slot.columnSpan as number) > (layout.columns as number))) ||
+          (slot.kind === 'static-copy' && (typeof slot.text !== 'string' ||
+            !slot.text.trim() || slot.text.length > 2000)) ||
+          (slot.kind === 'read-table' && (slot.text !== undefined ||
+            !mappings.some(mapping => isRecord(mapping) && mapping.componentId === slot.componentId)))) {
+          throw new Error('Generated demo trusted layout slot is not accepted.');
+        }
+        ids.add(slot.componentId);
+        acceptedTrustedSlots.push({viewId: view.id, componentId: slot.componentId,
+          kind: slot.kind as 'read-table' | 'static-copy'});
+      }
+    }
   }
   if (acceptedViewBindings.length > 128) {
     throw new Error('Generated demo view data mappings exceed the artifact limit.');
+  }
+  if (acceptedTrustedSlots.length > 128) {
+    throw new Error('Generated demo trusted layout exceeds the artifact limit.');
   }
   const digestNames = ['appDefinition', 'sourceBundle', 'previewFixtures', 'objectTypeDefinitions'] as const;
   for (const name of digestNames) {
@@ -305,6 +342,7 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     fixtureCollections: Object.keys(fixtures.collections).sort(),
     workflowViewIds: steps.map(step => (step as Record<string, string>).viewId),
     acceptedViewBindings,
+    acceptedTrustedSlots,
     sampleCollectionCount: Object.keys(fixtures.collections).length,
     simulatedActionCount: Object.keys(fixtures.actions).length,
     adapterStatus: 'demo-only',

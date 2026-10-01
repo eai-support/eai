@@ -66,6 +66,10 @@ export default async function Home() {
           sourceDigest: generatedDemo.artifact.digests.sourceBundle,
           fixtureDigest: generatedDemo.artifact.digests.previewFixtures,
           workflowViews: generatedDemo.artifact.appDefinition.workflow.steps.map((step) => step.viewId),
+          workflowSteps: generatedDemo.artifact.appDefinition.workflow.steps,
+          trustedViews: generatedDemo.artifact.appDefinition.views.map(({ id, title, trustedLayout }) => ({
+            id, title, trustedLayout,
+          })),
         }}
         generatedOperational={operational.status === 'ready' ? {
           acceptedArtifactDigest: operational.config.acceptedArtifactDigest,

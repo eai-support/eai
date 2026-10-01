@@ -250,7 +250,9 @@ export function planGeneratedDemoViewReadBindings(
       components.has(request.componentId) ||
       !inspection.acceptedViewBindings.some(item => item.viewId === request.viewId &&
         item.componentId === request.componentId && item.fixtureCollection === request.fixtureCollection &&
-        item.objectTypeSlug === request.objectTypeSlug)) {
+        item.objectTypeSlug === request.objectTypeSlug) ||
+      !inspection.acceptedTrustedSlots.some(item => item.viewId === request.viewId &&
+        item.componentId === request.componentId && item.kind === 'read-table')) {
       throw new Error('The view read is not an accepted workflow component and data mapping.');
     }
     const legacy = planGeneratedDemoReadOnlyBinding(

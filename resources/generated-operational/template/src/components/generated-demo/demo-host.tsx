@@ -7,11 +7,14 @@ import type {
   ResolvedOperationalViewBinding,
 } from '@/lib/generated-demo/operational-contract';
 import type { GeneratedOperationalRows } from '@/lib/generated-demo/operational-read';
+import type { GeneratedTrustedLayout } from '@/lib/generated-demo/contract';
 
 interface DemoIdentity {
   sourceDigest: string;
   fixtureDigest: string;
   workflowViews?: string[];
+  workflowSteps?: Array<{ id: string; title: string; viewId: string }>;
+  trustedViews?: Array<{ id: string; title: string; trustedLayout?: GeneratedTrustedLayout }>;
 }
 
 export interface DemoOperationalIdentity {
@@ -122,19 +125,12 @@ function displayCell(value: string | number | boolean | null): string {
   return value === null ? '—' : String(value);
 }
 
-function TrustedOperationalRows({
-  rows, fields, viewTitle, componentId,
-}: {
+function TrustedTable({ rows, fields }: {
   rows: GeneratedOperationalRows['rows'];
   fields: string[];
-  viewTitle?: string;
-  componentId?: string;
 }) {
   return (
-    <section className='mx-auto max-w-7xl p-5' aria-label='Live read-only data' data-eai-operational-read='true'
-      data-eai-operational-slot={componentId}>
-      <h2 className='text-lg font-semibold text-slate-950'>Live read-only data{viewTitle ? ` · ${viewTitle}` : ''}</h2>
-      <p className='mt-1 text-sm text-slate-600'>This trusted view shows authorized records for the selected app view. The generated UI below still uses sample data and simulated actions.</p>
+    <>
       {rows.length === 0 ? (
         <p className='mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600'>No records are available.</p>
       ) : (
@@ -156,9 +152,28 @@ function TrustedOperationalRows({
           </table>
         </div>
       )}
-    </section>
+    </>
   );
 }
+
+function TrustedOperationalRows({
+  rows, fields, viewTitle, componentId,
+}: {
+  rows: GeneratedOperationalRows['rows'];
+  fields: string[];
+  viewTitle?: string;
+  componentId?: string;
+}) {
+  return <section className='mx-auto max-w-7xl p-5' aria-label='Live read-only data' data-eai-operational-read='true'
+    data-eai-operational-slot={componentId}>
+    <h2 className='text-lg font-semibold text-slate-950'>Live read-only data{viewTitle ? ` · ${viewTitle}` : ''}</h2>
+    <p className='mt-1 text-sm text-slate-600'>This trusted view shows authorized records for the selected app view. The generated UI below still uses sample data and simulated actions.</p>
+    <TrustedTable rows={rows} fields={fields} />
+  </section>;
+}
+
+const gridColumns = { 1: 'grid-cols-1', 2: 'grid-cols-1 md:grid-cols-2', 3: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' };
+const gridSpans = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-2 lg:col-span-3' };
 
 /** Authenticated parent renders operational rows; arbitrary generated source sees samples only. */
 export function GeneratedDemoHost({
@@ -170,11 +185,14 @@ export function GeneratedDemoHost({
   const basePath = (process.env.NEXT_PUBLIC_APP_BASE_PATH ?? '').replace(/\/+$/, '');
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [activeViewId, setActiveViewId] = useState(demo.workflowViews?.[0] ?? '');
+  const [surface, setSurface] = useState<'live' | 'sample'>(operational?.bindings ? 'live' : 'sample');
   const [rows, setRows] = useState<GeneratedOperationalRows | null>(null);
   const [rowsForViewId, setRowsForViewId] = useState('');
   const [failed, setFailed] = useState(false);
   const [failedForViewId, setFailedForViewId] = useState('');
   const selectedBinding = operational?.bindings?.find((binding) => binding.viewId === activeViewId);
+  const selectedView = demo.trustedViews?.find((view) => view.id === activeViewId);
+  const trustedOperational = Boolean(operational?.bindings);
 
   useEffect(() => {
     if (!operational?.bindings) return;
@@ -255,6 +273,7 @@ export function GeneratedDemoHost({
       rows?.fixtureCollection === selectedBinding.fixtureCollection ? rows : null
     : operational?.bindings ? null : rows;
   const selectedFailed = selectedBinding && failed && failedForViewId === selectedBinding.viewId;
+  const showTrustedView = trustedOperational && surface === 'live';
   return (
     <main
       data-eai-demo-ready='true'
@@ -262,18 +281,51 @@ export function GeneratedDemoHost({
       data-eai-demo-fixture-digest={demo.fixtureDigest}
       className='min-h-svh bg-slate-50'
     >
-      {selectedFailed ? <section role='alert' className='mx-auto max-w-7xl p-5'>
+      {trustedOperational ? <nav aria-label='App modes' className='mx-auto flex max-w-7xl gap-2 px-5 pt-5'>
+        <button type='button' aria-pressed={surface === 'live'} onClick={() => setSurface('live')}
+          className='rounded border border-slate-300 bg-white px-4 py-2 text-sm'>Live app</button>
+        <button type='button' aria-pressed={surface === 'sample'} onClick={() => setSurface('sample')}
+          className='rounded border border-slate-300 bg-white px-4 py-2 text-sm'>Sample preview</button>
+      </nav> : null}
+      {showTrustedView ? <>
+        <nav aria-label='Workflow steps' className='mx-auto flex max-w-7xl flex-wrap gap-2 px-5 pt-5'>
+          {demo.workflowSteps?.map((step) => <button type='button' key={step.id}
+            aria-current={step.viewId === activeViewId ? 'page' : undefined}
+            onClick={() => setActiveViewId(step.viewId)}
+            className='rounded border border-slate-300 bg-white px-4 py-2 text-sm'>{step.title}</button>)}
+        </nav>
+        <section className='mx-auto max-w-7xl px-5 py-6' aria-label='Live app view'>
+          <h1 className='text-2xl font-semibold text-slate-950'>{selectedView?.title ?? 'App view'}</h1>
+          <p className='mt-1 text-sm text-slate-600'>Authorized data is shown only in reviewed components. Other interactions remain in the sample preview.</p>
+          {selectedView?.trustedLayout ? <div className={`mt-5 grid gap-4 ${gridColumns[selectedView.trustedLayout.columns]}`}>
+            {selectedView.trustedLayout.slots.map((slot) => {
+              const boundHere = selectedBinding?.componentId === slot.componentId && slot.kind === 'read-table';
+              return <section key={slot.componentId} data-eai-operational-slot={slot.componentId}
+                data-eai-operational-read={boundHere ? 'true' : undefined}
+                className={`rounded-xl border border-slate-200 bg-white p-5 ${gridSpans[slot.columnSpan ?? 1]}`}>
+                <h2 className='text-lg font-semibold text-slate-950'>{slot.title}</h2>
+                {slot.kind === 'static-copy' ? <p className='mt-2 whitespace-pre-wrap text-sm text-slate-700'>{slot.text}</p> :
+                  boundHere && selectedFailed ? <p role='alert' className='mt-2 text-sm text-red-700'>Live data is unavailable. No sample data was substituted.</p> :
+                  boundHere && liveRows ? <TrustedTable rows={liveRows.rows} fields={selectedBinding.projectedFields} /> :
+                  boundHere ? <p role='status' className='mt-2 text-sm text-slate-600'>Loading authorized data…</p> :
+                  <p className='mt-2 text-sm text-slate-600'>Live data is not connected for this component.</p>}
+              </section>;
+            })}
+          </div> : <p role='alert' className='mt-5'>This view has no reviewed live layout.</p>}
+        </section>
+      </> : null}
+      {!trustedOperational && selectedFailed ? <section role='alert' className='mx-auto max-w-7xl p-5'>
         Live data for {selectedBinding.viewTitle} is unavailable. No sample data was substituted in the live view.
       </section> : null}
-      {selectedBinding && !selectedFailed && !liveRows ? <section role='status' className='mx-auto max-w-7xl p-5'>
+      {!trustedOperational && selectedBinding && !selectedFailed && !liveRows ? <section role='status' className='mx-auto max-w-7xl p-5'>
         Loading authorized data for {selectedBinding.viewTitle}…
       </section> : null}
-      {operational && liveRows ? <TrustedOperationalRows rows={liveRows.rows}
+      {!trustedOperational && operational && liveRows ? <TrustedOperationalRows rows={liveRows.rows}
         fields={selectedBinding?.projectedFields ?? operational.projectedFields}
         viewTitle={selectedBinding?.viewTitle} componentId={selectedBinding?.componentId} /> : null}
       {operational?.createFields && liveRows && !operational.bindings ? <TrustedCreateForm fields={operational.createFields}
         basePath={basePath} onCreated={refreshRows} /> : null}
-      <div className='border-b border-amber-300 bg-amber-50 px-5 py-3 text-center text-sm font-medium text-amber-950' role='status'>
+      {!showTrustedView ? <><div className='border-b border-amber-300 bg-amber-50 px-5 py-3 text-center text-sm font-medium text-amber-950' role='status'>
         Demo app · Sample data and simulated interactions. Changes here do not affect real records or services.
       </div>
       <iframe
@@ -284,6 +336,7 @@ export function GeneratedDemoHost({
         referrerPolicy='no-referrer'
         className='min-h-[calc(100svh-3rem)] w-full border-0'
       />
+      </> : null}
     </main>
   );
 }

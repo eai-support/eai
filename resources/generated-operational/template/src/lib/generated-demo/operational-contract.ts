@@ -139,7 +139,9 @@ export function resolveGeneratedOperationalRuntime(
           !view.dataBindings?.some((accepted) =>
             accepted.componentId === componentId &&
             accepted.fixtureCollection === binding.fixtureCollection &&
-            accepted.objectTypeSlug === binding.objectTypeSlug)
+            accepted.objectTypeSlug === binding.objectTypeSlug) ||
+          !view.trustedLayout?.slots.some((slot) =>
+            slot.kind === 'read-table' && slot.componentId === componentId)
         )) ||
         boundViews.has(viewId) || boundComponents.has(componentId)) {
       errors.push('read binding is not a bounded accepted view and Object Type');

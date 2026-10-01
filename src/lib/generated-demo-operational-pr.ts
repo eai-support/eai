@@ -16,11 +16,13 @@ const WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const MANIFEST_PATH = '.eai-manifest.json';
 const OPERATIONAL_CONFIG_PATH = 'src/eai.config/generated-operational.json';
 const RESOURCE_ROOT = fileURLToPath(new URL('../../resources/generated-operational/', import.meta.url));
-const TEMPLATE_COMMIT = '8aa6424a5b65bb3c3a2056ef41541498d60b572a';
-const PRIOR_TEMPLATE_COMMITS = ['99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0', 'b13767b2d4ee9a510d1596654b94e5ce7422312e', 'cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
+const TEMPLATE_COMMIT = '3d1e2d0c1334ab3df77e43d5c975906da184a5e8';
+const PRIOR_TEMPLATE_COMMITS = ['defc71b050403382552cc7ba8098be100d5728c0', 'dec59594e28f26cf7878c9709d5000f81083289c', '8aa6424a5b65bb3c3a2056ef41541498d60b572a', '99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0', 'b13767b2d4ee9a510d1596654b94e5ce7422312e', 'cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
 const TEMPLATE_PATHS = [
   'scripts/validate-generated-demo.cjs',
   'src/lib/generated-demo/operational-contract.ts',
+  'src/lib/generated-demo/contract.ts',
+  'src/lib/generated-demo/runtime-contract.ts',
   'src/lib/generated-demo/operational-runtime.ts',
   'src/lib/generated-demo/operational-read.ts',
   'src/lib/generated-demo/operational-create.ts',
@@ -32,6 +34,7 @@ const TEMPLATE_PATHS = [
   'src/components/generated-demo/client-only-demo.tsx',
   'src/app/eai-demo-frame/page.tsx',
   'src/app/page.tsx',
+  'src/app/home-client.tsx',
 ] as const;
 const MAX_RESPONSE = 2_000_000;
 

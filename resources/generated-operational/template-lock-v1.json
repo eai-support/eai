@@ -1,13 +1,14 @@
 {
-  "templateCommit": "8aa6424a5b65bb3c3a2056ef41541498d60b572a",
+  "templateCommit": "3d1e2d0c1334ab3df77e43d5c975906da184a5e8",
   "nullConfigChecksum": "sha256:38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
   "files": {
     "src/lib/generated-demo/operational-contract.ts": {
       "baselineChecksum": "sha256:4f04f5eb13d1b8c43c57a6074969d02b5f7da14997b13a520ac5d94c9a0e3e2f",
-      "targetChecksum": "sha256:656cf2d777893971a2519b4d76de7085df9dd7dbb7a99cb66fc248f91009a37e",
-      "previousTargetChecksum": "sha256:843f99fa53e2f476ea8c405a754b6306a92cc288b1d5512ebb575adaaea75c7e",
+      "targetChecksum": "sha256:6cc4041873ddcfbe3020bcb1bb9a3746b84d7958082c42d75c396d541a68a451",
+      "previousTargetChecksum": "sha256:656cf2d777893971a2519b4d76de7085df9dd7dbb7a99cb66fc248f91009a37e",
       "priorTargetChecksums": [
-        "sha256:96e0b0c29acd0a7c46e801428a398db171c1ec84fc08531b03306a996604cdc6"
+        "sha256:96e0b0c29acd0a7c46e801428a398db171c1ec84fc08531b03306a996604cdc6",
+        "sha256:843f99fa53e2f476ea8c405a754b6306a92cc288b1d5512ebb575adaaea75c7e"
       ]
     },
     "src/lib/generated-demo/operational-runtime.ts": {
@@ -35,11 +36,12 @@
     },
     "src/components/generated-demo/demo-host.tsx": {
       "baselineChecksum": "sha256:1541c6c476666c7fa655c6c4fbfa7aca3d3ada2a0c5427d0a9c9782326307c8e",
-      "targetChecksum": "sha256:f535fa66da50a50b08ef72f7a644726e7ffeed6db866818dd0628b27b852d054",
-      "previousTargetChecksum": "sha256:48cf287c40867fd9987fc93e4664533babd39f15e81c1b878a233d170f9e24d8",
+      "targetChecksum": "sha256:1068b9b5e9e82379278a72b0e83992bec8881cb033a155877447c34a7d5d1a5f",
+      "previousTargetChecksum": "sha256:f535fa66da50a50b08ef72f7a644726e7ffeed6db866818dd0628b27b852d054",
       "priorTargetChecksums": [
         "sha256:9081602547fe1dc4645590cfac5f14871a275914174ca89353f6bcc055f3b48c",
-        "sha256:c355687d820c04992219561dfb2dd1554ac3acc32346dee69ccbf6b3c5fd89a1"
+        "sha256:c355687d820c04992219561dfb2dd1554ac3acc32346dee69ccbf6b3c5fd89a1",
+        "sha256:48cf287c40867fd9987fc93e4664533babd39f15e81c1b878a233d170f9e24d8"
       ]
     },
     "src/components/generated-demo/demo-app.tsx": {
@@ -62,10 +64,11 @@
     },
     "src/app/page.tsx": {
       "baselineChecksum": "sha256:bcda45c00ff6256990bbe05d388d0302dca4e9943a25721f64732598d96fd7af",
-      "targetChecksum": "sha256:ec56de7f0d1f70ebc7830f16f0198c3006d44eb3ce971d9bc23387efe3b08cbd",
-      "previousTargetChecksum": "sha256:28847e0ad9518940110c9c2fab53275b83af99f0c07b21dd33863731a23c1ee5",
+      "targetChecksum": "sha256:f2a9e78f41c9a8aaff6dcef5efdb402747418bddee1c43269e3d531c72416831",
+      "previousTargetChecksum": "sha256:ec56de7f0d1f70ebc7830f16f0198c3006d44eb3ce971d9bc23387efe3b08cbd",
       "priorTargetChecksums": [
-        "sha256:cac9d05c7573b7b7c92da8cdb1eb737a93e1b31754da4e59a24e0a17999aadc0"
+        "sha256:cac9d05c7573b7b7c92da8cdb1eb737a93e1b31754da4e59a24e0a17999aadc0",
+        "sha256:28847e0ad9518940110c9c2fab53275b83af99f0c07b21dd33863731a23c1ee5"
       ]
     },
     "src/lib/generated-demo/operational-create.ts": {
@@ -79,6 +82,31 @@
     "scripts/validate-generated-demo.cjs": {
       "baselineChecksum": "sha256:c4019bb1d93d9f89c1e4ebd27353216da7517d8d18a3c05a30dca4e3d48fefc2",
       "targetChecksum": "sha256:4815c4c33e107711328c0a8f81f22732a47a9d7fc4a2a2abb547b0cd5405db76"
+    },
+    "src/lib/generated-demo/contract.ts": {
+      "baselineChecksum": "sha256:5093fec9fa60d31342534c6797388e97a01c156752081ec3b5e28e9d246e0f80",
+      "targetChecksum": "sha256:89a5c7311ef7a36be6c954762d9c5c8b1ad04a7862ee3cd349867f53d1d3de97",
+      "previousTargetChecksum": "sha256:5093fec9fa60d31342534c6797388e97a01c156752081ec3b5e28e9d246e0f80",
+      "priorTargetChecksums": [
+        "sha256:42d52169612b8b1ae7799a0ad3540050988d953e85f1ea0a0147a631e4da3d3e",
+        "sha256:c81dc6fb708dc84de7db57761669db8577593711ca137fedb2db4728dd5c5482"
+      ]
+    },
+    "src/lib/generated-demo/runtime-contract.ts": {
+      "baselineChecksum": "sha256:55b1c5b145f346f419645415903f571446eb8276a66623418fcb51a587f807a3",
+      "targetChecksum": "sha256:d34a593a910723353e4af37f6adb8ed5a672526a800c8cc59aa81f70a6ae29c3",
+      "previousTargetChecksum": "sha256:55b1c5b145f346f419645415903f571446eb8276a66623418fcb51a587f807a3",
+      "priorTargetChecksums": [
+        "sha256:20908b7cb2e0d02ce97144af6eccd186f3d336180d0d4277a620182885a1a467"
+      ]
+    },
+    "src/app/home-client.tsx": {
+      "baselineChecksum": "sha256:f5862cebac2bb78930f590442ce5f36c1709a8a64b0ec77aa820cc7524e2ce95",
+      "targetChecksum": "sha256:27edafcd5438f9b7888a105d0405397c36c58b389a694d69a9884a6740998c61",
+      "previousTargetChecksum": "sha256:f5862cebac2bb78930f590442ce5f36c1709a8a64b0ec77aa820cc7524e2ce95",
+      "priorTargetChecksums": [
+        "sha256:4439bfaf6faf3b5d584979e667813b1fd55e62df430db96b9ca83ab00dd8b1d2"
+      ]
     }
   }
 }
