@@ -1,5 +1,5 @@
 {
-  "templateCommit": "99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0",
+  "templateCommit": "8aa6424a5b65bb3c3a2056ef41541498d60b572a",
   "nullConfigChecksum": "sha256:38e0b9de817f645c4bec37c0d4a3e58baecccb040f5718dc069a72c7385a0bed",
   "files": {
     "src/lib/generated-demo/operational-contract.ts": {
@@ -35,9 +35,10 @@
     },
     "src/components/generated-demo/demo-host.tsx": {
       "baselineChecksum": "sha256:1541c6c476666c7fa655c6c4fbfa7aca3d3ada2a0c5427d0a9c9782326307c8e",
-      "targetChecksum": "sha256:48cf287c40867fd9987fc93e4664533babd39f15e81c1b878a233d170f9e24d8",
-      "previousTargetChecksum": "sha256:9081602547fe1dc4645590cfac5f14871a275914174ca89353f6bcc055f3b48c",
+      "targetChecksum": "sha256:f535fa66da50a50b08ef72f7a644726e7ffeed6db866818dd0628b27b852d054",
+      "previousTargetChecksum": "sha256:48cf287c40867fd9987fc93e4664533babd39f15e81c1b878a233d170f9e24d8",
       "priorTargetChecksums": [
+        "sha256:9081602547fe1dc4645590cfac5f14871a275914174ca89353f6bcc055f3b48c",
         "sha256:c355687d820c04992219561dfb2dd1554ac3acc32346dee69ccbf6b3c5fd89a1"
       ]
     },

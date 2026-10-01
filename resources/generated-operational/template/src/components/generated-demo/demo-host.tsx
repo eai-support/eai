@@ -178,6 +178,7 @@ export function GeneratedDemoHost({
 
   useEffect(() => {
     if (!operational?.bindings) return;
+    let pendingViewChange: ReturnType<typeof setTimeout> | undefined;
     const receiveView = (event: MessageEvent) => {
       // Frame messages can select a reviewed slot but cannot supply routes, rows, or authority.
       const value: unknown = event.data;
@@ -191,10 +192,16 @@ export function GeneratedDemoHost({
           message.sourceDigest !== demo.sourceDigest ||
           typeof message.viewId !== 'string' ||
           !demo.workflowViews?.includes(message.viewId)) return;
-      setActiveViewId(message.viewId);
+      // A generated frame may signal navigation, but cannot amplify live reads with a message burst.
+      if (pendingViewChange) clearTimeout(pendingViewChange);
+      const viewId = message.viewId;
+      pendingViewChange = setTimeout(() => setActiveViewId(viewId), 250);
     };
     window.addEventListener('message', receiveView);
-    return () => window.removeEventListener('message', receiveView);
+    return () => {
+      if (pendingViewChange) clearTimeout(pendingViewChange);
+      window.removeEventListener('message', receiveView);
+    };
   }, [demo.sourceDigest, demo.workflowViews, operational]);
 
   async function refreshRows(): Promise<void> {
