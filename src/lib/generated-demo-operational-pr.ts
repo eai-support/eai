@@ -16,10 +16,12 @@ const WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const MANIFEST_PATH = '.eai-manifest.json';
 const OPERATIONAL_CONFIG_PATH = 'src/eai.config/generated-operational.json';
 const RESOURCE_ROOT = fileURLToPath(new URL('../../resources/generated-operational/', import.meta.url));
-const TEMPLATE_COMMIT = '3d1e2d0c1334ab3df77e43d5c975906da184a5e8';
-const PRIOR_TEMPLATE_COMMITS = ['defc71b050403382552cc7ba8098be100d5728c0', 'dec59594e28f26cf7878c9709d5000f81083289c', '8aa6424a5b65bb3c3a2056ef41541498d60b572a', '99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0', 'b13767b2d4ee9a510d1596654b94e5ce7422312e', 'cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
+const TEMPLATE_COMMIT = '8e57c6f9ac654d33ddd2a4c56cbfea3afa154df8';
+const PRIOR_TEMPLATE_COMMITS = ['8f18375d6b2044c0c31d6ac2729369e880d7390a', '3d1e2d0c1334ab3df77e43d5c975906da184a5e8', 'defc71b050403382552cc7ba8098be100d5728c0', 'dec59594e28f26cf7878c9709d5000f81083289c', '8aa6424a5b65bb3c3a2056ef41541498d60b572a', '99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0', 'b13767b2d4ee9a510d1596654b94e5ce7422312e', 'cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
 const TEMPLATE_PATHS = [
+  'next.config.ts',
   'scripts/validate-generated-demo.cjs',
+  'src/middleware.ts',
   'src/lib/generated-demo/operational-contract.ts',
   'src/lib/generated-demo/contract.ts',
   'src/lib/generated-demo/runtime-contract.ts',
@@ -30,11 +32,15 @@ const TEMPLATE_PATHS = [
   'src/app/api/eai/generated-operational/route.ts',
   'src/app/api/eai/generated-operational/create/route.ts',
   'src/components/generated-demo/demo-host.tsx',
+  'src/app/layout.tsx',
+  'src/app/page.tsx',
+  'src/app/home-client.tsx',
+] as const;
+const RETIRED_TEMPLATE_PATHS = [
   'src/components/generated-demo/demo-app.tsx',
   'src/components/generated-demo/client-only-demo.tsx',
   'src/app/eai-demo-frame/page.tsx',
-  'src/app/page.tsx',
-  'src/app/home-client.tsx',
+  'src/lib/generated-demo/frame-boundary.ts',
 ] as const;
 const MAX_RESPONSE = 2_000_000;
 
@@ -324,10 +330,31 @@ function managedEntries(manifest: JsonObject): Array<{path: string; checksum: st
   return entries as Array<{path: string; checksum: string; encoding: string; owner: string}>;
 }
 
+/** A retired executable may be deleted only when the signed inventory still owns its exact reviewed bytes. */
+export function verifyRetiredDemoSource(
+  path: string,
+  current: Buffer | null,
+  entry: {checksum: string; owner: string} | undefined,
+  expected: unknown,
+): boolean {
+  if (!current) return false;
+  if (!entry || entry.owner !== 'admin-portal-generated' || !record(expected) ||
+    entry.checksum !== sha256(current)) {
+    throw new Error(`Retired demo executable is not managed source: ${path}`);
+  }
+  const priorChecksums = Array.isArray(expected.priorTargetChecksums)
+    ? expected.priorTargetChecksums.filter((value): value is string => typeof value === 'string') : [];
+  if (![expected.baselineChecksum, expected.previousTargetChecksum, expected.targetChecksum,
+    ...priorChecksums].includes(sha256(current))) {
+    throw new Error(`Retired demo executable is customized; refusing to replace ${path}`);
+  }
+  return true;
+}
+
 async function prepareFileMap(
   root: string, inspection: GeneratedDemoContinuation, reservation: JsonObject,
   anchor: JsonObject, environment: Environment,
-): Promise<Map<string, string>> {
+): Promise<Map<string, string | null>> {
   const manifest = JSON.parse((await safeRead(root, MANIFEST_PATH)).toString('utf8')) as JsonObject;
   if (!record(manifest) || !record(manifest.generatedDemo) ||
     manifest.generatedDemo.artifactDigest !== inspection.acceptedArtifactDigest ||
@@ -358,7 +385,7 @@ async function prepareFileMap(
   if (!record(lock) || lock.templateCommit !== TEMPLATE_COMMIT || !record(lock.files)) {
     throw new Error('The CLI package has no reviewed operational template lock.');
   }
-  const updates = new Map<string, string>();
+  const updates = new Map<string, string | null>();
   for (const path of TEMPLATE_PATHS) {
     const resource = (await safeRead(join(RESOURCE_ROOT, 'template'), path)).toString('utf8');
     const expected = lock.files[path];
@@ -374,6 +401,14 @@ async function prepareFileMap(
       throw new Error(`Customer source is customized; refusing to replace ${path}`);
     }
     updates.set(path, resource);
+  }
+  for (const path of RETIRED_TEMPLATE_PATHS) {
+    const current = await optionalSafeRead(root, path);
+    const entry = byPath.get(path);
+    const expected = lock.files[path];
+    if (!verifyRetiredDemoSource(path, current, entry, expected)) continue;
+    updates.set(path, null);
+    byPath.delete(path);
   }
   const config = JSON.stringify(reservation.operationalBinding, null, 2) + '\n';
   const operation = JSON.stringify(reservation.sourceOperation, null, 2) + '\n';
@@ -405,6 +440,7 @@ async function prepareFileMap(
   }
   updates.set(WORKFLOW_PATH, reviewedWorkflow);
   for (const [path, content] of updates) {
+    if (content === null) continue;
     const entry = byPath.get(path);
     if (entry?.encoding === 'base64') throw new Error(`Operational source cannot replace binary managed file: ${path}`);
     if (path === OPERATIONAL_CONFIG_PATH && !entry) {
@@ -433,7 +469,7 @@ async function gitHubCommitTree(root: string, repo: string, sha: string): Promis
 }
 
 async function createReviewPr(
-  root: string, reservation: JsonObject, updates: Map<string, string>, expectedDefaultSha: string,
+  root: string, reservation: JsonObject, updates: Map<string, string | null>, expectedDefaultSha: string,
 ): Promise<OperationalReviewResult> {
   const repo = `${reservation.repoOwner}/${reservation.repoName}`;
   const defaultBranch = String(reservation.defaultBranch);
@@ -450,9 +486,9 @@ async function createReviewPr(
   const baseTree = await gitHubCommitTree(root, repo, expectedDefaultSha);
   const tree = await gh(root, `repos/${repo}/git/trees`, 'POST', {
     base_tree: baseTree,
-    tree: [...updates.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, content]) => ({
-      path, mode: '100644', type: 'blob', content,
-    })),
+    tree: [...updates.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([path, content]) =>
+      content === null ? {path, mode: '100644', type: 'blob', sha: null} :
+        {path, mode: '100644', type: 'blob', content}),
   });
   if (!str(tree.sha) || tree.sha === baseTree) throw new Error('Operational source tree was not created.');
   const endpoint = `repos/${repo}/git/ref/heads/${encodeURIComponent(branch)}`;

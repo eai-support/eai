@@ -63,12 +63,14 @@ export default async function Home() {
     return (
       <HomeClient
         generatedDemo={{
+          appName: generatedDemo.artifact.appDefinition.appName,
           sourceDigest: generatedDemo.artifact.digests.sourceBundle,
           fixtureDigest: generatedDemo.artifact.digests.previewFixtures,
+          previewFixtures: generatedDemo.artifact.previewFixtures,
           workflowViews: generatedDemo.artifact.appDefinition.workflow.steps.map((step) => step.viewId),
           workflowSteps: generatedDemo.artifact.appDefinition.workflow.steps,
-          trustedViews: generatedDemo.artifact.appDefinition.views.map(({ id, title, trustedLayout }) => ({
-            id, title, trustedLayout,
+          trustedViews: generatedDemo.artifact.appDefinition.views.map(({ id, title, trustedLayout, safeUi }) => ({
+            id, title, trustedLayout, safeUi,
           })),
         }}
         generatedOperational={operational.status === 'ready' ? {

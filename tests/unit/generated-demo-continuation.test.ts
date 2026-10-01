@@ -17,6 +17,7 @@ import {
   isPendingOperationalSourceConflict,
   prepareGeneratedDemoOperationalReview,
   upgradeGeneratedWorkflow,
+  verifyRetiredDemoSource,
 } from '../../src/lib/generated-demo-operational-pr.js';
 import type { PlatformAPIClient } from '../../src/lib/api.js';
 import { assertCliMayWriteProjectManifest, saveProjectManifest } from '../../src/lib/project-manifest.js';
@@ -95,6 +96,8 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2', withViewBindings = false): 
       businessCard: { description: 'Fleet app', goal: 'See cars', audience: 'Manager', outcome: 'Faster allocation' },
       workflow: { steps: [{ id: 'fleet', title: 'Fleet', viewId: 'fleet-view' }] },
       views: [{ id: 'fleet-view', title: 'Fleet', componentIds: ['fleet-table'],
+        safeUi: {version: 'eai.safe_ui.v1', root: {kind: 'table', componentId: 'fleet-table',
+          fixtureCollection: 'vehicles', columns: [{field: 'name', label: 'Car'}]}},
         ...(withViewBindings ? {dataBindings: [{componentId: 'fleet-table', fixtureCollection: 'vehicles',
           objectTypeSlug: 'vehicle'}], trustedLayout: {columns: 1, slots: [
           {componentId: 'fleet-table', kind: 'read-table', title: 'Fleet cars'},
@@ -148,6 +151,21 @@ afterEach(async () => {
 });
 
 describe('NCB demo continuation', () => {
+  it('retires only exact signed managed executable bytes', () => {
+    const path = 'src/app/eai-demo-frame/page.tsx';
+    const current = Buffer.from('old reviewed frame source');
+    const checksum = hash(current);
+    const entry = {checksum, owner: 'admin-portal-generated'};
+    const lock = {baselineChecksum: checksum, targetChecksum: checksum};
+    expect(verifyRetiredDemoSource(path, current, entry, lock)).toBe(true);
+    expect(verifyRetiredDemoSource(path, null, undefined, lock)).toBe(false);
+    expect(() => verifyRetiredDemoSource(path, current, undefined, lock)).toThrow('not managed source');
+    expect(() => verifyRetiredDemoSource(path, current, {...entry, checksum: hash('other')}, lock))
+      .toThrow('not managed source');
+    expect(() => verifyRetiredDemoSource(path, current, entry, {targetChecksum: hash('other')}))
+      .toThrow('customized');
+  });
+
   it('aborts only the exact uncommitted operational reservation through the tenant-scoped API', async () => {
     const operationId = 'operational-aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
     const calls: Array<{path: string; method?: string}> = [];
@@ -283,6 +301,30 @@ describe('NCB demo continuation', () => {
     await git(root, 'checkout', '--', '.');
     await write(root, 'src/generated/app.tsx', `${appSource}// drift\n`);
     await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('managed file differs');
+  });
+
+  it('rejects missing or executable safe UI even when the accepted digests are refreshed', async () => {
+    const {root, artifact, manifest} = await fixture();
+    const appDefinition = artifact.appDefinition as {views: Array<{safeUi?: unknown}>};
+    delete appDefinition.views[0].safeUi;
+    (artifact.digests as Record<string, string>).appDefinition = hash(`${canonical(appDefinition)}\n`);
+    let contents = `${JSON.stringify(artifact, null, 2)}\n`;
+    await write(root, 'src/eai.config/generated-demo.json', contents);
+    (manifest.managedFiles as Array<{path: string; checksum: string}>)[1].checksum = hash(contents);
+    (manifest.generatedDemo as {artifactDigest: string}).artifactDigest = hash(`${canonical(artifact)}\n`);
+    await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('safe UI');
+
+    appDefinition.views[0].safeUi = {version: 'eai.safe_ui.v1', root: {
+      kind: 'text', text: '<script>fetch("https://example.invalid")</script>', dangerousHtml: true,
+    }};
+    (artifact.digests as Record<string, string>).appDefinition = hash(`${canonical(appDefinition)}\n`);
+    contents = `${JSON.stringify(artifact, null, 2)}\n`;
+    await write(root, 'src/eai.config/generated-demo.json', contents);
+    (manifest.managedFiles as Array<{path: string; checksum: string}>)[1].checksum = hash(contents);
+    (manifest.generatedDemo as {artifactDigest: string}).artifactDigest = hash(`${canonical(artifact)}\n`);
+    await write(root, '.eai-manifest.json', `${JSON.stringify(manifest, null, 2)}\n`);
+    await expect(inspectGeneratedDemoContinuation(root)).rejects.toThrow('safe UI');
   });
 
   it('plans one app-owned read without writing an operational binding', async () => {

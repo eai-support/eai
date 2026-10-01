@@ -7,14 +7,17 @@ import type {
   ResolvedOperationalViewBinding,
 } from '@/lib/generated-demo/operational-contract';
 import type { GeneratedOperationalRows } from '@/lib/generated-demo/operational-read';
-import type { GeneratedTrustedLayout } from '@/lib/generated-demo/contract';
+import type { GeneratedDemoArtifact, GeneratedSafeUiNode, GeneratedTrustedLayout } from '@/lib/generated-demo/contract';
 
 interface DemoIdentity {
+  appName: string;
   sourceDigest: string;
   fixtureDigest: string;
   workflowViews?: string[];
   workflowSteps?: Array<{ id: string; title: string; viewId: string }>;
-  trustedViews?: Array<{ id: string; title: string; trustedLayout?: GeneratedTrustedLayout }>;
+  trustedViews?: Array<{ id: string; title: string; trustedLayout?: GeneratedTrustedLayout;
+    safeUi: GeneratedDemoArtifact['appDefinition']['views'][number]['safeUi'] }>;
+  previewFixtures: GeneratedDemoArtifact['previewFixtures'];
 }
 
 export interface DemoOperationalIdentity {
@@ -175,6 +178,67 @@ function TrustedOperationalRows({
 const gridColumns = { 1: 'grid-cols-1', 2: 'grid-cols-1 md:grid-cols-2', 3: 'grid-cols-1 md:grid-cols-2 lg:grid-cols-3' };
 const gridSpans = { 1: '', 2: 'md:col-span-2', 3: 'md:col-span-2 lg:col-span-3' };
 
+const safeGaps = { sm: 'gap-2', md: 'gap-4', lg: 'gap-6' };
+
+function SafeUiNodeView({ node, fixtures, onAction, onView }:
+  { node: GeneratedSafeUiNode; fixtures: GeneratedDemoArtifact['previewFixtures'];
+    onAction: (actionId: string) => void; onView: (viewId: string) => void }) {
+  const marker = { 'data-eai-safe-component': node.componentId };
+  switch (node.kind) {
+    case 'stack':
+      return <div {...marker} className={`@container flex ${node.direction === 'row' ? 'flex-col @md:flex-row' : 'flex-col'} ${safeGaps[node.gap]}`}>
+        {node.children.map((child, index) => <SafeUiNodeView key={index} node={child}
+          fixtures={fixtures} onAction={onAction} onView={onView} />)}
+      </div>;
+    case 'heading':
+      if (node.level === 1) return <h1 {...marker} className='text-3xl font-semibold text-slate-950'>{node.text}</h1>;
+      if (node.level === 2) return <h2 {...marker} className='text-2xl font-semibold text-slate-950'>{node.text}</h2>;
+      return <h3 {...marker} className='text-xl font-semibold text-slate-950'>{node.text}</h3>;
+    case 'text':
+      return <p {...marker} className='whitespace-pre-wrap text-sm text-slate-700'>{node.text}</p>;
+    case 'stat': {
+      let value: string | number | boolean | null | undefined;
+      if (node.value.kind === 'literal') value = node.value.text;
+      else {
+        const row = fixtures.collections[node.value.collection]?.[node.value.rowIndex];
+        const cell = row?.[node.value.field];
+        if (cell === null || ['string', 'number', 'boolean'].includes(typeof cell))
+          value = cell as string | number | boolean | null;
+      }
+      return <section {...marker} className='min-w-36 rounded-xl border border-slate-200 bg-white p-4'>
+        <h3 className='text-xs font-medium uppercase tracking-wide text-slate-600'>{node.label}</h3>
+        <p className='mt-2 text-2xl font-semibold text-slate-950'>{value === undefined ? '—' : displayCell(value)}</p>
+      </section>;
+    }
+    case 'table':
+      return <div {...marker} className='overflow-x-auto rounded-xl border border-slate-200 bg-white'>
+        <table className='min-w-full divide-y divide-slate-200 text-left text-sm'>
+          <thead className='bg-slate-50'><tr>{node.columns.map((column) =>
+            <th key={column.field} scope='col' className='px-4 py-3 font-medium text-slate-700'>{column.label}</th>)}</tr></thead>
+          <tbody className='divide-y divide-slate-100'>
+            {fixtures.collections[node.fixtureCollection]?.slice(0, 50).map((row, index) =>
+              <tr key={index}>{node.columns.map((column) => {
+                const cell = row[column.field];
+                return <td key={column.field} className='px-4 py-3 text-slate-700'>
+                  {cell === null || ['string', 'number', 'boolean'].includes(typeof cell)
+                    ? displayCell(cell as string | number | boolean | null) : '—'}</td>;
+              })}</tr>)}
+          </tbody>
+        </table>
+      </div>;
+    case 'button':
+      return <button {...marker} type='button' onClick={() => onAction(node.actionId)}
+        className='rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white'>{node.label}</button>;
+    case 'input':
+      return <label {...marker} className='flex max-w-sm flex-col gap-1 text-sm text-slate-800'>
+        {node.label}<input type={node.inputType} maxLength={node.inputType === 'text' ? 200 : undefined}
+          className='rounded-lg border border-slate-300 bg-white px-3 py-2' /></label>;
+    case 'view-link':
+      return <button {...marker} type='button' onClick={() => onView(node.targetViewId)}
+        className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm text-slate-900'>{node.label}</button>;
+  }
+}
+
 /** Authenticated parent renders operational rows; arbitrary generated source sees samples only. */
 export function GeneratedDemoHost({
   demo, operational,
@@ -183,9 +247,9 @@ export function GeneratedDemoHost({
   operational?: DemoOperationalIdentity;
 }) {
   const basePath = (process.env.NEXT_PUBLIC_APP_BASE_PATH ?? '').replace(/\/+$/, '');
-  const frameRef = useRef<HTMLIFrameElement>(null);
   const [activeViewId, setActiveViewId] = useState(demo.workflowViews?.[0] ?? '');
   const [surface, setSurface] = useState<'live' | 'sample'>(operational?.bindings ? 'live' : 'sample');
+  const [announcement, setAnnouncement] = useState('');
   const [rows, setRows] = useState<GeneratedOperationalRows | null>(null);
   const [rowsForViewId, setRowsForViewId] = useState('');
   const [failed, setFailed] = useState(false);
@@ -194,33 +258,11 @@ export function GeneratedDemoHost({
   const selectedView = demo.trustedViews?.find((view) => view.id === activeViewId);
   const trustedOperational = Boolean(operational?.bindings);
 
-  useEffect(() => {
-    if (!operational?.bindings) return;
-    let pendingViewChange: ReturnType<typeof setTimeout> | undefined;
-    const receiveView = (event: MessageEvent) => {
-      // Frame messages can select a reviewed slot but cannot supply routes, rows, or authority.
-      const value: unknown = event.data;
-      if (event.source !== frameRef.current?.contentWindow || event.origin !== 'null' ||
-          !value || typeof value !== 'object' || Array.isArray(value)) return;
-      const message = value as Record<string, unknown>;
-      if (Object.keys(message).sort().join('|') !==
-          'acceptedArtifactDigest|sourceDigest|type|viewId' ||
-          message.type !== 'eai.generated_app_view.v1' ||
-          message.acceptedArtifactDigest !== operational.acceptedArtifactDigest ||
-          message.sourceDigest !== demo.sourceDigest ||
-          typeof message.viewId !== 'string' ||
-          !demo.workflowViews?.includes(message.viewId)) return;
-      // A generated frame may signal navigation, but cannot amplify live reads with a message burst.
-      if (pendingViewChange) clearTimeout(pendingViewChange);
-      const viewId = message.viewId;
-      pendingViewChange = setTimeout(() => setActiveViewId(viewId), 250);
-    };
-    window.addEventListener('message', receiveView);
-    return () => {
-      if (pendingViewChange) clearTimeout(pendingViewChange);
-      window.removeEventListener('message', receiveView);
-    };
-  }, [demo.sourceDigest, demo.workflowViews, operational]);
+  const runSampleAction = (actionId: string) => {
+    const action = demo.previewFixtures.actions[actionId];
+    setAnnouncement(action ? `${action.message} This was a simulation; no real action occurred.` :
+      'This demo action is unavailable; no real action occurred.');
+  };
 
   async function refreshRows(): Promise<void> {
     if (!operational) return;
@@ -236,7 +278,7 @@ export function GeneratedDemoHost({
   }
 
   useEffect(() => {
-    if (!operational || (operational.bindings && !selectedBinding)) {
+    if (!operational || (operational.bindings && (surface !== 'live' || !selectedBinding))) {
       return;
     }
     const controller = new AbortController();
@@ -264,7 +306,7 @@ export function GeneratedDemoHost({
       }
     });
     return () => controller.abort();
-  }, [basePath, operational, selectedBinding]);
+  }, [basePath, operational, selectedBinding, surface]);
 
   if (failed && !operational?.bindings) return <main role='alert'>Live data is unavailable. No sample data was substituted.</main>;
   if (operational && !operational.bindings && !rows) return <main role='status'>Loading authorized app data…</main>;
@@ -296,7 +338,7 @@ export function GeneratedDemoHost({
         </nav>
         <section className='mx-auto max-w-7xl px-5 py-6' aria-label='Live app view'>
           <h1 className='text-2xl font-semibold text-slate-950'>{selectedView?.title ?? 'App view'}</h1>
-          <p className='mt-1 text-sm text-slate-600'>Authorized data is shown only in reviewed components. Other interactions remain in the sample preview.</p>
+          <p className='mt-1 text-sm text-slate-600'>Authorized data is shown only in reviewed components. Other interactions remain simulated.</p>
           {selectedView?.trustedLayout ? <div className={`mt-5 grid gap-4 ${gridColumns[selectedView.trustedLayout.columns]}`}>
             {selectedView.trustedLayout.slots.map((slot) => {
               const boundHere = selectedBinding?.componentId === slot.componentId && slot.kind === 'read-table';
@@ -328,14 +370,19 @@ export function GeneratedDemoHost({
       {!showTrustedView ? <><div className='border-b border-amber-300 bg-amber-50 px-5 py-3 text-center text-sm font-medium text-amber-950' role='status'>
         Demo app · Sample data and simulated interactions. Changes here do not affect real records or services.
       </div>
-      <iframe
-        ref={frameRef}
-        title='Generated app demo'
-        src={`${basePath}/eai-demo-frame`}
-        sandbox='allow-scripts'
-        referrerPolicy='no-referrer'
-        className='min-h-[calc(100svh-3rem)] w-full border-0'
-      />
+      <section className='mx-auto max-w-7xl p-5' aria-label='Safe app preview'>
+        <header className='mb-5'><h1 className='text-2xl font-semibold text-slate-950'>{demo.appName}</h1></header>
+        <nav aria-label='Workflow views' className='mb-5 flex flex-wrap gap-2'>
+          {demo.workflowSteps?.map((step) => <button key={step.id} type='button'
+            aria-current={step.viewId === activeViewId ? 'page' : undefined}
+            onClick={() => setActiveViewId(step.viewId)}
+            className='rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm'>{step.title}</button>)}
+        </nav>
+        {selectedView?.safeUi ? <SafeUiNodeView node={selectedView.safeUi.root}
+          fixtures={demo.previewFixtures} onAction={runSampleAction} onView={setActiveViewId} /> :
+          <p role='alert'>The reviewed app preview is unavailable.</p>}
+        <p role='status' className='mt-5 text-sm text-slate-700'>{announcement}</p>
+      </section>
       </> : null}
     </main>
   );

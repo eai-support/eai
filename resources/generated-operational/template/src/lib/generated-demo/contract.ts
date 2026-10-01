@@ -1,5 +1,3 @@
-import { demoArtifactDigest } from './runtime-contract';
-
 export type DemoJson =
   string | number | boolean | null | DemoJson[] | { [key: string]: DemoJson };
 
@@ -12,6 +10,26 @@ export interface GeneratedTrustedLayout {
     columnSpan?: 1 | 2 | 3;
     text?: string;
   }>;
+}
+
+type SafeUiIdentity = { componentId?: string };
+
+export type GeneratedSafeUiNode = SafeUiIdentity & (
+  | { kind: 'stack'; direction: 'row' | 'column'; gap: 'sm' | 'md' | 'lg'; children: GeneratedSafeUiNode[] }
+  | { kind: 'heading'; level: 1 | 2 | 3; text: string }
+  | { kind: 'text'; text: string }
+  | { kind: 'stat'; label: string; value:
+      { kind: 'literal'; text: string } |
+      { kind: 'fixture'; collection: string; field: string; rowIndex: number } }
+  | { kind: 'table'; fixtureCollection: string; columns: Array<{ field: string; label: string }> }
+  | { kind: 'button'; label: string; actionId: string }
+  | { kind: 'input'; id: string; label: string; inputType: 'text' | 'number' }
+  | { kind: 'view-link'; label: string; targetViewId: string }
+);
+
+export interface GeneratedSafeUi {
+  version: 'eai.safe_ui.v1';
+  root: GeneratedSafeUiNode;
 }
 
 export interface GeneratedDemoArtifact {
@@ -41,6 +59,7 @@ export interface GeneratedDemoArtifact {
         objectTypeSlug: string;
       }>;
       trustedLayout?: GeneratedTrustedLayout;
+      safeUi: GeneratedSafeUi;
     }>;
     entryPath: 'src/generated/app.tsx';
   };
@@ -69,28 +88,4 @@ export interface GeneratedDemoAppProps {
   viewId: string;
   fixtures: GeneratedDemoArtifact['previewFixtures'];
   runAction: (actionId: string) => string;
-}
-
-/** Frame-bound props exclude the accepted source, business card and Object Type proposal. */
-export interface GeneratedDemoClientView {
-  appName: string;
-  workflowSteps: GeneratedDemoArtifact['appDefinition']['workflow']['steps'];
-  acceptedArtifactDigest: `sha256:${string}`;
-  previewFixtures: GeneratedDemoArtifact['previewFixtures'];
-  sourceDigest: GeneratedDemoArtifact['digests']['sourceBundle'];
-  fixtureDigest: GeneratedDemoArtifact['digests']['previewFixtures'];
-}
-
-/** SECURITY: Serialize only the displayed title, workflow links and intended sample fixtures. */
-export function projectGeneratedDemoClientView(
-  artifact: GeneratedDemoArtifact,
-): GeneratedDemoClientView {
-  return {
-    appName: artifact.appDefinition.appName,
-    workflowSteps: artifact.appDefinition.workflow.steps,
-    acceptedArtifactDigest: demoArtifactDigest(artifact),
-    previewFixtures: artifact.previewFixtures,
-    sourceDigest: artifact.digests.sourceBundle,
-    fixtureDigest: artifact.digests.previewFixtures,
-  };
 }

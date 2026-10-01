@@ -8,6 +8,8 @@ const execFileAsync = promisify(execFile);
 const ARTIFACT_PATH = 'src/eai.config/generated-demo.json';
 const MANIFEST_PATH = '.eai-manifest.json';
 const SHA256_PATTERN = /^sha256:[a-f0-9]{64}$/;
+const SAFE_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+const SAFE_FIELD_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const SOURCE_PATH_PATTERN = /^src\/generated\/[a-zA-Z0-9][a-zA-Z0-9/_-]*\.(?:ts|tsx|css)$/;
 const MAX_MANIFEST_BYTES = 2_000_000;
 const MAX_ARTIFACT_BYTES = 2_000_000;
@@ -79,6 +81,146 @@ export async function readAcceptedObjectTypeDefinition(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, unknown>, allowed: string[], required: string[]): boolean {
+  return Object.keys(value).every(key => allowed.includes(key)) && required.every(key => Object.hasOwn(value, key));
+}
+
+function boundedText(value: unknown, maximum = 500): value is string {
+  return typeof value === 'string' && Boolean(value.trim()) && value.length <= maximum;
+}
+
+/** The CLI only accepts the host-rendered preview IR; generated TSX remains source provenance. */
+function validateSafeUi(
+  value: unknown,
+  componentIds: string[],
+  fixtures: Record<string, unknown>,
+  targetViews: Set<string>,
+): number {
+  if (!isRecord(value) || !exactKeys(value, ['version', 'root'], ['version', 'root']) ||
+    value.version !== 'eai.safe_ui.v1') {
+    throw new Error('Generated demo safe UI is missing or invalid.');
+  }
+  const collections = fixtures.collections as Record<string, unknown>;
+  const actions = fixtures.actions as Record<string, unknown>;
+  const usedComponents = new Set<string>();
+  const usedInputs = new Set<string>();
+  let nodes = 0;
+  const hasScalarField = (collection: unknown, field: unknown, rowIndex?: unknown): boolean => {
+    if (typeof collection !== 'string' || !SAFE_ID_PATTERN.test(collection) ||
+      typeof field !== 'string' || !SAFE_FIELD_PATTERN.test(field) ||
+      ['__proto__', 'prototype', 'constructor'].includes(field.toLowerCase()) ||
+      !Object.hasOwn(collections, collection) || !Array.isArray(collections[collection])) return false;
+    const rows = collections[collection] as unknown[];
+    const scalar = (row: unknown): boolean => isRecord(row) && Object.hasOwn(row, field) &&
+      (row[field] === null || ['string', 'number', 'boolean'].includes(typeof row[field]));
+    if (rowIndex === undefined) {
+      const visibleRows = rows.slice(0, 50);
+      return visibleRows.some(row => isRecord(row) && Object.hasOwn(row, field)) &&
+        visibleRows.every(row => isRecord(row) && (!Object.hasOwn(row, field) || scalar(row)));
+    }
+    return Number.isInteger(rowIndex) && (rowIndex as number) >= 0 && (rowIndex as number) < 50 &&
+      (rowIndex as number) < rows.length && scalar(rows[rowIndex as number]);
+  };
+  const walk = (node: unknown, depth: number): void => {
+    nodes += 1;
+    if (nodes > 32 || depth > 6 || !isRecord(node) || typeof node.kind !== 'string') {
+      throw new Error('Generated demo safe UI node count, depth or shape is invalid.');
+    }
+    if (node.componentId !== undefined) {
+      if (typeof node.componentId !== 'string' || !SAFE_ID_PATTERN.test(node.componentId) ||
+        !componentIds.includes(node.componentId) || usedComponents.has(node.componentId)) {
+        throw new Error('Generated demo safe UI component identity is invalid.');
+      }
+      usedComponents.add(node.componentId);
+    }
+    const keys = (allowed: string[], required: string[]): boolean =>
+      exactKeys(node, [...allowed, 'componentId'], required);
+    switch (node.kind) {
+      case 'stack':
+        if (!keys(['kind', 'direction', 'gap', 'children'], ['kind', 'direction', 'gap', 'children']) ||
+          !['row', 'column'].includes(String(node.direction)) || !['sm', 'md', 'lg'].includes(String(node.gap)) ||
+          !Array.isArray(node.children) || node.children.length < 1 || node.children.length > 16) {
+          throw new Error('Generated demo safe UI stack is invalid.');
+        }
+        node.children.forEach(child => walk(child, depth + 1));
+        break;
+      case 'heading':
+        if (!keys(['kind', 'level', 'text'], ['kind', 'level', 'text']) ||
+          ![1, 2, 3].includes(node.level as number) || !boundedText(node.text)) {
+          throw new Error('Generated demo safe UI heading is invalid.');
+        }
+        break;
+      case 'text':
+        if (!keys(['kind', 'text'], ['kind', 'text']) || !boundedText(node.text)) {
+          throw new Error('Generated demo safe UI text is invalid.');
+        }
+        break;
+      case 'stat': {
+        const value = node.value;
+        if (!keys(['kind', 'label', 'value'], ['kind', 'label', 'value']) ||
+          !boundedText(node.label, 120) || !isRecord(value)) {
+          throw new Error('Generated demo safe UI stat is invalid.');
+        }
+        if (value.kind === 'literal') {
+          if (!exactKeys(value, ['kind', 'text'], ['kind', 'text']) || !boundedText(value.text)) {
+            throw new Error('Generated demo safe UI literal is invalid.');
+          }
+        } else if (value.kind === 'fixture') {
+          if (!exactKeys(value, ['kind', 'collection', 'field', 'rowIndex'],
+            ['kind', 'collection', 'field', 'rowIndex']) ||
+            !hasScalarField(value.collection, value.field, value.rowIndex)) {
+            throw new Error('Generated demo safe UI fixture reference is invalid.');
+          }
+        } else throw new Error('Generated demo safe UI stat value is invalid.');
+        break;
+      }
+      case 'table': {
+        if (!keys(['kind', 'fixtureCollection', 'columns'], ['kind', 'fixtureCollection', 'columns']) ||
+          typeof node.fixtureCollection !== 'string' || !Object.hasOwn(collections, node.fixtureCollection) ||
+          !Array.isArray(node.columns) || node.columns.length < 1 || node.columns.length > 12) {
+          throw new Error('Generated demo safe UI table is invalid.');
+        }
+        const fields = new Set<string>();
+        for (const column of node.columns) {
+          if (!isRecord(column) || !exactKeys(column, ['field', 'label'], ['field', 'label']) ||
+            !boundedText(column.label, 120) || typeof column.field !== 'string' || fields.has(column.field) ||
+            !hasScalarField(node.fixtureCollection, column.field)) {
+            throw new Error('Generated demo safe UI table column is invalid.');
+          }
+          fields.add(column.field);
+        }
+        break;
+      }
+      case 'button':
+        if (!keys(['kind', 'label', 'actionId'], ['kind', 'label', 'actionId']) ||
+          !boundedText(node.label, 120) || typeof node.actionId !== 'string' ||
+          !SAFE_ID_PATTERN.test(node.actionId) || !Object.hasOwn(actions, node.actionId)) {
+          throw new Error('Generated demo safe UI action is invalid.');
+        }
+        break;
+      case 'input':
+        if (!keys(['kind', 'id', 'label', 'inputType'], ['kind', 'id', 'label', 'inputType']) ||
+          typeof node.id !== 'string' || !SAFE_ID_PATTERN.test(node.id) || usedInputs.has(node.id) ||
+          !boundedText(node.label, 120) || !['text', 'number'].includes(String(node.inputType))) {
+          throw new Error('Generated demo safe UI input is invalid.');
+        }
+        usedInputs.add(node.id);
+        break;
+      case 'view-link':
+        if (!keys(['kind', 'label', 'targetViewId'], ['kind', 'label', 'targetViewId']) ||
+          !boundedText(node.label, 120) || typeof node.targetViewId !== 'string' ||
+          !targetViews.has(node.targetViewId)) {
+          throw new Error('Generated demo safe UI view link is invalid.');
+        }
+        break;
+      default:
+        throw new Error('Generated demo safe UI node kind is unsupported.');
+    }
+  };
+  walk(value.root, 1);
+  return nodes;
 }
 
 function canonicalJson(value: unknown): string {
@@ -238,10 +380,14 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     !steps.every(step => isRecord(step) && typeof step.viewId === 'string')) {
     throw new Error('Generated demo has no accepted workflow views.');
   }
+  const viewIds = new Set(views.filter(isRecord).map(view => view.id).filter((id): id is string =>
+    typeof id === 'string' && SAFE_ID_PATTERN.test(id)));
+  let safeUiNodeCount = 0;
   for (const view of views) {
     if (!isRecord(view) || typeof view.id !== 'string' || !Array.isArray(view.componentIds)) {
       throw new Error('Generated demo has an invalid accepted workflow view.');
     }
+    safeUiNodeCount += validateSafeUi(view.safeUi, view.componentIds as string[], fixtures, viewIds);
     const mappings = view.dataBindings ?? [];
     if (!Array.isArray(mappings) || mappings.length > 16) {
       throw new Error('Generated demo view data mappings exceed the accepted contract.');
@@ -297,6 +443,9 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
   }
   if (acceptedTrustedSlots.length > 128) {
     throw new Error('Generated demo trusted layout exceeds the artifact limit.');
+  }
+  if (safeUiNodeCount > 128) {
+    throw new Error('Generated demo safe UI exceeds the artifact limit.');
   }
   const digestNames = ['appDefinition', 'sourceBundle', 'previewFixtures', 'objectTypeDefinitions'] as const;
   for (const name of digestNames) {
