@@ -18,6 +18,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       status: 503, headers,
     });
   }
+  const viewId = request.nextUrl.searchParams.get('viewId');
+  const binding = runtime.config.schemaVersion === 'eai.generated_app_operational.v3'
+    ? runtime.bindings.find((item) => item.viewId === viewId)
+    : viewId === null ? runtime.bindings?.[0] ?? {
+      ...runtime.config.readBindings[0], projectedFields: runtime.projectedFields,
+    } : undefined;
+  if (!binding || request.nextUrl.searchParams.size !== (viewId === null ? 0 : 1))
+    return NextResponse.json({ error: 'OPERATIONAL_VIEW_UNAVAILABLE' }, { status: 404, headers });
   const token = await getAccessToken();
   if (!token) return NextResponse.json({ error: 'AUTHENTICATION_REQUIRED' }, {
     status: 401, headers,
@@ -27,7 +35,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       runtime.config,
       token,
       request.nextUrl.host,
-      runtime.projectedFields,
+      binding.projectedFields,
+      ...(runtime.config.schemaVersion === 'eai.generated_app_operational.v3' ? [binding] : []),
     );
     return NextResponse.json(rows, { headers });
   } catch {

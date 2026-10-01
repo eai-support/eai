@@ -91,7 +91,7 @@
         },
         {
           "id": "ncb-demo-cli-continuation",
-          "description": "CLI continuation validates the cloned generated-demo artifact, inspects one user-authorized published app Object Type, and prepares a customer draft PR only from a signed operational reservation with exact managed source and reviewed workflow bytes. Completion reads the merged PR and waits for AdminAPI's post-ACTIVE signed receipt. All operational admission flags remain off pending qualification; Gofer refresh must fail before modifying an NCB-owned manifest.",
+          "description": "CLI continuation validates the cloned generated-demo artifact, inspects user-authorized published app Object Types, and prepares a customer draft PR only from a signed operational reservation with exact managed source and reviewed workflow bytes. Version 3 reads require 1 to 4 exact accepted workflow view, component, fixture and Object Type mappings; generated actions remain simulated. Completion reads the merged PR and waits for AdminAPI's post-ACTIVE signed receipt. All operational admission flags remain off pending qualification; Gofer refresh must fail before modifying an NCB-owned manifest.",
           "owned_paths": [
             "src/commands/continue-demo.ts",
             "src/commands/vertical.ts",

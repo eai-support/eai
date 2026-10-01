@@ -7,6 +7,16 @@ export interface GeneratedOperationalBinding {
   maxRows: number;
 }
 
+export interface GeneratedOperationalViewBinding extends GeneratedOperationalBinding {
+  viewId: string;
+  componentId: string;
+}
+
+export interface ResolvedOperationalViewBinding extends GeneratedOperationalViewBinding {
+  viewTitle: string;
+  projectedFields: string[];
+}
+
 interface GeneratedOperationalBase {
   tenantId: string;
   appKey: string;
@@ -25,7 +35,16 @@ export interface GeneratedOperationalCreateConfig extends GeneratedOperationalBa
   createBinding: { objectTypeSlug: string; fields: string[] };
 }
 
-export type GeneratedOperationalConfig = GeneratedOperationalReadConfig | GeneratedOperationalCreateConfig;
+export interface GeneratedOperationalViewConfig {
+  schemaVersion: 'eai.generated_app_operational.v3';
+  tenantId: string;
+  appKey: string;
+  acceptedArtifactDigest: `sha256:${string}`;
+  readBindings: GeneratedOperationalViewBinding[];
+  actionsMode: 'simulated';
+}
+
+export type GeneratedOperationalConfig = GeneratedOperationalReadConfig | GeneratedOperationalCreateConfig | GeneratedOperationalViewConfig;
 
 export interface GeneratedOperationalCreateField {
   name: string;
@@ -37,6 +56,7 @@ export type GeneratedOperationalResolution =
   | { status: 'unconfigured' }
   | { status: 'invalid'; errors: string[] }
   | { status: 'ready'; config: GeneratedOperationalConfig; projectedFields: string[];
+      bindings: ResolvedOperationalViewBinding[];
       createFields: GeneratedOperationalCreateField[] };
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -67,11 +87,12 @@ export function resolveGeneratedOperationalRuntime(
   const errors: string[] = [];
   if (!record(value)) return { status: 'invalid', errors: ['operational config shape is invalid'] };
   const createMode = value.schemaVersion === 'eai.generated_app_operational.v2';
+  const viewMode = value.schemaVersion === 'eai.generated_app_operational.v3';
   if (!exactKeys(value, [
     'schemaVersion', 'tenantId', 'appKey', 'acceptedArtifactDigest',
     'readBindings', 'actionsMode', ...(createMode ? ['createBinding'] : []),
   ])) return { status: 'invalid', errors: ['operational config shape is invalid'] };
-  if (!createMode && value.schemaVersion !== 'eai.generated_app_operational.v1')
+  if (!createMode && !viewMode && value.schemaVersion !== 'eai.generated_app_operational.v1')
     errors.push('operational schema is unsupported');
   if (!expectedTenantId || !UUID.test(expectedTenantId) || value.tenantId !== expectedTenantId)
     errors.push('tenant binding does not match deployed identity');
@@ -84,58 +105,85 @@ export function resolveGeneratedOperationalRuntime(
   ) errors.push('accepted artifact digest does not match');
   if (value.actionsMode !== (createMode ? 'selected-create' : 'simulated'))
     errors.push('operational actions are unsupported');
-  const bindingValue = Array.isArray(value.readBindings) && value.readBindings.length === 1
-    ? value.readBindings[0] : null;
-  if (!record(bindingValue)) {
-    errors.push('exactly one reviewed read binding is required');
-  } else {
-    const binding = bindingValue;
-    if (!exactKeys(binding, ['fixtureCollection', 'objectTypeSlug', 'maxRows']) ||
-        typeof binding.fixtureCollection !== 'string' ||
+  const bindingValues = Array.isArray(value.readBindings) ? value.readBindings : [];
+  if (bindingValues.length < 1 || bindingValues.length > (viewMode ? 4 : 1))
+    errors.push(viewMode ? '1 to 4 reviewed view bindings are required' : 'exactly one reviewed read binding is required');
+  const bindings: ResolvedOperationalViewBinding[] = [];
+  const boundViews = new Set<string>();
+  const boundComponents = new Set<string>();
+  for (const binding of bindingValues.slice(0, viewMode ? 4 : 1)) {
+    if (!record(binding)) {
+      errors.push('read binding is not a bounded accepted Object Type');
+      continue;
+    }
+    const view = viewMode
+      ? artifact.appDefinition.views.find((item) => item.id === binding.viewId)
+      : artifact.appDefinition.views.find((item) =>
+        artifact.appDefinition.workflow.steps[0]?.viewId === item.id);
+    const componentId = viewMode ? binding.componentId : view?.componentIds[0] ?? view?.id;
+    const viewId = viewMode ? binding.viewId : view?.id;
+    if (!exactKeys(binding, [
+      'fixtureCollection', 'objectTypeSlug', 'maxRows', ...(viewMode ? ['viewId', 'componentId'] : []),
+    ]) || typeof binding.fixtureCollection !== 'string' ||
         !SLUG.test(binding.fixtureCollection) ||
-        !(binding.fixtureCollection in artifact.previewFixtures.collections) ||
+        !Object.hasOwn(artifact.previewFixtures.collections, binding.fixtureCollection) ||
         typeof binding.objectTypeSlug !== 'string' ||
         !SLUG.test(binding.objectTypeSlug) ||
         !artifact.objectTypeDefinitions.some((item) => item.slug === binding.objectTypeSlug) ||
         typeof binding.maxRows !== 'number' || !Number.isInteger(binding.maxRows) ||
-        binding.maxRows < 1 || binding.maxRows > 50) {
-      errors.push('read binding is not a bounded accepted Object Type');
+        binding.maxRows < 1 || binding.maxRows > 50 ||
+        typeof viewId !== 'string' || !view ||
+        !artifact.appDefinition.workflow.steps.some((step) => step.viewId === viewId) ||
+        typeof componentId !== 'string' || (viewMode && (
+          !view.componentIds.includes(componentId) ||
+          !view.dataBindings?.some((accepted) =>
+            accepted.componentId === componentId &&
+            accepted.fixtureCollection === binding.fixtureCollection &&
+            accepted.objectTypeSlug === binding.objectTypeSlug)
+        )) ||
+        boundViews.has(viewId) || boundComponents.has(componentId)) {
+      errors.push('read binding is not a bounded accepted view and Object Type');
+      continue;
     }
-  }
-  const projectedFields: string[] = [];
-  const createFields: GeneratedOperationalCreateField[] = [];
-  if (errors.length === 0 && record(bindingValue)) {
-    const definitions = artifact.objectTypeDefinitions.filter((item) => item.slug === bindingValue.objectTypeSlug);
+    boundViews.add(viewId);
+    boundComponents.add(componentId);
+    const projectedFields: string[] = [];
+    const definitions = artifact.objectTypeDefinitions.filter((item) => item.slug === binding.objectTypeSlug);
     const properties = definitions[0]?.properties;
     if (definitions.length !== 1 || !Array.isArray(properties) || properties.length > 100) {
       errors.push('operational read has no unambiguous accepted property declaration');
-    } else {
-      for (const property of properties) {
-        if (!record(property) || (property.serverOnly !== undefined && typeof property.serverOnly !== 'boolean')) {
-          errors.push('operational property declaration is invalid');
-          break;
-        }
-        if (property.serverOnly === true || !SCALAR_TYPES.has(String(property.type))) continue;
-        const name = property.name;
-        if (typeof name !== 'string' || !FIELD_NAME.test(name) ||
-            RESERVED_FIELD.has(name.toLowerCase()) ||
-            FORBIDDEN_FIELD.test(name) || projectedFields.includes(name)) {
-          errors.push('operational field projection is unsafe');
-          break;
-        }
-        projectedFields.push(name);
-      }
-      if (projectedFields.length === 0 || projectedFields.length > 16)
-        errors.push('operational field projection must contain 1 to 16 safe scalar fields');
+      continue;
     }
+    for (const property of properties) {
+      if (!record(property) || (property.serverOnly !== undefined && typeof property.serverOnly !== 'boolean')) {
+        errors.push('operational property declaration is invalid');
+        break;
+      }
+      if (property.serverOnly === true || !SCALAR_TYPES.has(String(property.type))) continue;
+      const name = property.name;
+      if (typeof name !== 'string' || !FIELD_NAME.test(name) ||
+          RESERVED_FIELD.has(name.toLowerCase()) ||
+          FORBIDDEN_FIELD.test(name) || projectedFields.includes(name)) {
+        errors.push('operational field projection is unsafe');
+        break;
+      }
+      projectedFields.push(name);
+    }
+    if (projectedFields.length === 0 || projectedFields.length > 16)
+      errors.push('operational field projection must contain 1 to 16 safe scalar fields');
+    bindings.push({ viewId, viewTitle: view.title, componentId,
+      fixtureCollection: binding.fixtureCollection, objectTypeSlug: binding.objectTypeSlug,
+      maxRows: binding.maxRows, projectedFields });
   }
-  if (createMode && errors.length === 0 && record(bindingValue)) {
+  const projectedFields = bindings[0]?.projectedFields ?? [];
+  const createFields: GeneratedOperationalCreateField[] = [];
+  if (createMode && errors.length === 0) {
     const createBinding = value.createBinding;
-    const definition = artifact.objectTypeDefinitions.find((item) => item.slug === bindingValue.objectTypeSlug);
+    const definition = artifact.objectTypeDefinitions.find((item) => item.slug === bindings[0].objectTypeSlug);
     const properties = definition?.properties;
     if (!record(createBinding) ||
         !exactKeys(createBinding, ['objectTypeSlug', 'fields']) ||
-        createBinding.objectTypeSlug !== bindingValue.objectTypeSlug ||
+        createBinding.objectTypeSlug !== bindings[0].objectTypeSlug ||
         !Array.isArray(createBinding.fields) ||
         createBinding.fields.length < 1 || createBinding.fields.length > 16 ||
         new Set(createBinding.fields).size !== createBinding.fields.length ||
@@ -164,5 +212,6 @@ export function resolveGeneratedOperationalRuntime(
   }
   return errors.length
     ? { status: 'invalid', errors }
-    : { status: 'ready', config: value as unknown as GeneratedOperationalConfig, projectedFields, createFields };
+    : { status: 'ready', config: value as unknown as GeneratedOperationalConfig,
+      projectedFields, bindings, createFields };
 }

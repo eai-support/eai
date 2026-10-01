@@ -1,4 +1,4 @@
-import type { GeneratedOperationalConfig } from './operational-contract';
+import type { GeneratedOperationalBinding, GeneratedOperationalConfig } from './operational-contract';
 import { isOperationalRowsResponse } from './operational-bridge';
 import {
   resolvePublicApiBaseUrl,
@@ -74,9 +74,10 @@ export async function readGeneratedOperationalRows(
   accessToken: string,
   currentAppHost: string,
   projectedFields: string[],
+  selectedBinding?: GeneratedOperationalBinding,
 ): Promise<GeneratedOperationalRows> {
   const baseUrl = await resolveOperationalPublicApi(config, accessToken, currentAppHost);
-  const binding = config.readBindings[0];
+  const binding = selectedBinding ?? config.readBindings[0];
   const url = new URL(
     `v4/data/resources/${encodeURIComponent(config.tenantId)}/${encodeURIComponent(binding.objectTypeSlug)}`,
     baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`,

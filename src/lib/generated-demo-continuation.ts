@@ -40,6 +40,13 @@ export interface GeneratedDemoContinuation {
     readonly status: 'published';
   }>;
   readonly fixtureCollections: readonly string[];
+  readonly workflowViewIds: readonly string[];
+  readonly acceptedViewBindings: ReadonlyArray<{
+    readonly viewId: string;
+    readonly componentId: string;
+    readonly fixtureCollection: string;
+    readonly objectTypeSlug: string;
+  }>;
   readonly sampleCollectionCount: number;
   readonly simulatedActionCount: number;
   readonly adapterStatus: 'demo-only';
@@ -217,6 +224,43 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
   if (new Set(proposedObjectTypes.map((item) => item.slug)).size !== proposedObjectTypes.length) {
     throw new Error('Generated demo Object Type proposals contain duplicate slugs.');
   }
+  const acceptedViewBindings: GeneratedDemoContinuation['acceptedViewBindings'][number][] = [];
+  const views = definition.views;
+  const workflow = definition.workflow;
+  const steps = isRecord(workflow) ? workflow.steps : null;
+  if (!Array.isArray(views) || !Array.isArray(steps) ||
+    !steps.every(step => isRecord(step) && typeof step.viewId === 'string')) {
+    throw new Error('Generated demo has no accepted workflow views.');
+  }
+  for (const view of views) {
+    if (!isRecord(view) || typeof view.id !== 'string' || !Array.isArray(view.componentIds)) {
+      throw new Error('Generated demo has an invalid accepted workflow view.');
+    }
+    const mappings = view.dataBindings ?? [];
+    if (!Array.isArray(mappings) || mappings.length > 16) {
+      throw new Error('Generated demo view data mappings exceed the accepted contract.');
+    }
+    const components = new Set<string>();
+    for (const mapping of mappings) {
+      if (!isRecord(mapping) || Object.keys(mapping).sort().join('|') !==
+        'componentId|fixtureCollection|objectTypeSlug' ||
+        typeof mapping.componentId !== 'string' || !view.componentIds.includes(mapping.componentId) ||
+        components.has(mapping.componentId) ||
+        typeof mapping.fixtureCollection !== 'string' || !Object.hasOwn(fixtures.collections, mapping.fixtureCollection) ||
+        typeof mapping.objectTypeSlug !== 'string' ||
+        !proposedObjectTypes.some(item => item.slug === mapping.objectTypeSlug)) {
+        throw new Error('Generated demo view data mapping is not in the accepted artifact.');
+      }
+      components.add(mapping.componentId);
+      acceptedViewBindings.push({
+        viewId: view.id, componentId: mapping.componentId,
+        fixtureCollection: mapping.fixtureCollection, objectTypeSlug: mapping.objectTypeSlug,
+      });
+    }
+  }
+  if (acceptedViewBindings.length > 128) {
+    throw new Error('Generated demo view data mappings exceed the artifact limit.');
+  }
   const digestNames = ['appDefinition', 'sourceBundle', 'previewFixtures', 'objectTypeDefinitions'] as const;
   for (const name of digestNames) {
     if (typeof digests[name] !== 'string' || !SHA256_PATTERN.test(digests[name]) || digests[name] !== digest(artifact[name])) {
@@ -259,6 +303,8 @@ export async function inspectGeneratedDemoContinuation(projectPath: string): Pro
     objectTypeDefinitionCount: definitions.length,
     proposedObjectTypes,
     fixtureCollections: Object.keys(fixtures.collections).sort(),
+    workflowViewIds: steps.map(step => (step as Record<string, string>).viewId),
+    acceptedViewBindings,
     sampleCollectionCount: Object.keys(fixtures.collections).length,
     simulatedActionCount: Object.keys(fixtures.actions).length,
     adapterStatus: 'demo-only',

@@ -1,7 +1,13 @@
 import { Command } from 'commander';
 import { resolve } from 'node:path';
 import { inspectGeneratedDemoContinuation, readAcceptedObjectTypeDefinition } from '../lib/generated-demo-continuation.js';
-import { planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBinding } from '../lib/generated-demo-operational.js';
+import {
+  planGeneratedDemoReadOnlyBinding,
+  planGeneratedDemoSelectedCreateBinding,
+  planGeneratedDemoViewReadBindings,
+  type ReadOnlyBindingPlan,
+  type ViewReadBindingRequest,
+} from '../lib/generated-demo-operational.js';
 import { importGeneratedDemoData } from '../lib/generated-demo-operational-import.js';
 import {
   abortGeneratedDemoOperationalReview,
@@ -26,6 +32,7 @@ interface ContinueDemoOptions {
   fixtureCollection?: string;
   objectTypeSlug?: string;
   maxRows?: string;
+  viewReads?: string[];
   enableSelectedCreate?: boolean;
   createFields?: string;
   importFile?: string;
@@ -47,6 +54,9 @@ export const continueDemoCommand = new Command('continue-demo')
   .option('--fixture-collection <name>', 'Accepted sample collection to replace with real reads')
   .option('--object-type-slug <slug>', 'Published app-owned Object Type slug')
   .option('--max-rows <count>', 'Maximum records per read, from 1 to 50', '25')
+  .option('--view-read <viewId:componentId:fixtureCollection:objectTypeSlug[:maxRows]>',
+    'Bind an accepted view component to one app-owned Object Type; repeat up to four times',
+    (value: string, previous: string[]) => [...previous, value], [])
   .option('--enable-selected-create', 'Prepare a reviewed host-owned create form for the same Object Type (release-gated)')
   .option('--create-fields <names>', 'Comma-separated allowlisted scalar property names for selected create')
   .option('--import-file <path>', 'Plan a bounded JSON or CSV import into the selected app Object Type')
@@ -63,7 +73,7 @@ export const continueDemoCommand = new Command('continue-demo')
       }
       if (!options.planReadOnly && !options.prepareOperationalPr &&
         !options.completeOperationalPr && !options.abortOperationalPr && !options.importFile &&
-        (options.tenantId || options.fixtureCollection || options.objectTypeSlug || options.environment)) {
+        (options.tenantId || options.fixtureCollection || options.objectTypeSlug || options.environment || options.viewReads?.length)) {
         throw new Error('Binding options require a read-only plan or operational PR preparation.');
       }
       if (options.applyImport && !options.importFile) throw new Error('--apply-import requires --import-file.');
@@ -82,16 +92,20 @@ export const continueDemoCommand = new Command('continue-demo')
       if (!options.completeOperationalPr && options.prNumber) {
         throw new Error('--pr-number requires --complete-operational-pr.');
       }
-      if (options.completeOperationalPr && (options.fixtureCollection || options.objectTypeSlug)) {
+      if (options.completeOperationalPr && (options.fixtureCollection || options.objectTypeSlug || options.viewReads?.length)) {
         throw new Error('Completion uses the previously reviewed binding; do not supply a new one.');
       }
       if (options.abortOperationalPr &&
-        (options.environment || options.fixtureCollection || options.objectTypeSlug || options.prNumber)) {
+        (options.environment || options.fixtureCollection || options.objectTypeSlug || options.viewReads?.length || options.prNumber)) {
         throw new Error('Abort uses only the exact tenant and operation ID.');
       }
       if ((options.enableSelectedCreate || options.createFields) &&
         (!options.prepareOperationalPr || !options.enableSelectedCreate || !options.createFields)) {
         throw new Error('Selected create requires --prepare-operational-pr, --enable-selected-create and --create-fields together.');
+      }
+      if (options.viewReads?.length &&
+        (options.fixtureCollection || options.objectTypeSlug || options.enableSelectedCreate || options.createFields || options.importFile)) {
+        throw new Error('--view-read cannot be mixed with legacy read, create or import options.');
       }
       if (options.importFile) {
         const projectRoot = resolve(options.path);
@@ -157,10 +171,10 @@ export const continueDemoCommand = new Command('continue-demo')
         }
         return;
       }
-      let readOnlyPlan: ReturnType<typeof planGeneratedDemoReadOnlyBinding> | null = null;
+      let readOnlyPlan: ReadOnlyBindingPlan | null = null;
       if (options.planReadOnly || options.prepareOperationalPr) {
-        if (!options.tenantId || !options.fixtureCollection || !options.objectTypeSlug) {
-          throw new Error('A binding requires --tenant-id, --fixture-collection and --object-type-slug.');
+        if (!options.tenantId || (!options.viewReads?.length && (!options.fixtureCollection || !options.objectTypeSlug))) {
+          throw new Error('A binding requires --tenant-id and either --view-read or the legacy collection and Object Type options.');
         }
         const projectRoot = resolve(options.path);
         const publicApiUrl = await resolvePublicApiUrl(projectRoot);
@@ -178,21 +192,39 @@ export const continueDemoCommand = new Command('continue-demo')
         }
         let manifest: unknown;
         try { manifest = JSON.parse(responseText); } catch { throw new Error('The app Object Type manifest is invalid.'); }
-        const bindingRequest = {
-          tenantId: context.activeTenant.id,
-          fixtureCollection: options.fixtureCollection,
-          objectTypeSlug: options.objectTypeSlug,
-          maxRows: Number(options.maxRows),
-        };
-        const acceptedDefinition = await readAcceptedObjectTypeDefinition(
-          options.path, result, options.objectTypeSlug,
-        );
-        readOnlyPlan = options.enableSelectedCreate
-          ? planGeneratedDemoSelectedCreateBinding(
-            result, bindingRequest, manifest, acceptedDefinition,
-            options.createFields!.split(',').map(field => field.trim()),
-          )
-          : planGeneratedDemoReadOnlyBinding(result, bindingRequest, manifest, acceptedDefinition);
+        if (options.viewReads?.length) {
+          if (options.viewReads.length > 4) throw new Error('At most four accepted view reads may be activated.');
+          const requests: ViewReadBindingRequest[] = options.viewReads.map(specification => {
+            const parts = specification.split(':');
+            if (parts.length < 4 || parts.length > 5 || parts.slice(0, 4).some(part => !part)) {
+              throw new Error('Each --view-read needs viewId:componentId:fixtureCollection:objectTypeSlug[:maxRows].');
+            }
+            return {
+              tenantId: context.activeTenant.id,
+              viewId: parts[0], componentId: parts[1], fixtureCollection: parts[2],
+              objectTypeSlug: parts[3], maxRows: Number(parts[4] ?? options.maxRows),
+            };
+          });
+          const definitions = await Promise.all(requests.map(item =>
+            readAcceptedObjectTypeDefinition(options.path, result, item.objectTypeSlug)));
+          readOnlyPlan = planGeneratedDemoViewReadBindings(result, requests, manifest, definitions);
+        } else {
+          const bindingRequest = {
+            tenantId: context.activeTenant.id,
+            fixtureCollection: options.fixtureCollection!,
+            objectTypeSlug: options.objectTypeSlug!,
+            maxRows: Number(options.maxRows),
+          };
+          const acceptedDefinition = await readAcceptedObjectTypeDefinition(
+            options.path, result, options.objectTypeSlug!,
+          );
+          readOnlyPlan = options.enableSelectedCreate
+            ? planGeneratedDemoSelectedCreateBinding(
+              result, bindingRequest, manifest, acceptedDefinition,
+              options.createFields!.split(',').map(field => field.trim()),
+            )
+            : planGeneratedDemoReadOnlyBinding(result, bindingRequest, manifest, acceptedDefinition);
+        }
         if (options.prepareOperationalPr) {
           const review = await prepareGeneratedDemoOperationalReview({
             projectPath: options.path,
@@ -219,7 +251,9 @@ export const continueDemoCommand = new Command('continue-demo')
       out.info(`${result.objectTypeDefinitionCount} Object Type definitions remain in the accepted artifact.`);
       out.warn('Data and actions are still simulated. Review and replace demo adapters with authorized platform bindings before claiming live operations.');
       if (readOnlyPlan) {
-        out.info(`Read-only candidate: ${readOnlyPlan.config.readBindings[0].fixtureCollection} → ${readOnlyPlan.config.readBindings[0].objectTypeSlug} (maximum ${readOnlyPlan.config.readBindings[0].maxRows} rows).`);
+        for (const binding of readOnlyPlan.config.readBindings) {
+          out.info(`Read-only candidate: ${binding.fixtureCollection} → ${binding.objectTypeSlug} (maximum ${binding.maxRows} rows).`);
+        }
         out.warn(readOnlyPlan.nextAction);
       }
       out.info('The source, manifest, Object Types, credentials and deployment were not changed.');

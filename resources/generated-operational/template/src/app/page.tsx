@@ -65,12 +65,17 @@ export default async function Home() {
         generatedDemo={{
           sourceDigest: generatedDemo.artifact.digests.sourceBundle,
           fixtureDigest: generatedDemo.artifact.digests.previewFixtures,
+          workflowViews: generatedDemo.artifact.appDefinition.workflow.steps.map((step) => step.viewId),
         }}
         generatedOperational={operational.status === 'ready' ? {
           acceptedArtifactDigest: operational.config.acceptedArtifactDigest,
           fixtureCollection: operational.config.readBindings[0].fixtureCollection,
           maxRows: operational.config.readBindings[0].maxRows,
           projectedFields: operational.projectedFields,
+          bindings: operational.config.schemaVersion === 'eai.generated_app_operational.v3'
+            ? operational.bindings.map(({ viewId, viewTitle, componentId, fixtureCollection,
+              maxRows, projectedFields }) => ({ viewId, viewTitle, componentId,
+              fixtureCollection, maxRows, projectedFields })) : undefined,
           createFields: operational.config.schemaVersion === 'eai.generated_app_operational.v2'
             ? operational.createFields : undefined,
         } : undefined}

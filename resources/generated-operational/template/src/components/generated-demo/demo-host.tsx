@@ -2,12 +2,16 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { isOperationalRowsResponse } from '@/lib/generated-demo/operational-bridge';
-import type { GeneratedOperationalCreateField } from '@/lib/generated-demo/operational-contract';
+import type {
+  GeneratedOperationalCreateField,
+  ResolvedOperationalViewBinding,
+} from '@/lib/generated-demo/operational-contract';
 import type { GeneratedOperationalRows } from '@/lib/generated-demo/operational-read';
 
 interface DemoIdentity {
   sourceDigest: string;
   fixtureDigest: string;
+  workflowViews?: string[];
 }
 
 export interface DemoOperationalIdentity {
@@ -16,6 +20,8 @@ export interface DemoOperationalIdentity {
   maxRows: number;
   projectedFields: string[];
   createFields?: GeneratedOperationalCreateField[];
+  bindings?: Array<Pick<ResolvedOperationalViewBinding,
+    'viewId' | 'viewTitle' | 'componentId' | 'fixtureCollection' | 'maxRows' | 'projectedFields'>>;
 }
 
 function TrustedCreateForm({
@@ -117,15 +123,18 @@ function displayCell(value: string | number | boolean | null): string {
 }
 
 function TrustedOperationalRows({
-  rows, fields,
+  rows, fields, viewTitle, componentId,
 }: {
   rows: GeneratedOperationalRows['rows'];
   fields: string[];
+  viewTitle?: string;
+  componentId?: string;
 }) {
   return (
-    <section className='mx-auto max-w-7xl p-5' aria-label='Live read-only data' data-eai-operational-read='true'>
-      <h2 className='text-lg font-semibold text-slate-950'>Live read-only data</h2>
-      <p className='mt-1 text-sm text-slate-600'>This trusted view shows authorized records. The app preview below still uses sample data and simulated actions.</p>
+    <section className='mx-auto max-w-7xl p-5' aria-label='Live read-only data' data-eai-operational-read='true'
+      data-eai-operational-slot={componentId}>
+      <h2 className='text-lg font-semibold text-slate-950'>Live read-only data{viewTitle ? ` · ${viewTitle}` : ''}</h2>
+      <p className='mt-1 text-sm text-slate-600'>This trusted view shows authorized records for the selected app view. The generated UI below still uses sample data and simulated actions.</p>
       {rows.length === 0 ? (
         <p className='mt-4 rounded-lg border border-slate-200 bg-white p-4 text-sm text-slate-600'>No records are available.</p>
       ) : (
@@ -159,8 +168,34 @@ export function GeneratedDemoHost({
   operational?: DemoOperationalIdentity;
 }) {
   const basePath = (process.env.NEXT_PUBLIC_APP_BASE_PATH ?? '').replace(/\/+$/, '');
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [activeViewId, setActiveViewId] = useState(demo.workflowViews?.[0] ?? '');
   const [rows, setRows] = useState<GeneratedOperationalRows | null>(null);
+  const [rowsForViewId, setRowsForViewId] = useState('');
   const [failed, setFailed] = useState(false);
+  const [failedForViewId, setFailedForViewId] = useState('');
+  const selectedBinding = operational?.bindings?.find((binding) => binding.viewId === activeViewId);
+
+  useEffect(() => {
+    if (!operational?.bindings) return;
+    const receiveView = (event: MessageEvent) => {
+      // Frame messages can select a reviewed slot but cannot supply routes, rows, or authority.
+      const value: unknown = event.data;
+      if (event.source !== frameRef.current?.contentWindow || event.origin !== 'null' ||
+          !value || typeof value !== 'object' || Array.isArray(value)) return;
+      const message = value as Record<string, unknown>;
+      if (Object.keys(message).sort().join('|') !==
+          'acceptedArtifactDigest|sourceDigest|type|viewId' ||
+          message.type !== 'eai.generated_app_view.v1' ||
+          message.acceptedArtifactDigest !== operational.acceptedArtifactDigest ||
+          message.sourceDigest !== demo.sourceDigest ||
+          typeof message.viewId !== 'string' ||
+          !demo.workflowViews?.includes(message.viewId)) return;
+      setActiveViewId(message.viewId);
+    };
+    window.addEventListener('message', receiveView);
+    return () => window.removeEventListener('message', receiveView);
+  }, [demo.sourceDigest, demo.workflowViews, operational]);
 
   async function refreshRows(): Promise<void> {
     if (!operational) return;
@@ -176,26 +211,43 @@ export function GeneratedDemoHost({
   }
 
   useEffect(() => {
-    if (!operational) return;
+    if (!operational || (operational.bindings && !selectedBinding)) {
+      return;
+    }
     const controller = new AbortController();
-    void fetch(`${basePath}/api/eai/generated-operational`, {
+    const binding = selectedBinding ?? operational;
+    const requestedViewId = selectedBinding?.viewId ?? '';
+    const query = selectedBinding ? `?viewId=${encodeURIComponent(selectedBinding.viewId)}` : '';
+    void fetch(`${basePath}/api/eai/generated-operational${query}`, {
       method: 'GET', credentials: 'same-origin', cache: 'no-store',
       signal: controller.signal,
     }).then(async (response) => {
       if (!response.ok) throw new Error('Authorized read unavailable');
       const value: unknown = await response.json();
       if (!isOperationalRowsResponse(value, operational.acceptedArtifactDigest,
-          operational.fixtureCollection, operational.maxRows, operational.projectedFields))
+          binding.fixtureCollection, binding.maxRows, binding.projectedFields))
         throw new Error('Authorized read response invalid');
-      setRows(value);
+      if (!controller.signal.aborted) {
+        setRows(value);
+        setRowsForViewId(requestedViewId);
+        setFailed(false);
+      }
     }).catch(() => {
-      if (!controller.signal.aborted) setFailed(true);
+      if (!controller.signal.aborted) {
+        setFailed(true);
+        setFailedForViewId(requestedViewId);
+      }
     });
     return () => controller.abort();
-  }, [basePath, operational]);
+  }, [basePath, operational, selectedBinding]);
 
-  if (failed) return <main role='alert'>Live data is unavailable. No sample data was substituted.</main>;
-  if (operational && !rows) return <main role='status'>Loading authorized app data…</main>;
+  if (failed && !operational?.bindings) return <main role='alert'>Live data is unavailable. No sample data was substituted.</main>;
+  if (operational && !operational.bindings && !rows) return <main role='status'>Loading authorized app data…</main>;
+  const liveRows = selectedBinding
+    ? rowsForViewId === selectedBinding.viewId &&
+      rows?.fixtureCollection === selectedBinding.fixtureCollection ? rows : null
+    : operational?.bindings ? null : rows;
+  const selectedFailed = selectedBinding && failed && failedForViewId === selectedBinding.viewId;
   return (
     <main
       data-eai-demo-ready='true'
@@ -203,13 +255,22 @@ export function GeneratedDemoHost({
       data-eai-demo-fixture-digest={demo.fixtureDigest}
       className='min-h-svh bg-slate-50'
     >
-      {operational && rows ? <TrustedOperationalRows rows={rows.rows} fields={operational.projectedFields} /> : null}
-      {operational?.createFields && rows ? <TrustedCreateForm fields={operational.createFields}
+      {selectedFailed ? <section role='alert' className='mx-auto max-w-7xl p-5'>
+        Live data for {selectedBinding.viewTitle} is unavailable. No sample data was substituted in the live view.
+      </section> : null}
+      {selectedBinding && !selectedFailed && !liveRows ? <section role='status' className='mx-auto max-w-7xl p-5'>
+        Loading authorized data for {selectedBinding.viewTitle}…
+      </section> : null}
+      {operational && liveRows ? <TrustedOperationalRows rows={liveRows.rows}
+        fields={selectedBinding?.projectedFields ?? operational.projectedFields}
+        viewTitle={selectedBinding?.viewTitle} componentId={selectedBinding?.componentId} /> : null}
+      {operational?.createFields && liveRows && !operational.bindings ? <TrustedCreateForm fields={operational.createFields}
         basePath={basePath} onCreated={refreshRows} /> : null}
       <div className='border-b border-amber-300 bg-amber-50 px-5 py-3 text-center text-sm font-medium text-amber-950' role='status'>
         Demo app · Sample data and simulated interactions. Changes here do not affect real records or services.
       </div>
       <iframe
+        ref={frameRef}
         title='Generated app demo'
         src={`${basePath}/eai-demo-frame`}
         sandbox='allow-scripts'

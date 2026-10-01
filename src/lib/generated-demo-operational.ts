@@ -9,6 +9,11 @@ export interface ReadOnlyBindingRequest {
   readonly maxRows: number;
 }
 
+export interface ViewReadBindingRequest extends ReadOnlyBindingRequest {
+  readonly viewId: string;
+  readonly componentId: string;
+}
+
 interface GeneratedOperationalBase {
   readonly tenantId: string;
   readonly appKey: string;
@@ -20,14 +25,31 @@ interface GeneratedOperationalBase {
   }];
 }
 
-export type GeneratedOperationalConfig = GeneratedOperationalBase & (
+export type GeneratedOperationalLegacyConfig = GeneratedOperationalBase & (
   { readonly schemaVersion: 'eai.generated_app_operational.v1'; readonly actionsMode: 'simulated' }
   | { readonly schemaVersion: 'eai.generated_app_operational.v2'; readonly actionsMode: 'selected-create';
       readonly createBinding: { readonly objectTypeSlug: string; readonly fields: readonly string[] } }
 );
 
-export interface ReadOnlyBindingPlan {
-  readonly config: GeneratedOperationalConfig;
+export interface GeneratedOperationalViewConfig {
+  readonly schemaVersion: 'eai.generated_app_operational.v3';
+  readonly tenantId: string;
+  readonly appKey: string;
+  readonly acceptedArtifactDigest: string;
+  readonly readBindings: ReadonlyArray<{
+    readonly viewId: string;
+    readonly componentId: string;
+    readonly fixtureCollection: string;
+    readonly objectTypeSlug: string;
+    readonly maxRows: number;
+  }>;
+  readonly actionsMode: 'simulated';
+}
+
+export type GeneratedOperationalConfig = GeneratedOperationalLegacyConfig | GeneratedOperationalViewConfig;
+
+export interface ReadOnlyBindingPlan<T extends GeneratedOperationalConfig = GeneratedOperationalConfig> {
+  readonly config: T;
   readonly status: 'blocked-pending-operational-qualification';
   readonly nextAction: string;
 }
@@ -87,7 +109,7 @@ export function planGeneratedDemoSelectedCreateBinding(
   remoteManifest: unknown,
   acceptedDefinition: Record<string, unknown>,
   fields: readonly string[],
-): ReadOnlyBindingPlan {
+): ReadOnlyBindingPlan<GeneratedOperationalLegacyConfig> {
   const readPlan = planGeneratedDemoReadOnlyBinding(inspection, request, remoteManifest, acceptedDefinition);
   if (!Array.isArray(fields) || fields.length < 1 || fields.length > 16 ||
     new Set(fields).size !== fields.length ||
@@ -168,7 +190,7 @@ export function planGeneratedDemoReadOnlyBinding(
   request: ReadOnlyBindingRequest,
   remoteManifest: unknown,
   acceptedDefinition: Record<string, unknown>,
-): ReadOnlyBindingPlan {
+): ReadOnlyBindingPlan<GeneratedOperationalLegacyConfig> {
   if (inspection.appArtifactMode !== 'app-v2-demo' || !inspection.acceptedArtifactDigest) {
     throw new Error('Read-only continuation requires an accepted v2 generated demo.');
   }
@@ -206,5 +228,49 @@ export function planGeneratedDemoReadOnlyBinding(
     },
     status: 'blocked-pending-operational-qualification',
     nextAction: 'Qualify the server-side read adapter, reviewed source-update authority, and unchanged app/URL deployment before preparing a customer PR.',
+  };
+}
+
+/** Activate only accepted component-to-fixture-to-Object-Type tuples in step-linked views. */
+export function planGeneratedDemoViewReadBindings(
+  inspection: GeneratedDemoContinuation,
+  requests: readonly ViewReadBindingRequest[],
+  remoteManifest: unknown,
+  acceptedDefinitions: readonly Record<string, unknown>[],
+): ReadOnlyBindingPlan<GeneratedOperationalViewConfig> {
+  if (requests.length < 1 || requests.length > 4 || requests.length !== acceptedDefinitions.length) {
+    throw new Error('Operational view reads require 1 to 4 accepted binding requests and definitions.');
+  }
+  const views = new Set<string>();
+  const components = new Set<string>();
+  const readBindings: GeneratedOperationalViewConfig['readBindings'][number][] = [];
+  for (const [index, request] of requests.entries()) {
+    if (request.tenantId.toLowerCase() !== requests[0].tenantId.toLowerCase() ||
+      !inspection.workflowViewIds.includes(request.viewId) || views.has(request.viewId) ||
+      components.has(request.componentId) ||
+      !inspection.acceptedViewBindings.some(item => item.viewId === request.viewId &&
+        item.componentId === request.componentId && item.fixtureCollection === request.fixtureCollection &&
+        item.objectTypeSlug === request.objectTypeSlug)) {
+      throw new Error('The view read is not an accepted workflow component and data mapping.');
+    }
+    const legacy = planGeneratedDemoReadOnlyBinding(
+      inspection, request, remoteManifest, acceptedDefinitions[index],
+    );
+    views.add(request.viewId);
+    components.add(request.componentId);
+    readBindings.push({viewId: request.viewId, componentId: request.componentId,
+      ...legacy.config.readBindings[0]});
+  }
+  return {
+    config: {
+      schemaVersion: 'eai.generated_app_operational.v3',
+      tenantId: requests[0].tenantId.toLowerCase(),
+      appKey: inspection.appKey,
+      acceptedArtifactDigest: inspection.acceptedArtifactDigest!,
+      readBindings,
+      actionsMode: 'simulated',
+    },
+    status: 'blocked-pending-operational-qualification',
+    nextAction: 'Review each accepted view read and the unchanged app/URL deployment before merging the customer PR.',
   };
 }

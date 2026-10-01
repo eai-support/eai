@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import type { GeneratedDemoArtifact } from '@/lib/generated-demo/contract';
+import type { GeneratedDemoClientView } from '@/lib/generated-demo/contract';
 
 // Generated source must execute only after the browser enters the opaque-origin frame.
 const GeneratedDemo = dynamic(
@@ -10,9 +10,9 @@ const GeneratedDemo = dynamic(
 );
 
 export function ClientOnlyGeneratedDemo({
-  artifact,
+  demo,
 }: {
-  artifact: GeneratedDemoArtifact;
+  demo: GeneratedDemoClientView;
 }) {
-  return <GeneratedDemo artifact={artifact} />;
+  return <GeneratedDemo demo={demo} />;
 }

@@ -6,7 +6,10 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it } from 'vitest';
 import { inspectGeneratedDemoContinuation } from '../../src/lib/generated-demo-continuation.js';
-import { planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBinding } from '../../src/lib/generated-demo-operational.js';
+import {
+  planGeneratedDemoReadOnlyBinding, planGeneratedDemoSelectedCreateBinding,
+  planGeneratedDemoViewReadBindings,
+} from '../../src/lib/generated-demo-operational.js';
 import { importGeneratedDemoData, parseBoundedImportRows } from '../../src/lib/generated-demo-operational-import.js';
 import {
   abortGeneratedDemoOperationalReview,
@@ -55,7 +58,7 @@ async function git(root: string, ...args: string[]): Promise<string> {
   return stdout.trim();
 }
 
-async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; artifact: Record<string, unknown>; manifest: Record<string, unknown> }> {
+async function fixture(mode: 'v2' | 'legacy' = 'v2', withViewBindings = false): Promise<{ root: string; artifact: Record<string, unknown>; manifest: Record<string, unknown> }> {
   const root = await mkdtemp(join(tmpdir(), 'eai-ncb-continuation-'));
   roots.push(root);
   const members = {
@@ -63,7 +66,9 @@ async function fixture(mode: 'v2' | 'legacy' = 'v2'): Promise<{ root: string; ar
       schemaVersion: 'eai.generated_app_definition.v2', appKey: 'fleet-demo', appName: 'Fleet Demo',
       businessCard: { description: 'Fleet app', goal: 'See cars', audience: 'Manager', outcome: 'Faster allocation' },
       workflow: { steps: [{ id: 'fleet', title: 'Fleet', viewId: 'fleet-view' }] },
-      views: [{ id: 'fleet-view', title: 'Fleet', componentIds: ['fleet-table'] }],
+      views: [{ id: 'fleet-view', title: 'Fleet', componentIds: ['fleet-table'],
+        ...(withViewBindings ? {dataBindings: [{componentId: 'fleet-table', fixtureCollection: 'vehicles',
+          objectTypeSlug: 'vehicle'}]} : {}) }],
       entryPath: 'src/generated/app.tsx',
     },
     sourceBundle: { schemaVersion: 'eai.generated_app_source.v1', files: [{ path: 'src/generated/app.tsx', content: appSource }] },
@@ -295,6 +300,37 @@ describe('NCB demo continuation', () => {
       tenantId, fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25,
     }, {...proposal, objectTypes: [{...proposal.objectTypes[0], ...unsafe}]}, unsafe))
       .toThrow('unsafe operational read field');
+  });
+
+  it('plans a v3 read only when the accepted view declares the exact data mapping', async () => {
+    const {root, artifact} = await fixture('v2', true);
+    const inspection = await inspectGeneratedDemoContinuation(root);
+    const tenantId = 'e2ff83b7-4635-4838-8de6-827484a6b01c';
+    const manifest = {
+      tenantId, appKey: 'fleet-demo', status: 'ready', validationErrors: [],
+      objectTypes: [{name: 'Vehicle', slug: 'vehicle', status: 'published',
+        properties: [{name: 'name', type: 'text'}],
+        provisioningHints: {ncbOwner: {appKey: 'fleet-demo', enrollmentId: 'app-1'}}}],
+      publishedObjectTypes: ['Vehicle'],
+    };
+    const request = {tenantId, viewId: 'fleet-view', componentId: 'fleet-table',
+      fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25};
+    const definition = (artifact.objectTypeDefinitions as Record<string, unknown>[])[0];
+    expect(inspection.acceptedViewBindings).toEqual([{viewId: 'fleet-view', componentId: 'fleet-table',
+      fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle'}]);
+    expect(planGeneratedDemoViewReadBindings(inspection, [request], manifest, [definition]))
+      .toMatchObject({config: {schemaVersion: 'eai.generated_app_operational.v3',
+        readBindings: [{viewId: 'fleet-view', componentId: 'fleet-table',
+          fixtureCollection: 'vehicles', objectTypeSlug: 'vehicle', maxRows: 25}]}});
+    expect(() => planGeneratedDemoViewReadBindings(inspection,
+      [{...request, componentId: 'unreviewed'}], manifest, [definition]))
+      .toThrow('not an accepted workflow component');
+    expect(() => planGeneratedDemoViewReadBindings(inspection,
+      [{...request, objectTypeSlug: 'another-type'}], manifest, [definition]))
+      .toThrow('not an accepted workflow component');
+    expect(() => planGeneratedDemoViewReadBindings(inspection,
+      [request, request], manifest, [definition, definition]))
+      .toThrow('not an accepted workflow component');
   });
 
   it('selects only accepted and published scalar create fields on the same Object Type', async () => {

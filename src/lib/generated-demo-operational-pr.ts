@@ -15,8 +15,8 @@ const WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const MANIFEST_PATH = '.eai-manifest.json';
 const OPERATIONAL_CONFIG_PATH = 'src/eai.config/generated-operational.json';
 const RESOURCE_ROOT = fileURLToPath(new URL('../../resources/generated-operational/', import.meta.url));
-const TEMPLATE_COMMIT = 'b13767b2d4ee9a510d1596654b94e5ce7422312e';
-const PRIOR_TEMPLATE_COMMITS = ['cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
+const TEMPLATE_COMMIT = '99ab8e11e787e49c9bc1aa6b8c5cc29d79b53ad0';
+const PRIOR_TEMPLATE_COMMITS = ['b13767b2d4ee9a510d1596654b94e5ce7422312e', 'cd0dcdc', '5039499', 'f735346817f5d92737617d01d24953d8ab58e895', '6047548bb8ea2b100334aa43cef1683127c90841'];
 const TEMPLATE_PATHS = [
   'scripts/validate-generated-demo.cjs',
   'src/lib/generated-demo/operational-contract.ts',
@@ -354,7 +354,11 @@ async function prepareFileMap(
       throw new Error(`The bundled operational template is not reviewed: ${path}`);
     }
     const current = await optionalSafeRead(root, path);
-    if (current && ![expected.baselineChecksum, expected.previousTargetChecksum, expected.targetChecksum].includes(sha256(current))) {
+    const priorChecksums = Array.isArray(expected.priorTargetChecksums)
+      ? expected.priorTargetChecksums.filter((value): value is string => typeof value === 'string') : [];
+    if (current && ![
+      expected.baselineChecksum, expected.previousTargetChecksum, expected.targetChecksum, ...priorChecksums,
+    ].includes(sha256(current))) {
       throw new Error(`Customer source is customized; refusing to replace ${path}`);
     }
     updates.set(path, resource);
