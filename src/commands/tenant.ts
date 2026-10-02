@@ -627,7 +627,7 @@ tenantCommand
   .requiredOption("--name <name>", "Workspace name")
   .requiredOption("--slug <slug>", "Workspace slug (kebab-case)")
   .option("--parent <id>", "Parent workspace ID")
-  .option("--domain <domains>", "Comma-separated domain list")
+  .option("--domain <domain>", "One workspace domain")
   .option(
     "--usecase <usecase>",
     "Workspace usecase: council|retail|healthcare|finance|manufacturing|generic",
@@ -702,11 +702,22 @@ tenantCommand
           ? null
           : ora(`Creating workspace "${options.name}"...`).start();
 
+      const domains = options.domain
+        ?.split(",")
+        .map((domain: string) => domain.trim())
+        .filter(Boolean);
+      if (domains && domains.length > 1) {
+        out.error(
+          "Workspace creation accepts one domain. PublicAPI stores domain as a single string.",
+        );
+        process.exit(1);
+      }
+
       const res = await client.createTenant({
         name: options.name,
         slug: options.slug,
         parent: options.parent,
-        domain: options.domain?.split(",").map((d: string) => d.trim()),
+        domain: domains?.[0],
         usecase: options.usecase,
         industry: options.industry,
         starterTemplate: options.starterTemplate,
