@@ -11,6 +11,32 @@ const MANAGED_PORTAL_ORIGIN =
   /^https:\/\/(?:(?:dev|test)-admin-portal|admin-portal(?:\.(?:ca|eu))?)\.myenterprise\.ai$/;
 const GITHUB_LINK_PATH = "/api/platform/generated-apps/github-user";
 
+/** Local E2E may use only the explicitly pinned loopback Portal; release origins stay fixed. */
+export function isApprovedManagedPortalOrigin(url: URL): boolean {
+  if (url.protocol === "https:" && MANAGED_PORTAL_ORIGIN.test(url.origin)) return true;
+  if (
+    process.env.E2E_3503_LOCAL_RUN !== "1" ||
+    process.env.E2E_3503_EXTERNAL_MUTATIONS !== "1" ||
+    url.protocol !== "http:" ||
+    !["localhost", "127.0.0.1"].includes(url.hostname)
+  ) return false;
+  try {
+    const configured = new URL(process.env.EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN || "");
+    return (
+      configured.origin === url.origin &&
+      configured.protocol === "http:" &&
+      ["localhost", "127.0.0.1"].includes(configured.hostname) &&
+      !configured.username &&
+      !configured.password &&
+      configured.pathname === "/" &&
+      !configured.search &&
+      !configured.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 /** Compare server proof to the actual EAI token identity, never caller-supplied email text. */
 export function validateCliGithubLinkSession(
   value: CliManagedGithubLinkSession,
@@ -90,11 +116,10 @@ export function cliManagedPortalOrigin(
   }
   const queryKeys = [...new Set([...url.searchParams.keys()])];
   if (
-    url.protocol !== "https:" ||
+    !isApprovedManagedPortalOrigin(url) ||
     url.username ||
     url.password ||
     url.hash ||
-    !MANAGED_PORTAL_ORIGIN.test(url.origin) ||
     url.pathname !== GITHUB_LINK_PATH ||
     queryKeys.length !== 1 ||
     queryKeys[0] !== "ticket" ||

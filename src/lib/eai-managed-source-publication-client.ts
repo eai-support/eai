@@ -10,6 +10,7 @@ import type {
 } from "./eai-managed-source-client-types.js";
 import {
   cliManagedPortalOrigin,
+  isApprovedManagedPortalOrigin,
   responseSession,
   validateCliGithubLinkSession,
 } from "./eai-managed-source-link-client.js";
@@ -138,7 +139,7 @@ async function uploadCliManagedSource(
   if (
     !upload ||
     url.origin !== cliManagedPortalOrigin(link) ||
-    url.protocol !== "https:" ||
+    !isApprovedManagedPortalOrigin(url) ||
     url.username ||
     url.password ||
     url.search ||

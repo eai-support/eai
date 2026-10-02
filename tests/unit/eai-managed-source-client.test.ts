@@ -14,7 +14,7 @@ function session(status: CliManagedGithubLinkSession['status'] = 'verified'): Cl
   };
 }
 const response = (value: unknown): Response => new Response(JSON.stringify(value), { status: 200 });
-afterEach(() => { vi.restoreAllMocks(); profile.setActiveProfile('default'); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); profile.setActiveProfile('default'); });
 
 describe('actor-bound GitHub linking', () => {
   test('uses existing verified identity without opening a browser or requiring local gh', async () => {
@@ -112,6 +112,21 @@ describe('actor-bound GitHub linking', () => {
     expect(cliManagedPortalOrigin(validateCliGithubLinkSession(session(), scope))).toBe('https://dev-admin-portal.myenterprise.ai');
   });
 
+  test('admits only the exact dual-flag local E2E Portal origin', () => {
+    const local = { ...session(), browserUrl: 'http://localhost:3010/api/platform/generated-apps/github-user?ticket=fixture' };
+    expect(() => validateCliGithubLinkSession(local, scope)).toThrow('approved EAI Portal origin');
+    vi.stubEnv('E2E_3503_LOCAL_RUN', '1');
+    vi.stubEnv('EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN', 'http://localhost:3010');
+    expect(() => validateCliGithubLinkSession(local, scope)).toThrow('approved EAI Portal origin');
+    vi.stubEnv('E2E_3503_EXTERNAL_MUTATIONS', '1');
+    expect(cliManagedPortalOrigin(validateCliGithubLinkSession(local, scope))).toBe('http://localhost:3010');
+    for (const browserUrl of [
+      'http://127.0.0.1:3010/api/platform/generated-apps/github-user?ticket=fixture',
+      'http://evil.example/api/platform/generated-apps/github-user?ticket=fixture',
+      'http://user:secret@localhost:3010/api/platform/generated-apps/github-user?ticket=fixture',
+    ]) expect(() => validateCliGithubLinkSession({ ...local, browserUrl }, scope)).toThrow('approved EAI Portal origin');
+  });
+
   test.each([
     'https://test-admin-portal.myenterprise.ai',
     'https://admin-portal.myenterprise.ai',
@@ -155,6 +170,24 @@ describe('managed publication authority and readiness', () => {
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(operation().upload!.url, expect.objectContaining({ method: 'POST', redirect: 'error', body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }), headers: { Authorization: 'Bearer fixture-eai-token', 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': 'one-use-upload-proof' } }));
     expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview');
     expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  test('local E2E uploads only to the same pinned loopback Portal', async () => {
+    vi.stubEnv('E2E_3503_LOCAL_RUN', '1');
+    vi.stubEnv('E2E_3503_EXTERNAL_MUTATIONS', '1');
+    vi.stubEnv('EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN', 'http://localhost:3010');
+    const localLink = { ...session(), browserUrl: 'http://localhost:3010/api/platform/generated-apps/github-user?ticket=fixture' };
+    const localOperation = { ...operation(), upload: {
+      ...operation().upload!,
+      url: 'http://localhost:3010/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+    } };
+    const client = new PlatformAPIClient('http://localhost:8000/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(localOperation));
+    vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+    await submitCliManagedSource(client, scope, localLink, bundle, async () => {});
+    expect(upload.mock.calls[0][0]).toBe(localOperation.upload.url);
   });
 
   test.each(['different-profile', 'same-profile-reselected', 'profile-saved'])('profile capture change during token await blocks upload: %s', async (change) => {
