@@ -32,7 +32,8 @@ import {
   managedDeployPollDelayMs,
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
-import { validateManagedDeployInput } from '../../src/commands/eai-managed-deploy-validation.js';
+import { requireRecoverySourceOptions, validateManagedDeployInput } from '../../src/commands/eai-managed-deploy-validation.js';
+import type { ManagedDeployOptions } from '../../src/commands/eai-managed-deploy-contract.js';
 import {
   MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES,
   readSourceUnknownEvidenceFile,
@@ -59,6 +60,14 @@ const producerPinVerifier = requireFromTest(
 };
 
 describe('EAI managed deployment helpers', () => {
+  test('recovers a CLI source operation without setup while rejecting unsupported source hints', () => {
+    const operation = fixtureUnifiedOperation();
+    delete (operation as { setup?: unknown }).setup;
+    expect(() => requireRecoverySourceOptions({} as ManagedDeployOptions, [], operation)).not.toThrow();
+    expect(() => requireRecoverySourceOptions({ repo: 'other/repository' } as ManagedDeployOptions, ['repo'], operation))
+      .toThrow('Explicit recovery option repo does not match the sealed operation setup.');
+  });
+
   test.each([{ O_NOFOLLOW: undefined, O_NONBLOCK: 2048 }, { O_NOFOLLOW: 0, O_NONBLOCK: 2048 }, { O_NOFOLLOW: 256, O_NONBLOCK: undefined }])('fails closed when a required filesystem capability is absent: %j', capabilities => {
     expect(() => managedFileOpenFlags(capabilities)).toThrow('requires no-follow and nonblocking filesystem support');
   });

@@ -28,7 +28,7 @@ export function requireRecoverySourceOptions(
   supplied: ReadonlyArray<(typeof RECOVERY_SOURCE_OPTIONS)[number]>,
   operation: ManagedDeploymentOperationResponse,
 ): void {
-  const setup = operation.setup;
+  const setup = isRecord(operation.setup) ? operation.setup : {};
   const repo = isRecord(setup.repo) ? setup.repo : undefined;
   const expectedRepo = repo && typeof repo.owner === "string" && typeof repo.name === "string"
     ? `${repo.owner}/${repo.name}`.toLowerCase()
