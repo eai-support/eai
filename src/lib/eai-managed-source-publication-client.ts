@@ -20,7 +20,7 @@ import {
   validateCliManagedSourceOperation,
 } from "./eai-managed-source-operation-client.js";
 
-/** Replay the exact accepted operation when its first response was lost or its upload ticket expired. */
+/** Replay the exact pre-review operation when its upload ticket expired. */
 export async function recoverAcceptedCliManagedSourceUpload(
   client: PlatformAPIClient,
   scope: CliManagedSourceScope,
@@ -28,29 +28,34 @@ export async function recoverAcceptedCliManagedSourceUpload(
   bundle: CliManagedSourceBundle,
   onPrepared: (operation: CliManagedSourceOperation) => Promise<void>,
 ): Promise<CliManagedSourceOperation> {
-  const accepted = validateCliManagedSourceOperation(operation, scope, {
+  const original = validateCliManagedSourceOperation(operation, scope, {
     templateCommitSha: bundle.templateCommitSha,
     bundleSha256: bundle.bundleSha256,
     configHash: bundle.configHash,
   });
-  if (accepted.status !== "accepted" || !accepted.githubLinkSessionId) {
+  if (
+    !["accepted", "publishing"].includes(original.status) ||
+    !original.githubLinkSessionId ||
+    original.repository.private !== true ||
+    original.review || original.deployment
+  ) {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_RECOVERY_UNAVAILABLE",
-      "Only the original accepted EAI-managed operation can recover a missing local upload receipt.",
+      "Only the original pre-review EAI-managed operation can recover an expired upload ticket.",
     );
   }
   const link = validateCliGithubLinkSession(
     await responseSession(await client.getCliManagedGithubLinkSession(
-      scope.tenantId, scope.appKey, accepted.githubLinkSessionId,
+      scope.tenantId, scope.appKey, original.githubLinkSessionId,
       scope.targetTenantId, scope.environment,
     )),
-    scope, accepted.githubLinkSessionId, true,
+    scope, original.githubLinkSessionId, true,
   );
   if (
     link.status !== "verified" ||
-    link.verifiedGithubUser?.id !== accepted.verifiedGithubUser.id ||
-    link.verifiedGithubUser?.login.toLowerCase() !== accepted.verifiedGithubUser.login.toLowerCase() ||
-    link.verifiedGithubUser?.proofId !== accepted.verifiedGithubUser.proofId
+    link.verifiedGithubUser?.id !== original.verifiedGithubUser.id ||
+    link.verifiedGithubUser?.login.toLowerCase() !== original.verifiedGithubUser.login.toLowerCase() ||
+    link.verifiedGithubUser?.proofId !== original.verifiedGithubUser.proofId
   ) {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_BINDING_MISMATCH",
@@ -68,20 +73,38 @@ export async function recoverAcceptedCliManagedSourceUpload(
       fileCount: bundle.files.length,
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
-      githubLinkSessionId: accepted.githubLinkSessionId,
+      githubLinkSessionId: original.githubLinkSessionId,
     })),
     scope,
     {
-      operationId: accepted.operationId,
-      templateCommitSha: accepted.templateCommitSha,
-      bundleSha256: accepted.bundleSha256,
-      configHash: accepted.configHash,
-      githubLinkSessionId: accepted.githubLinkSessionId,
-      verifiedGithubUser: accepted.verifiedGithubUser,
+      operationId: original.operationId,
+      templateCommitSha: original.templateCommitSha,
+      bundleSha256: original.bundleSha256,
+      configHash: original.configHash,
+      githubLinkSessionId: original.githubLinkSessionId,
+      verifiedGithubUser: original.verifiedGithubUser,
     },
   );
+  if (
+    replayed.repository.owner !== original.repository.owner ||
+    replayed.repository.name !== original.repository.name ||
+    replayed.repository.private !== true ||
+    (original.repository.id && replayed.repository.id !== original.repository.id) ||
+    (original.repository.nodeId && replayed.repository.nodeId !== original.repository.nodeId)
+  ) {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_BINDING_MISMATCH",
+      "The original EAI-managed repository changed during upload recovery.",
+    );
+  }
   await onPrepared(replayed);
-  if (replayed.status !== "accepted") return replayed;
+  if (replayed.status !== "accepted" && replayed.status !== "publishing") return replayed;
+  if (!replayed.upload || replayed.review || replayed.deployment) {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_RECOVERY_UNAVAILABLE",
+      "The original source operation has no pre-review upload authority to renew.",
+    );
+  }
   return resumeCliManagedSourceUpload(client, scope, replayed, bundle);
 }
 

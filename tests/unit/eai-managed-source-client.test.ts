@@ -455,6 +455,43 @@ describe('managed publication authority and readiness', () => {
     expect(upload).toHaveBeenCalledTimes(1);
   });
 
+  test("renews only the original publishing operation after its consumed upload ticket expires", async () => {
+    const client = new PlatformAPIClient("https://api.example.test/public", scope.tenantId);
+    const expired = { ...session(), expiresAt: "2000-01-01T00:00:00Z" };
+    const publishing = { ...operation("publishing"), upload: undefined };
+    const renewed = { ...operation("publishing"), upload: { ...operation().upload!, ticket: "renewed-ticket" } };
+    vi.spyOn(client, "getCliManagedGithubLinkSession").mockImplementation(async () => response(expired));
+    const prepare = vi.spyOn(client, "prepareCliManagedSource").mockResolvedValue(response(renewed));
+    vi.spyOn(client, "getCliManagedSourceOperation").mockResolvedValue(response(operation("pending_review")));
+    vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-eai-token");
+    const upload = vi.spyOn(globalThis, "fetch").mockResolvedValue(response({ status: "pending_review" }));
+    const persisted = vi.fn(async () => {});
+    expect((await recoverAcceptedCliManagedSourceUpload(client, scope, publishing, bundle, persisted)).status).toBe("pending_review");
+    expect(prepare).toHaveBeenCalledExactlyOnceWith("company", "my-app", expect.objectContaining({
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
+      githubLinkSessionId: publishing.githubLinkSessionId,
+    }));
+    expect(persisted).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ operationId: publishing.operationId }));
+    expect(upload).toHaveBeenCalledExactlyOnceWith(renewed.upload.url, expect.objectContaining({
+      headers: expect.objectContaining({ "X-EAI-Upload-Ticket": "renewed-ticket" }),
+    }));
+  });
+
+  test("publishing renewal refuses a changed repository before saving authority or uploading", async () => {
+    const client = new PlatformAPIClient("https://api.example.test/public", scope.tenantId);
+    vi.spyOn(client, "getCliManagedGithubLinkSession").mockResolvedValue(response(session()));
+    vi.spyOn(client, "prepareCliManagedSource").mockResolvedValue(response({
+      ...operation("publishing"), repository: { ...operation().repository, name: "different-repo" },
+    }));
+    const persisted = vi.fn(async () => {});
+    const upload = vi.spyOn(globalThis, "fetch");
+    await expect(recoverAcceptedCliManagedSourceUpload(client, scope, {
+      ...operation("publishing"), upload: undefined,
+    }, bundle, persisted)).rejects.toMatchObject({ code: "MANAGED_SOURCE_BINDING_MISMATCH" });
+    expect(persisted).not.toHaveBeenCalled();
+    expect(upload).not.toHaveBeenCalled();
+  });
+
   test("missing-receipt recovery rejects changed source, proof, or operation before replay", async () => {
     const client = new PlatformAPIClient("https://api.example.test/public", scope.tenantId);
     const linkRead = vi.spyOn(client, "getCliManagedGithubLinkSession").mockResolvedValue(response(session()));
@@ -468,7 +505,7 @@ describe('managed publication authority and readiness', () => {
     linkRead.mockResolvedValue(response({ ...session(), verifiedGithubUser: { ...session().verifiedGithubUser!, proofId: "changed-proof" } }));
     await expect(recoverAcceptedCliManagedSourceUpload(client, scope, operation(), bundle, persist))
       .rejects.toMatchObject({ code: "MANAGED_SOURCE_BINDING_MISMATCH" });
-    await expect(recoverAcceptedCliManagedSourceUpload(client, scope, operation("publishing"), bundle, persist))
+    await expect(recoverAcceptedCliManagedSourceUpload(client, scope, operation("pending_review"), bundle, persist))
       .rejects.toMatchObject({ code: "MANAGED_SOURCE_RECOVERY_UNAVAILABLE" });
     expect(prepare).not.toHaveBeenCalled();
     expect(persist).not.toHaveBeenCalled();

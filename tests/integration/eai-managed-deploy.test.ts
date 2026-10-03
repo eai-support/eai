@@ -381,7 +381,9 @@ describe('eai deploy app --target eai', () => {
     expect(requests.filter(({ url, redirect }) => url.startsWith(API_BASE) && redirect !== 'error')).toEqual([]);
   });
 
-  test.each(['--resume', '--retry'] as const)("%s observes or retries publication using the original upload authority", async (recoveryFlag) => {
+  test.each([
+    ['--resume', false], ['--retry', false], ['--retry', true],
+  ] as const)("%s observes or retries publication using the original upload authority (expired=%s)", async (recoveryFlag, ticketExpired) => {
     await mkdir(join(projectRoot, "src/app"), { recursive: true });
     await writeFile(join(projectRoot, "eai.runtime.json"), "{}");
     await writeFile(
@@ -430,12 +432,32 @@ describe('eai deploy app --target eai', () => {
             return jsonResponse(linkedGitHubSession());
           if (url.startsWith("https://dev-admin-portal.myenterprise.ai/")) {
             expect(init?.headers).toMatchObject({
-              "X-EAI-Upload-Ticket": "original-upload-ticket",
+              "X-EAI-Upload-Ticket": ticketExpired ? "renewed-upload-ticket" : "original-upload-ticket",
             });
             expect(JSON.parse(String(init?.body)).bundle.bundleSha256).toBe(
               bundle.bundleSha256,
             );
             return jsonResponse({ status: "pending_review" }, 202);
+          }
+          if (url.endsWith("/cli-managed-source/preparations") && ticketExpired) {
+            expect(JSON.parse(String(init?.body))).toMatchObject({
+              githubLinkSessionId: "github-link-123", bundleSha256: bundle.bundleSha256,
+            });
+            return jsonResponse({
+              schemaVersion: "eai.cli_managed_source_operation.v1", sourceMode: "eai-cli-generated",
+              operationId: "cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", status: "publishing",
+              tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: "planning-portal",
+              environment: "preview", actorId: "test-user-oid", templateCommitSha: bundle.templateCommitSha,
+              bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
+              githubLinkSessionId: "github-link-123", verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
+              repository: { owner: "eai-generated-apps", name: "server-derived-app", private: true },
+              expiresAt: new Date(Date.now() + 600_000).toISOString(),
+              upload: {
+                url: "https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                ticket: "renewed-upload-ticket", expiresAt: new Date(Date.now() + 300_000).toISOString(),
+                sha256: bundle.bundleSha256,
+              },
+            });
           }
           if (url.includes("/cli-managed-source/operations/"))
             return jsonResponse({
@@ -456,14 +478,15 @@ describe('eai deploy app --target eai', () => {
               repository: {
                 owner: "eai-generated-apps",
                 name: "server-derived-app",
+                private: true,
               },
               expiresAt: new Date(Date.now() + 600_000).toISOString(),
-              upload: {
+              ...(!ticketExpired || operationReads > 1 ? { upload: {
                 url: "https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
                 ticket: "original-upload-ticket",
                 expiresAt: new Date(Date.now() + 300_000).toISOString(),
                 sha256: bundle.bundleSha256,
-              },
+              } } : {}),
             });
           return identity(input);
         },
@@ -500,9 +523,7 @@ describe('eai deploy app --target eai', () => {
     expect(
       requests.filter((url) => url.startsWith("https://dev-admin-portal.myenterprise.ai/")),
     ).toHaveLength(recoveryFlag === '--retry' ? 1 : 0);
-    expect(
-      requests.some((url) => url.endsWith("/cli-managed-source/preparations")),
-    ).toBe(false);
+    expect(requests.some((url) => url.endsWith("/cli-managed-source/preparations"))).toBe(ticketExpired);
     expect(await readFile(managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'), 'utf8')).toBe(originalReceipt);
     if (recoveryFlag === '--retry') expect(requests.every(url => url.startsWith(API_BASE) || url.startsWith('https://dev-admin-portal.myenterprise.ai/'))).toBe(true);
   });

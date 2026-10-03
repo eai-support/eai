@@ -49,7 +49,15 @@ export async function resumeManagedSource(
     (current.status === "accepted" || current.status === "publishing")
   ) {
     const { bundle } = await buildCliManagedSourceBundle(context.root);
-    if (current.status === "accepted" && (missingCliSourceRetryAuthority || !current.upload)) {
+    if (current.status === "publishing" && missingCliSourceRetryAuthority) {
+      fail(
+        "RETRY_AUTHORITY_UNAVAILABLE",
+        "The original publishing operation has no protected local retry authority.",
+        `Restore its original recovery authority and retry ${operationId}; do not start another source operation.`,
+      );
+    }
+    if ((current.status === "accepted" && (missingCliSourceRetryAuthority || !current.upload)) ||
+        (current.status === "publishing" && !current.upload)) {
       client.assertProfileAuthority();
       current = await recoverAcceptedCliManagedSourceUpload(
         client, managedScope, current, bundle,
