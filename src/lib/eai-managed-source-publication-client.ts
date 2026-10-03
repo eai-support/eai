@@ -279,9 +279,30 @@ async function uploadCliManagedSource(
     );
   }
   if (!response.ok) {
+    let portalMessage: string | undefined;
+    if (response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
+      try {
+        const body = await response.text();
+        if (body.length <= 512) {
+          const parsed: unknown = JSON.parse(body);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            const error = parsed as { error?: unknown; message?: unknown };
+            if (
+              error.error === "cli_managed_source_upload" &&
+              typeof error.message === "string" &&
+              error.message.length <= 180 &&
+              !/\bBearer\b/i.test(error.message) &&
+              /^[A-Za-z][A-Za-z0-9 .,;:'()/-]*\.?$/.test(error.message)
+            ) portalMessage = error.message;
+          }
+        }
+      } catch {
+        portalMessage = undefined;
+      }
+    }
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_FAILED",
-      `Source upload returned ${response.status}. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect its authoritative status.`,
+      `Source upload returned ${response.status}${portalMessage ? `: ${portalMessage}` : ""}. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect its authoritative status.`,
     );
   }
   return validateCliManagedSourceOperation(

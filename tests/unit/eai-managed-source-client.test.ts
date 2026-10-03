@@ -172,6 +172,38 @@ describe('managed publication authority and readiness', () => {
     expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
   });
 
+  test('reports only a bounded structured Portal upload failure for the exact operation', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'cli_managed_source_upload',
+      message: 'Generated repository has pending or inherited release state.',
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({
+      code: 'MANAGED_SOURCE_UPLOAD_FAILED',
+      message: expect.stringContaining('409: Generated repository has pending or inherited release state.'),
+    });
+  });
+
+  test.each([
+    { error: 'other', message: 'secret-token' },
+    { error: 'cli_managed_source_upload', message: 'Bearer secret-token' },
+    { error: 'cli_managed_source_upload', message: 'x'.repeat(181) },
+  ])('does not echo an untrusted Portal upload error: %j', async failure => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(failure), {
+      status: 409,
+      headers: { 'content-type': 'application/json' },
+    }));
+    await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({
+      code: 'MANAGED_SOURCE_UPLOAD_FAILED',
+      message: expect.not.stringContaining(failure.message),
+    });
+  });
+
   test('local E2E uploads only to the same pinned loopback Portal', async () => {
     vi.stubEnv('E2E_3503_LOCAL_RUN', '1');
     vi.stubEnv('E2E_3503_EXTERNAL_MUTATIONS', '1');
