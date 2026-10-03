@@ -38,6 +38,7 @@ const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
 export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
 export const MANAGED_PUBLIC_REQUEST_TIMEOUT_MS = 30_000;
+export const MANAGED_SOURCE_UPLOAD_TIMEOUT_MS = 180_000;
 export const INIT_APP_CREATE_REQUEST_TIMEOUT_MS = 90_000;
 const managedResponseSignals = new WeakMap<Response, AbortSignal>();
 const managedTimeoutReasons = new WeakSet<object>();
@@ -996,6 +997,11 @@ export class PlatformAPIClient {
   /** Shared managed requests keep the 30s ceiling. */
   managedRequestSignal(timeoutMs?: number): AbortSignal {
     return this.boundedManagedRequestSignal(MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, timeoutMs);
+  }
+
+  /** Source publication may copy verified Git objects before recording one durable review. */
+  managedSourceUploadSignal(timeoutMs?: number): AbortSignal {
+    return this.boundedManagedRequestSignal(MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, timeoutMs);
   }
 
   /** The init create POST may use a longer ceiling; client and per-read limits can only tighten it. */

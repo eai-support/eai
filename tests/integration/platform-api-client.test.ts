@@ -4,7 +4,7 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
@@ -23,6 +23,19 @@ describe('PlatformAPIClient', () => {
     await tight.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 5000)
     expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, 50, 75])
     expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal && init.redirect === 'error')).toBe(true)
+  })
+
+  test('gives only source upload a bounded longer deadline while preserving tighter command budgets', () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    const tight = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 75 })
+    client.managedSourceUploadSignal()
+    client.managedSourceUploadSignal(50)
+    tight.managedSourceUploadSignal()
+    client.managedRequestSignal()
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([
+      MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, 50, 75, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    ])
   })
 
   test.each([0, -1, Infinity, NaN, 0.5])('rejects invalid managed HTTP budget %s before credentials or fetch', async timeoutMs => {

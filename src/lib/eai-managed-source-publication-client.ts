@@ -244,7 +244,7 @@ async function uploadCliManagedSource(
       "The upload URL, expiry or digest is not bound to the verified platform operation. No source or token was sent.",
     );
   }
-  const signal = client.managedRequestSignal();
+  const signal = client.managedSourceUploadSignal();
   let response: Response;
   try {
     client.assertProfileAuthority();

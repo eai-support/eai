@@ -160,6 +160,7 @@ describe('managed publication authority and readiness', () => {
 
   test('uploads exact source through scoped one-use authority and reads authoritative operation status', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const uploadDeadline = vi.spyOn(client, 'managedSourceUploadSignal');
     const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
     const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(operation('pending_review')));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
@@ -170,6 +171,7 @@ describe('managed publication authority and readiness', () => {
     expect(fetchMock).toHaveBeenCalledExactlyOnceWith(operation().upload!.url, expect.objectContaining({ method: 'POST', redirect: 'error', body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }), headers: { Authorization: 'Bearer fixture-eai-token', 'Content-Type': 'application/json', 'X-EAI-Upload-Ticket': 'one-use-upload-proof' } }));
     expect(read).toHaveBeenCalledExactlyOnceWith('company', 'my-app', 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'runtime', 'preview');
     expect(fetchMock.mock.calls[0][1]?.signal).toBeInstanceOf(AbortSignal);
+    expect(uploadDeadline).toHaveBeenCalledExactlyOnceWith();
   });
 
   test('reports only a bounded structured Portal upload failure for the exact operation', async () => {
