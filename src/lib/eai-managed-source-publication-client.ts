@@ -20,6 +20,71 @@ import {
   validateCliManagedSourceOperation,
 } from "./eai-managed-source-operation-client.js";
 
+/** Recover an accepted operation whose first gateway response failed before the CLI saved its private receipt. */
+export async function recoverAcceptedCliManagedSourceUpload(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  operation: CliManagedSourceOperation,
+  bundle: CliManagedSourceBundle,
+  onPrepared: (operation: CliManagedSourceOperation) => Promise<void>,
+): Promise<CliManagedSourceOperation> {
+  const accepted = validateCliManagedSourceOperation(operation, scope, {
+    templateCommitSha: bundle.templateCommitSha,
+    bundleSha256: bundle.bundleSha256,
+    configHash: bundle.configHash,
+  });
+  if (accepted.status !== "accepted" || !accepted.githubLinkSessionId) {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_RECOVERY_UNAVAILABLE",
+      "Only the original accepted EAI-managed operation can recover a missing local upload receipt.",
+    );
+  }
+  const link = validateCliGithubLinkSession(
+    await responseSession(await client.getCliManagedGithubLinkSession(
+      scope.tenantId, scope.appKey, accepted.githubLinkSessionId,
+      scope.targetTenantId, scope.environment,
+    )),
+    scope, accepted.githubLinkSessionId, true,
+  );
+  if (
+    link.status !== "verified" ||
+    link.verifiedGithubUser?.id !== accepted.verifiedGithubUser.id ||
+    link.verifiedGithubUser?.login.toLowerCase() !== accepted.verifiedGithubUser.login.toLowerCase() ||
+    link.verifiedGithubUser?.proofId !== accepted.verifiedGithubUser.proofId
+  ) {
+    throw new ManagedSourceError(
+      "MANAGED_SOURCE_BINDING_MISMATCH",
+      "Original GitHub proof changed; no source was uploaded.",
+    );
+  }
+  const replayed = validateCliManagedSourceOperation(
+    await responseOperation(await client.prepareCliManagedSource(scope.tenantId, scope.appKey, {
+      schemaVersion: "eai.cli_managed_source_preparation.v1",
+      targetTenantId: scope.targetTenantId,
+      environment: scope.environment,
+      templateCommitSha: bundle.templateCommitSha,
+      bundleSha256: bundle.bundleSha256,
+      configHash: bundle.configHash,
+      fileCount: bundle.files.length,
+      totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
+      githubLinkSessionId: accepted.githubLinkSessionId,
+    })),
+    scope,
+    {
+      operationId: accepted.operationId,
+      templateCommitSha: accepted.templateCommitSha,
+      bundleSha256: accepted.bundleSha256,
+      configHash: accepted.configHash,
+      githubLinkSessionId: accepted.githubLinkSessionId,
+      verifiedGithubUser: accepted.verifiedGithubUser,
+    },
+  );
+  await onPrepared(replayed);
+  if (replayed.status !== "accepted") return replayed;
+  return resumeCliManagedSourceUpload(client, scope, replayed, bundle);
+}
+
 /** Persist original operation recovery authority before submitting bytes to the verified Portal origin. */
 export async function submitCliManagedSource(
   client: PlatformAPIClient,

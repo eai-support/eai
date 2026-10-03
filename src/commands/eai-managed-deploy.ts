@@ -127,7 +127,7 @@ Examples:
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
       const retryAuthority = retryOperationId
-        ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey)
+        ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey, true)
         : undefined;
       const retryState = retryAuthority?.state;
       const context = await resolveCommandContext({
@@ -171,6 +171,7 @@ Examples:
         format,
         spinner,
         retryState,
+        missingCliSourceRetryAuthority: Boolean(retryOperationId && !retryAuthority),
       };
 
       let recoverySource = options.source;
@@ -206,6 +207,9 @@ Examples:
       ) {
         await resumeManagedSource(execution, recoveryOperationId);
         return;
+      }
+      if (execution.missingCliSourceRetryAuthority) {
+        fail("RETRY_AUTHORITY_UNAVAILABLE", "Protected retry state is missing for this source operation.", NEW_SOURCE_OPERATION_ACTION);
       }
       if (resumeOperationId) {
         await resumeCustomerSource(execution, resumeOperationId);

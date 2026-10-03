@@ -47,12 +47,15 @@ export async function saveManagedRecoveryAuthority(authority: ManagedRecoveryAut
 /** The original endpoint is read before authentication or source routing; an ID prefix is not authority. */
 export async function loadManagedRetryAuthority(
   operationId: string, tenantId: string, targetTenantId: string, appKey: string,
-): Promise<{ publicApiUrl: string; actorId?: string; state?: ManagedDeployState }> {
+  allowMissingCliSource = false,
+): Promise<{ publicApiUrl: string; actorId?: string; state?: ManagedDeployState } | undefined> {
   let authority: ManagedRecoveryAuthority | ManagedDeployState;
   try {
     await prepareManagedDeployStateDirectory();
     authority = JSON.parse(await readPrivateFileNoFollow(managedDeployStatePath(operationId))) as ManagedRecoveryAuthority | ManagedDeployState;
-  } catch {
+  } catch (error) {
+    if (allowMissingCliSource && operationId.startsWith("cli-managed-")
+      && (error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     fail("RETRY_AUTHORITY_UNAVAILABLE", "Protected retry state with the original PublicAPI authority is unavailable.", NEW_SOURCE_OPERATION_ACTION);
   }
   if (authority.operationId !== operationId || authority.tenantId !== tenantId

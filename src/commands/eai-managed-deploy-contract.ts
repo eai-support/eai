@@ -60,6 +60,7 @@ export interface ManagedDeployExecutionContext {
   format: string;
   spinner: Ora | null;
   retryState?: ManagedDeployState;
+  missingCliSourceRetryAuthority?: boolean;
   recoveryOperation?: ManagedDeploymentOperationResponse;
 }
 

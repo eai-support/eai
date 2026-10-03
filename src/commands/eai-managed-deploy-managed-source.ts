@@ -5,6 +5,7 @@ import {
 } from "../lib/eai-managed-source.js";
 import {
   pollCliManagedSource,
+  recoverAcceptedCliManagedSourceUpload,
   resumeCliManagedSourceUpload,
   submitCliManagedSource,
 } from "../lib/eai-managed-source-client.js";
@@ -30,6 +31,7 @@ export async function resumeManagedSource(
     timeoutSeconds,
     spinner,
     format,
+    missingCliSourceRetryAuthority,
   } = execution;
   let current = await pollCliManagedSource(client, managedScope, operationId, {
     wait: false,
@@ -44,16 +46,27 @@ export async function resumeManagedSource(
   }
   if (
     options.retry &&
-    (current.status === "accepted" || current.status === "publishing") &&
-    current.upload
+    (current.status === "accepted" || current.status === "publishing")
   ) {
     const { bundle } = await buildCliManagedSourceBundle(context.root);
-    current = await resumeCliManagedSourceUpload(
-      client,
-      managedScope,
-      current,
-      bundle,
-    );
+    if (missingCliSourceRetryAuthority && current.status === "accepted") {
+      client.assertProfileAuthority();
+      current = await recoverAcceptedCliManagedSourceUpload(
+        client, managedScope, current, bundle,
+        async (prepared) => {
+          client.assertProfileAuthority();
+          await saveManagedRecoveryAuthority({
+            schema: "eai.managed-recovery-authority.v1", operationId: prepared.operationId,
+            tenantId: managedScope.tenantId, targetTenantId: managedScope.targetTenantId,
+            appKey: managedScope.appKey, actorId: managedScope.actorId,
+            publicApiUrl: context.publicApiUrl,
+            profileName: getActiveProfile(),
+          });
+        },
+      );
+    } else if (current.upload) {
+      current = await resumeCliManagedSourceUpload(client, managedScope, current, bundle);
+    }
   }
   const operation = await pollCliManagedSource(
     client,

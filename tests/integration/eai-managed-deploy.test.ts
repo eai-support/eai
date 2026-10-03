@@ -1382,6 +1382,75 @@ fi
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
   });
 
+  test('allows only an absent CLI-source receipt to reach authenticated exact-operation recovery', async () => {
+    const cliId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const path = managedDeployStatePath(cliId);
+    await rm(path);
+    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal', true))
+      .resolves.toBeUndefined();
+    await expect(loadManagedRetryAuthority('source-unknown-abc123', TENANT_ID, TENANT_ID, 'planning-portal', true))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+    await writeFile(path, '{invalid', { mode: 0o600 });
+    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal', true))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+  });
+
+  test('recovers an accepted managed publication after the first gateway response was lost', async () => {
+    const operationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    await rm(managedDeployStatePath(operationId));
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    const { bundle } = await buildCliManagedSourceBundle(projectRoot);
+    const original = { ...linkedGitHubSession(), expiresAt: '2000-01-01T00:00:00Z' };
+    let request: Record<string, unknown> | undefined;
+    let uploads = 0;
+    const identity = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      if (url.includes('/cli-managed-source/github-link-sessions/github-link-123?')) return jsonResponse(original);
+      if (url.endsWith('/cli-managed-source/preparations')) {
+        request = JSON.parse(String(init?.body));
+        return jsonResponse({ ...publication('accepted'), upload: {
+          url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/' + operationId,
+          ticket: 'original-operation-renewed-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString(),
+          sha256: request!.bundleSha256,
+        } });
+      }
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(publication(uploads ? 'pending_review' : 'accepted'));
+      if (url.startsWith('https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/')) {
+        uploads += 1;
+        expect(await loadManagedRetryAuthority(operationId, TENANT_ID, TENANT_ID, 'planning-portal'))
+          .toMatchObject({ actorId: 'test-user-oid', publicApiUrl: API_BASE });
+        expect(init?.headers).toMatchObject({ 'X-EAI-Upload-Ticket': 'original-operation-renewed-ticket' });
+        return jsonResponse({ status: 'pending_review' }, 202);
+      }
+      return identity(input);
+    }));
+    const publication = (status: string): Record<string, unknown> => ({
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated', operationId,
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview',
+      actorId: 'test-user-oid', status, githubLinkSessionId: 'github-link-123',
+      templateCommitSha: bundle.templateCommitSha,
+      bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
+      verifiedGithubUser: linkedGitHubSession().verifiedGithubUser,
+      repository: { owner: 'eai-generated-apps', name: 'server-derived-app', private: true },
+      expiresAt: new Date(Date.now() + 600_000).toISOString(),
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
+      '--target-tenant-id', TENANT_ID, '--retry', operationId, '--no-wait', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(uploads).toBe(1);
+    expect(request).toMatchObject({ githubLinkSessionId: 'github-link-123', idempotencyKey: expect.any(String) });
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')))
+      .toMatchObject({ operationId, sourceMode: 'eai-cli-generated', status: 'pending_review' });
+  });
+
   test.each(['schema', 'operationId', 'tenantId', 'targetTenantId', 'appKey', 'publicApiUrl', 'actorId', 'profileName'] as const)('never replaces an existing protected recovery binding with changed %s', async field => {
     const path = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     const authority = JSON.parse(await readFile(path, 'utf8'));

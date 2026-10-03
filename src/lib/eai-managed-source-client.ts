@@ -14,6 +14,7 @@ export {
   validateCliManagedSourceOperation,
 } from "./eai-managed-source-operation-client.js";
 export {
+  recoverAcceptedCliManagedSourceUpload,
   resumeCliManagedSourceUpload,
   submitCliManagedSource,
 } from "./eai-managed-source-publication-client.js";
