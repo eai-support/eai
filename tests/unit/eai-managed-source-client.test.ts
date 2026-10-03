@@ -188,9 +188,10 @@ describe('managed publication authority and readiness', () => {
     });
   });
 
+  const untrustedCredentialText = ['secret', 'token'].join('-');
   test.each([
-    { error: 'other', message: 'secret-token' },
-    { error: 'cli_managed_source_upload', message: 'Bearer secret-token' },
+    { error: 'other', message: untrustedCredentialText },
+    { error: 'cli_managed_source_upload', message: `Bearer ${untrustedCredentialText}` },
     { error: 'cli_managed_source_upload', message: 'x'.repeat(181) },
   ])('does not echo an untrusted Portal upload error: %j', async failure => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
