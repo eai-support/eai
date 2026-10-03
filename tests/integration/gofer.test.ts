@@ -581,9 +581,8 @@ esac
           ],
           {
             cwd: fixtureRoot,
-            // PowerShell cold starts on hosted Linux runners can exceed the
-            // generic child-process timeout before the fixture npm is invoked.
-            timeoutMs: 15_000,
+            // Hosted Linux PowerShell can cold start under concurrent tests.
+            timeoutMs: process.platform === "linux" ? 30_000 : 15_000,
             env: {
               ...process.env,
               PATH: `${fixtureRoot}:/usr/bin:/bin`,
@@ -594,6 +593,8 @@ esac
           },
         );
 
+        expect(result.exitCode).not.toBe(124);
+        expect(existsSync(callLog)).toBe(true);
         const npmCalls = await readFile(callLog, "utf-8");
         expect(result.exitCode).toBe(1);
         expect(npmCalls).toContain("install --global");
@@ -605,7 +606,7 @@ esac
         await rm(fixtureRoot, { recursive: true, force: true });
       }
     },
-    20_000,
+    40_000,
   );
 });
 
