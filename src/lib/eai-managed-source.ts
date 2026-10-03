@@ -239,14 +239,14 @@ async function sourceInventory(
   return files.sort();
 }
 
-/** Local scaffold history detects unsupported edits; the server independently authorizes the reviewed template. */
+/** Local history binds the init pin and manifest-only migrations; the server independently authorizes each reviewed template. */
 export async function buildCliManagedSourceBundle(projectRoot: string): Promise<{ bundle: CliManagedSourceBundle; totalBytes: number }> {
   const rootBinding = await bindSourceProjectRoot(resolve(projectRoot), 'SOURCE_PATH_INVALID');
   const root = rootBinding.path;
   const manifestPath = join(root, '.eai-manifest.json');
   const manifestStatus = await lstat(manifestPath);
   if (!manifestStatus.isFile() || manifestStatus.isSymbolicLink() || manifestStatus.size > 1024 * 1024) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'The project needs a valid eai init template manifest.');
-  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json', rootBinding)).toString('utf8')) as { template?: { commit?: unknown } };
+  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json', rootBinding)).toString('utf8')) as { template?: { commit?: unknown; repo?: unknown } };
   const templateCommitSha = manifest.template?.commit;
   if (typeof templateCommitSha !== 'string' || !/^[a-f0-9]{40}$/.test(templateCommitSha)) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'EAI-maintained source requires an exact reviewed template pin from eai init; enroll a custom template before using this source option.');
   const git = async (args: string[]): Promise<string> => {
@@ -261,17 +261,60 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   const message = await git(['show', '-s', '--format=%B', initialCommit]);
   if (!/Initial scaffold from template/.test(message) || !/Created by:\s*eai init/.test(message)) throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'EAI-maintained source requires the original eai init scaffold baseline; use an approved source enrollment for imported projects.');
   let initialTemplateCommitSha: unknown;
+  let initialTemplateRepository: unknown;
   try {
-    const initialManifest = JSON.parse(await git(['show', `${initialCommit}:.eai-manifest.json`])) as { template?: { commit?: unknown } };
+    const initialManifest = JSON.parse(await git(['show', `${initialCommit}:.eai-manifest.json`])) as { template?: { commit?: unknown; repo?: unknown } };
     initialTemplateCommitSha = initialManifest.template?.commit;
+    initialTemplateRepository = initialManifest.template?.repo;
   } catch {
     throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'The original eai init scaffold must contain its reviewed template manifest.');
   }
   if (typeof initialTemplateCommitSha !== 'string' || !/^[a-f0-9]{40}$/.test(initialTemplateCommitSha)) {
     throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'The original eai init scaffold must contain an exact reviewed template pin.');
   }
-  if (templateCommitSha !== initialTemplateCommitSha) {
-    throw new ManagedSourceError('TEMPLATE_PIN_CHANGED', 'The template pin differs from the original eai init scaffold. Restore .eai-manifest.json or enroll the new template before publishing.');
+  const currentTemplateRepository = manifest.template?.repo;
+  const templateChanged = templateCommitSha !== initialTemplateCommitSha || currentTemplateRepository !== initialTemplateRepository;
+  if (templateChanged) {
+    const rejectMigration = (): never => {
+      throw new ManagedSourceError('TEMPLATE_PIN_CHANGED', 'The template pin differs from the verified eai init or committed template migration lineage. Restore the manifest or commit an explicit single-file migration before publishing.');
+    };
+    const githubRepository = /^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\.git$/;
+    if (typeof initialTemplateRepository !== 'string' || !githubRepository.test(initialTemplateRepository) || typeof currentTemplateRepository !== 'string' || !githubRepository.test(currentTemplateRepository)) rejectMigration();
+    const committedManifest = JSON.parse(await git(['show', 'HEAD:.eai-manifest.json'])) as { template?: { commit?: unknown; repo?: unknown } };
+    if (committedManifest.template?.commit !== templateCommitSha || committedManifest.template?.repo !== currentTemplateRepository) rejectMigration();
+    const manifestCommits = (await git(['log', '--reverse', '--format=%H', '--', '.eai-manifest.json'])).trim().split('\n');
+    if (manifestCommits.length < 2 || manifestCommits.length > 64 || manifestCommits[0] !== initialCommit || manifestCommits.some(sha => !/^[a-f0-9]{40}$/.test(sha))) rejectMigration();
+    let verifiedCommit: string = initialTemplateCommitSha;
+    let verifiedRepository: string = initialTemplateRepository as string;
+    let migrations = 0;
+    for (const commit of manifestCommits.slice(1)) {
+      const version = JSON.parse(await git(['show', `${commit}:.eai-manifest.json`])) as { template?: { commit?: unknown; repo?: unknown } };
+      const nextCommit = version.template?.commit;
+      const nextRepository = version.template?.repo;
+      if (nextCommit === verifiedCommit && nextRepository === verifiedRepository) continue;
+      if (typeof nextCommit !== 'string' || !/^[a-f0-9]{40}$/.test(nextCommit) || typeof nextRepository !== 'string' || !githubRepository.test(nextRepository) || ++migrations > 8) rejectMigration();
+      const [parents, message, changedPaths] = await Promise.all([
+        git(['show', '-s', '--format=%P', commit]),
+        git(['show', '-s', '--format=%B', commit]),
+        git(['diff-tree', '--no-commit-id', '--name-only', '-r', commit]),
+      ]);
+      const parent = parents.trim().split(/\s+/);
+      if (parent.length !== 1 || !/^[a-f0-9]{40}$/.test(parent[0]) || changedPaths.trim() !== '.eai-manifest.json') rejectMigration();
+      const before = JSON.parse(await git(['show', `${parent[0]}:.eai-manifest.json`])) as { template?: { commit?: unknown; repo?: unknown } };
+      if (before.template?.commit !== verifiedCommit || before.template?.repo !== verifiedRepository) rejectMigration();
+      const trailers = [
+        ['EAI-Template-Migration-From', verifiedCommit],
+        ['EAI-Template-Migration-To', nextCommit],
+        ['EAI-Template-Migration-Repository', nextRepository],
+      ] as const;
+      if (trailers.some(([key, value]) => {
+        const lines = message.split('\n').filter(line => line.startsWith(`${key}: `));
+        return lines.length !== 1 || lines[0] !== `${key}: ${value}`;
+      })) rejectMigration();
+      verifiedCommit = nextCommit as string;
+      verifiedRepository = nextRepository as string;
+    }
+    if (migrations === 0 || verifiedCommit !== templateCommitSha || verifiedRepository !== currentTemplateRepository) rejectMigration();
   }
   const [inventory, changed, baselineFiles] = await Promise.all([
     sourceInventory(root, rootBinding),

@@ -32,7 +32,7 @@ async function project(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'cli-managed-source-'));
   cleanup.push(root);
   for (const [path, content] of Object.entries({
-    '.eai-manifest.json': JSON.stringify({ template: { commit: templateCommit } }),
+    '.eai-manifest.json': JSON.stringify({ template: { repo: 'https://github.com/eai-support/eai-app-template.git', commit: templateCommit } }),
     '.gitignore': 'node_modules/\n.env*\npublic/ignored.png\ncustom-ignored.ts\n',
     'package.json': '{"name":"local-app","private":true}',
     'eai.config.ts': 'export default { appKey: "local-app" };',
@@ -146,6 +146,66 @@ describe('managed local source snapshot', () => {
   test('does not trust an edited template pin after the original scaffold commit', async () => {
     const root = await project();
     await put(root, '.eai-manifest.json', JSON.stringify({ template: { commit: 'b'.repeat(40) } }));
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
+  });
+
+  test('accepts an explicit committed template migration in the same scaffold history', async () => {
+    const root = await project();
+    const nextCommit = 'b'.repeat(40);
+    const nextRepo = 'https://github.com/eai-generated-apps/eai-3503-local-e2e-template.git';
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: nextRepo, commit: nextCommit } }));
+    await exec('git', ['add', '--', '.eai-manifest.json'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${templateCommit}\nEAI-Template-Migration-To: ${nextCommit}\nEAI-Template-Migration-Repository: ${nextRepo}`], { cwd: root });
+    const { bundle } = await buildCliManagedSourceBundle(root);
+    expect(bundle.templateCommitSha).toBe(nextCommit);
+    await put(root, 'src/app/page.tsx', 'export default function Page() { return "edited"; }');
+    expect((await buildCliManagedSourceBundle(root)).bundle.templateCommitSha).toBe(nextCommit);
+  });
+
+  test('rejects a changed pin without an exact committed migration trailer', async () => {
+    const root = await project();
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: 'https://github.com/eai-generated-apps/other.git', commit: 'b'.repeat(40) } }));
+    await exec('git', ['add', '--', '.eai-manifest.json'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Change template without verified migration'], { cwd: root });
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
+  });
+
+  test('requires every committed template migration to chain from the prior pin and repository', async () => {
+    const root = await project();
+    const firstCommit = 'b'.repeat(40);
+    const secondCommit = 'c'.repeat(40);
+    const firstRepo = 'https://github.com/eai-generated-apps/first.git';
+    const secondRepo = 'https://github.com/eai-generated-apps/second.git';
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: firstRepo, commit: firstCommit } }));
+    await exec('git', ['add', '--', '.eai-manifest.json'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${templateCommit}\nEAI-Template-Migration-To: ${firstCommit}\nEAI-Template-Migration-Repository: ${firstRepo}`], { cwd: root });
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: secondRepo, commit: secondCommit } }));
+    await exec('git', ['add', '--', '.eai-manifest.json'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${firstCommit}\nEAI-Template-Migration-To: ${secondCommit}\nEAI-Template-Migration-Repository: ${secondRepo}`], { cwd: root });
+    expect((await buildCliManagedSourceBundle(root)).bundle.templateCommitSha).toBe(secondCommit);
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--amend', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${templateCommit}\nEAI-Template-Migration-To: ${secondCommit}\nEAI-Template-Migration-Repository: ${secondRepo}`], { cwd: root });
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
+  });
+
+  test('rejects an uncommitted edit after a verified template migration', async () => {
+    const root = await project();
+    const nextCommit = 'b'.repeat(40);
+    const nextRepo = 'https://github.com/eai-generated-apps/approved.git';
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: nextRepo, commit: nextCommit } }));
+    await exec('git', ['add', '--', '.eai-manifest.json'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${templateCommit}\nEAI-Template-Migration-To: ${nextCommit}\nEAI-Template-Migration-Repository: ${nextRepo}`], { cwd: root });
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: nextRepo, commit: 'c'.repeat(40) } }));
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
+  });
+
+  test('rejects a template migration commit that also changes app source', async () => {
+    const root = await project();
+    const nextCommit = 'b'.repeat(40);
+    const nextRepo = 'https://github.com/eai-generated-apps/approved.git';
+    await put(root, '.eai-manifest.json', JSON.stringify({ template: { repo: nextRepo, commit: nextCommit } }));
+    await put(root, 'src/app/page.tsx', 'export default function Page() { return "mixed"; }');
+    await exec('git', ['add', '--', '.eai-manifest.json', 'src/app/page.tsx'], { cwd: root });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet', '-m', 'Migrate reviewed template', '-m', `EAI-Template-Migration-From: ${templateCommit}\nEAI-Template-Migration-To: ${nextCommit}\nEAI-Template-Migration-Repository: ${nextRepo}`], { cwd: root });
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'TEMPLATE_PIN_CHANGED' });
   });
 
