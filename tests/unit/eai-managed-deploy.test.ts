@@ -727,7 +727,7 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '9e4073afb899ece35e58ef0ae5796814767c6412' },
+      candidate: { commit: '6e328650261e58f8f4ba0b16a427c75756024eca' },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);

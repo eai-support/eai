@@ -82,7 +82,7 @@ describe('managed local source snapshot', () => {
   test('excludes generated editor, Gofer and build metadata while preserving runtime source', async () => {
     const root = await project();
     const before = await buildCliManagedSourceBundle(root);
-    for (const path of ['.vscode/settings.json', '.github/skills/eai/SKILL.md', 'AGENTS.md', 'next-env.d.ts', 'tsconfig.tsbuildinfo']) await put(root, path, 'local tooling output');
+    for (const path of ['.vscode/settings.json', '.github/skills/eai/SKILL.md', '.husky/_/h', '.last_package_hash', 'AGENTS.md', 'next-env.d.ts', 'tsconfig.tsbuildinfo']) await put(root, path, 'local tooling output');
     expect(await buildCliManagedSourceBundle(root)).toEqual(before);
   });
 
@@ -107,7 +107,7 @@ describe('managed local source snapshot', () => {
     await expect(writeCliManagedSourceReceipt(root, bundle)).rejects.toMatchObject({ code: 'SOURCE_RECEIPT_PATH_INVALID' });
   });
 
-  test.each(['src/auth.ts', 'src/eai.config/register.ts', '.github/workflows/eai-app.yml', 'README.md', 'custom-ignored.ts'])('fails with actionable unsupported changes for %s', async path => {
+  test.each(['src/auth.ts', 'src/eai.config/register.ts', '.github/workflows/eai-app.yml', '.husky/pre-commit', 'README.md', 'custom-ignored.ts'])('fails with actionable unsupported changes for %s', async path => {
     const root = await project();
     await put(root, path, 'changed local bytes');
     await expect(buildCliManagedSourceBundle(root)).rejects.toThrow(path);

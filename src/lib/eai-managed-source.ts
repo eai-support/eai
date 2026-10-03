@@ -29,8 +29,8 @@ const RESERVED_PREFIXES = [
 ];
 const RESERVED_FILES = new Set(['src/auth.ts', 'src/middleware.ts', 'src/lib/api-helpers.ts', 'src/eai.config/register.ts', 'src/eai.config/deployment-contract.ts']);
 const NON_SOURCE_ROOTS = new Set(['.git', '.next', 'node_modules', '.specify', '.claude', '.agents', '.gemini', '.grok', '.system', '.eai', '.vscode', '.cursor', '.codex', 'coverage', 'test-results', 'playwright-report']);
-const NON_SOURCE_FILES = new Set(['.eai-manifest.json', '.DS_Store', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'GROK.md', 'codex-config.toml', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.github/copilot-instructions.md']);
-const NON_SOURCE_PREFIXES = ['.github/prompts/', '.github/skills/', '.github/instructions/', '.github/agents/'];
+const NON_SOURCE_FILES = new Set(['.eai-manifest.json', '.DS_Store', '.last_package_hash', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'GROK.md', 'codex-config.toml', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.github/copilot-instructions.md']);
+const NON_SOURCE_PREFIXES = ['.husky/_/', '.github/prompts/', '.github/skills/', '.github/instructions/', '.github/agents/'];
 
 /** Checksums and size describe the decoded bytes, not the base64 text. */
 export interface CliManagedSourceFile {
