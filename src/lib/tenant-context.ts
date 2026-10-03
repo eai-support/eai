@@ -113,6 +113,18 @@ export interface ActiveTenantContext {
   publicApiEnvSync?: PublicApiEnvSyncResult;
 }
 
+export interface PublicApiRequestPolicy {
+  validateUrl?: (url: string) => string;
+  redirect?: RequestRedirect;
+}
+
+function applyPublicApiRequestPolicy(
+  value: string,
+  policy?: PublicApiRequestPolicy,
+): string {
+  return policy?.validateUrl ? policy.validateUrl(value) : value;
+}
+
 export type PublicApiEnvSyncResult =
   | {
       status: "updated";
@@ -303,13 +315,16 @@ function buildSessionResolveUrl(baseUrl: string): string {
 
 async function resolveRegionalPublicApiUrlFromSession(
   requestedTenantId?: string | null,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string | null> {
   const accessToken = await getAccessToken();
   if (!accessToken) return null;
 
-  const bootstrapBaseUrl =
+  const bootstrapBaseUrl = applyPublicApiRequestPolicy(
     process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
-    DEFAULT_PUBLIC_API_URL;
+      DEFAULT_PUBLIC_API_URL,
+    policy,
+  );
   try {
     const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
       method: "POST",
@@ -321,6 +336,7 @@ async function resolveRegionalPublicApiUrlFromSession(
         product: "eai-cli",
         requestedTenantId: requestedTenantId || undefined,
       }),
+      ...(policy?.redirect ? { redirect: policy.redirect } : {}),
     });
     if (!response.ok) return null;
 
@@ -334,16 +350,20 @@ async function resolveRegionalPublicApiUrlFromSession(
 
 async function resolveRegionalPublicApiUrlFromTenantManagement(
   tokens: StoredTokens | null,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string | null> {
   if (!tokens?.activeTenantId) return null;
 
-  const bootstrapBaseUrl =
+  const bootstrapBaseUrl = applyPublicApiRequestPolicy(
     process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
-    DEFAULT_PUBLIC_API_URL;
+      DEFAULT_PUBLIC_API_URL,
+    policy,
+  );
   try {
     const client = new PlatformAPIClient(
       normalizeBaseUrl(bootstrapBaseUrl),
       tokens.activeTenantId,
+      { publicRequestRedirect: policy?.redirect },
     );
     const response = await client.getTenant(tokens.activeTenantId);
     if (!response.ok) return null;
@@ -398,8 +418,13 @@ async function readTenantManagementRecord(
 export async function resolveMainCompanyTenantId(
   publicApiUrl: string,
   tenantId: string,
+  requestPolicy?: PublicApiRequestPolicy,
 ): Promise<string> {
-  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const client = new PlatformAPIClient(
+    applyPublicApiRequestPolicy(publicApiUrl, requestPolicy),
+    tenantId,
+    { publicRequestRedirect: requestPolicy?.redirect },
+  );
   await readTenantManagementRecord(client, tenantId);
   return tenantId;
 }
@@ -626,20 +651,21 @@ async function loadContextEnv(
 
 export async function resolvePublicApiUrl(
   projectRoot?: string,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string> {
   // 1. Profile config (named profiles carry their own API URL)
   const profile = getActiveProfile();
   if (profile !== "default") {
     const config = await loadProfileConfig(profile);
     if (config?.publicApiUrl) {
-      return config.publicApiUrl;
+      return applyPublicApiRequestPolicy(config.publicApiUrl, policy);
     }
   }
 
   // 2. Preserve the existing project-aware override path for default profile usage.
   const env = await loadContextEnv(projectRoot);
   if (env.BASE_URL_PUBLIC_API) {
-    return env.BASE_URL_PUBLIC_API;
+    return applyPublicApiRequestPolicy(env.BASE_URL_PUBLIC_API, policy);
   }
 
   const tokens = await loadTokens();
@@ -647,23 +673,24 @@ export async function resolvePublicApiUrl(
     tokens?.activeTenantHomeRegion,
   );
   if (storedRegionalUrl) {
-    return storedRegionalUrl;
+    return applyPublicApiRequestPolicy(storedRegionalUrl, policy);
   }
 
   const tenantManagementRegionalUrl =
-    await resolveRegionalPublicApiUrlFromTenantManagement(tokens);
+    await resolveRegionalPublicApiUrlFromTenantManagement(tokens, policy);
   if (tenantManagementRegionalUrl) {
-    return tenantManagementRegionalUrl;
+    return applyPublicApiRequestPolicy(tenantManagementRegionalUrl, policy);
   }
 
   const routedUrl = await resolveRegionalPublicApiUrlFromSession(
     tokens?.activeTenantId,
+    policy,
   );
   if (routedUrl) {
-    return routedUrl;
+    return applyPublicApiRequestPolicy(routedUrl, policy);
   }
 
-  return DEFAULT_PUBLIC_API_URL;
+  return applyPublicApiRequestPolicy(DEFAULT_PUBLIC_API_URL, policy);
 }
 
 export function getStoredActiveTenant(
@@ -687,6 +714,7 @@ export function getStoredActiveTenant(
 
 export async function fetchTenantAdminMemberships(
   publicApiUrl?: string,
+  requestPolicy?: PublicApiRequestPolicy,
 ): Promise<{
   publicApiUrl: string;
   tokens: StoredTokens;
@@ -701,13 +729,17 @@ export async function fetchTenantAdminMemberships(
     throw new Error(authMismatch);
   }
 
-  const resolvedPublicApiUrl = publicApiUrl || (await resolvePublicApiUrl());
+  const resolvedPublicApiUrl = publicApiUrl
+    ? applyPublicApiRequestPolicy(publicApiUrl, requestPolicy)
+    : await resolvePublicApiUrl(undefined, requestPolicy);
   const accessToken = await getAccessToken();
   if (!accessToken) {
     throw new TenantMembershipAuthError(401);
   }
 
-  const client = new PlatformAPIClient(resolvedPublicApiUrl, "system");
+  const client = new PlatformAPIClient(resolvedPublicApiUrl, "system", {
+    publicRequestRedirect: requestPolicy?.redirect,
+  });
   const response = await client.listCurrentUserTenants();
 
   if (!response.ok) {
@@ -833,6 +865,8 @@ export async function resolveActiveTenantContext(options?: {
   forcePrompt?: boolean;
   forceRefresh?: boolean;
   tenantId?: string;
+  requestPolicy?: PublicApiRequestPolicy;
+  pinPublicApiUrl?: boolean;
 }): Promise<ActiveTenantContext> {
   const authMismatch = await getActiveAuthConfigMismatch(
     undefined,
@@ -863,9 +897,9 @@ export async function resolveActiveTenantContext(options?: {
       };
       const publicApiUrl =
         options?.publicApiUrl ||
-        (await resolvePublicApiUrl(options?.projectRoot));
+        (await resolvePublicApiUrl(options?.projectRoot, options?.requestPolicy));
       return {
-        publicApiUrl,
+        publicApiUrl: applyPublicApiRequestPolicy(publicApiUrl, options?.requestPolicy),
         tokens: cached,
         activeTenant,
         memberships: [activeTenant],
@@ -874,7 +908,8 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const fetched = await fetchTenantAdminMemberships(
-    options?.publicApiUrl || (await resolvePublicApiUrl(options?.projectRoot)),
+    options?.publicApiUrl || (await resolvePublicApiUrl(options?.projectRoot, options?.requestPolicy)),
+    options?.requestPolicy,
   );
   const { tokens, memberships } = fetched;
 
@@ -918,14 +953,16 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const namedProfilePinsEndpoint = getActiveProfile() !== "default";
-  const publicApiEnvSync = namedProfilePinsEndpoint
+  const publicApiEnvSync = namedProfilePinsEndpoint || options?.pinPublicApiUrl
     ? undefined
     : await syncProjectPublicApiUrlForTenant(selected, options?.projectRoot);
-  const selectedPublicApiUrl =
+  const selectedPublicApiUrl = applyPublicApiRequestPolicy(
     publicApiEnvSync?.status === "updated" ||
     publicApiEnvSync?.status === "already-current"
       ? publicApiEnvSync.publicApiUrl
-      : fetched.publicApiUrl;
+      : fetched.publicApiUrl,
+    options?.requestPolicy,
+  );
   const updatedTokens = await saveActiveTenantSelection(
     selected,
     selectedPublicApiUrl,

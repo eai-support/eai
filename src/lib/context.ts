@@ -13,6 +13,7 @@ import {
   TenantMembershipAuthError,
   type TenantMembership,
   type ActiveTenantContext,
+  type PublicApiRequestPolicy,
 } from './tenant-context.js';
 import type { StoredTokens } from './auth.js';
 import { ErrorCode, exitWithError } from './error-codes.js';
@@ -38,13 +39,23 @@ export async function resolveCommandContext(options?: {
   tenantId?: string;
   interactive?: boolean;
   forceRefresh?: boolean;
+  validatePublicApiUrl?: (url: string) => string;
+  publicApiUrl?: string;
+  pinPublicApiUrl?: boolean;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
     exitWithError(ErrorCode.E001);
   }
 
-  const publicApiUrl = await resolvePublicApiUrl(root);
+  const requestPolicy: PublicApiRequestPolicy | undefined = options?.validatePublicApiUrl
+    ? { validateUrl: options.validatePublicApiUrl, redirect: 'error' }
+    : undefined;
+  const resolvedPublicApiUrl = options?.publicApiUrl
+    ?? await resolvePublicApiUrl(root, requestPolicy);
+  const publicApiUrl = options?.validatePublicApiUrl
+    ? options.validatePublicApiUrl(resolvedPublicApiUrl)
+    : resolvedPublicApiUrl;
   let context: ActiveTenantContext;
   try {
     context = await resolveActiveTenantContext({
@@ -53,6 +64,8 @@ export async function resolveCommandContext(options?: {
       interactive: options?.interactive ?? true,
       tenantId: options?.tenantId,
       forceRefresh: options?.forceRefresh,
+      requestPolicy,
+      pinPublicApiUrl: options?.pinPublicApiUrl,
     });
   } catch (error) {
     if (error instanceof TenantMembershipAuthError) {
@@ -61,11 +74,16 @@ export async function resolveCommandContext(options?: {
     throw error;
   }
 
-  const client = new PlatformAPIClient(context.publicApiUrl, context.activeTenant.id);
+  const contextPublicApiUrl = options?.validatePublicApiUrl
+    ? options.validatePublicApiUrl(context.publicApiUrl)
+    : context.publicApiUrl;
+  const client = new PlatformAPIClient(contextPublicApiUrl, context.activeTenant.id, {
+    publicRequestRedirect: requestPolicy?.redirect,
+  });
 
   return {
     root,
-    publicApiUrl: context.publicApiUrl,
+    publicApiUrl: contextPublicApiUrl,
     client,
     tenantId: context.activeTenant.id,
     tenantSlug: context.activeTenant.slug,

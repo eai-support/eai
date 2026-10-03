@@ -166,6 +166,53 @@ Accessibility:
 
 ---
 
+eai init --help
+===============
+
+Usage: eai init [options] [name]
+
+Scaffold a new application
+
+Arguments:
+  name                                        Name for the app (kebab-case)
+
+Options:
+  --from <repo>                               GitHub repo URL or local path for template (default: "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts                    Allow a custom template to run its Object Type generator (default: false)
+  --skip-prompts                              Use defaults without interactive prompts (default: false)
+  --current-dir                               Scaffold into the current directory instead of creating ./<name> (default: false)
+  --tenant <id>                               Main company workspace ID (compatibility alias for --company-workspace)
+  --company-workspace, --company-tenant <id>  Main company workspace ID that owns this app
+  --parent-tenant <id>                        Immediate parent company workspace ID for the new child company
+  --child-tenant <name>                       Create or reuse a child company workspace display name for the app runtime boundary
+  --create-child-tenant                       Prompt for a child company workspace instead of using the selected company workspace
+  --no-gofer                                  Skip installing Gofer AI CLI assets
+  --no-install                                Skip installing the generated app dependencies
+  --package-profile <profile>                 Package profile to record for block catalog discovery: external, internal, or hybrid (default: "external")
+  --display-name <name>                       Display name for the app
+  --description <description>                 One-sentence description for the app
+  --binding-receipt <path>                    Write private init acknowledgement outside the project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>              Fresh UUID binding this invocation to its private receipt
+  --app-key <key>                             Bind the local project to an existing app instead of creating a new app
+  --template-version <tag>                    Scaffold from a specific published app-template release (for example v1.2.0)
+  --no-splash                                 Skip the interactive EAI wordmark
+  -h, --help                                  display help for command
+
+Gofer AI CLI assets are installed by default:
+  .specify/ commands, scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  AGENTS.md and .agents/skills for Google Antigravity and Codex CLI
+  .system/skills as a legacy Codex mirror
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
+
+Use --no-gofer only when you need a bare app scaffold.
+
+---
+
 eai update --help
 =================
 
@@ -218,6 +265,62 @@ Notes:
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
   - `eai template check` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
+
+---
+
+eai deploy app --help
+=====================
+
+Usage: eai deploy app [options] <app-key>
+
+Deploy local app source through EAI-maintained or customer-owned GitHub to
+TenantInfra
+
+Arguments:
+  app-key                             Existing EAI app key
+
+Options:
+  --target <target>                   Hosting target (eai)
+  --tenant-id <id>                    Company tenant that owns the app
+                                      enrollment
+  --target-tenant-id <id>             Required exact tenant that receives the
+                                      deployed runtime
+  --repo <owner/name>                 Exact GitHub repository
+  --source <source>                   Source ownership
+                                      (eai-managed|customer-owned); required
+                                      without an interactive prompt
+  --github-link-session <session-id>  Resume the exact EAI-account GitHub
+                                      browser verification
+  --installation-id <id>              Exact EAI GitHub App installation ID
+  --branch <branch>                   Exact branch to bind and dispatch
+                                      (default: "main")
+  --workflow <path>                   Canonical EAI workflow path (default:
+                                      ".github/workflows/eai-app.yml")
+  --environment <environment>         Deployment environment (default:
+                                      "preview")
+  --commit <sha>                      Expected exact 40 character commit SHA
+  --resume <operation-id>             Read and wait for one exact existing
+                                      operation
+  --retry <operation-id>              Retry evidence handoff, resume dispatched
+                                      work, or start an undispatched operation
+  --wait                              Poll the exact operation until it reaches
+                                      a terminal status (default: true)
+  --no-wait                           Return after dispatch instead of polling
+                                      the exact operation
+  --timeout <seconds>                 Maximum exact-operation polling time
+                                      (default: "1200")
+  --format <format>                   Output format (text|json) (default:
+                                      "text")
+  --json                              Output raw JSON (deprecated, use --format
+                                      json) (default: false)
+  -h, --help                          display help for command
+
+Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 
 ---
 
