@@ -49,7 +49,7 @@ export async function resumeManagedSource(
     (current.status === "accepted" || current.status === "publishing")
   ) {
     const { bundle } = await buildCliManagedSourceBundle(context.root);
-    if (missingCliSourceRetryAuthority && current.status === "accepted") {
+    if (current.status === "accepted" && (missingCliSourceRetryAuthority || !current.upload)) {
       client.assertProfileAuthority();
       current = await recoverAcceptedCliManagedSourceUpload(
         client, managedScope, current, bundle,

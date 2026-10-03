@@ -1395,9 +1395,11 @@ fi
       .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
   });
 
-  test('recovers an accepted managed publication after the first gateway response was lost', async () => {
+  test.each(['missing', 'existing'] as const)('replays an accepted managed publication with %s local authority', async authorityState => {
     const operationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
-    await rm(managedDeployStatePath(operationId));
+    const authorityPath = managedDeployStatePath(operationId);
+    const originalAuthority = await readFile(authorityPath, 'utf8');
+    if (authorityState === 'missing') await rm(authorityPath);
     await mkdir(join(projectRoot, 'src/app'), { recursive: true });
     await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
@@ -1449,6 +1451,7 @@ fi
     expect(request).toMatchObject({ githubLinkSessionId: 'github-link-123', idempotencyKey: expect.any(String) });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')))
       .toMatchObject({ operationId, sourceMode: 'eai-cli-generated', status: 'pending_review' });
+    if (authorityState === 'existing') expect(await readFile(authorityPath, 'utf8')).toBe(originalAuthority);
   });
 
   test.each(['schema', 'operationId', 'tenantId', 'targetTenantId', 'appKey', 'publicApiUrl', 'actorId', 'profileName'] as const)('never replaces an existing protected recovery binding with changed %s', async field => {

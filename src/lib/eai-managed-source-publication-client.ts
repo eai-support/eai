@@ -20,7 +20,7 @@ import {
   validateCliManagedSourceOperation,
 } from "./eai-managed-source-operation-client.js";
 
-/** Recover an accepted operation whose first gateway response failed before the CLI saved its private receipt. */
+/** Replay the exact accepted operation when its first response was lost or its upload ticket expired. */
 export async function recoverAcceptedCliManagedSourceUpload(
   client: PlatformAPIClient,
   scope: CliManagedSourceScope,
