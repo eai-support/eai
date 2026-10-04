@@ -102,6 +102,10 @@
         {
           "id": "eai-cli-command-contracts",
           "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "config_keys": [
+            "BASE_URL_PUBLIC_API",
+            "ROUTING_BOOTSTRAP_PUBLIC_API_URL"
+          ],
           "owned_paths": [
             "src/**",
             "tests/**",

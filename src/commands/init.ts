@@ -2146,6 +2146,10 @@ async function hydrateEnvFromLoginContext(
     }
   }
 
+  if (patches.BASE_URL_PUBLIC_API) {
+    patches.ROUTING_BOOTSTRAP_PUBLIC_API_URL = patches.BASE_URL_PUBLIC_API;
+  }
+
   if (profileConfig?.authTenantName) {
     patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
   }

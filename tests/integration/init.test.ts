@@ -1528,6 +1528,9 @@ void contractType;
         `BASE_URL_PUBLIC_API=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
       );
       expect(envContent).toContain(
+        `ROUTING_BOOTSTRAP_PUBLIC_API_URL=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
+      );
+      expect(envContent).toContain(
         "ENTRA_TENANT_NAME=profile-test-tenant",
       );
       expect(envContent).toContain("ENTRA_TENANT_ID=ciam-guid");
