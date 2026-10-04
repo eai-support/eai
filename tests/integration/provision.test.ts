@@ -7,7 +7,7 @@
 
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
-import { mkdir, writeFile, readFile } from 'node:fs/promises';
+import { mkdir, writeFile, readFile, stat, link } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
@@ -15,6 +15,7 @@ import { storeTokens, clearTokens } from '../../src/lib/auth.js';
 import { provisionCommand } from '../../src/commands/provision.js';
 import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
+import * as cloudEnv from '../../src/lib/cloud-env.js';
 
 const API_BASE = 'https://test-api.example.com';
 const EU_API_BASE = 'https://api.eu.myenterprise.ai/public';
@@ -41,6 +42,10 @@ const TENANT_AUTH_EXISTING = {
     warning: null,
   },
 };
+const SIGNIN_READY = { signin_completeness: {
+  graph_perms_added: true, publicapi_perms_added: true, consent_granted: true,
+  publicapi_preauthorized: true, signin_ready: true, warnings: [],
+} };
 
 function createJwt(payload: Record<string, string>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
@@ -149,6 +154,145 @@ describe('eai provision entra', () => {
       process.env.EAI_ACCESS_TOKEN = originalAccessToken;
     }
     await env.cleanup();
+  });
+
+  async function setupScopedProject(extra = ''): Promise<void> {
+    await writeFile(join(env.dir, '.env.local'),
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=Display name\nEAI_APP_KEY=my-app\nEAI_PARENT_TENANT_ID=company\nAUTH_URL=http://localhost:3002/my-app\n${extra}`);
+  }
+
+  function mockScopedAccess(options: { runtime?: string; member?: boolean; complete?: boolean } = {}): void {
+    const runtime = options.runtime ?? 'runtime';
+    mockServer.server.use(
+      http.get(`${API_BASE}/v4/data/resources/company/tenant-vertical-enrollment`, ({ request }) => {
+        expect(JSON.parse(new URL(request.url).searchParams.get('where')!)).toEqual({ verticalKey: 'my-app' });
+        return HttpResponse.json({ docs: [{ id: 'enrollment', data: {
+          tenantId: 'company', verticalKey: 'my-app', childTenantId: runtime,
+        } }], totalDocs: 1, totalPages: options.complete === false ? 2 : 1, page: 1 });
+      }),
+      http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({ tenants: options.member === false ? [] : [{
+        id: runtime, displayName: 'App runtime', slug: 'app-runtime', isActive: true,
+        roles: ['tenant-admin'], isTenantAdmin: true, homeRegion: 'au', hqCountryCode: 'AU', parentId: 'company',
+      }] })),
+    );
+  }
+
+  const scopedArgs = ['entra', '--company-tenant', 'company', '--app-key', 'my-app'];
+
+  test('scoped setup binds the enrolled runtime and callback despite a different cached workspace', async () => {
+    await setupScopedProject();
+    mockScopedAccess();
+    let requestBody: unknown;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+      requestBody = await request.json();
+      return HttpResponse.json({ client_id: 'app-client', client_secret: '<fixture-new-app-secret>', existing: false, ...TENANT_AUTH_ADDED, ...SIGNIN_READY });
+    }));
+    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+    expect(requestBody).toEqual({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true,
+      redirect_uris: ['http://localhost:3002/my-app/api/auth/callback/microsoft-entra-id'] });
+    const content = await readFile(join(env.dir, '.env.local'), 'utf8');
+    expect(content).toContain('ENTRA_CLIENT_ID=app-client');
+    expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-new-app-secret>');
+    expect(content).toContain('AUTH_URL=http://localhost:3002/my-app');
+    expect(content).toContain('EAI_TENANT_ID=runtime');
+    if (process.platform !== 'win32') expect((await stat(join(env.dir, '.env.local'))).mode & 0o777).toBe(0o600);
+  });
+
+  test('scoped retry confirms the same registration without rotating or replacing its local secret', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-original-secret>\n');
+    mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+      const body = await request.json();
+      expect(body).toMatchObject({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true });
+      expect(body).not.toHaveProperty('rotate_secret');
+      return HttpResponse.json({ client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY });
+    }));
+    const cloud = vi.spyOn(cloudEnv, 'pullCloudEnvValues');
+    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+    expect(cloud).not.toHaveBeenCalled();
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-original-secret>');
+  });
+
+  test.each([true, false])('scoped missing-secret recovery accepts only the exact registered client (match %s)', async (matches) => {
+    await setupScopedProject();
+    mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+      HttpResponse.json({ client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })));
+    vi.spyOn(cloudEnv, 'pullCloudEnvValues').mockResolvedValue({ store: 'configured-store', secretRefs: [],
+      patches: { ENTRA_CLIENT_ID: matches ? 'app-client' : 'different-client', ENTRA_CLIENT_SECRET: '<fixture-stored-secret>', AUTH_URL: 'https://unrelated.example' } });
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    if (matches) await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+    else await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    const content = await readFile(join(env.dir, '.env.local'), 'utf8');
+    expect(content.includes('ENTRA_CLIENT_SECRET=<fixture-stored-secret>')).toBe(matches);
+    expect(content).toContain('AUTH_URL=http://localhost:3002/my-app');
+    expect(joinedConsoleOutput(log, error)).not.toContain('<fixture-stored-secret>');
+    if (!matches) expect(exit).toHaveBeenCalledWith(1);
+  });
+
+  test.each([
+    ['missing scope pair', ['entra', '--company-tenant', 'company'], {}],
+    ['foreign app', [...scopedArgs.slice(0, -1), 'foreign-app'], {}],
+    ['foreign runtime', [...scopedArgs, '--tenant-id', 'foreign-runtime'], {}],
+    ['rotation', [...scopedArgs, '--rotate-secret'], {}],
+    ['missing membership', scopedArgs, { member: false }],
+    ['incomplete enrollment', scopedArgs, { complete: false }],
+  ])('scoped setup refuses %s before any provisioning mutation', async (_case, args, access) => {
+    await setupScopedProject();
+    mockScopedAccess(access);
+    let calls = 0;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => { calls++; return HttpResponse.json({}); }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(args, { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(calls).toBe(0);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
+  });
+
+  test('scoped setup refuses a hard-linked environment file before enrollment or provisioning', async () => {
+    await setupScopedProject();
+    await link(join(env.dir, '.env.local'), join(env.dir, 'foreign-env'));
+    let requests = 0;
+    mockServer.server.use(http.all(`${API_BASE}/*`, () => { requests++; return HttpResponse.json({}); }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(requests).toBe(0);
+    expect(await readFile(join(env.dir, 'foreign-env'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
+  });
+
+  test.each([TENANT_AUTH_ADDED, SIGNIN_READY])('scoped setup retains new credentials but fails incomplete sign-in status %#', async (summary) => {
+    await setupScopedProject();
+    mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+      HttpResponse.json({ client_id: 'app-client', client_secret: '<fixture-preserved-secret>', existing: false, ...summary })));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(joinedConsoleOutput(log, error)).toContain('could not confirm complete sign-in');
+    expect(joinedConsoleOutput(log, error)).not.toContain('<fixture-preserved-secret>');
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test('scoped setup refuses a response for a different runtime before writing credentials', async () => {
+    await setupScopedProject();
+    mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+      HttpResponse.json({ tenant_id: 'foreign-runtime', client_id: 'foreign-client', client_secret: '<fixture-foreign-secret>', existing: false, ...TENANT_AUTH_ADDED, ...SIGNIN_READY })));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    const content = await readFile(join(env.dir, '.env.local'), 'utf8');
+    expect(content).not.toContain('foreign-runtime');
+    expect(content).not.toContain('foreign-client');
+    expect(content).not.toContain('<fixture-foreign-secret>');
   });
 
   test('happy path: writes ENTRA_CLIENT_ID and ENTRA_CLIENT_SECRET to .env.local', { timeout: 10000 }, async () => {

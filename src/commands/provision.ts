@@ -4,7 +4,7 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { readFile, writeFile } from 'node:fs/promises';
+import { chmod, lstat, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
@@ -20,6 +20,44 @@ import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 import { buildPassiveResourceApiBundle, extractObjectTypesForPassiveBundle } from '../lib/resourceapi-bundle.js';
 import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
+import { acknowledgedSelectedAppBinding } from '../lib/init-app-binding.js';
+import { pullCloudEnvValues } from '../lib/cloud-env.js';
+
+interface ScopedEntraOptions {
+  companyTenant?: string;
+  appKey?: string;
+  tenantId?: string;
+  rotateSecret?: boolean;
+  deauthorize?: boolean;
+}
+
+/** SECURITY: Setup derives its runtime from the exact enrolled app, never the cached active workspace. */
+async function scopedEntraBinding(
+  root: string, env: Record<string, string>, publicApiUrl: string, options: ScopedEntraOptions,
+): Promise<{ appKey: string; runtimeTenantId: string } | undefined> {
+  if (!options.companyTenant && !options.appKey && !options.tenantId) return undefined;
+  if (!options.companyTenant || !options.appKey || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(options.appKey)
+    || options.rotateSecret || options.deauthorize
+    || env.EAI_APP_KEY !== options.appKey || env.EAI_PARENT_TENANT_ID !== options.companyTenant) {
+    throw new Error('App sign-in setup must match this project and its selected company workspace.');
+  }
+  const envPath = join(root, '.env.local');
+  const file = await lstat(envPath);
+  if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1
+    || (process.getuid && file.uid !== process.getuid())) {
+    throw new Error('App sign-in setup requires a private local environment file.');
+  }
+  const client = new PlatformAPIClient(publicApiUrl, options.companyTenant);
+  const response = await client.listResources('tenant-vertical-enrollment', {
+    limit: 50, where: { verticalKey: options.appKey },
+  });
+  if (!response.ok) throw new Error('The existing app enrollment could not be verified.');
+  const binding = acknowledgedSelectedAppBinding(await response.json(), options.appKey, options.companyTenant);
+  if (options.tenantId && options.tenantId !== binding.runtimeTenantId)
+    throw new Error('The requested app sign-in workspace differs from its enrolled runtime.');
+  await chmod(envPath, 0o600);
+  return { appKey: binding.appKey, runtimeTenantId: binding.runtimeTenantId };
+}
 
 interface ErrorContext {
   status?: number;
@@ -259,6 +297,9 @@ export const provisionCommand = new Command('provision')
 provisionCommand
   .command('entra')
   .description('Create an Entra app registration for end-user auth (Auth.js)')
+  .option('--company-tenant <id>', 'Verify the exact existing app in this company workspace before sign-in setup')
+  .option('--app-key <key>', 'App key paired with --company-tenant; derive sign-in workspace from its enrollment')
+  .option('--tenant-id <id>', 'Require the scoped app enrollment to use this runtime workspace')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
   .option('--deauthorize', 'Remove workspace authorization and delete the Entra app registration for cleanup', false)
@@ -278,6 +319,7 @@ Examples:
   $ eai provision entra --rotate-secret
   $ eai provision entra --deauthorize --force
   $ eai provision entra --redirect-uri https://abc.com/api/auth/callback/microsoft-entra-id
+  $ eai provision entra --company-tenant <workspace-id> --app-key <enrolled-app-key>
 
 What happens:
   - Calls the platform provisioning API to create an Entra app registration
@@ -286,6 +328,7 @@ What happens:
   - With --rotate-secret, rotates the existing app registration secret through the platform API
   - With --deauthorize --force, removes tenant authorization, deletes the app registration, and removes local ENTRA_CLIENT_ID/SECRET
   - With --redirect-uri, registers the given deployed callback(s) in addition to the local one (the platform merges them with any already registered)
+  - With --company-tenant and --app-key, verifies this project's exact enrollment and runtime access before idempotent sign-in setup; existing secrets are preserved
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
@@ -300,7 +343,7 @@ Diagnostics:
     }
 
     const env = await loadEnvFile(root);
-    const appName = env.NEXT_PUBLIC_APP_NAME;
+    let appName = env.NEXT_PUBLIC_APP_NAME;
 
     if (!appName) {
       out.error('NEXT_PUBLIC_APP_NAME is not set in .env.local. Run `eai init` to scaffold an app first.');
@@ -308,7 +351,8 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    if (hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret && !options.deauthorize) {
+    const scoped = Boolean(options.companyTenant || options.appKey || options.tenantId);
+    if (!scoped && hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret && !options.deauthorize) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(appName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
       out.info(`Use ${chalk.cyan('eai provision entra --rotate-secret')} to rotate and write a new ENTRA_CLIENT_SECRET.`);
@@ -322,7 +366,12 @@ Diagnostics:
     let userOid: string | undefined;
 
     try {
-      const context = await resolveActiveTenantContext({ projectRoot: root, publicApiUrl, interactive: true });
+      const binding = await scopedEntraBinding(root, env, publicApiUrl, options);
+      if (binding) appName = binding.appKey;
+      const context = await resolveActiveTenantContext({
+        projectRoot: root, publicApiUrl, interactive: !binding,
+        tenantId: binding?.runtimeTenantId, forceRefresh: Boolean(binding), pinPublicApiUrl: Boolean(binding),
+      });
       tenantId = context.activeTenant.id;
       tenantSlug = (context.activeTenant as { slug?: string }).slug;
       userOid = (context as { user?: { oid?: string; id?: string } }).user?.oid
@@ -332,6 +381,11 @@ Diagnostics:
       if (isAuthConfigErrorMessage(message)) {
         out.error(message);
         out.info('Run `eai login` again after sourcing the intended environment, then retry provisioning.');
+        process.exit(1);
+      }
+      if (scoped) {
+        out.error('App sign-in setup could not verify this existing app and workspace.');
+        out.info('Your app and project are preserved. Check their workspace access, then retry this setup step.');
         process.exit(1);
       }
       out.error('Failed to resolve the active workspace.');
@@ -459,6 +513,12 @@ Diagnostics:
       handleProvisionError(err, diag);
     }
 
+    if (scoped && result.tenantId && result.tenantId !== tenantId) {
+      out.error('App sign-in setup returned a different workspace from the verified app enrollment.');
+      out.info('Your existing app and local credentials are preserved. Retry this setup step after workspace access is checked.');
+      process.exit(1);
+    }
+
     if (existingClientId && result.clientId !== existingClientId) {
       out.error('Platform returned a different Entra client id than the one already recorded locally.');
       out.info(`Local ENTRA_CLIENT_ID: ${chalk.dim(existingClientId)}`);
@@ -483,8 +543,8 @@ Diagnostics:
     if (result.environment) {
       optionalEnv.ENTRA_ENVIRONMENT = result.environment;
     }
-    if (result.tenantId) {
-      optionalEnv.EAI_TENANT_ID = result.tenantId;
+    if (scoped || result.tenantId) {
+      optionalEnv.EAI_TENANT_ID = scoped ? tenantId : result.tenantId!;
     }
 
     // Persist the Entra directory (authority) tenant id + name from the
@@ -501,11 +561,22 @@ Diagnostics:
 
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(appName)}.`);
+      if (scoped && !hasUsableLocalEntraSecret(env)) {
+        try {
+          const { patches } = await pullCloudEnvValues({ label: appName, includeSecrets: true });
+          if (patches.ENTRA_CLIENT_ID === result.clientId && hasUsableLocalEntraSecret(patches)) {
+            await patchEnvFile(root, { ENTRA_CLIENT_SECRET: patches.ENTRA_CLIENT_SECRET });
+            env.ENTRA_CLIENT_SECRET = patches.ENTRA_CLIENT_SECRET;
+          }
+        } catch { /* Existing credentials remain unchanged when cloud recovery is unavailable. */ }
+      }
       if (hasUsableLocalEntraSecret(env)) {
         out.info('Your existing ENTRA_CLIENT_SECRET in .env.local remains valid.');
       } else {
         out.error('No usable ENTRA_CLIENT_SECRET is available locally for the existing app registration.');
-        out.info('Run `eai provision entra --rotate-secret` to generate a new local secret, or set ENTRA_CLIENT_SECRET in .env.local.');
+        out.info(scoped
+          ? 'Your existing app and project are preserved. Restore their stored sign-in credentials, then retry setup.'
+          : 'Run `eai provision entra --rotate-secret` to generate a new local secret, or set ENTRA_CLIENT_SECRET in .env.local.');
         process.exit(1);
       }
       await patchEnvFile(root, { ENTRA_CLIENT_ID: result.clientId, ...optionalEnv });
@@ -515,8 +586,7 @@ Diagnostics:
       } else {
         out.warn('Platform response did not include scopes/redirect URIs — set ENTRA_SCOPES manually.');
       }
-      reportTenantAuthorization(result.tenantAuthorization, result.clientId);
-      reportSigninCompleteness(result.signinCompleteness, result.clientId);
+      reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped);
       return;
     }
 
@@ -568,8 +638,7 @@ Diagnostics:
     // platform API from a user session — sign-in then fails with AADSTS650057
     // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
-    reportTenantAuthorization(result.tenantAuthorization, result.clientId);
-    reportSigninCompleteness(result.signinCompleteness, result.clientId);
+    reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped);
   });
 
 // ─── eai provision resourceapi-refresh ──────────────────────────────────
@@ -735,6 +804,17 @@ function resolveAuthRuntime(env: Record<string, string>): { authUrl: string; sit
       siteUrl,
     };
   }
+}
+
+function reportAppSignin(authorization: TenantAuthorizationSummary | null, signin: SigninCompletenessSummary | null,
+  clientId: string, scoped: boolean): void {
+  if (scoped && (!authorization || !signin)) {
+    out.error('App sign-in setup could not confirm complete sign-in and workspace access.');
+    out.info('Your existing app, credentials and project are preserved. Retry this setup step when workspace access is available.');
+    process.exit(1);
+  }
+  reportTenantAuthorization(authorization, clientId);
+  reportSigninCompleteness(signin, clientId);
 }
 
 function reportSigninCompleteness(

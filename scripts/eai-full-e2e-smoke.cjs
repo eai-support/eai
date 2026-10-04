@@ -661,6 +661,9 @@ const OPTION_DECISIONS = {
     '--fix': 'Mutating repair mode; not used in release smoke unless a human asks for local repair.',
   },
   'eai provision entra': {
+    '--company-tenant': 'Installer exact-app scope is covered by controlled provision integration tests and the live Installer qualification journey; general credential smoke does not create or select an app enrollment.',
+    '--app-key': 'Paired exact enrolled app selector is covered by controlled provision integration tests and the live Installer qualification journey.',
+    '--tenant-id': 'Optional enrolled-runtime equality guard is covered by controlled provision integration tests; it cannot override enrollment or workspace membership.',
     '--rotate-secret': 'Secret rotation is destructive; covered only when EAI_E2E_ROTATE_ENTRA_SECRET=1 is set.',
     '--deauthorize': 'Cleanup mode; covered when EAI_E2E_PROVISION_ENTRA=1 and EAI_E2E_CLEANUP is not 0.',
     '--client-id': 'Cleanup can target the smoke-created client id read back from .env.local.',

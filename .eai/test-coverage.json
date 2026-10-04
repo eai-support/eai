@@ -101,7 +101,7 @@
         },
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged.",
           "config_keys": [
             "BASE_URL_PUBLIC_API",
             "ROUTING_BOOTSTRAP_PUBLIC_API_URL"
