@@ -90,6 +90,7 @@ const TRACEABILITY_BASE = [
   ['eai docs classify', 'read/create', 'live-optional', 'EAI_E2E_DOCS=1 requires EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Requires a published business-document lifecycle, installed storage, and read/delete permission. EAI_E2E_DOCS_WAIT_MS defaults to 180000 (maximum 600000). Polls one job, reads persisted classification and always cleans up.'],
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
   ['eai deploy app', 'create/update/read', 'manual', 'Repo integration tests prove immutable setup, dispatch, and exact-operation polling; live execution is release-controlled because it creates a TenantInfra deployment.'],
+  ['eai deploy source move', 'read/browser-handoff', 'manual', 'The CLI checks the exact active EAI-managed source and deployment, then opens the Portal for actor-bound native transfer. Controlled command tests cover the handoff; the local SOT journey owns live transfer, rebind and cleanup evidence.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -375,6 +376,9 @@ const SMOKE_CALLS = {
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --source eai-managed --environment preview --resume <managed-operation-id> --wait --format json',
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --resume <operation-id> --wait --format json',
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --retry <operation-id> --no-wait --format json',
+  ],
+  'eai deploy source move': [
+    'eai deploy source move <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --source-operation <cli-managed-operation-id> --no-open --format json',
   ],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',
@@ -930,6 +934,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Yes - GitHub Actions run and EAI-managed TenantInfra deployment',
     cleanupMechanism: 'Release-controlled only; use the app/TenantInfra lifecycle controls for the exact deployment operation',
     cleanupVerified: 'No - disabled in default smoke; repo integration tests use controlled GitHub and PublicAPI fixtures',
+  },
+  'eai deploy source move': {
+    createsExternalArtifact: 'No - CLI verifies source and returns a Portal handoff; a later customer-authorized Portal action can transfer the repository',
+    cleanupMechanism: 'Not required for the CLI handoff; the local SOT journey verifies any subsequent backup retention and cleanup',
+    cleanupVerified: 'Not applicable to the handoff; a successful native transfer requires separate same-repository and hosted-rebind evidence',
   },
   'eai deploy setup': {
     createsExternalArtifact: 'Creates local deployment workflow files',

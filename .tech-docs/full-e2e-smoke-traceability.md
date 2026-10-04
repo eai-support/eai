@@ -38,6 +38,7 @@ command, alias, or option cannot be added without a coverage decision.
 | `eai deploy doctor` | - | read | live-optional | No | Not required | Yes - read/check command | `EAI_E2E_DEPLOYED_URL=<url> eai deploy doctor --url <url> --format json`<br>`eai deploy doctor --operation-id <operation-id> --app-key <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --evidence-out .eai/deploy-doctor.json --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Runs when EAI_E2E_DEPLOYED_URL is configured. |
 | `eai deploy env` | - | read | live | No | Not required | Yes - read/check command | `eai deploy env --provider generic --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Prints provider-neutral env/secret requirements. |
 | `eai deploy setup` | - | create-local | live | Creates local deployment workflow files | Disposable workspace retained for evidence | Partial - workspace summary records path | `eai deploy setup --repo <owner/repo>` | - | Generates deployment workflow in the disposable workspace. |
+| `eai deploy source move` | - | read/browser-handoff | manual | No - CLI verifies source and returns a Portal handoff; a later customer-authorized Portal action can transfer the repository | Not required for the CLI handoff; the local SOT journey verifies any subsequent backup retention and cleanup | Not applicable to the handoff; a successful native transfer requires separate same-repository and hosted-rebind evidence | `eai deploy source move <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --source-operation <cli-managed-operation-id> --no-open --format json` | - | The CLI checks the exact active EAI-managed source and deployment, then opens the Portal for actor-bound native transfer. Controlled command tests cover the handoff; the local SOT journey owns live transfer, rebind and cleanup evidence. |
 | `eai deploy status` | - | read | help | No | Not required | Yes - read/check command | `eai deploy status <run-id> --repo <owner/repo> --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Validated by help/contract unless a deployment run id is provided. |
 | `eai deploy trigger` | - | create | manual | Yes - host deployment run | Manual only; not run by release smoke | No - disabled by default | `eai deploy trigger --repo <owner/repo> --branch main --workflow deploy-demo.yml --format json` | --json: Deprecated JSON shortcut; new smoke calls use --format json to keep one V4-native output vocabulary. | Not run by release smoke because it triggers a host deployment outside the CLI test tenant. |
 | `eai dev` | - | read | help | No | Not required | Yes - read/check command | `eai dev --port 3000 --no-turbo --skip-checks` | --turbo: Default dev server mode; release smoke documents it but does not start a long-running server. | Runtime server command is validated by help/contract checks; live release smoke does not start a long-running dev server. |
@@ -121,9 +122,9 @@ command, alias, or option cannot be added without a coverage decision.
 
 | Metric | Count |
 | ------ | ----- |
-| CLI leaf commands | 110 |
-| Traceability rows | 110 |
+| CLI leaf commands | 111 |
+| Traceability rows | 111 |
 | Live rows | 44 |
 | Optional live rows | 36 |
-| Help/check/manual rows | 30 |
+| Help/check/manual rows | 31 |
 | Alias paths covered | 21 |
