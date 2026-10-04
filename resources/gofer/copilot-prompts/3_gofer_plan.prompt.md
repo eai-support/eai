@@ -746,6 +746,19 @@ Engineering Review: PASSED (cycle [N] of 5)
 
 ## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements
 
+Before planning app implementation, read the managed-source boundary in
+`.specify/references/platform/eai-app-template.md`. Include all customer-authored
+app files, including custom runners, tests, backend code, scripts, documentation,
+and supported dot configuration. Preserve protected EAI authentication,
+platform-service, deployment, and workflow controls. The installed CLI owns the
+normalized source boundary; do not maintain a second allowlist.
+When EAI-maintained source is selected, verify the installed CLI advertises
+`eai deploy source validate --help`, then run
+`node .specify/scripts/node/eai-app-template-readiness.mjs --root . --source eai-managed --json`.
+Preserve an explicitly selected CLI with `--cli <executable>`. Resolve a failed
+source check before promising EAI-maintained delivery. Unsupported custom runtimes
+must fail explicitly; never omit business changes or customer app files.
+
 > When `gofer.workflowProfile=enterpriseai`, the following conventions apply.
 > standard profile outputs remain unchanged.
 

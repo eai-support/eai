@@ -62,6 +62,7 @@ export async function recoverAcceptedCliManagedSourceUpload(
       "Original GitHub proof changed; no source was uploaded.",
     );
   }
+  if (original.upload) validateUploadAuthority(link, bundle, original, true);
   const replayed = validateCliManagedSourceOperation(
     await responseOperation(await client.prepareCliManagedSource(scope.tenantId, scope.appKey, {
       schemaVersion: "eai.cli_managed_source_preparation.v1",
@@ -207,13 +208,13 @@ export async function resumeCliManagedSourceUpload(
   return uploadCliManagedSource(client, scope, link, bundle, prepared);
 }
 
-async function uploadCliManagedSource(
-  client: PlatformAPIClient,
-  scope: CliManagedSourceScope,
+/** Renewal may forgive expiration alone; every other original upload binding remains required. */
+function validateUploadAuthority(
   link: CliManagedGithubLinkSession,
   bundle: CliManagedSourceBundle,
   prepared: CliManagedSourceOperation,
-): Promise<CliManagedSourceOperation> {
+  permitExpired = false,
+): URL {
   const upload = prepared.upload;
   let url: URL;
   try {
@@ -224,6 +225,12 @@ async function uploadCliManagedSource(
       "The source operation has no valid upload authority. Resume or retry the same operation.",
     );
   }
+  const expiresAt = upload?.expiresAt;
+  const expiry = typeof expiresAt === "string" &&
+    /^\d{4}-(?:0[1-9]|1[0-2])-(?:0[1-9]|[12]\d|3[01])T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(expiresAt)
+    ? Date.parse(expiresAt) : Number.NaN;
+  const calendarDateValid = Number.isFinite(expiry) &&
+    new Date(`${expiresAt!.slice(0, 10)}T00:00:00Z`).toISOString().slice(0, 10) === expiresAt!.slice(0, 10);
   if (
     !upload ||
     url.origin !== cliManagedPortalOrigin(link) ||
@@ -234,16 +241,28 @@ async function uploadCliManagedSource(
     url.hash ||
     url.pathname !==
       `/api/platform/generated-apps/cli-managed-source/uploads/${prepared.operationId}` ||
-    !upload.ticket ||
+    typeof upload.ticket !== "string" || !upload.ticket ||
     upload.sha256 !== bundle.bundleSha256 ||
-    !Number.isFinite(Date.parse(upload.expiresAt)) ||
-    Date.parse(upload.expiresAt) <= Date.now()
+    !calendarDateValid ||
+    (!permitExpired && expiry <= Date.now())
   ) {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_INVALID",
       "The upload URL, expiry or digest is not bound to the verified platform operation. No source or token was sent.",
     );
   }
+  return url;
+}
+
+async function uploadCliManagedSource(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  link: CliManagedGithubLinkSession,
+  bundle: CliManagedSourceBundle,
+  prepared: CliManagedSourceOperation,
+): Promise<CliManagedSourceOperation> {
+  const url = validateUploadAuthority(link, bundle, prepared);
+  const upload = prepared.upload!;
   const signal = client.managedSourceUploadSignal();
   let response: Response;
   try {

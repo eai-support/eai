@@ -341,6 +341,20 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 ```
 
+## eai deploy source validate --help
+
+```text
+Usage: eai deploy source validate [options]
+
+Check local app source for EAI-managed publication without publishing
+
+Options:
+  --project-dir <path>  Exact generated-app directory (defaults to the current
+                        project)
+  --format <format>     Output format (text|json) (default: "text")
+  -h, --help            display help for command
+```
+
 ## eai errors --help
 
 ```text
@@ -695,6 +709,28 @@ eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
+
+## Check Source Before EAI Hosting
+
+After building an app, check its source before choosing EAI-managed publication:
+
+```bash
+eai deploy source validate --format json
+```
+
+The check uses the same source guard as publication. It reads local files without
+signing in, publishing, or writing a deployment receipt. The upload includes the
+complete authored app: frontend and backend code, custom runners, tests, scripts,
+assets, documentation and ordinary config files. Executable script permissions
+are bound into the source digest and retained in GitHub. NCB's generation layout
+does not constrain Installer/CLI source.
+
+Deployment-owned Docker, workflow, platform authentication and tenant-binding
+controls remain protected. Credentials, dependencies, build caches and local
+agent state are excluded. A custom runtime needs an approved runtime contract;
+it cannot be silently replaced by the template runtime. The check reports
+unsupported controls and preserves your changes. A passing source check does
+not prove that the build, deployment or hosted readiness has completed.
 
 ## Object Type Identifiers
 

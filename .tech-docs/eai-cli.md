@@ -70,6 +70,28 @@ eai resources schema --tenant-id <workspace-id> --format json
 eai dev
 ```
 
+## Check Source Before EAI Hosting
+
+After building an app, check its source before choosing EAI-managed publication:
+
+```bash
+eai deploy source validate --format json
+```
+
+The check uses the same source guard as publication. It reads local files without
+signing in, publishing, or writing a deployment receipt. The upload includes the
+complete authored app: frontend and backend code, custom runners, tests, scripts,
+assets, documentation and ordinary config files. Executable script permissions
+are bound into the source digest and retained in GitHub. NCB's generation layout
+does not constrain Installer/CLI source.
+
+Deployment-owned Docker, workflow, platform authentication and tenant-binding
+controls remain protected. Credentials, dependencies, build caches and local
+agent state are excluded. A custom runtime needs an approved runtime contract;
+it cannot be silently replaced by the template runtime. The check reports
+unsupported controls and preserves your changes. A passing source check does
+not prove that the build, deployment or hosted readiness has completed.
+
 ## Object Type Identifiers
 
 Do not move every Object Type field to kebab-case. A definition keeps both a

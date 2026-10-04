@@ -13,6 +13,7 @@ import * as out from "../lib/output.js";
 import { fail, MANAGED_DEPLOY_ENVIRONMENTS } from "./eai-managed-deploy-contract.js";
 import { readUnifiedExactOperation } from "./eai-managed-deploy-operation.js";
 import { printFailure } from "./eai-managed-deploy-output.js";
+import { createManagedSourceValidateCommand } from "./eai-managed-source-validate.js";
 
 const exec = promisify(execFile);
 
@@ -28,6 +29,8 @@ interface MoveOptions {
 /** The CLI opens a bound Portal handoff; the Portal alone obtains the recipient App user token. */
 export const eaiManagedSourceCommand = new Command("source")
   .description("Manage the source of an EAI-hosted app");
+
+eaiManagedSourceCommand.addCommand(createManagedSourceValidateCommand());
 
 eaiManagedSourceCommand.command("move")
   .description("Continue a completed EAI-managed source move in the browser")

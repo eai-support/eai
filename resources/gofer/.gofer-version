@@ -19,5 +19,341 @@
     "target_path": "references/platform/eai-service-patterns.md",
     "includes_document_matrix_row": true,
     "dirty": false
+  },
+  "managed_source_readiness_overlay": {
+    "source": "https://github.com/eai-support/eai-gofer",
+    "commit": "a2638c537cb2025bbcac2baed2f971875c00f3e3",
+    "strategy": "exact_script_and_added_guidance_blocks",
+    "dirty": false,
+    "files": [
+      {
+        "target_path": "commands/3_gofer_plan.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "dd6200d3365e4e2fb71787e978fe4b606a80ef22375575f03ecc6698d749c6ab",
+        "result_sha256": "7882d7ad051e7af39c90cb562c447ff7510666793a5bd92f223c8df362f8371f",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "specify-commands/3_gofer_plan.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "dd6200d3365e4e2fb71787e978fe4b606a80ef22375575f03ecc6698d749c6ab",
+        "result_sha256": "7882d7ad051e7af39c90cb562c447ff7510666793a5bd92f223c8df362f8371f",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "claude-commands/3_gofer_plan.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "b940707373f890a08471337b53efdec7d600c6d9c564ee65b037750d95a7fc0e",
+        "result_sha256": "196b046d7b787024db15a2f8f180356798bc266995e457eb6eb5f6db682e8293",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "copilot-prompts/3_gofer_plan.prompt.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "c4d36fc10f4720677f0488fc62b855fd9c5b2a6324d3cce1607a1cdc9f0703f4",
+        "result_sha256": "4102501293868169ad9fa6baf1e44f515a9087f0c191103757226e814aec25af",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "agents-skills/3_gofer_plan/SKILL.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "ef8d2d79311209bd9f5efca0747aab5b11a20b91edd21e0987697f3cb9065789",
+        "result_sha256": "b45a50eec4069321c8a62506faf4d20215e438bfee26683b3b0bb2d90da0d4fe",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "system-skills/3_gofer_plan/SKILL.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "ef8d2d79311209bd9f5efca0747aab5b11a20b91edd21e0987697f3cb9065789",
+        "result_sha256": "b45a50eec4069321c8a62506faf4d20215e438bfee26683b3b0bb2d90da0d4fe",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "gemini/commands/gofer/3_gofer_plan.md",
+        "source_path": ".specify/commands/3_gofer_plan.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "2f16e106f5ae415b8d6f78cde9779532f7e1e21c63248b85f686b8c1a06d94f9",
+        "result_sha256": "742293677342ccbd8d8595360fe7e928b4044e0d7559211961f54690adffc420",
+        "source_block_sha256": "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
+        "block_bytes": 909,
+        "insertion_anchor": "## EnterpriseAI Deployment Convention and EAI CLI Pinning Requirements\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "commands/4_gofer_tasks.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "1de2f679065345d5c64f468f0a2584ac72663a94adb81a170157754955529b75",
+        "result_sha256": "9743f35dba50f4ee320b91d6b2f53a067e7e2852cc8d85fe56cf3aa1c263cc67",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "specify-commands/4_gofer_tasks.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "1de2f679065345d5c64f468f0a2584ac72663a94adb81a170157754955529b75",
+        "result_sha256": "9743f35dba50f4ee320b91d6b2f53a067e7e2852cc8d85fe56cf3aa1c263cc67",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "claude-commands/4_gofer_tasks.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "4808412216667c458e2479c0478c0fd407a65b9a63cdae45383b2e308c3aff26",
+        "result_sha256": "4118680b784d57ef753e50e6244dfa7a21ea8efc5416092d41653b90c74be44c",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "copilot-prompts/4_gofer_tasks.prompt.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "189c456e5d8940d023b61a75e28f66c85aa5029843bd1065f000493d70f50a60",
+        "result_sha256": "ffa9541463dd92aa4ba99296f32ecfc5fe024731d6d618068b119cd00a91a593",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "agents-skills/4_gofer_tasks/SKILL.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "ea748b6329dde22acef0f6aa5290d19598716adee9612e7ca9916d3a15fe6ea1",
+        "result_sha256": "5dce0c827aa25967f9489e467f47665f2e407a08ca9d8e4781cf66735933c7ce",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "system-skills/4_gofer_tasks/SKILL.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "ea748b6329dde22acef0f6aa5290d19598716adee9612e7ca9916d3a15fe6ea1",
+        "result_sha256": "5dce0c827aa25967f9489e467f47665f2e407a08ca9d8e4781cf66735933c7ce",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "gemini/commands/gofer/4_gofer_tasks.md",
+        "source_path": ".specify/commands/4_gofer_tasks.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "3a359465a6e43ac4668508f7ab639d908329220774586d2302c6cc2d42d671bc",
+        "result_sha256": "1b35810395a8757d04bbad1f739826aa3fc9ce63d9d029cae31664d8920a550c",
+        "source_block_sha256": "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
+        "block_bytes": 907,
+        "insertion_anchor": "     readiness before any deploy attempt.\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "commands/5_gofer_implement.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "b50198413e76072a295acbf47267585b16e4988be4d4641867f093d4e8868dec",
+        "result_sha256": "c7519a00af8635d664670b44fccee19f1953b4de8cf888e772fbada1109e0089",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "specify-commands/5_gofer_implement.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "b50198413e76072a295acbf47267585b16e4988be4d4641867f093d4e8868dec",
+        "result_sha256": "c7519a00af8635d664670b44fccee19f1953b4de8cf888e772fbada1109e0089",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "claude-commands/5_gofer_implement.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "589231c5eb23fc7f9a0d2592f18e494f62325afcd51c7080ff82fd540ca866eb",
+        "result_sha256": "046925272c658ba3a45169c50864e49e99f1e036ccf2440adbefe7426f902434",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "copilot-prompts/5_gofer_implement.prompt.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "42ec243c080b834cb54c1f9d095abdd8c0c084ff304e7028cfd5763b65f47bc8",
+        "result_sha256": "d98c6fbfd9fa536b82ed903be3ff3616a654d1a95d8950036a1458cd52e2bfaa",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "agents-skills/5_gofer_implement/SKILL.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "9320bb8910548b014aeec5e7f11ec235f61c54d1919567e1525c4883fcd29ffc",
+        "result_sha256": "410d3a7782ca746ce4b18bb8cfa5e04ae4354dcf272a9a41ef3d2a01c49b49f2",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "system-skills/5_gofer_implement/SKILL.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "9320bb8910548b014aeec5e7f11ec235f61c54d1919567e1525c4883fcd29ffc",
+        "result_sha256": "410d3a7782ca746ce4b18bb8cfa5e04ae4354dcf272a9a41ef3d2a01c49b49f2",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "gemini/commands/gofer/5_gofer_implement.md",
+        "source_path": ".specify/commands/5_gofer_implement.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "38e2df3e9044a978731343dd5e31bc3d03f44cda21c4645686fa2a2eba2dedaf",
+        "result_sha256": "248c01dd61b620591a06c7ca97448b49208a03b3317317a77544e395061be028",
+        "source_block_sha256": "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
+        "block_bytes": 1212,
+        "insertion_anchor": "## EnterpriseAI Runtime Deployment Preflight Gate\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "commands/6_gofer_validate.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "0e3e634a35b54883da7a5e56bca20b64ebcaa8317f291c33708223c2be73515a",
+        "result_sha256": "0fadbfaa537faf0300aaefea5ac9ed812bec6e6f4514b29a82dad7c1ead74ee6",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "specify-commands/6_gofer_validate.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "0e3e634a35b54883da7a5e56bca20b64ebcaa8317f291c33708223c2be73515a",
+        "result_sha256": "0fadbfaa537faf0300aaefea5ac9ed812bec6e6f4514b29a82dad7c1ead74ee6",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "claude-commands/6_gofer_validate.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "7d3addbdc2a1b89b6c747842f285ca20cafde385c946271cdef964ccafb1d948",
+        "result_sha256": "9d77fea0b09035b7e09dc629513a3f2a71166a3ea866e2de52eaa83f571b60c7",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "copilot-prompts/6_gofer_validate.prompt.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "a46f8bb4472df4e2df4fe6edad370b040713e7dc5ae28896cdb5e5be830251f7",
+        "result_sha256": "440d9dcc6341763300a771ed4e8e1a1f0de7298c14824fab69fbb7dae8495a5e",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "agents-skills/6_gofer_validate/SKILL.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "2f60e398bdb854224dff2c26130bc2b98ca750a0a6e5fd0c5a3b4105c2c16f6d",
+        "result_sha256": "9c8a39fddd6e6a19082e8511fd475e55bc519c1725681129a9b21a2f79d402f5",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "system-skills/6_gofer_validate/SKILL.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "2f60e398bdb854224dff2c26130bc2b98ca750a0a6e5fd0c5a3b4105c2c16f6d",
+        "result_sha256": "9c8a39fddd6e6a19082e8511fd475e55bc519c1725681129a9b21a2f79d402f5",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "gemini/commands/gofer/6_gofer_validate.md",
+        "source_path": ".specify/commands/6_gofer_validate.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "8658078339cd0641d7b2d37b74cbb1fad35c7e20abfe84eb5cbb60f163716c75",
+        "result_sha256": "bc0cceace5ae4ab4d1a29a97e0a15e513efdc44aca2d789b93f146aa210de0ca",
+        "source_block_sha256": "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
+        "block_bytes": 1023,
+        "insertion_anchor": "## Step 1.5: Closed-Loop Objective And Loop Evidence Audit\n",
+        "insertion_side": "before"
+      },
+      {
+        "target_path": "references/platform/eai-app-template.md",
+        "source_path": ".specify/references/platform/eai-app-template.md",
+        "operation": "insert_exact_added_block",
+        "base_sha256": "a12a34ed2e8eac0272dcc9812c0b163efe36fab6c42f08f2bb05b44f6e6e20d2",
+        "result_sha256": "e9ea668f911969229cb84c71f7ca684b76e9ad5c55cd37ff40f27fa07992b691",
+        "source_block_sha256": "101cc7d3cdcb8f7a710fc0546c0b07ccd2902176c7dba19bc819987494d5dd3e",
+        "block_bytes": 1445,
+        "insertion_anchor": "## Implementation Contract\n\n",
+        "insertion_side": "after"
+      },
+      {
+        "target_path": "node-scripts/eai-app-template-readiness.mjs",
+        "source_path": ".specify/scripts/node/eai-app-template-readiness.mjs",
+        "operation": "copy_exact_script",
+        "base_sha256": null,
+        "result_sha256": "bb2c15ac1133f9c10b5f699ced16c4c04d271ddbd1a23a1f42936bb1b700b1c9",
+        "source_sha256": "bb2c15ac1133f9c10b5f699ced16c4c04d271ddbd1a23a1f42936bb1b700b1c9"
+      }
+    ],
+    "source_base_commit": "2b2a2eb5cabc34f480260a3c20fbf3042e23a1dd"
   }
 }

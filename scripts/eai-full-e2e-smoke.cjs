@@ -91,6 +91,7 @@ const TRACEABILITY_BASE = [
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
   ['eai deploy app', 'create/update/read', 'manual', 'Repo integration tests prove immutable setup, dispatch, and exact-operation polling; live execution is release-controlled because it creates a TenantInfra deployment.'],
   ['eai deploy source move', 'read/browser-handoff', 'manual', 'The CLI checks the exact active EAI-managed source and deployment, then opens the Portal for actor-bound native transfer. Controlled command tests cover the handoff; the local SOT journey owns live transfer, rebind and cleanup evidence.'],
+  ['eai deploy source validate', 'read-local', 'covered-by-cli', 'Controlled source fixtures verify supported app edits and rejected platform edits without authentication, receipt writes or publication.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
   ['eai deploy status', 'read', 'help', 'Validated by help/contract unless a deployment run id is provided.'],
@@ -379,6 +380,10 @@ const SMOKE_CALLS = {
   ],
   'eai deploy source move': [
     'eai deploy source move <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --source-operation <cli-managed-operation-id> --no-open --format json',
+  ],
+  'eai deploy source validate': [
+    'eai deploy source validate --project-dir <generated-app-directory> --format json',
+    'eai deploy source validate --format text',
   ],
   'eai deploy setup': [
     'eai deploy setup --repo <owner/repo>',
@@ -942,6 +947,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'No - CLI verifies source and returns a Portal handoff; a later customer-authorized Portal action can transfer the repository',
     cleanupMechanism: 'Not required for the CLI handoff; the local SOT journey verifies any subsequent backup retention and cleanup',
     cleanupVerified: 'Not applicable to the handoff; a successful native transfer requires separate same-repository and hosted-rebind evidence',
+  },
+  'eai deploy source validate': {
+    createsExternalArtifact: 'No - local source check only',
+    cleanupMechanism: 'Not required; reads files without writing a receipt',
+    cleanupVerified: 'Controlled source fixtures assert no receipt write and preserve rejected file bytes',
   },
   'eai deploy setup': {
     createsExternalArtifact: 'Creates local deployment workflow files',

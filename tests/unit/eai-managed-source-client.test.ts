@@ -2,6 +2,11 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PlatformAPIClient, type CliManagedGithubLinkSession } from '../../src/lib/api.js';
 import * as auth from '../../src/lib/auth.js';
 import * as profile from '../../src/lib/profile.js';
+import * as source from '../../src/lib/eai-managed-source.js';
+import * as recovery from '../../src/commands/eai-managed-deploy-recovery.js';
+import * as output from '../../src/commands/eai-managed-deploy-output.js';
+import { resumeManagedSource } from '../../src/commands/eai-managed-deploy-managed-source.js';
+import type { ManagedDeployExecutionContext } from '../../src/commands/eai-managed-deploy-contract.js';
 import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
 const scope: CliManagedSourceScope = { tenantId: 'company', appKey: 'my-app', targetTenantId: 'runtime', environment: 'preview', actorId: 'eai-user-oid' };
@@ -541,6 +546,143 @@ describe('managed publication authority and readiness', () => {
     }, bundle, persisted)).rejects.toMatchObject({ code: "MANAGED_SOURCE_BINDING_MISMATCH" });
     expect(persisted).not.toHaveBeenCalled();
     expect(upload).not.toHaveBeenCalled();
+  });
+
+  function retryExecution(client: PlatformAPIClient, original: CliManagedSourceOperation): ManagedDeployExecutionContext {
+    return {
+      client, managedScope: scope,
+      context: { root: '/controlled-original-app', publicApiUrl: 'https://api.example.test/public', client } as ManagedDeployExecutionContext['context'],
+      options: {
+        target: 'eai', tenantId: scope.tenantId, targetTenantId: scope.targetTenantId,
+        source: 'eai-managed', branch: 'main', workflow: '.github/workflows/eai-app.yml',
+        environment: scope.environment, retry: original.operationId, wait: false, timeout: '1', format: 'json',
+      },
+      appKey: scope.appKey, targetTenantId: scope.targetTenantId,
+      workflowPath: '.github/workflows/eai-app.yml', timeoutSeconds: 1, format: 'json', spinner: null,
+    };
+  }
+
+  function retryFixture(status: 'accepted' | 'publishing') {
+    vi.spyOn(profile, 'captureProfileConfig').mockReturnValue(null);
+    profile.setActiveProfile('original-profile');
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    const original = {
+      ...operation(status),
+      repository: { ...operation().repository, id: 12345, nodeId: 'original-repository-node' },
+      upload: { ...operation().upload!, expiresAt: '2000-01-01T00:00:00.000+00:00' },
+    };
+    const renewed = { ...original, upload: { ...original.upload, ticket: 'renewed-ticket', expiresAt: new Date(Date.now() + 300_000).toISOString() } };
+    const pending = { ...original, status: 'pending_review' as const, upload: undefined };
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValueOnce(response(original)).mockImplementation(async () => response(pending));
+    const link = vi.spyOn(client, 'getCliManagedGithubLinkSession').mockImplementation(async () => response(session()));
+    const createLink = vi.spyOn(client, 'createCliManagedGithubLinkSession');
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(renewed));
+    const build = vi.spyOn(source, 'buildCliManagedSourceBundle').mockResolvedValue({ bundle, totalBytes: 3 });
+    const persisted = vi.spyOn(recovery, 'saveManagedRecoveryAuthority').mockResolvedValue(undefined);
+    vi.spyOn(output, 'printManagedSourceCompletion').mockResolvedValue(undefined);
+    const token = vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+    return { client, original, renewed, pending, read, link, createLink, prepare, build, persisted, token, upload };
+  }
+
+  test.each(['accepted', 'publishing'] as const)('orchestrator renews a present expired %s ticket on the same operation and observes replay without a second upload', async status => {
+    const fixture = retryFixture(status);
+    const execution = retryExecution(fixture.client, fixture.original);
+    await resumeManagedSource(execution, fixture.original.operationId);
+    expect(fixture.prepare).toHaveBeenCalledExactlyOnceWith(scope.tenantId, scope.appKey, {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1', targetTenantId: scope.targetTenantId,
+      environment: scope.environment, templateCommitSha: bundle.templateCommitSha,
+      bundleSha256: bundle.bundleSha256, configHash: bundle.configHash, fileCount: 1, totalBytes: 3,
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
+      githubLinkSessionId: fixture.original.githubLinkSessionId,
+    });
+    expect(fixture.persisted).toHaveBeenCalledExactlyOnceWith({
+      schema: 'eai.managed-recovery-authority.v1', operationId: fixture.original.operationId,
+      tenantId: scope.tenantId, targetTenantId: scope.targetTenantId, appKey: scope.appKey,
+      actorId: scope.actorId, publicApiUrl: execution.context.publicApiUrl, profileName: 'original-profile',
+    });
+    expect(fixture.upload).toHaveBeenCalledExactlyOnceWith(fixture.renewed.upload.url, expect.objectContaining({
+      headers: expect.objectContaining({ 'X-EAI-Upload-Ticket': 'renewed-ticket' }),
+      body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey, targetTenantId: scope.targetTenantId, environment: scope.environment, bundle }),
+    }));
+    expect(fixture.createLink).not.toHaveBeenCalled();
+    await resumeManagedSource(execution, fixture.original.operationId);
+    expect(fixture.prepare).toHaveBeenCalledTimes(1);
+    expect(fixture.upload).toHaveBeenCalledTimes(1);
+    expect(fixture.build).toHaveBeenCalledExactlyOnceWith(execution.context.root);
+  });
+
+  test.each(['accepted', 'publishing'] as const)('does not renew a still-valid %s upload or replace its ticket', async status => {
+    const fixture = retryFixture(status);
+    fixture.read.mockReset().mockResolvedValueOnce(response(fixture.renewed)).mockResolvedValue(response(fixture.pending));
+    await resumeManagedSource(retryExecution(fixture.client, fixture.original), fixture.original.operationId);
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.persisted).not.toHaveBeenCalled();
+    expect(fixture.upload).toHaveBeenCalledTimes(1);
+  });
+
+  test.each([
+    { expiresAt: 'invalid-date' }, { expiresAt: '0' }, { expiresAt: '2024-02-30T00:00:00Z' },
+    { expiresAt: '2000-01-01T24:00:00Z' }, { expiresAt: '2000-01-01T00:00:00' },
+    { url: 'https://attacker.example/upload' },
+    { url: 'https://test-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
+    { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+    { sha256: `sha256:${'f'.repeat(64)}` }, { ticket: '' },
+  ])('rejects malformed or crossed expired upload authority before renewal: %j', async change => {
+    const fixture = retryFixture('publishing');
+    fixture.read.mockReset().mockResolvedValue(response({ ...fixture.original, upload: { ...fixture.original.upload, ...change } }));
+    await expect(resumeManagedSource(retryExecution(fixture.client, fixture.original), fixture.original.operationId))
+      .rejects.toMatchObject({ code: 'MANAGED_SOURCE_UPLOAD_INVALID' });
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.persisted).not.toHaveBeenCalled();
+    expect(fixture.token).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    { operationId: 'cli-managed-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+    { actorId: 'different-actor' }, { tenantId: 'different-company' }, { appKey: 'other-app' },
+    { targetTenantId: 'different-runtime' }, { environment: 'test' },
+    { bundleSha256: `sha256:${'f'.repeat(64)}` },
+    { repository: { owner: 'eai-generated-apps', name: 'different-repository', private: true } },
+    { repository: { ...operation().repository, id: 54321, nodeId: 'original-repository-node' } },
+    { repository: { ...operation().repository, id: 12345, nodeId: 'different-repository-node' } },
+    { verifiedGithubUser: { ...session().verifiedGithubUser!, proofId: 'different-proof' } },
+  ])('rejects crossed renewal bindings before storing authority or uploading: %j', async change => {
+    const fixture = retryFixture('publishing');
+    fixture.prepare.mockResolvedValue(response({ ...fixture.renewed, ...change }));
+    await expect(resumeManagedSource(retryExecution(fixture.client, fixture.original), fixture.original.operationId))
+      .rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(fixture.persisted).not.toHaveBeenCalled();
+    expect(fixture.token).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test('publishing expiry cannot replace missing original recovery authority', async () => {
+    const fixture = retryFixture('publishing');
+    await expect(resumeManagedSource({ ...retryExecution(fixture.client, fixture.original), missingCliSourceRetryAuthority: true }, fixture.original.operationId))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.persisted).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test('expired upload retry retains the original profile authority', async () => {
+    const fixture = retryFixture('publishing');
+    profile.setActiveProfile('different-profile');
+    await expect(resumeManagedSource(retryExecution(fixture.client, fixture.original), fixture.original.operationId)).rejects.toThrow('profile');
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test('observing an expired upload without retry never renews or sends source', async () => {
+    const fixture = retryFixture('publishing');
+    const execution = retryExecution(fixture.client, fixture.original);
+    await resumeManagedSource({ ...execution, options: { ...execution.options, retry: undefined } }, fixture.original.operationId);
+    expect(fixture.build).not.toHaveBeenCalled();
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.persisted).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
   });
 
   test("missing-receipt recovery rejects changed source, proof, or operation before replay", async () => {

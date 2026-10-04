@@ -27,7 +27,7 @@ const RESERVED_PREFIXES = [
   'src/app/api/auth/', 'src/app/api/eai/', 'src/app/api/platform/', 'src/app/auth/', 'src/app/health/',
   'src/components/generated-workflow/', 'src/lib/generated-workflow/', 'src/lib/platform/',
 ];
-const RESERVED_FILES = new Set(['src/auth.ts', 'src/middleware.ts', 'src/lib/api-helpers.ts', 'src/eai.config/register.ts', 'src/eai.config/deployment-contract.ts']);
+const RESERVED_FILES = new Set(['Dockerfile', 'src/auth.ts', 'src/middleware.ts', 'src/lib/api-helpers.ts', 'src/eai.config/register.ts', 'src/eai.config/deployment-contract.ts']);
 const NON_SOURCE_ROOTS = new Set(['.git', '.next', 'node_modules', '.specify', '.claude', '.agents', '.gemini', '.grok', '.system', '.eai', '.vscode', '.cursor', '.codex', 'coverage', 'test-results', 'playwright-report']);
 const NON_SOURCE_FILES = new Set(['.eai-manifest.json', '.DS_Store', '.last_package_hash', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'GROK.md', 'codex-config.toml', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.github/copilot-instructions.md']);
 const NON_SOURCE_PREFIXES = ['.husky/_/', '.github/prompts/', '.github/skills/', '.github/instructions/', '.github/agents/'];
@@ -36,6 +36,7 @@ const NON_SOURCE_PREFIXES = ['.husky/_/', '.github/prompts/', '.github/skills/',
 export interface CliManagedSourceFile {
   path: string;
   type: 'file';
+  mode?: '100644' | '100755';
   size: number;
   sha256: string;
   contentBase64: string;
@@ -89,18 +90,18 @@ function digest(value: Buffer | string): string {
   return `sha256:${createHash('sha256').update(value).digest('hex')}`;
 }
 
-/** Mirrors the server publication allowlist; changing it requires a coordinated contract update. */
+/** Mirrors the server boundary: complete authored source cannot replace deployment-owned controls. */
 export function isManagedAppSourcePath(path: string): boolean {
   const parts = path.split('/');
   return path === path.trim() && path.length > 0 && path.length <= 240
-    && !path.startsWith('/') && !path.includes('\\') && !Array.from(path).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
-    && parts.every(part => part && part !== '..' && !part.startsWith('.'))
+    && !path.startsWith('/') && !path.includes('\\') && !path.includes(':') && !Array.from(path).some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+    && parts.every(part => part && part !== '..' && part !== '.')
     && !RESERVED_FILES.has(path) && !RESERVED_PREFIXES.some(prefix => path.startsWith(prefix))
-    && (ROOT_FILES.has(path) || path.startsWith('src/') || path.startsWith('public/'));
+    && parts[0] !== '.github' && !isCredentialPath(path) && !isNonSourcePath(path);
 }
 
 function isCredentialPath(path: string): boolean {
-  return path.split('/').some(part => /^\.env(?:\.|$)/i.test(part) || ['.npmrc', '.netrc', '.pypirc'].includes(part))
+  return path.split('/').some(part => /^\.env/i.test(part) || ['.npmrc', '.netrc', '.pypirc'].includes(part.toLowerCase()))
     || /\.(?:pem|key|p12|pfx)$/i.test(path);
 }
 
@@ -120,7 +121,7 @@ async function readBoundedSourceFile(
   root: string,
   path: string,
   rootBinding: ManagedProjectRootBinding,
-): Promise<Buffer> {
+): Promise<{ bytes: Buffer; mode: '100644' | '100755' }> {
   await assertSourceProjectRoot(rootBinding);
   const directoryIdentities: Array<{ path: string; dev: number; ino: number }> = [];
   let parent = dirname(join(root, path));
@@ -142,7 +143,7 @@ async function readBoundedSourceFile(
   try {
     const actual = await handle.stat();
     if (!actual.isFile() || actual.nlink !== 1 || actual.dev !== status.dev || actual.ino !== status.ino
-      || actual.size !== status.size || actual.mtimeMs !== status.mtimeMs || actual.ctimeMs !== status.ctimeMs) {
+      || actual.size !== status.size || actual.mode !== status.mode || actual.mtimeMs !== status.mtimeMs || actual.ctimeMs !== status.ctimeMs) {
       throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed before packaging: ${path}. Retry after editing has stopped.`);
     }
     for (const identity of directoryIdentities) {
@@ -185,7 +186,7 @@ async function readBoundedSourceFile(
     ]);
     await assertSourceProjectRoot(rootBinding);
     if (count !== actual.size || after.nlink !== 1 || after.dev !== actual.dev || after.ino !== actual.ino
-      || after.size !== actual.size || after.mtimeMs !== actual.mtimeMs || after.ctimeMs !== actual.ctimeMs
+      || after.size !== actual.size || after.mode !== actual.mode || after.mtimeMs !== actual.mtimeMs || after.ctimeMs !== actual.ctimeMs
       || finalPath.isSymbolicLink() || !finalPath.isFile() || finalPath.nlink !== 1
       || finalPath.dev !== actual.dev || finalPath.ino !== actual.ino || finalPath.size !== actual.size
       || !isContained(finalRoot, finalTarget)) {
@@ -193,7 +194,7 @@ async function readBoundedSourceFile(
     }
     const bytes = buffer.subarray(0, count);
     assertNoEmbeddedCredential(bytes, path);
-    return bytes;
+    return { bytes, mode: actual.mode & 0o111 ? '100755' : '100644' };
   } finally {
     await handle.close();
   }
@@ -223,7 +224,7 @@ async function sourceInventory(
     await assertDirectory();
     for (const entry of entries) {
       const path = directory ? `${directory}/${entry.name}` : entry.name;
-      if ((path.startsWith('src/') || path.startsWith('public/')) && isCredentialPath(path)) {
+      if (path.includes('/') && !NON_SOURCE_ROOTS.has(path.split('/')[0]) && isCredentialPath(path)) {
         throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential path ${path} from app source before publishing.`);
       }
       if (isNonSourcePath(path)) continue;
@@ -246,7 +247,7 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   const manifestPath = join(root, '.eai-manifest.json');
   const manifestStatus = await lstat(manifestPath);
   if (!manifestStatus.isFile() || manifestStatus.isSymbolicLink() || manifestStatus.size > 1024 * 1024) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'The project needs a valid eai init template manifest.');
-  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json', rootBinding)).toString('utf8')) as { template?: { commit?: unknown; repo?: unknown } };
+  const manifest = JSON.parse((await readBoundedSourceFile(root, '.eai-manifest.json', rootBinding)).bytes.toString('utf8')) as { template?: { commit?: unknown; repo?: unknown } };
   const templateCommitSha = manifest.template?.commit;
   if (typeof templateCommitSha !== 'string' || !/^[a-f0-9]{40}$/.test(templateCommitSha)) throw new ManagedSourceError('TEMPLATE_PIN_REQUIRED', 'EAI-maintained source requires an exact reviewed template pin from eai init; enroll a custom template before using this source option.');
   const git = async (args: string[]): Promise<string> => {
@@ -327,17 +328,30 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   // Missing root configs retain platform defaults; treating their deletion as source would silently change intent.
   const excludedChanges = [...changes].filter(path => path && !isNonSourcePath(path)
     && (!isManagedAppSourcePath(path) || (ROOT_FILES.has(path) && !current.has(path)))).sort();
-  if (excludedChanges.length) throw new ManagedSourceError('SOURCE_SCOPE_UNSUPPORTED', `These changed files cannot be omitted from the app: ${excludedChanges.join(', ')}. Restore platform-owned files or use supported app extension points before publishing.`);
+  if (excludedChanges.length) throw new ManagedSourceError('SOURCE_SCOPE_UNSUPPORTED', `These changes affect deployment-owned controls and cannot be omitted from the app: ${excludedChanges.join(', ')}. Use the supported runtime contract or enroll the custom runtime before publishing; authored app files are uploaded in full.`);
   const paths = inventory.filter(path => isManagedAppSourcePath(path));
   if (paths.length < 1 || paths.length > CLI_MANAGED_SOURCE_LIMITS.maxFiles) throw new ManagedSourceError('SOURCE_FILE_COUNT_LIMIT', 'EAI-maintained source requires 1 to 500 app-owned files.');
+  // Windows has no executable file bit; retain the Git index's reviewed mode for tracked files.
+  const indexedModes = new Map<string, '100644' | '100755'>();
+  const indexedFiles = process.platform === 'win32' ? await git(['ls-files', '--stage', '-z']) : undefined;
+  for (const entry of indexedFiles?.split('\0') ?? []) {
+    if (!entry) continue;
+    const match = /^(\d{6}) [a-f0-9]{40} (\d)\t(.+)$/.exec(entry);
+    if (!match) throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'Resolve the source index before publishing; its file modes are invalid.');
+    if (!isManagedAppSourcePath(match[3])) continue;
+    if (match[2] !== '0' || !['100644', '100755'].includes(match[1])) {
+      throw new ManagedSourceError('SOURCE_BASELINE_REQUIRED', 'Resolve the source index before publishing; only regular, unconflicted app files are supported.');
+    }
+    indexedModes.set(match[3], match[1] as '100644' | '100755');
+  }
   const files: CliManagedSourceFile[] = [];
   let totalBytes = 0;
   for (let offset = 0; offset < paths.length; offset += 8) {
     const batch = paths.slice(offset, offset + 8);
     const loaded = await Promise.all(batch.map(async path => {
       if (isCredentialPath(path)) throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential file ${path} from app source before publishing.`);
-      const bytes = await readBoundedSourceFile(root, path, rootBinding);
-      return { path, type: 'file' as const, size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') };
+      const { bytes, mode } = await readBoundedSourceFile(root, path, rootBinding);
+      return { path, type: 'file' as const, mode: indexedModes.get(path) ?? mode, size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') };
     }));
     for (const file of loaded) {
       totalBytes += file.size;
@@ -352,7 +366,10 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   }
   const configHash = await buildManagedDeployConfigHash(root, rootBinding);
   await assertSourceProjectRoot(rootBinding);
-  const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256])]));
+  if (indexedFiles !== undefined && indexedFiles !== await git(['ls-files', '--stage', '-z'])) {
+    throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', 'Source file permissions changed in the index during packaging. Retry after editing has stopped.');
+  }
+  const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256, file.mode])]));
   return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, configHash, files }, totalBytes };
 }
 
@@ -381,7 +398,7 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
       bundleSha256: bundle.bundleSha256,
       configHash: bundle.configHash,
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
-      files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
+      files: bundle.files.map(({ path, size, sha256, mode }) => ({ path, size, sha256, mode })),
     }, null, 2)}\n`, rootBinding);
     await assertSourceProjectRoot(rootBinding, 'SOURCE_RECEIPT_PATH_INVALID');
   } catch (error) {

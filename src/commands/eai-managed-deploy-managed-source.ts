@@ -56,8 +56,11 @@ export async function resumeManagedSource(
         `Restore its original recovery authority and retry ${operationId}; do not start another source operation.`,
       );
     }
-    if ((current.status === "accepted" && (missingCliSourceRetryAuthority || !current.upload)) ||
-        (current.status === "publishing" && !current.upload)) {
+    const uploadExpiresAt = current.upload && Date.parse(current.upload.expiresAt);
+    const uploadExpired = uploadExpiresAt !== undefined &&
+      Number.isFinite(uploadExpiresAt) && uploadExpiresAt <= Date.now();
+    if ((current.status === "accepted" && (missingCliSourceRetryAuthority || !current.upload || uploadExpired)) ||
+        (current.status === "publishing" && (!current.upload || uploadExpired))) {
       client.assertProfileAuthority();
       current = await recoverAcceptedCliManagedSourceUpload(
         client, managedScope, current, bundle,

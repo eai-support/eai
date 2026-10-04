@@ -40,6 +40,7 @@ const HELP_COMMANDS = [
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
   { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
   { label: "eai deploy app --help", args: ["dist/index.js", "deploy", "app", "--help"] },
+  { label: "eai deploy source validate --help", args: ["dist/index.js", "deploy", "source", "validate", "--help"] },
   { label: "eai errors --help", args: ["dist/index.js", "errors", "--help"] },
   {
     label: "eai errors explain --help",

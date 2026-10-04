@@ -1,11 +1,13 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { mkdir, mkdtemp, link, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, link, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
+import * as output from '../../src/lib/output.js';
+import { createManagedSourceValidateCommand, SOURCE_VALIDATION_SCHEMA } from '../../src/commands/eai-managed-source-validate.js';
 import {
   buildCliManagedSourceBundle,
   chooseManagedDeploySource,
@@ -20,7 +22,56 @@ const hash = (value: string | Buffer): string => `sha256:${createHash('sha256').
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  process.exitCode = 0;
   await Promise.all(cleanup.splice(0).map(path => rm(path, { recursive: true, force: true })));
+});
+
+describe('read-only managed source validation command', () => {
+  test('checks edited business source and app-owned tests without emitting content or writing a receipt', async () => {
+    const root = await project();
+    const business = 'private business implementation';
+    await put(root, 'src/app/page.tsx', business);
+    await put(root, 'src/app/page.test.tsx', 'app business behavior test');
+    const log = vi.spyOn(output, 'json').mockImplementation(() => undefined);
+    await createManagedSourceValidateCommand().parseAsync(['--project-dir', root, '--format', 'json'], { from: 'user' });
+    const result = log.mock.calls[0][0];
+    expect(result).toEqual({ schemaVersion: SOURCE_VALIDATION_SCHEMA, sourceMode: 'eai-cli-generated', status: 'passed', templateCommitSha: templateCommit, fileCount: 9, totalBytes: expect.any(Number) });
+    expect(JSON.stringify(result)).not.toContain(business);
+    expect(JSON.stringify(result)).not.toContain(Buffer.from(business).toString('base64'));
+    await expect(readFile(join(root, '.eai/cli-managed-source-receipt.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(process.exitCode ?? 0).toBe(0);
+  });
+
+  test.each(['Dockerfile', 'src/auth.ts', '.github/workflows/eai-app.yml'])('reports protected deployment edit %s before publication', async path => {
+    const root = await project();
+    await put(root, path, 'unsupported platform runner edit');
+    const log = vi.spyOn(output, 'json').mockImplementation(() => undefined);
+    await createManagedSourceValidateCommand().parseAsync(['--project-dir', root, '--format', 'json'], { from: 'user' });
+    expect(log.mock.calls[0][0]).toMatchObject({ schemaVersion: SOURCE_VALIDATION_SCHEMA, status: 'failed', error: { code: 'SOURCE_SCOPE_UNSUPPORTED', message: expect.stringContaining(path) } });
+    expect(process.exitCode).toBe(1);
+    expect(await readFile(join(root, path), 'utf8')).toBe('unsupported platform runner edit');
+    await expect(readFile(join(root, '.eai/cli-managed-source-receipt.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('rejects unsupported output formats before inspecting source', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    await createManagedSourceValidateCommand().parseAsync(['--project-dir', '/does-not-exist', '--format', 'yaml'], { from: 'user' });
+    expect(String(error.mock.calls[0][0])).toContain('FORMAT_INVALID');
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('does not expose malformed manifest contents through unexpected parser failures', async () => {
+    const root = await project();
+    const privateValue = 'private-invalid-manifest-content';
+    await put(root, '.eai-manifest.json', `{"privateValue":"${privateValue}`);
+    const log = vi.spyOn(output, 'json').mockImplementation(() => undefined);
+    await createManagedSourceValidateCommand().parseAsync(['--project-dir', root, '--format', 'json'], { from: 'user' });
+    const result = log.mock.calls[0][0];
+    expect(result).toMatchObject({ status: 'failed', error: { code: 'SOURCE_VALIDATION_FAILED' } });
+    expect(JSON.stringify(result)).not.toContain(privateValue);
+    expect(process.exitCode).toBe(1);
+    await expect(readFile(join(root, '.eai/cli-managed-source-receipt.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 });
 
 async function put(root: string, path: string, content: string | Buffer): Promise<void> {
@@ -65,12 +116,12 @@ describe('managed local source snapshot', () => {
     expect(first.bundle.templateCommitSha).toBe(templateCommit);
     const paths = first.bundle.files.map(file => file.path);
     expect(paths).toEqual([...paths].sort());
-    expect(paths).toEqual(['eai.config.ts', 'eai.runtime.json', 'package.json', 'public/ignored.png', 'public/scaffold.svg', 'src/app/page.tsx', 'src/eai.config/default.ts', 'src/types/order.ts']);
+    expect(paths).toEqual(['.gitignore', 'README.md', 'eai.config.ts', 'eai.runtime.json', 'package.json', 'public/ignored.png', 'public/scaffold.svg', 'src/app/page.tsx', 'src/eai.config/default.ts', 'src/types/order.ts']);
     const image = first.bundle.files.find(file => file.path === 'public/ignored.png')!;
-    expect(image).toEqual({ path: 'public/ignored.png', type: 'file', size: binary.length, sha256: hash(binary), contentBase64: binary.toString('base64') });
+    expect(image).toEqual({ path: 'public/ignored.png', type: 'file', mode: '100644', size: binary.length, sha256: hash(binary), contentBase64: binary.toString('base64') });
     expect(first.totalBytes).toBe(first.bundle.files.reduce((total, file) => total + file.size, 0));
     expect(first.bundle.configHash).toMatch(/^sha256:[a-f0-9]{64}$/);
-    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([templateCommit, first.bundle.configHash, first.bundle.files.map(file => [file.path, file.size, file.sha256])])));
+    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([templateCommit, first.bundle.configHash, first.bundle.files.map(file => [file.path, file.size, file.sha256, file.mode])])));
   });
 
   test('expresses deleted app files by absence from the complete snapshot', async () => {
@@ -93,9 +144,28 @@ describe('managed local source snapshot', () => {
     expect(receipt).toEqual({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1', sourceMode: 'eai-cli-generated',
       templateCommitSha: templateCommit, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash, totalBytes,
-      files: bundle.files.map(({ path, size, sha256 }) => ({ path, size, sha256 })),
+      files: bundle.files.map(({ path, size, sha256, mode }) => ({ path, size, sha256, mode })),
     });
+    expect(receipt.bundleSha256).toBe(hash(JSON.stringify([
+      receipt.templateCommitSha, receipt.configHash,
+      receipt.files.map((file: { path: string; size: number; sha256: string; mode: string }) => [file.path, file.size, file.sha256, file.mode]),
+    ])));
     expect((await buildCliManagedSourceBundle(root)).bundle).toEqual(bundle);
+  });
+
+  test('writes compatible legacy evidence without inventing executable modes', async () => {
+    const root = await project();
+    const { bundle } = await buildCliManagedSourceBundle(root);
+    const files = bundle.files.map(({ mode: _mode, ...file }) => file);
+    const legacy = { ...bundle, files, bundleSha256: hash(JSON.stringify([
+      bundle.templateCommitSha, bundle.configHash, files.map(file => [file.path, file.size, file.sha256]),
+    ])) };
+    const receipt = JSON.parse(await readFile(await writeCliManagedSourceReceipt(root, legacy), 'utf8'));
+    expect(receipt.files.every((file: Record<string, unknown>) => !Object.hasOwn(file, 'mode'))).toBe(true);
+    expect(receipt.bundleSha256).toBe(hash(JSON.stringify([
+      receipt.templateCommitSha, receipt.configHash,
+      receipt.files.map((file: { path: string; size: number; sha256: string }) => [file.path, file.size, file.sha256]),
+    ])));
   });
 
   test('refuses to write local evidence through a linked directory', async () => {
@@ -107,11 +177,56 @@ describe('managed local source snapshot', () => {
     await expect(writeCliManagedSourceReceipt(root, bundle)).rejects.toMatchObject({ code: 'SOURCE_RECEIPT_PATH_INVALID' });
   });
 
-  test.each(['src/auth.ts', 'src/eai.config/register.ts', '.github/workflows/eai-app.yml', '.husky/pre-commit', 'README.md', 'custom-ignored.ts'])('fails with actionable unsupported changes for %s', async path => {
+  test.each(['src/auth.ts', 'src/eai.config/register.ts', '.github/workflows/eai-app.yml', 'Dockerfile'])('fails with actionable unsupported deployment changes for %s', async path => {
     const root = await project();
     await put(root, path, 'changed local bytes');
     await expect(buildCliManagedSourceBundle(root)).rejects.toThrow(path);
     await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_SCOPE_UNSUPPORTED' });
+  });
+
+  test('uploads the complete authored app outside NCB roots without changing local files', async () => {
+    const root = await project();
+    const authored = {
+      'run.sh': '#!/bin/sh\nnode server/main.js\n',
+      'run.ps1': 'node server/main.js\n',
+      'tests/cross-platform-lifecycle.test.mjs': 'authored lifecycle test',
+      'backend/orders.py': 'authored backend implementation',
+      'server/main.js': 'authored server implementation',
+      'scripts/build.sh': 'authored build command',
+      'docs/api.md': 'authored API documentation',
+      'README.md': 'authored project documentation',
+      'custom-ignored.ts': 'authored ignored business source',
+      '.dockerignore': 'node_modules\n',
+      '.husky/pre-commit': 'authored local check',
+    };
+    for (const [path, bytes] of Object.entries(authored)) await put(root, path, bytes);
+    const { bundle } = await buildCliManagedSourceBundle(root);
+    for (const [path, bytes] of Object.entries(authored)) {
+      const uploaded = bundle.files.find(file => file.path === path);
+      expect(uploaded).toMatchObject({ sha256: hash(bytes), size: Buffer.byteLength(bytes), contentBase64: Buffer.from(bytes).toString('base64') });
+      expect(await readFile(join(root, path), 'utf8')).toBe(bytes);
+    }
+    await rm(join(root, 'backend/orders.py'));
+    expect((await buildCliManagedSourceBundle(root)).bundle.files.map(file => file.path)).not.toContain('backend/orders.py');
+  });
+
+  test('binds executable app script permissions into the source digest on every OS', async () => {
+    const root = await project();
+    await put(root, 'scripts/build.sh', '#!/bin/sh\nprintf build\n');
+    await chmod(join(root, 'scripts/build.sh'), 0o644);
+    await exec('git', ['add', 'scripts/build.sh'], { cwd: root });
+    await exec('git', ['update-index', '--chmod=-x', 'scripts/build.sh'], { cwd: root });
+    const regular = await buildCliManagedSourceBundle(root);
+    await chmod(join(root, 'scripts/build.sh'), 0o755);
+    await exec('git', ['update-index', '--chmod=+x', 'scripts/build.sh'], { cwd: root });
+    const executable = await buildCliManagedSourceBundle(root);
+    const before = regular.bundle.files.find(file => file.path === 'scripts/build.sh')!;
+    const after = executable.bundle.files.find(file => file.path === 'scripts/build.sh')!;
+    expect(before.mode).toBe('100644');
+    expect(after.mode).toBe('100755');
+    expect(after.sha256).toBe(before.sha256);
+    expect(after.contentBase64).toBe(before.contentBase64);
+    expect(executable.bundle.bundleSha256).not.toBe(regular.bundle.bundleSha256);
   });
 
   test.each(['package.json', 'eai.config.ts', 'eai.runtime.json'])('refuses removed root config %s because the publisher would retain its template default', async path => {
@@ -256,11 +371,11 @@ describe('managed local source snapshot', () => {
     expect(first.bundle.files.map(file => file.path)).toEqual(first.bundle.files.map(file => file.path).sort());
   });
 
-  test.each(['../src/x.ts', 'src/../x.ts', '/src/x.ts', 'src\\x.ts', 'src/.env', 'src/app/api/auth/route.ts', 'src/lib/platform/client.ts', '.github/workflows/build.yml'])('rejects unsupported wire path %s', path => {
+  test.each(['../src/x.ts', 'src/../x.ts', '/src/x.ts', 'src\\x.ts', 'src/.env', 'backend/.npmrc', 'server/private.key', 'C:/app.js', 'server/main.js:secret', 'src/app/api/auth/route.ts', 'src/lib/platform/client.ts', '.github/workflows/build.yml', 'Dockerfile', '.eai/operation.json', 'node_modules/pkg.js'])('rejects unsupported wire path %s', path => {
     expect(isManagedAppSourcePath(path)).toBe(false);
   });
 
-  test.each(['eai.config.ts', 'eai.runtime.json', 'package.json', 'src/app/page.tsx', 'public/logo.svg'])('accepts governed app path %s', path => {
+  test.each(['eai.config.ts', 'eai.runtime.json', 'package.json', 'src/app/page.tsx', 'public/logo.svg', 'run.sh', 'run.ps1', 'tests/cross-platform-lifecycle.test.mjs', 'backend/orders.py', 'server/main.js', 'scripts/build.sh', 'README.md', '.gitignore', '.dockerignore'])('accepts authored app path %s', path => {
     expect(isManagedAppSourcePath(path)).toBe(true);
   });
 });

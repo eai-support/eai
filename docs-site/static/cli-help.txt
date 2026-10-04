@@ -324,6 +324,21 @@ Examples:
 
 ---
 
+eai deploy source validate --help
+=================================
+
+Usage: eai deploy source validate [options]
+
+Check local app source for EAI-managed publication without publishing
+
+Options:
+  --project-dir <path>  Exact generated-app directory (defaults to the current
+                        project)
+  --format <format>     Output format (text|json) (default: "text")
+  -h, --help            display help for command
+
+---
+
 eai errors --help
 =================
 
