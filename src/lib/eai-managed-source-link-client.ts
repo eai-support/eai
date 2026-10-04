@@ -10,6 +10,31 @@ const exec = promisify(execFile);
 const MANAGED_PORTAL_ORIGIN =
   /^https:\/\/(?:(?:dev|test)-admin-portal|admin-portal(?:\.(?:ca|eu))?)\.myenterprise\.ai$/;
 const GITHUB_LINK_PATH = "/api/platform/generated-apps/github-user";
+const MANAGED_PORTAL_BY_API = new Map([
+  ["https://dev-api.au.myenterprise.ai/public", "https://dev-admin-portal.myenterprise.ai"],
+  ["https://test-api.au.myenterprise.ai/public", "https://test-admin-portal.myenterprise.ai"],
+  ["https://test-api.ca.myenterprise.ai/public", "https://test-admin-portal.myenterprise.ai"],
+  ["https://test-api.eu.myenterprise.ai/public", "https://test-admin-portal.myenterprise.ai"],
+  ["https://api.au.myenterprise.ai/public", "https://admin-portal.myenterprise.ai"],
+  ["https://api.ca.myenterprise.ai/public", "https://admin-portal.ca.myenterprise.ai"],
+  ["https://api.eu.myenterprise.ai/public", "https://admin-portal.eu.myenterprise.ai"],
+]);
+
+/** A later source move cannot depend on the original short-lived GitHub link session. */
+export function cliManagedSourceMovePortalOrigin(publicApiUrl: string): string {
+  const localRun = process.env.E2E_3503_LOCAL_RUN === "1";
+  const regional = MANAGED_PORTAL_BY_API.get(publicApiUrl.replace(/\/$/, ""));
+  if (regional && !localRun) return regional;
+  if (localRun && !regional && process.env.E2E_3503_EXTERNAL_MUTATIONS === "1") {
+    try {
+      const local = new URL(process.env.EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN || "");
+      if (isApprovedManagedPortalOrigin(local)
+        && !local.username && !local.password && local.pathname === "/"
+        && !local.search && !local.hash) return local.origin;
+    } catch { /* Fail closed below. */ }
+  }
+  throw new ManagedSourceError("SOURCE_MOVE_PORTAL_UNAVAILABLE", "The managed PublicAPI gateway has no approved Portal move origin.");
+}
 
 /** Local E2E may use only the explicitly pinned loopback Portal; release origins stay fixed. */
 export function isApprovedManagedPortalOrigin(url: URL): boolean {

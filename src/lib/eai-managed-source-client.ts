@@ -4,6 +4,7 @@ export type {
 } from "./eai-managed-source-client-types.js";
 export {
   cliManagedPortalOrigin,
+  cliManagedSourceMovePortalOrigin,
   validateCliGithubLinkSession,
   verifyCliGithubIdentity,
 } from "./eai-managed-source-link-client.js";

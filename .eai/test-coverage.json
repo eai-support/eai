@@ -211,6 +211,7 @@
             "scripts/eai-full-e2e-smoke.cjs",
             "src/commands/deploy.ts",
             "src/commands/eai-managed-deploy.ts",
+            "src/commands/eai-managed-source-move.ts",
             "src/commands/vertical.ts",
             "src/lib/api.ts",
             "src/lib/eai-managed-deploy.ts",

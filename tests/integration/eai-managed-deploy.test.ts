@@ -235,6 +235,59 @@ describe('eai deploy app --target eai', () => {
     await env.cleanup();
   });
 
+  test('source move opens only the exact Portal handoff after active source readback', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const sourceOperationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const calls: string[] = [];
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      calls.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+      if (url.includes(`/cli-managed-source/operations/${sourceOperationId}?`)) return jsonResponse({
+        ...completedManagedPublication(),
+        repository: { owner: 'eai-generated-apps', name: 'app', id: 123, nodeId: 'R_fixture' },
+      });
+      if (url.includes(`/managed-deployments/operations/${sourceOperationId}?`)) return jsonResponse(completeUnifiedOperation({
+        operationId: sourceOperationId, sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+      }));
+      if (url.includes('/cli-managed-source/github-link-sessions/github-link-123?')) return jsonResponse(linkedGitHubSession());
+      return jsonResponse({ message: `Unhandled ${url}` }, 500);
+    }));
+
+    await deployCommand.parseAsync(['source', 'move', 'planning-portal', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--environment', 'preview', '--source-operation', sourceOperationId, '--no-open', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    const result = JSON.parse(output.mock.calls.map(call => String(call[0])).join('')) as Record<string, unknown>;
+    expect(result).toMatchObject({ status: 'browser_handoff', sourceOperationId, repositoryId: 123 });
+    expect(result.portalUrl).toBe(`https://test-admin-portal.myenterprise.ai/platform/apps/planning-portal/deployment?sourceChoice=move&sourceOperationId=${sourceOperationId}`);
+    expect(calls.some(call => !call.startsWith('GET '))).toBe(false);
+    expect(calls.some(call => call.includes('/github-link-sessions/'))).toBe(false);
+  });
+
+  test('source move fails closed when the active deployment is a different source', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const sourceOperationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      if (url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}` || url === `${API_BASE}/v4/platform/tenants/${TENANT_ID}/management`) return jsonResponse({ id: TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] });
+      if (url.includes(`/cli-managed-source/operations/${sourceOperationId}?`)) return jsonResponse({
+        ...completedManagedPublication(), githubLinkSessionId: 'github-link-123',
+        repository: { owner: 'eai-generated-apps', name: 'app', id: 123, nodeId: 'R_fixture' },
+      });
+      if (url.includes(`/managed-deployments/operations/${sourceOperationId}?`)) return jsonResponse(completeUnifiedOperation({
+        operationId: sourceOperationId, sourceMode: 'source-unknown', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+      }));
+      return jsonResponse({ message: `Unhandled ${url}` }, 500);
+    }));
+
+    await deployCommand.parseAsync(['source', 'move', 'planning-portal', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--environment', 'preview', '--source-operation', sourceOperationId, '--no-open', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(output.mock.calls.map(call => String(call[0])).join(''))).toMatchObject({ error: { code: 'SOURCE_MOVE_DEPLOYMENT_MISMATCH' } });
+  });
+
   test.each(['accepted', 'lost-response', 'unsafe-directory', 'existing-authority'] as const)('saves original recovery authority before exact managed source upload: %s', async (uploadOutcome) => {
     const authorityPath = managedDeployStatePath('cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
     let retainedAuthority: string | undefined;

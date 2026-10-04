@@ -2,7 +2,7 @@ import { afterEach, describe, expect, test, vi } from 'vitest';
 import { PlatformAPIClient, type CliManagedGithubLinkSession } from '../../src/lib/api.js';
 import * as auth from '../../src/lib/auth.js';
 import * as profile from '../../src/lib/profile.js';
-import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
+import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
 const scope: CliManagedSourceScope = { tenantId: 'company', appKey: 'my-app', targetTenantId: 'runtime', environment: 'preview', actorId: 'eai-user-oid' };
 function session(status: CliManagedGithubLinkSession['status'] = 'verified'): CliManagedGithubLinkSession {
@@ -17,6 +17,22 @@ const response = (value: unknown): Response => new Response(JSON.stringify(value
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllEnvs(); profile.setActiveProfile('default'); });
 
 describe('actor-bound GitHub linking', () => {
+  test('maps exact regional APIs to the approved Portal and fails closed for unknown gateways', () => {
+    expect(cliManagedSourceMovePortalOrigin('https://dev-api.au.myenterprise.ai/public')).toBe('https://dev-admin-portal.myenterprise.ai');
+    expect(cliManagedSourceMovePortalOrigin('https://api.ca.myenterprise.ai/public')).toBe('https://admin-portal.ca.myenterprise.ai');
+    expect(() => cliManagedSourceMovePortalOrigin('https://attacker.example/public')).toThrow('no approved Portal');
+  });
+
+  test('requires dual local flags and the exact pinned loopback Portal for tunnel moves', () => {
+    vi.stubEnv('EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN', 'http://localhost:3010');
+    expect(() => cliManagedSourceMovePortalOrigin('https://local-tunnel.example/public')).toThrow('no approved Portal');
+    vi.stubEnv('E2E_3503_LOCAL_RUN', '1');
+    vi.stubEnv('E2E_3503_EXTERNAL_MUTATIONS', '1');
+    expect(cliManagedSourceMovePortalOrigin('https://local-tunnel.example/public')).toBe('http://localhost:3010');
+    expect(() => cliManagedSourceMovePortalOrigin('https://dev-api.au.myenterprise.ai/public')).toThrow('no approved Portal');
+    vi.stubEnv('EAI_MANAGED_SOURCE_LOCAL_PORTAL_ORIGIN', 'http://localhost:3010/unsafe');
+    expect(() => cliManagedSourceMovePortalOrigin('https://local-tunnel.example/public')).toThrow('no approved Portal');
+  });
   test('uses existing verified identity without opening a browser or requiring local gh', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     const create = vi.spyOn(client, 'createCliManagedGithubLinkSession').mockResolvedValue(response(session()));

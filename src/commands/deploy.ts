@@ -24,6 +24,7 @@ import {
   type RuntimeSmokeTest,
 } from '../lib/runtime-contract.js';
 import { eaiManagedDeployCommand } from './eai-managed-deploy.js';
+import { eaiManagedSourceCommand } from './eai-managed-source-move.js';
 import { resolveCommandContext } from '../lib/context.js';
 import {
   classifyManagedOperationStatus,
@@ -46,6 +47,7 @@ export const deployCommand = new Command('deploy')
   .description('Deployment management');
 
 deployCommand.addCommand(eaiManagedDeployCommand);
+deployCommand.addCommand(eaiManagedSourceCommand);
 
 // ─── eai deploy setup ─────────────────────────────────────────────────────
 
