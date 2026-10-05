@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
 import * as output from '../../src/lib/output.js';
+import { canonicalManagedDeployResourceRoot } from '../../src/lib/eai-managed-deploy.js';
 import { createManagedSourceValidateCommand, SOURCE_VALIDATION_SCHEMA } from '../../src/commands/eai-managed-source-validate.js';
 import {
   buildCliManagedSourceBundle,
@@ -160,6 +161,20 @@ describe('managed local source snapshot', () => {
     const before = await buildCliManagedSourceBundle(root);
     for (const path of ['.vscode/settings.json', '.github/skills/eai/SKILL.md', '.husky/_/h', '.last_package_hash', 'AGENTS.md', 'next-env.d.ts', 'tsconfig.tsbuildinfo']) await put(root, path, 'local tooling output');
     expect(await buildCliManagedSourceBundle(root)).toEqual(before);
+  });
+
+  test('rejects stale scaffold evidence tests before managed source upload', async () => {
+    const root = await project();
+    const path = 'tests/source-unknown-deployment-evidence.test.mjs';
+    await put(root, path, 'test("old workflow layout", () => {});\n');
+    await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({
+      code: 'MANAGED_SOURCE_EVIDENCE_TEST_STALE',
+      message: expect.stringContaining(path),
+    });
+    expect(await readFile(join(root, path), 'utf8')).toBe('test("old workflow layout", () => {});\n');
+
+    await put(root, path, await readFile(join(canonicalManagedDeployResourceRoot(), path)));
+    expect((await buildCliManagedSourceBundle(root)).bundle.files.map(file => file.path)).toContain(path);
   });
 
   test('writes recomputable local evidence without embedding source bytes', async () => {

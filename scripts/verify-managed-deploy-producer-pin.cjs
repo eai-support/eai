@@ -10,6 +10,7 @@ const PRODUCER_REMOTE = `https://github.com/${PRODUCER_REPOSITORY}.git`;
 const PRODUCER_FILES = Object.freeze({
   workflow: '.github/workflows/eai-app.yml',
   collector: 'scripts/source-unknown-deployment-evidence.mjs',
+  evidenceTest: 'tests/source-unknown-deployment-evidence.test.mjs',
 });
 
 function assertCanonicalProducerPaths(pin) {
@@ -215,7 +216,7 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
     fail(error instanceof Error ? error.message : String(error));
     return;
   }
-  for (const key of ['workflow', 'collector']) {
+  for (const key of Object.keys(PRODUCER_FILES)) {
     const file = pin.candidate?.[key];
     if (
       !file ||

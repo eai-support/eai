@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { constants, type Stats } from 'node:fs';
-import { lstat, mkdir, open, readdir, realpath } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import inquirer from 'inquirer';
-import { buildManagedDeployConfigHash } from './eai-managed-deploy.js';
+import { buildManagedDeployConfigHash, canonicalManagedDeployResourceRoot } from './eai-managed-deploy.js';
 import { isContained, managedFileOpenFlags, writePrivateFileNoFollow } from './eai-managed-deploy-filesystem.js';
 import {
   bindManagedProjectRoot,
@@ -33,6 +33,7 @@ const RESERVED_FILES = new Set(['Dockerfile', 'src/auth.ts', 'src/middleware.ts'
 const NON_SOURCE_ROOTS = new Set(['.git', '.next', 'node_modules', '.specify', '.claude', '.agents', '.gemini', '.grok', '.system', '.eai', '.vscode', '.cursor', '.codex', 'coverage', 'test-results', 'playwright-report']);
 const NON_SOURCE_FILES = new Set(['.eai-manifest.json', '.DS_Store', '.last_package_hash', 'AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'GROK.md', 'codex-config.toml', 'next-env.d.ts', 'tsconfig.tsbuildinfo', '.github/copilot-instructions.md']);
 const NON_SOURCE_PREFIXES = ['.husky/_/', '.github/prompts/', '.github/skills/', '.github/instructions/', '.github/agents/'];
+const EVIDENCE_TEST_PATH = 'tests/source-unknown-deployment-evidence.test.mjs';
 
 /** Checksums and size describe the decoded bytes, not the base64 text. */
 export interface CliManagedSourceFile {
@@ -333,6 +334,16 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   if (excludedChanges.length) throw new ManagedSourceError('SOURCE_SCOPE_UNSUPPORTED', `These changes affect deployment-owned controls and cannot be omitted from the app: ${excludedChanges.join(', ')}. Use the supported runtime contract or enroll the custom runtime before publishing; authored app files are uploaded in full.`);
   const paths = inventory.filter(path => isManagedAppSourcePath(path));
   if (paths.length < 1 || paths.length > CLI_MANAGED_SOURCE_LIMITS.maxFiles) throw new ManagedSourceError('SOURCE_FILE_COUNT_LIMIT', 'EAI-maintained source requires 1 to 500 app-owned files.');
+  if (paths.includes(EVIDENCE_TEST_PATH)) {
+    const localTest = await readBoundedSourceFile(root, EVIDENCE_TEST_PATH, rootBinding);
+    const canonicalTest = await readFile(join(canonicalManagedDeployResourceRoot(), EVIDENCE_TEST_PATH));
+    if (digest(localTest.bytes) !== digest(canonicalTest)) {
+      throw new ManagedSourceError(
+        'MANAGED_SOURCE_EVIDENCE_TEST_STALE',
+        `The scaffold's ${EVIDENCE_TEST_PATH} does not match the reviewed deployment workflow. Review the current app-template test, commit the migration, then retry the source review.`,
+      );
+    }
+  }
   // Windows has no executable file bit; retain the Git index's reviewed mode for tracked files.
   const indexedModes = new Map<string, '100644' | '100755'>();
   const indexedFiles = process.platform === 'win32' ? await git(['ls-files', '--stage', '-z']) : undefined;

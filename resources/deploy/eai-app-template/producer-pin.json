@@ -10,6 +10,10 @@
     "collector": {
       "path": "scripts/source-unknown-deployment-evidence.mjs",
       "sha256": "sha256:ed320c87186579afb3a8a7c9f65b8aea0feadc415a8ec8a0329f741dc106b42f"
+    },
+    "evidenceTest": {
+      "path": "tests/source-unknown-deployment-evidence.test.mjs",
+      "sha256": "sha256:a332a9a41b905a67284ca610303d172cbdccdf394a9c130949a71b3eec22ff61"
     }
   },
   "releaseGate": {

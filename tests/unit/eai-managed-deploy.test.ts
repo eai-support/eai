@@ -749,6 +749,8 @@ describe('EAI managed deployment helpers', () => {
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
     expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);
+    const evidenceTest = await readFile(join(root, pin.candidate.evidenceTest.path));
+    expect(`sha256:${createHash('sha256').update(evidenceTest).digest('hex')}`).toBe(pin.candidate.evidenceTest.sha256);
     for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at']) {
       expect(workflow).toMatch(new RegExp(`^      ${input}:`, 'm'));
     }
@@ -892,6 +894,7 @@ describe('EAI managed deployment helpers', () => {
     const tagObject = 'd'.repeat(40);
     const workflow = Buffer.from('name: reviewed workflow\n');
     const collector = Buffer.from('#!/usr/bin/env node\n');
+    const evidenceTest = Buffer.from('import test from "node:test";\n');
     const pin = {
       githubProducerIdentity: {
         profile: 'github-environment-v1', templateCommitSha: commit,
@@ -907,6 +910,10 @@ describe('EAI managed deployment helpers', () => {
           path: EAI_MANAGED_EVIDENCE_SCRIPT_PATH,
           sha256: `sha256:${createHash('sha256').update(collector).digest('hex')}`,
         },
+        evidenceTest: {
+          path: 'tests/source-unknown-deployment-evidence.test.mjs',
+          sha256: `sha256:${createHash('sha256').update(evidenceTest).digest('hex')}`,
+        },
       },
       releaseGate: { status: 'released', tag: 'v9.9.9', commit },
     };
@@ -920,6 +927,7 @@ describe('EAI managed deployment helpers', () => {
       const object = args.at(-1);
       if (object === `${commit}:${EAI_MANAGED_WORKFLOW_PATH}`) return workflow;
       if (object === `${commit}:${EAI_MANAGED_EVIDENCE_SCRIPT_PATH}`) return collector;
+      if (object === `${commit}:tests/source-unknown-deployment-evidence.test.mjs`) return evidenceTest;
       return '';
     };
 
@@ -963,6 +971,7 @@ describe('EAI managed deployment helpers', () => {
       candidate: {
         workflow: { path: EAI_MANAGED_WORKFLOW_PATH },
         collector: { path: EAI_MANAGED_EVIDENCE_SCRIPT_PATH },
+        evidenceTest: { path: 'tests/source-unknown-deployment-evidence.test.mjs' },
       },
     };
     expect(() => producerPinVerifier.assertCanonicalProducerPaths(pin)).not.toThrow();
@@ -972,6 +981,9 @@ describe('EAI managed deployment helpers', () => {
     expect(() => producerPinVerifier.assertCanonicalProducerPaths({
       candidate: { ...pin.candidate, collector: { path: '../approved-copy.mjs' } },
     })).toThrow('collector path must be the canonical');
+    expect(() => producerPinVerifier.assertCanonicalProducerPaths({
+      candidate: { ...pin.candidate, evidenceTest: { path: 'tests/old-evidence.test.mjs' } },
+    })).toThrow('evidenceTest path must be the canonical');
   });
 
   test('installs the canonical pair once and reports stable files on the next pass', async () => {
