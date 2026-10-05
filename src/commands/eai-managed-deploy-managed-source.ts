@@ -6,6 +6,7 @@ import {
 import {
   pollCliManagedSource,
   recoverAcceptedCliManagedSourceUpload,
+  recoverLegacyCliManagedSourceReview,
   resumeCliManagedSourceUpload,
   submitCliManagedSource,
 } from "../lib/eai-managed-source-client.js";
@@ -43,6 +44,15 @@ export async function resumeManagedSource(
       `EAI-maintained source operation ${operationId} failed and cannot reuse its publication authority.`,
       NEW_SOURCE_OPERATION_ACTION,
     );
+  }
+  if (options.retry && current.status === 'pending_review' && current.review
+    && current.repository.id && current.repository.nodeId
+    && (!current.reviewRepair || current.upload?.purpose === 'review-repair')
+    && (current.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') === 'eai.cli_managed_source_bundle.v1') {
+    if (missingCliSourceRetryAuthority) fail('RETRY_AUTHORITY_UNAVAILABLE',
+      'The original review has no protected local retry authority.', `Restore its original recovery authority before retrying ${operationId}.`);
+    const { bundle } = await buildCliManagedSourceBundle(context.root);
+    current = await recoverLegacyCliManagedSourceReview(client, managedScope, current, bundle);
   }
   if (
     options.retry &&

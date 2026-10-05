@@ -6,6 +6,7 @@ import * as source from '../../src/lib/eai-managed-source.js';
 import * as recovery from '../../src/commands/eai-managed-deploy-recovery.js';
 import * as output from '../../src/commands/eai-managed-deploy-output.js';
 import { resumeManagedSource } from '../../src/commands/eai-managed-deploy-managed-source.js';
+import { recoverLegacyCliManagedSourceReview } from '../../src/lib/eai-managed-source-publication-client.js';
 import type { ManagedDeployExecutionContext } from '../../src/commands/eai-managed-deploy-contract.js';
 import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
@@ -170,6 +171,70 @@ describe('managed publication authority and readiness', () => {
       upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
     };
   }
+
+  function reviewRepairFixture() {
+    const originalReview = { number: 1, headBranch: `eai-cli/${operation().operationId}`, headSha: '1'.repeat(40), baseSha: '2'.repeat(40) };
+    const original: CliManagedSourceOperation = { ...operation('pending_review'), upload: undefined,
+      repository: { ...operation().repository, id: 12345, nodeId: 'R_original' }, review: originalReview };
+    const reviewRepair = { schemaVersion: 'eai.cli_managed_source_review_repair.v1' as const,
+      reason: 'legacy-partial-omission-deletions' as const, originalReview,
+      originalFileChecksumsSha256: `sha256:${'f'.repeat(64)}`, originalDeletedPaths: ['scripts/generate-object-types-json.mjs'] };
+    const prepared: CliManagedSourceOperation = { ...original, reviewRepair,
+      upload: { ...operation().upload!, purpose: 'review-repair' } };
+    const repaired: CliManagedSourceOperation = { ...original, reviewRepair,
+      review: { ...originalReview, headSha: '3'.repeat(40) } };
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'getCliManagedGithubLinkSession').mockResolvedValue(response(session()));
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
+    vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(repaired));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+    return { client, original, prepared, repaired, prepare, upload };
+  }
+
+  test('explicit legacy review repair retains accepted bytes, operation, repository and PR', async () => {
+    const fixture = reviewRepairFixture();
+    expect(await recoverLegacyCliManagedSourceReview(fixture.client, scope, fixture.original, bundle)).toEqual(fixture.repaired);
+    expect(fixture.prepare).toHaveBeenCalledWith(scope.tenantId, scope.appKey, expect.objectContaining({
+      repairReview: true, bundleSchemaVersion: bundle.schemaVersion, bundleSha256: bundle.bundleSha256,
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
+    }));
+    expect(fixture.upload).toHaveBeenCalledOnce();
+    const body = JSON.parse(String(fixture.upload.mock.calls[0][1]?.body));
+    expect(body.bundle).toEqual(bundle);
+  });
+
+  test.each(['head', 'purpose', 'repository', 'digest', 'merged', 'complete', 'paths'] as const)(
+    'rejects changed repair %s before sending source or token', async drift => {
+      const fixture = reviewRepairFixture();
+      const prepared = structuredClone(fixture.prepared);
+      if (drift === 'head') prepared.reviewRepair!.originalReview.headSha = '9'.repeat(40);
+      if (drift === 'purpose') delete prepared.upload!.purpose;
+      if (drift === 'repository') prepared.repository.id = 999;
+      if (drift === 'digest') prepared.bundleSha256 = `sha256:${'9'.repeat(64)}`;
+      if (drift === 'merged') prepared.review!.mergedSha = '9'.repeat(40);
+      if (drift === 'complete') prepared.bundleSchemaVersion = 'eai.cli_managed_source_bundle.v2';
+      if (drift === 'paths') prepared.reviewRepair!.originalDeletedPaths = ['../secret'];
+      fixture.prepare.mockResolvedValue(response(prepared));
+      await expect(recoverLegacyCliManagedSourceReview(fixture.client, scope, fixture.original, bundle)).rejects.toBeInstanceOf(source.ManagedSourceError);
+      expect(fixture.upload).not.toHaveBeenCalled();
+    },
+  );
+
+  test('unchanged legacy review needing no repair remains an observer', async () => {
+    const fixture = reviewRepairFixture();
+    fixture.prepare.mockResolvedValue(response(fixture.original));
+    expect(await recoverLegacyCliManagedSourceReview(fixture.client, scope, fixture.original, bundle)).toEqual(fixture.original);
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test('complete snapshot cannot request legacy review repair', async () => {
+    const fixture = reviewRepairFixture();
+    await expect(recoverLegacyCliManagedSourceReview(fixture.client, scope, fixture.original,
+      { ...bundle, schemaVersion: 'eai.cli_managed_source_bundle.v2' })).rejects.toBeInstanceOf(source.ManagedSourceError);
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
 
   test('keeps idempotency stable for the exact source and different across actors or deployment scopes', () => {
     const key = cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256);

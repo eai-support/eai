@@ -311,6 +311,8 @@ export interface CliManagedGithubLinkSession {
 /** The server selects the managed repository; no client GitHub credential or destination is accepted. */
 export interface CliManagedSourcePreparationRequest {
   schemaVersion: 'eai.cli_managed_source_preparation.v1';
+  bundleSchemaVersion?: 'eai.cli_managed_source_bundle.v1' | 'eai.cli_managed_source_bundle.v2';
+  repairReview?: true;
   templateCommitSha: string;
   bundleSha256: string;
   configHash: string;

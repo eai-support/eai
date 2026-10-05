@@ -103,6 +103,31 @@ async function project(): Promise<string> {
 }
 
 describe('managed local source snapshot', () => {
+  test('fresh customer publication automatically captures all authored deployable files', async () => {
+    const root = await project();
+    const authored = {
+      'scripts/generate-object-types-json.mjs': 'export const generate = true;',
+      'run.sh': '#!/bin/sh\nnode scripts/generate-object-types-json.mjs\n',
+      'run.ps1': 'node scripts/generate-object-types-json.mjs\n',
+      'tests/cross-platform-lifecycle.test.mjs': 'export const lifecycle = true;',
+      'docs/customer-flow.md': 'Customer deployment notes',
+      '.editorconfig': 'root = true\n',
+      'backend/server.py': 'print("customer backend")\n',
+    };
+    for (const [path, content] of Object.entries(authored)) await put(root, path, content);
+    await chmod(join(root, 'run.sh'), 0o755);
+    const { bundle } = await buildCliManagedSourceBundle(root);
+    expect(bundle.schemaVersion).toBe('eai.cli_managed_source_bundle.v2');
+    for (const [path, content] of Object.entries(authored)) {
+      const file = bundle.files.find(entry => entry.path === path)!;
+      expect(Buffer.from(file.contentBase64, 'base64').toString('utf8')).toBe(content);
+      expect(file.sha256).toBe(hash(content));
+    }
+    expect(bundle.files.find(file => file.path === 'run.sh')?.mode).toBe('100755');
+    const oldDigest = hash(JSON.stringify([bundle.templateCommitSha, bundle.configHash,
+      bundle.files.map(file => [file.path, file.size, file.sha256, file.mode])]));
+    expect(bundle.bundleSha256).not.toBe(oldDigest);
+  });
   test('packages current edited, untracked and ignored source bytes with deterministic metadata', async () => {
     const root = await project();
     await put(root, 'src/app/page.tsx', 'export default function Page() { return "local edit"; }');
@@ -121,7 +146,7 @@ describe('managed local source snapshot', () => {
     expect(image).toEqual({ path: 'public/ignored.png', type: 'file', mode: '100644', size: binary.length, sha256: hash(binary), contentBase64: binary.toString('base64') });
     expect(first.totalBytes).toBe(first.bundle.files.reduce((total, file) => total + file.size, 0));
     expect(first.bundle.configHash).toMatch(/^sha256:[a-f0-9]{64}$/);
-    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([templateCommit, first.bundle.configHash, first.bundle.files.map(file => [file.path, file.size, file.sha256, file.mode])])));
+    expect(first.bundle.bundleSha256).toBe(hash(JSON.stringify([first.bundle.schemaVersion, templateCommit, first.bundle.configHash, first.bundle.files.map(file => [file.path, file.size, file.sha256, file.mode])])));
   });
 
   test('expresses deleted app files by absence from the complete snapshot', async () => {
@@ -143,11 +168,11 @@ describe('managed local source snapshot', () => {
     const receipt = JSON.parse(await readFile(await writeCliManagedSourceReceipt(root, bundle), 'utf8'));
     expect(receipt).toEqual({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1', sourceMode: 'eai-cli-generated',
-      templateCommitSha: templateCommit, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash, totalBytes,
+      bundleSchemaVersion: bundle.schemaVersion, templateCommitSha: templateCommit, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash, totalBytes,
       files: bundle.files.map(({ path, size, sha256, mode }) => ({ path, size, sha256, mode })),
     });
     expect(receipt.bundleSha256).toBe(hash(JSON.stringify([
-      receipt.templateCommitSha, receipt.configHash,
+      receipt.bundleSchemaVersion, receipt.templateCommitSha, receipt.configHash,
       receipt.files.map((file: { path: string; size: number; sha256: string; mode: string }) => [file.path, file.size, file.sha256, file.mode]),
     ])));
     expect((await buildCliManagedSourceBundle(root)).bundle).toEqual(bundle);
@@ -157,7 +182,7 @@ describe('managed local source snapshot', () => {
     const root = await project();
     const { bundle } = await buildCliManagedSourceBundle(root);
     const files = bundle.files.map(({ mode: _mode, ...file }) => file);
-    const legacy = { ...bundle, files, bundleSha256: hash(JSON.stringify([
+    const legacy = { ...bundle, schemaVersion: 'eai.cli_managed_source_bundle.v1' as const, files, bundleSha256: hash(JSON.stringify([
       bundle.templateCommitSha, bundle.configHash, files.map(file => [file.path, file.size, file.sha256]),
     ])) };
     const receipt = JSON.parse(await readFile(await writeCliManagedSourceReceipt(root, legacy), 'utf8'));

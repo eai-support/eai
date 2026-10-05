@@ -680,6 +680,29 @@ test("rejects a source child swapped to a link before inventory readdir", async 
   await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: "SOURCE_CHANGED_DURING_READ" });
 });
 
+test('rejects a captured source file changed while later config bytes are packaged', async () => {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'managed-source-final-snapshot-race-')));
+  cleanup.push(root);
+  await put(root, '.eai-manifest.json', JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+  await put(root, 'package.json', '{}');
+  await put(root, 'eai.runtime.json', '{}');
+  await put(root, 'src/app/page.tsx', 'original page');
+  await exec('git', ['init', '--quiet'], { cwd: root });
+  await exec('git', ['add', '.'], { cwd: root });
+  await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--quiet',
+    '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: root });
+  // Config is reread after the complete source inventory has already been captured.
+  const originalOpen = open;
+  let configReads = 0;
+  vi.spyOn(await import('node:fs/promises'), 'open').mockImplementation(async (...args) => {
+    if (String(args[0]) === join(root, 'eai.runtime.json') && ++configReads === 2) {
+      await writeFile(join(root, 'src/app/page.tsx'), 'modified page');
+    }
+    return originalOpen(...args);
+  });
+  await expect(buildCliManagedSourceBundle(root)).rejects.toMatchObject({ code: 'SOURCE_CHANGED_DURING_READ' });
+});
+
 
 test("rejects a second link observed after the descriptor's earlier snapshot", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-write-link-snapshot-")));

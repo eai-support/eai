@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
-import { ManagedSourceError } from "./eai-managed-source.js";
+import { ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type {
   CliManagedSourceOperation,
@@ -13,6 +13,7 @@ export interface ExpectedCliManagedSourceOperation {
   templateCommitSha?: string;
   bundleSha256?: string;
   configHash?: string;
+  bundleSchemaVersion?: CliManagedSourceOperation['bundleSchemaVersion'];
   githubLinkSessionId?: string;
   verifiedGithubUser?: CliManagedSourceOperation["verifiedGithubUser"];
 }
@@ -66,6 +67,8 @@ export function validateCliManagedSourceOperation(
       value.templateCommitSha !== expected.templateCommitSha) ||
     (expected?.bundleSha256 && value.bundleSha256 !== expected.bundleSha256) ||
     (expected?.configHash && value.configHash !== expected.configHash) ||
+    (value.bundleSchemaVersion !== undefined && !['eai.cli_managed_source_bundle.v1', 'eai.cli_managed_source_bundle.v2'].includes(value.bundleSchemaVersion)) ||
+    (expected?.bundleSchemaVersion && (value.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== expected.bundleSchemaVersion) ||
     (expected?.githubLinkSessionId &&
       value.githubLinkSessionId !== expected.githubLinkSessionId) ||
     ![
@@ -96,6 +99,28 @@ export function validateCliManagedSourceOperation(
       "MANAGED_SOURCE_BINDING_MISMATCH",
       "Publication response does not match the authenticated actor, exact tenant/app/runtime scope and local-source snapshot.",
     );
+  }
+  if (value.reviewRepair) {
+    const repair = value.reviewRepair;
+    const original = repair.originalReview;
+    if ((value.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== 'eai.cli_managed_source_bundle.v1'
+      || Object.keys(repair).sort().join(',') !== 'originalDeletedPaths,originalFileChecksumsSha256,originalReview,reason,schemaVersion'
+      || repair.schemaVersion !== 'eai.cli_managed_source_review_repair.v1'
+      || repair.reason !== 'legacy-partial-omission-deletions'
+      || !original || Object.keys(original).sort().join(',') !== 'baseSha,headBranch,headSha,number'
+      || !Number.isSafeInteger(original.number) || original.number < 1
+      || original.headBranch !== `eai-cli/${value.operationId}`
+      || !/^[a-f0-9]{40}$/.test(original.headSha) || !/^[a-f0-9]{40}$/.test(original.baseSha)
+      || !/^sha256:[a-f0-9]{64}$/.test(repair.originalFileChecksumsSha256)
+      || !Array.isArray(repair.originalDeletedPaths) || repair.originalDeletedPaths.length < 1 || repair.originalDeletedPaths.length > 500
+      || repair.originalDeletedPaths.some((path, i, paths) => typeof path !== 'string'
+        || !isManagedAppSourcePath(path) || (i > 0 && path <= paths[i - 1]))) {
+      throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Review repair does not bind a bounded original partial-source review.');
+    }
+  }
+  if (value.upload?.purpose !== undefined && (value.upload.purpose !== 'review-repair'
+    || value.status !== 'pending_review' || !value.reviewRepair || value.deployment)) {
+    throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Review repair upload authority is inconsistent with the original operation.');
   }
   return value;
 }

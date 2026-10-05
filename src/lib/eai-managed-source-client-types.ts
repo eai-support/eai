@@ -29,6 +29,8 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
   templateCommitSha: string;
   bundleSha256: string;
   configHash: string;
+  bundleSchemaVersion?: 'eai.cli_managed_source_bundle.v1' | 'eai.cli_managed_source_bundle.v2';
+  reviewRepair?: CliManagedSourceReviewRepair;
   verifiedGithubUser: NonNullable<
     CliManagedGithubLinkSession["verifiedGithubUser"]
   >;
@@ -60,5 +62,14 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
   };
   error?: unknown;
   expiresAt: string;
-  upload?: { url: string; ticket: string; expiresAt: string; sha256: string };
+  upload?: { url: string; ticket: string; expiresAt: string; sha256: string; purpose?: 'review-repair' };
+}
+
+/** SECURITY: recovery can replace only the exact unmerged review derived from the original partial bundle. */
+export interface CliManagedSourceReviewRepair {
+  schemaVersion: 'eai.cli_managed_source_review_repair.v1';
+  reason: 'legacy-partial-omission-deletions';
+  originalReview: { number: number; headBranch: string; headSha: string; baseSha: string };
+  originalFileChecksumsSha256: string;
+  originalDeletedPaths: string[];
 }

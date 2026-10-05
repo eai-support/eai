@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { constants } from 'node:fs';
+import { constants, type Stats } from 'node:fs';
 import { lstat, mkdir, open, readdir, realpath } from 'node:fs/promises';
 import { dirname, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -13,7 +13,9 @@ import {
 } from './eai-managed-root-binding.js';
 
 const exec = promisify(execFile);
-export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v1';
+export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v2';
+/** INVARIANT: V1 uploads are partial; only the digest-bound V2 schema authorizes omission deletions. */
+export type CliManagedSourceSchema = 'eai.cli_managed_source_bundle.v1' | typeof CLI_MANAGED_SOURCE_SCHEMA;
 export const CLI_MANAGED_SOURCE_RECEIPT_PATH = '.eai/cli-managed-source-receipt.json';
 export const CLI_MANAGED_SOURCE_LIMITS = { maxFiles: 500, maxFileBytes: 2 * 1024 * 1024, maxTotalBytes: 20 * 1024 * 1024 } as const;
 /** Repository ownership is separate from the EAI Azure hosting choice. */
@@ -44,7 +46,7 @@ export interface CliManagedSourceFile {
 
 /** Authored-file snapshot; the server derives repository authority and platform-owned files. */
 export interface CliManagedSourceBundle {
-  schemaVersion: typeof CLI_MANAGED_SOURCE_SCHEMA;
+  schemaVersion: CliManagedSourceSchema;
   templateCommitSha: string;
   bundleSha256: string;
   configHash: string;
@@ -121,7 +123,7 @@ async function readBoundedSourceFile(
   root: string,
   path: string,
   rootBinding: ManagedProjectRootBinding,
-): Promise<{ bytes: Buffer; mode: '100644' | '100755' }> {
+): Promise<{ bytes: Buffer; mode: '100644' | '100755'; identity: Stats }> {
   await assertSourceProjectRoot(rootBinding);
   const directoryIdentities: Array<{ path: string; dev: number; ino: number }> = [];
   let parent = dirname(join(root, path));
@@ -194,7 +196,7 @@ async function readBoundedSourceFile(
     }
     const bytes = buffer.subarray(0, count);
     assertNoEmbeddedCredential(bytes, path);
-    return { bytes, mode: actual.mode & 0o111 ? '100755' : '100644' };
+    return { bytes, mode: actual.mode & 0o111 ? '100755' : '100644', identity: actual };
   } finally {
     await handle.close();
   }
@@ -345,12 +347,14 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
     indexedModes.set(match[3], match[1] as '100644' | '100755');
   }
   const files: CliManagedSourceFile[] = [];
+  const identities = new Map<string, Stats>([['.eai-manifest.json', manifestStatus]]);
   let totalBytes = 0;
   for (let offset = 0; offset < paths.length; offset += 8) {
     const batch = paths.slice(offset, offset + 8);
     const loaded = await Promise.all(batch.map(async path => {
       if (isCredentialPath(path)) throw new ManagedSourceError('SOURCE_CREDENTIAL_DETECTED', `Remove the credential file ${path} from app source before publishing.`);
-      const { bytes, mode } = await readBoundedSourceFile(root, path, rootBinding);
+      const { bytes, mode, identity } = await readBoundedSourceFile(root, path, rootBinding);
+      identities.set(path, identity);
       return { path, type: 'file' as const, mode: indexedModes.get(path) ?? mode, size: bytes.length, sha256: digest(bytes), contentBase64: bytes.toString('base64') };
     }));
     for (const file of loaded) {
@@ -369,7 +373,16 @@ export async function buildCliManagedSourceBundle(projectRoot: string): Promise<
   if (indexedFiles !== undefined && indexedFiles !== await git(['ls-files', '--stage', '-z'])) {
     throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', 'Source file permissions changed in the index during packaging. Retry after editing has stopped.');
   }
-  const bundleSha256 = digest(JSON.stringify([templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256, file.mode])]));
+  // INVARIANT: later reads must not conceal an edit to a file already captured in this snapshot.
+  for (const [path, captured] of identities) {
+    const current = await lstat(join(root, path));
+    if (!current.isFile() || current.isSymbolicLink() || current.nlink !== 1
+      || ['dev', 'ino', 'size', 'mode', 'mtimeMs', 'ctimeMs'].some(key => current[key as keyof Stats] !== captured[key as keyof Stats])) {
+      throw new ManagedSourceError('SOURCE_CHANGED_DURING_READ', `Source changed during packaging: ${path}. Retry after editing has stopped.`);
+    }
+  }
+  await assertSourceProjectRoot(rootBinding);
+  const bundleSha256 = digest(JSON.stringify([CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, configHash, files.map(file => [file.path, file.size, file.sha256, file.mode])]));
   return { bundle: { schemaVersion: CLI_MANAGED_SOURCE_SCHEMA, templateCommitSha, bundleSha256, configHash, files }, totalBytes };
 }
 
@@ -394,6 +407,7 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
     await writePrivateFileNoFollow(target, `${JSON.stringify({
       schemaVersion: 'eai.cli_managed_source_local_receipt.v1',
       sourceMode: 'eai-cli-generated',
+      bundleSchemaVersion: bundle.schemaVersion,
       templateCommitSha: bundle.templateCommitSha,
       bundleSha256: bundle.bundleSha256,
       configHash: bundle.configHash,
