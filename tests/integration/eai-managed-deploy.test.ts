@@ -1248,9 +1248,9 @@ fi
         sourceStatus: 'handoff_pending', status: 'handoff_pending',
         setup: customerOperationSetup(state), evidence: { status: 'accepted' },
       });
-      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse({
-        ...linkedGitHubSession('verified', state.targetTenantId), expiresAt: '2020-01-01T00:00:00.000Z',
-      });
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse(
+        linkedGitHubSession('verified', state.targetTenantId),
+      );
       if (url.endsWith('/source-unknown/deploy')) return jsonResponse({ status: 'queued' }, 202);
       return identityImpl(input);
     }));
@@ -1260,7 +1260,7 @@ fi
       '--retry', state.operationId, '--no-wait', '--format', 'json',
     ], { from: 'user' });
     expect(requests.filter(url => url.endsWith('/source-unknown/deploy'))).toHaveLength(1);
-    expect(requests.some(url => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(mode !== 'already-dispatched');
+    expect(requests.some(url => url.includes('/cli-managed-source/github-link-sessions/'))).toBe(true);
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'handoff_pending' });
     expect(process.exitCode).toBe(0);
   });
@@ -1458,16 +1458,16 @@ fi
     expect((await stat(directory)).mode & 0o777).toBe(0o700);
   });
 
-  test('allows only an absent CLI-source receipt to reach authenticated exact-operation recovery', async () => {
+  test('rejects a missing CLI-source receipt before authenticated exact-operation recovery', async () => {
     const cliId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
     const path = managedDeployStatePath(cliId);
     await rm(path);
-    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal', true))
-      .resolves.toBeUndefined();
-    await expect(loadManagedRetryAuthority('source-unknown-abc123', TENANT_ID, TENANT_ID, 'planning-portal', true))
+    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal'))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+    await expect(loadManagedRetryAuthority('source-unknown-abc123', TENANT_ID, TENANT_ID, 'planning-portal'))
       .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
     await writeFile(path, '{invalid', { mode: 0o600 });
-    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal', true))
+    await expect(loadManagedRetryAuthority(cliId, TENANT_ID, TENANT_ID, 'planning-portal'))
       .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
   });
 
@@ -1522,11 +1522,19 @@ fi
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID,
       '--target-tenant-id', TENANT_ID, '--retry', operationId, '--no-wait', '--format', 'json'], { from: 'user' });
-    expect(process.exitCode).toBe(0);
-    expect(uploads).toBe(1);
-    expect(request).toMatchObject({ githubLinkSessionId: 'github-link-123', idempotencyKey: expect.any(String) });
-    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')))
-      .toMatchObject({ operationId, sourceMode: 'eai-cli-generated', status: 'pending_review' });
+    if (authorityState === 'missing') {
+      expect(process.exitCode).toBe(1);
+      expect(uploads).toBe(0);
+      expect(request).toBeUndefined();
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')))
+        .toMatchObject({ ok: false, error: { code: 'RETRY_AUTHORITY_UNAVAILABLE' } });
+    } else {
+      expect(process.exitCode).toBe(0);
+      expect(uploads).toBe(1);
+      expect(request).toMatchObject({ githubLinkSessionId: 'github-link-123', idempotencyKey: expect.any(String) });
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')))
+        .toMatchObject({ operationId, sourceMode: 'eai-cli-generated', status: 'pending_review' });
+    }
     if (authorityState === 'existing') expect(await readFile(authorityPath, 'utf8')).toBe(originalAuthority);
   });
 

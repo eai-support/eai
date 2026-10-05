@@ -134,6 +134,9 @@ export function requireBranch(value: string): string {
 
 /** Normalize the exact positive GitHub App installation identifier. */
 export function requireInstallationId(value: string | number): number {
+  if (typeof value === 'string' && !/^[1-9][0-9]*$/.test(value)) {
+    throw new Error('GitHub App installation ID must be a positive integer.');
+  }
   const normalized = Number(value);
   if (!Number.isSafeInteger(normalized) || normalized < 1) {
     throw new Error('GitHub App installation ID must be a positive integer.');

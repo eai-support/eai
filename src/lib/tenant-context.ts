@@ -317,14 +317,13 @@ async function resolveRegionalPublicApiUrlFromSession(
   requestedTenantId?: string | null,
   policy?: PublicApiRequestPolicy,
 ): Promise<string | null> {
-  const accessToken = await getAccessToken();
-  if (!accessToken) return null;
-
   const bootstrapBaseUrl = applyPublicApiRequestPolicy(
     process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
       DEFAULT_PUBLIC_API_URL,
     policy,
   );
+  const accessToken = await getAccessToken();
+  if (!accessToken) return null;
   try {
     const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
       method: "POST",

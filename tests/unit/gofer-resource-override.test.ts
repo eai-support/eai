@@ -48,7 +48,7 @@ describe('explicit complete Gofer resource source', () => {
     expect((await renderGoferManagedTextFiles(project)).find((file) => file.relativePath === 'AGENTS.md')?.content).toContain('fixture-selected-gofer');
     const plan = await planGoferRefresh(project, null);
     expect(plan.items.find((item) => item.relativePath === '.specify/references/selected-source.md')).toBeDefined();
-    expect(vi.mocked(readdirSync)).toHaveBeenCalledTimes(captureReads);
+    expect(vi.mocked(readdirSync).mock.calls.length).toBeGreaterThan(captureReads);
     expect(provider).not.toHaveBeenCalled();
   });
   test('initial install records the exact Gofer version and preserves the repo-owned model policy', async () => {
@@ -92,5 +92,20 @@ describe('explicit complete Gofer resource source', () => {
   test('bundled default performs no override tree capture', () => {
     expect(resolveGoferResourcesPath()).toBe(fileURLToPath(new URL('../../resources/gofer', import.meta.url)));
     expect(readdirSync).not.toHaveBeenCalled();
+  });
+  test('rechecks an explicit resource tree after its first successful use', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    await installGoferResources(project);
+    await rm(join(resources, 'instruction-templates/base/agents-base.md'));
+    await expect(renderGoferManagedTextFiles(project)).rejects.toThrow('incomplete');
+  });
+  test('does not truncate another file through a hardlinked version marker', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    const victim = join(root, 'victim');
+    await writeFile(victim, 'keep this file');
+    await mkdir(join(project, '.specify'), { recursive: true });
+    await link(victim, join(project, '.specify/.gofer-version'));
+    await expect(installGoferResources(project)).rejects.toThrow('regular file');
+    expect(await readFile(victim, 'utf8')).toBe('keep this file');
   });
 });

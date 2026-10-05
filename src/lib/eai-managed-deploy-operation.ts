@@ -81,7 +81,7 @@ function hasCompleteSourceRevision(operation: ManagedOperationProjection): boole
     || revision.appScopeTenantId !== operation.appScopeTenantId
     || revision.targetTenantId !== operation.targetTenantId
     || revision.configHash !== operation.configHash) return false;
-  if (revision.sourceOperationId !== undefined && !exactText(revision.sourceOperationId)) return false;
+  if (revision.sourceOperationId !== undefined && revision.sourceOperationId !== operation.operationId) return false;
 
   if (!exactText(revision.repoOwner) || !REPOSITORY_PART_PATTERN.test(revision.repoOwner)
     || !exactText(revision.repoName) || !REPOSITORY_PART_PATTERN.test(revision.repoName)
@@ -208,6 +208,7 @@ export function assertManagedDeployStateMatchesOperation(
     ['installationId', String(binding.installationId), String(state.installationId)],
     ['workflowPath', binding.workflowPath, state.workflowPath],
     ['ref', binding.ref, state.ref],
+    ['branch', binding.ref, `refs/heads/${state.branch}`],
     ['commitSha', binding.commitSha, state.commitSha],
     ['configHash', binding.configHash, state.configHash],
     ['nonceSha256', binding.nonceSha256, managedDeployNonceSha256(state.nonce)],

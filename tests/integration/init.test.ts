@@ -217,7 +217,7 @@ describe("eai init", () => {
       capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
       return new Response(JSON.stringify({ docs: [{ id: "original-enrollment", tenantId: "parent", data: {
         tenantId: "parent", parentTenantId: "parent", verticalKey: "receipt-app",
-      } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false }));
+      } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false, hasPrevPage: false }));
     });
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("controlled-init-exit"); });
     const output = captureConsole();

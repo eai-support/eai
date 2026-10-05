@@ -208,7 +208,7 @@ export async function retryCustomerSource(
         "Do not retry this operation. Start a new EAI managed deployment so the server can issue an environment-bound source operation.",
       );
     }
-    if (!wasDispatched) await requireRetryGithubBinding(retryClient, state);
+    await requireRetryGithubBinding(retryClient, state);
     await requireApiSuccess(
       await retryClient.requestSourceUnknownDeployment(context.tenantId, appKey, {
         operationId,

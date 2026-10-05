@@ -168,7 +168,8 @@ describe('eai provision entra', () => {
         expect(JSON.parse(new URL(request.url).searchParams.get('where')!)).toEqual({ verticalKey: 'my-app' });
         return HttpResponse.json({ docs: [{ id: 'enrollment', data: {
           tenantId: 'company', verticalKey: 'my-app', childTenantId: runtime,
-        } }], totalDocs: 1, totalPages: options.complete === false ? 2 : 1, page: 1 });
+        } }], totalDocs: 1, totalPages: options.complete === false ? 2 : 1, page: 1,
+          hasNextPage: false, hasPrevPage: false });
       }),
       http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({ tenants: options.member === false ? [] : [{
         id: runtime, displayName: 'App runtime', slug: 'app-runtime', isActive: true,

@@ -425,7 +425,7 @@ async function uploadCliManagedSource(
     let portalMessage: string | undefined;
     if (response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
       try {
-        const body = await response.text();
+        const body = await awaitManagedRequestDeadline(signal, response.text());
         if (body.length <= 512) {
           const parsed: unknown = JSON.parse(body);
           if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
@@ -439,7 +439,13 @@ async function uploadCliManagedSource(
             ) portalMessage = error.message;
           }
         }
-      } catch {
+      } catch (error) {
+        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
+          throw new ManagedSourceError(
+            "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
+            `Source upload did not return a confirmed result. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
+          );
+        }
         portalMessage = undefined;
       }
     }

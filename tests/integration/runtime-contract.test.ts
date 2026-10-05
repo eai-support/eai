@@ -238,6 +238,28 @@ describe('runtime contract validation and deploy doctor', () => {
     }
   });
 
+  test('deploy doctor bounds a stalled response body with the probe deadline', async () => {
+    const root = await createRuntimeProject();
+    const originalCwd = process.cwd();
+    const nativeTimeout = AbortSignal.timeout.bind(AbortSignal);
+    process.chdir(root);
+    vi.spyOn(AbortSignal, 'timeout').mockImplementation(() => nativeTimeout(25));
+    let body!: ReadableStreamDefaultController;
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => url.endsWith('/health')
+      ? new Response(new ReadableStream({ start(controller) { body = controller; } }), { status: 200 })
+      : new Response(JSON.stringify({ ok: true }), { status: 200 })));
+    try {
+      const result = await runDeployDoctor('https://app.example.com');
+      expect(result.checks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ name: 'health', category: 'app_not_running', status: 'fail' }),
+      ]));
+    } finally {
+      body.close();
+      process.chdir(originalCwd);
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   test('preserves, interpolates, and sends authenticated readiness headers without exposing secrets', async () => {
     const root = await createRuntimeProject();
     await addProtectedReadinessSmoke(root);

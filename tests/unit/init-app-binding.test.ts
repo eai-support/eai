@@ -73,6 +73,14 @@ describe('private init acknowledgement', () => {
   ])('selection rejects incomplete or conflicting enrollment output %j', changed => {
     expect(() => acknowledgedSelectedAppBinding({ docs: [{ id: 'enrollment-1', tenantId: 'parent', verticalKey: binding.appKey }], ...changed }, binding.appKey, 'parent')).toThrow();
   });
+  test.each(['page', 'totalPages', 'totalDocs', 'hasNextPage', 'hasPrevPage'] as const)(
+    'selection rejects a lookup without %s completeness metadata', field => {
+      const response = { docs: [{ id: 'enrollment-1', tenantId: 'parent', verticalKey: binding.appKey }],
+        page: 1, totalPages: 1, totalDocs: 1, hasNextPage: false, hasPrevPage: false };
+      delete (response as Record<string, unknown>)[field];
+      expect(() => acknowledgedSelectedAppBinding(response, binding.appKey, 'parent')).toThrow('incomplete');
+    },
+  );
   test('concurrent receipt reservations admit one invocation and preserve the winning pending bytes', async () => {
     const f = await fixture();
     const attempts = await Promise.allSettled([nonce, '87654321-4321-4321-8321-abcdefabcdef']

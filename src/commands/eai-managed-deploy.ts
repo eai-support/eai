@@ -127,7 +127,7 @@ Examples:
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
       const retryAuthority = retryOperationId
-        ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey, true)
+        ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey)
         : undefined;
       const retryState = retryAuthority?.state;
       const context = await resolveCommandContext({

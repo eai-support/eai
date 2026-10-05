@@ -22,6 +22,7 @@ import {
   readManagedDeployDispatchClaim,
   recordManagedDeployDispatch,
   requireCommitSha,
+  requireInstallationId,
   requireManagedPublicApiUrl,
   managedDeployNonceSha256,
   saveManagedDeployState,
@@ -64,6 +65,9 @@ const producerPinVerifier = requireFromTest(
 };
 
 describe('EAI managed deployment helpers', () => {
+  test.each(['1e3', '0x10', ' 123', '123 ', '+123', '0123', '1.0'])('rejects noncanonical GitHub installation ID %s', value => {
+    expect(() => requireInstallationId(value)).toThrow('positive integer');
+  });
   test('recovers a CLI source operation without setup while rejecting unsupported source hints', () => {
     const operation = fixtureUnifiedOperation();
     delete (operation as { setup?: unknown }).setup;
@@ -1199,6 +1203,10 @@ describe('EAI managed deployment helpers', () => {
       operation,
     )).toThrow('installationId');
     expect(() => assertManagedDeployStateMatchesOperation(
+      { ...state, branch: 'other' },
+      operation,
+    )).toThrow('branch');
+    expect(() => assertManagedDeployStateMatchesOperation(
       state,
       { ...operation, setup: { ...operation.setup, installationId: String(state.installationId) } },
     )).not.toThrow();
@@ -1245,6 +1253,7 @@ describe('EAI managed deployment helpers', () => {
       operation => { operation.sourceStatus = 'queued'; },
       operation => { operation.configHash = `sha256:${'f'.repeat(64)}`; },
       operation => { (operation.sourceRevision as Record<string, unknown>).operationId = 'source-unknown-other'; },
+      operation => { (operation.sourceRevision as Record<string, unknown>).sourceOperationId = 'source-unknown-other'; },
       operation => { (operation.sourceRevision as Record<string, unknown>).sourceMode = 'eai-cli-generated'; },
       operation => { (operation.sourceRevision as Record<string, unknown>).workflowPath = '.github/workflows/other.yml'; },
       operation => {

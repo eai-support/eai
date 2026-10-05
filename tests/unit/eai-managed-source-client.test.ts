@@ -446,6 +446,30 @@ describe('managed publication authority and readiness', () => {
     } finally { clearInterval(alive); }
   });
 
+  test('bounds a stalled upload error body as uncertain without replaying the prepared operation', async () => {
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId, { managedRequestTimeoutMs: 25 });
+    vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
+    const read = vi.spyOn(client, 'getCliManagedSourceOperation');
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    let body!: ReadableStreamDefaultController;
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream({
+      start(controller) { body = controller; },
+    }), { status: 409, headers: { 'content-type': 'application/json' } }));
+    const alive = setInterval(() => {}, 1000);
+    const persisted: CliManagedSourceOperation[] = [];
+    try {
+      await expect(submitCliManagedSource(client, scope, session(), bundle, async value => { persisted.push(value); })).rejects.toMatchObject({
+        code: 'MANAGED_SOURCE_UPLOAD_UNCERTAIN', message: expect.stringContaining('--retry cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      });
+      expect(persisted).toHaveLength(1);
+      expect(upload).toHaveBeenCalledTimes(1);
+      expect(read).not.toHaveBeenCalled();
+    } finally {
+      body.close();
+      clearInterval(alive);
+    }
+  });
+
   test('retains missing-login classification and never uploads without an EAI token', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));

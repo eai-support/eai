@@ -137,10 +137,10 @@ export function acknowledgedSelectedAppBinding(
   const docs = Array.isArray(body.docs) ? body.docs : body.items;
   if (!Array.isArray(docs) || docs.length >= 50
     || (Array.isArray(body.docs) && Array.isArray(body.items) && JSON.stringify(body.docs) !== JSON.stringify(body.items))
-    || body.hasNextPage === true || body.hasPrevPage === true || body.nextCursor || body.nextPage
-    || (body.page !== undefined && body.page !== 1)
-    || (body.totalPages !== undefined && body.totalPages !== 1)
-    || (body.totalDocs !== undefined && body.totalDocs !== docs.length)) throw new Error('Init receipt existing enrollment lookup is incomplete.');
+    || body.hasNextPage !== false || body.hasPrevPage !== false || body.nextCursor || body.nextPage
+    || body.page !== 1 || body.totalPages !== 1 || body.totalDocs !== docs.length) {
+    throw new Error('Init receipt existing enrollment lookup is incomplete.');
+  }
   const matches = docs.map(record).filter(item => (item.data ? record(item.data) : item).verticalKey === appKey);
   if (matches.length !== 1) throw new Error('Init receipt requires one exact app enrollment.');
   const enrollment = matches[0];

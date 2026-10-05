@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants, lstatSync, realpathSync, readdirSync } from 'node:fs';
 import {
   access,
@@ -8,11 +8,12 @@ import {
   mkdir,
   readFile,
   readdir,
+  rename,
+  rm,
   writeFile,
 } from 'node:fs/promises';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { getProfileCaptureGeneration } from './profile.js';
 
 export type GoferWorkflowProfile = 'standard' | 'enterpriseai';
 
@@ -187,12 +188,8 @@ export async function readGoferResourceVersion(resourcesPath: string): Promise<s
   return version;
 }
 
-let capturedOverride: { path: string; generation: number } | undefined;
-
 /** SECURITY: explicit local assets must be a complete regular tree; initial install and refresh use the same source. */
 export function validateGoferResourceOverride(path: string): string {
-  const generation = getProfileCaptureGeneration();
-  if (capturedOverride?.path === path && capturedOverride.generation === generation) return path;
   if (!isAbsolute(path) || realpathSync(path) !== path || !lstatSync(path).isDirectory()) {
     throw new Error('Gofer resources override must be a canonical absolute regular directory.');
   }
@@ -227,7 +224,6 @@ export function validateGoferResourceOverride(path: string): string {
   if (!regularFiles.has(join(path, 'templates', 'gofer-model-policy.yaml'))) {
     throw new Error('Gofer resources override is incomplete: gofer-model-policy.yaml');
   }
-  capturedOverride = { path, generation };
   return path;
 }
 
@@ -245,9 +241,16 @@ async function writeGoferVersionMarker(
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
-  await writeFile(target, `${version}\n`, {
-    flag: constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW,
-  });
+  const staged = join(dirname(target), `.gofer-version.${randomUUID()}.tmp`);
+  try {
+    await writeFile(staged, `${version}\n`, {
+      flag: constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      mode: 0o600,
+    });
+    await rename(staged, target);
+  } finally {
+    await rm(staged, { force: true });
+  }
   return exists ? 'updated' : 'copied';
 }
 

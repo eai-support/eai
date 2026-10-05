@@ -34,7 +34,7 @@ import {
   isContained,
   writeManagedDeployEvidence,
 } from '../lib/eai-managed-deploy.js';
-import type { ManagedDeploymentOperationResponse } from '../lib/api.js';
+import { awaitManagedRequestDeadline, type ManagedDeploymentOperationResponse } from '../lib/api.js';
 import { bindManagedProjectRoot, type ManagedProjectRootBinding } from '../lib/eai-managed-root-binding.js';
 import {
   requireManagedDeploymentIdentifier,
@@ -480,8 +480,8 @@ function classifyStatus(
   return fallback;
 }
 
-async function readJsonSafely(response: Response): Promise<unknown> {
-  const text = await response.text();
+async function readJsonSafely(response: Response, signal: AbortSignal): Promise<unknown> {
+  const text = await awaitManagedRequestDeadline(signal, response.text());
   if (!text.trim()) return null;
   try {
     return JSON.parse(text);
@@ -599,13 +599,14 @@ async function runDoctorCheck(
     };
   }
   try {
+    const signal = AbortSignal.timeout(10_000);
     const response = await fetch(url, {
       method: test.method,
       redirect: 'error',
       ...(resolved.headers ? { headers: resolved.headers } : {}),
-      signal: AbortSignal.timeout(10_000),
+      signal,
     });
-    const body = await readJsonSafely(response);
+    const body = await readJsonSafely(response, signal);
 
     if (!expected.includes(response.status)) {
       const failureCategory = classifyStatus(test.path, response.status, category, body);
