@@ -51,6 +51,7 @@ const producerPinVerifier = requireFromTest(
   assertCanonicalProducerPaths: (pin: Record<string, unknown>) => void;
   assertProducerIdentity: (pin: Record<string, unknown>) => void;
   assertEnvironmentProducerWorkflow: (workflow: string) => void;
+  assertProducerDispatchInputs: (workflow: string) => void;
   assertProducerRelease: (
     pin: Record<string, unknown>,
     runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
@@ -738,17 +739,17 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'c6887cf724582682134624c58611f11b0a8d84e9' },
+      candidate: { commit: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'c6887cf724582682134624c58611f11b0a8d84e9',
-        workflowSha256: 'sha256:b25a643e5618d9f1a870fe4ae6be4b75bd27d0af23b48fae4eb78c371825bb38',
+        templateCommitSha: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb',
+        workflowSha256: 'sha256:e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb',
       },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
     expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);
-    for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env']) {
+    for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at']) {
       expect(workflow).toMatch(new RegExp(`^      ${input}:`, 'm'));
     }
   });
@@ -788,6 +789,20 @@ describe('EAI managed deployment helpers', () => {
     ))).toThrow('validated dispatch build outputs');
   });
 
+  test('requires local tunnel inputs only on direct dispatch, not reusable calls', async () => {
+    const workflow = await readFile(join(canonicalManagedDeployResourceRoot(), EAI_MANAGED_WORKFLOW_PATH), 'utf8');
+    expect(() => producerPinVerifier.assertProducerDispatchInputs(workflow)).not.toThrow();
+    for (const input of ['local_e2e_tunnel', 'local_e2e_expires_at']) {
+      const missing = workflow.replace(`      ${input}:`, `      removed_${input}:`);
+      expect(() => producerPinVerifier.assertProducerDispatchInputs(missing)).toThrow(`dispatch input ${input}`);
+      const reusableOnly = missing.replace('  workflow_call:\n    inputs:', `  workflow_call:\n    inputs:\n      ${input}:\n        required: false`);
+      expect(() => producerPinVerifier.assertProducerDispatchInputs(reusableOnly)).toThrow(`dispatch input ${input}`);
+      expect(() => producerPinVerifier.assertProducerDispatchInputs(workflow.replace(
+        '  workflow_call:\n    inputs:', `  workflow_call:\n    inputs:\n      ${input}:\n        required: false`,
+      ))).toThrow('must not be declared for reusable calls');
+    }
+  });
+
   test('installed collector emits only a fully validated deployment environment', async () => {
     const project = await temporaryDirectory('eai-installed-environment-');
     await writeFile(join(project, 'eai.runtime.json'), '{}\n');
@@ -818,6 +833,58 @@ describe('EAI managed deployment helpers', () => {
       await expect(promisify(execFile)(process.execPath, [...args, ...invalid])).rejects.toMatchObject({ code: 1 });
       expect(await readFile(output, 'utf8')).toBe('');
     }
+  });
+
+  test('installed collector binds local preview and dev dispatch to the original operation and expiry', async () => {
+    const project = await temporaryDirectory('eai-installed-local-');
+    await writeFile(join(project, 'eai.runtime.json'), '{}\n');
+    await promisify(execFile)('git', ['init', '-q'], { cwd: project });
+    await promisify(execFile)('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: project });
+    const commit = (await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: project })).stdout.trim();
+    const configHash = await buildManagedDeployConfigHash(project);
+    await installCanonicalManagedDeployFiles(project);
+    await mkdir(join(project, '.eai'), { recursive: true });
+    const operationId = `cli-managed-${'a'.repeat(32)}`;
+    const bindingPath = join(project, '.eai/cli-managed-source-operation.json');
+    const binding = {
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
+      operationId, environment: 'preview', templateCommitSha: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb',
+    };
+    const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('Z', '+00:00');
+    const output = join(project, 'validated-local-outputs');
+    const args = [join(project, EAI_MANAGED_EVIDENCE_SCRIPT_PATH), 'validate-dispatch', '--root', project,
+      '--source-mode', 'eai-cli-generated', '--app-key', 'fixture-app', '--tenant-id', 'company-1',
+      '--target-tenant-id', 'runtime-1', '--operation-id', operationId, '--nonce', 'b'.repeat(64),
+      '--expected-config-hash', configHash, '--public-api-url', 'https://fixture-8000.aue01.devtunnels.ms',
+      '--commit', commit, '--workflow-sha', commit, '--github-output', output,
+      '--local-e2e-tunnel', 'true', '--local-e2e-expires-at', expiresAt,
+      '--repository-id', '123', '--github-event-name', 'workflow_dispatch'];
+    for (const environment of ['preview', 'dev']) {
+      await writeFile(bindingPath, JSON.stringify({ ...binding, environment }));
+      await writeFile(output, '');
+      await promisify(execFile)(process.execPath, [...args, '--environment', environment]);
+      expect(await readFile(output, 'utf8')).toBe(`deployment_environment=${environment}\ngithub_environment=eai-generated-${environment}\n`);
+    }
+    await writeFile(bindingPath, JSON.stringify(binding));
+    for (const invalid of [
+      ['--environment', 'test'], ['--environment', 'prod'],
+      ['--environment', 'preview', '--source-mode', 'source-unknown'],
+      ['--environment', 'preview', '--github-event-name', 'push'],
+      ['--environment', 'preview', '--reusable-call', 'true'],
+      ['--environment', 'preview', '--repository-id', '0123'],
+      ['--environment', 'preview', '--public-api-url', 'https://fixture-8001.aue01.devtunnels.ms'],
+      ['--environment', 'preview', '--local-e2e-expires-at', new Date(Date.now() - 1000).toISOString().replace('Z', '+00:00')],
+      ['--environment', 'preview', '--local-e2e-expires-at', new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString().replace('Z', '+00:00')],
+      ['--environment', 'preview', '--local-e2e-tunnel', 'false'],
+    ]) {
+      await writeFile(output, '');
+      await expect(promisify(execFile)(process.execPath, [...args, ...invalid])).rejects.toMatchObject({ code: 1 });
+      expect(await readFile(output, 'utf8')).toBe('');
+    }
+    await writeFile(bindingPath, JSON.stringify({ ...binding, operationId: `cli-managed-${'f'.repeat(32)}` }));
+    await writeFile(output, '');
+    await expect(promisify(execFile)(process.execPath, [...args, '--environment', 'preview'])).rejects.toMatchObject({ code: 1 });
+    expect(await readFile(output, 'utf8')).toBe('');
   });
 
   test('requires the real producer release tag to resolve to the exact candidate commit', () => {

@@ -34,7 +34,15 @@ on:
         description: Exact source commit approved by workflow setup.
         required: true
       public_api_url:
-        description: Trusted EAI regional PublicAPI URL for this operation.
+        description: Trusted EAI regional PublicAPI URL, or the sealed local DEV tunnel for this operation.
+        required: false
+      local_e2e_tunnel:
+        description: Explicit direct-dispatch DEV/preview tunnel mode; default off.
+        required: false
+        type: boolean
+        default: false
+      local_e2e_expires_at:
+        description: Exact server-issued local dispatch expiry.
         required: false
       publicapi_base_url:
         description: Deprecated alias for public_api_url; retained for compatibility.
@@ -213,6 +221,11 @@ jobs:
           PREFERRED_PUBLIC_API_URL: ${{ inputs.public_api_url }}
           SOURCE_COMMIT_SHA: ${{ steps.invocation.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
+          LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
+          REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           node scripts/source-unknown-deployment-evidence.mjs validate-dispatch \
             --source-mode "$SOURCE_MODE" \
@@ -228,6 +241,11 @@ jobs:
             --public-api-url "$EAI_BOUND_PUBLIC_API_URL" \
             --preferred-public-api-url "$PREFERRED_PUBLIC_API_URL" \
             --legacy-public-api-url "$LEGACY_PUBLIC_API_URL" \
+            --local-e2e-tunnel "$LOCAL_E2E_TUNNEL" \
+            --local-e2e-expires-at "$LOCAL_E2E_EXPIRES_AT" \
+            --github-event-name "$GITHUB_EVENT_NAME" \
+            --reusable-call "$REUSABLE_CALL" \
+            --repository-id "$REPOSITORY_ID" \
             --commit "$SOURCE_COMMIT_SHA" \
             --workflow-sha "$GITHUB_SHA"
 
@@ -329,6 +347,12 @@ jobs:
           PREFERRED_DEPLOY_ENVIRONMENT: ${{ inputs.env }}
           SOURCE_COMMIT_SHA: ${{ steps.invocation.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
+          LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
+          LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
+          REPOSITORY_ID: ${{ github.repository_id }}
           STAGED_IMAGE_ARCHIVE: ${{ steps.built-image.outputs.image_archive_path }}
           STAGED_ARCHIVE_DIGEST: ${{ steps.built-image.outputs.archive_digest }}
           IMAGE_DIGEST: ${{ steps.built-image.outputs.image_digest }}
@@ -336,6 +360,12 @@ jobs:
         run: |
           node scripts/source-unknown-deployment-evidence.mjs collect \
             --source-mode "$SOURCE_MODE" \
+            --public-api-url "$EAI_BOUND_PUBLIC_API_URL" \
+            --local-e2e-tunnel "$LOCAL_E2E_TUNNEL" \
+            --local-e2e-expires-at "$LOCAL_E2E_EXPIRES_AT" \
+            --github-event-name "$GITHUB_EVENT_NAME" \
+            --reusable-call "$REUSABLE_CALL" \
+            --repository-id "$REPOSITORY_ID" \
             --target-tenant-id "$TARGET_TENANT_ID" \
             --app-key "$APP_KEY" \
             --tenant-id "$TENANT_ID" \
@@ -404,6 +434,10 @@ jobs:
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_COMMIT_SHA: ${{ needs.build.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
+          LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF: ${{ github.ref }}
@@ -415,7 +449,15 @@ jobs:
           BUILD_IMAGE_ARTIFACT_DIGEST: ${{ needs.build.outputs.image_artifact_digest }}
         shell: bash
         run: |
-          [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
+          if [[ "$LOCAL_E2E_TUNNEL" == true ]]; then
+            [[ "$SOURCE_MODE" == eai-cli-generated && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
+            [[ "$DEPLOY_ENVIRONMENT" == dev || "$DEPLOY_ENVIRONMENT" == preview ]]
+            [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$ ]]
+          else
+            [[ "$LOCAL_E2E_TUNNEL" == false || -z "$LOCAL_E2E_TUNNEL" ]]
+            [[ -z "$LOCAL_E2E_EXPIRES_AT" ]]
+            [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
+          fi
           [[ "$APP_KEY" =~ ^[a-z][a-z0-9-]{1,62}$ ]]
           [[ "$TENANT_ID" =~ ^[A-Za-z0-9]([A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$ ]]
           if [[ "$SOURCE_MODE" == "eai-cli-generated" || -n "$TARGET_TENANT_ID" ]]; then
@@ -748,6 +790,23 @@ jobs:
           assertTargetTenantBinding(evidence, process.env.TARGET_TENANT_ID);
           if (String(evidence.workflowRun?.id) !== process.env.GITHUB_RUN_ID || String(evidence.workflowRun?.attempt) !== process.env.GITHUB_RUN_ATTEMPT) throw new Error('Build evidence workflow run does not match.');
           if (evidence.validationSummary?.status !== 'passed') throw new Error('Build evidence validation did not pass.');
+          const localFlag = process.env.LOCAL_E2E_TUNNEL === 'true';
+          if (localFlag) {
+            const local = evidence.localE2e;
+            const repositoryId = process.env.GITHUB_REPOSITORY_ID;
+            const expiresAt = process.env.LOCAL_E2E_EXPIRES_AT;
+            if (!local || Object.keys(local).sort().join(',') !== 'audience,expiresAt,mode,origin,templateCommitSha' ||
+                local.mode !== 'local-tunnel-v1' || local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
+                local.expiresAt !== expiresAt || !/^[1-9][0-9]*$/.test(repositoryId) ||
+                !/^[a-f0-9]{40}$/.test(local.templateCommitSha) || Date.parse(expiresAt) <= Date.now()) {
+              throw new Error('Build evidence local endpoint binding changed.');
+            }
+            const tuple = ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repositoryId, local.templateCommitSha, expiresAt];
+            const audience = 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/' + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
+            if (local.audience !== audience) throw new Error('Build evidence local OIDC audience changed.');
+          } else if (evidence.localE2e !== undefined) {
+            throw new Error('Unexpected local endpoint binding in build evidence.');
+          }
           const artifactId = evidence.imageArtifact?.id;
           const artifactIdNumber = typeof artifactId === 'string' ? Number(artifactId) : NaN;
           if (typeof artifactId !== 'string' || !/^[1-9][0-9]*$/.test(artifactId) || !Number.isSafeInteger(artifactIdNumber) || String(artifactIdNumber) !== artifactId) throw new Error('Build evidence image artifact ID is invalid.');
@@ -947,8 +1006,54 @@ jobs:
           OPERATION_ID: ${{ inputs.operation_id }}
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
+          LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          DEPLOY_ENVIRONMENT: ${{ needs.build.outputs.deployment_environment }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
+          GITHUB_REPOSITORY_ID: ${{ github.repository_id }}
         run: |
           set -euo pipefail
+          validate_endpoint_and_audience() {
+            if [[ "$LOCAL_E2E_TUNNEL" == true ]]; then
+              [[ "$SOURCE_MODE" == eai-cli-generated && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
+              [[ "$DEPLOY_ENVIRONMENT" == dev || "$DEPLOY_ENVIRONMENT" == preview ]]
+              [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$ ]]
+              node - <<'NODE'
+          const fs = require('node:fs');
+          const { createHash } = require('node:crypto');
+          const descriptor = fs.openSync('.eai-build/evidence/source-unknown-deployment-evidence.json', fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+          const size = fs.fstatSync(descriptor).size;
+          if (size < 2 || size > 1024 * 1024) process.exit(1);
+          const bytes = Buffer.alloc(size);
+          if (fs.readSync(descriptor, bytes, 0, size, 0) !== size) process.exit(1);
+          fs.closeSync(descriptor);
+          const evidence = JSON.parse(bytes.toString('utf8'));
+          const local = evidence.localE2e;
+          const repoId = process.env.GITHUB_REPOSITORY_ID;
+          const expiry = process.env.LOCAL_E2E_EXPIRES_AT;
+          if (!local || Object.keys(local).sort().join(',') !== 'audience,expiresAt,mode,origin,templateCommitSha' ||
+              local.mode !== 'local-tunnel-v1' || local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
+              local.expiresAt !== expiry || !/^[1-9][0-9]*$/.test(repoId) ||
+              !/^cli-managed-[a-f0-9]{32}$/.test(evidence.operationId) ||
+              !/^[a-f0-9]{40}$/.test(local.templateCommitSha) ||
+              !Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) <= Date.now()) process.exit(1);
+          const tuple = ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repoId, local.templateCommitSha, expiry];
+          const audience = 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/' + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
+          if (local.audience !== audience) process.exit(1);
+          process.stdout.write(audience);
+          NODE
+            else
+              [[ "$LOCAL_E2E_TUNNEL" == false || -z "$LOCAL_E2E_TUNNEL" ]]
+              [[ -z "$LOCAL_E2E_EXPIRES_AT" ]]
+              [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
+              case "$SOURCE_MODE" in
+                source-unknown) printf '%s' api://enterprise-ai-publicapi/source-unknown ;;
+                eai-cli-generated) printf '%s' api://enterprise-ai-publicapi/eai-cli-generated ;;
+                *) return 1 ;;
+              esac
+            fi
+          }
           bounded_response_reader='
             const fs = require("node:fs");
             const path = require("node:path");
@@ -1084,17 +1189,13 @@ jobs:
             });
             process.stdin.on("error", (error) => fail(error.message));
           '
-          case "$SOURCE_MODE" in
-            source-unknown) audience=api://enterprise-ai-publicapi/source-unknown ;;
-            eai-cli-generated) audience=api://enterprise-ai-publicapi/eai-cli-generated ;;
-            *) exit 1 ;;
-          esac
+          audience="$(validate_endpoint_and_audience)"
           token="$(
             curl --fail --silent --show-error --proto '=https' --tlsv1.2 --max-redirs 0 --max-filesize 1048576 -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=${audience}" |
             node -e "$bounded_response_reader" token
           )"
           echo "::add-mask::$token"
-          [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
+          [[ "$audience" == "$(validate_endpoint_and_audience)" ]]
           case "$SOURCE_MODE" in
             source-unknown) evidence_path="source-unknown/workflow-evidence" ;;
             eai-cli-generated) evidence_path="cli-managed-source/operations/${OPERATION_ID}/workflow-evidence" ;;

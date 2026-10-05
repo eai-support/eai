@@ -52,6 +52,28 @@ function assertEnvironmentProducerWorkflow(workflow) {
   }
 }
 
+// INVARIANT: Local tunnel inputs belong to direct dispatch, never reusable calls.
+function assertProducerDispatchInputs(workflow) {
+  const sections = workflow.split('  workflow_dispatch:\n');
+  const dispatch = (sections[1] || '').split('  workflow_call:\n')[0];
+  if (sections.length !== 2 || !/^    inputs:$/m.test(dispatch)) {
+    throw new Error('workflow must declare one direct dispatch input section.');
+  }
+  for (const input of [
+    'source_mode', 'app_key', 'tenant_id', 'target_tenant_id',
+    'operation_id', 'nonce', 'config_hash', 'commit_sha',
+    'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at',
+  ]) {
+    if (!new RegExp(`^      ${input}:`, 'm').test(dispatch)) {
+      throw new Error(`workflow does not declare dispatch input ${input}.`);
+    }
+  }
+  const reusable = workflow.split('  workflow_call:\n')[1] || '';
+  if (/^      local_e2e_(?:tunnel|expires_at):/m.test(reusable)) {
+    throw new Error('local tunnel inputs must not be declared for reusable calls.');
+  }
+}
+
 function resolveProducerReleaseCommit(tag, runGit = execFileSync) {
   let output;
   try {
@@ -211,20 +233,10 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
   }
-  for (const input of [
-    'source_mode',
-    'app_key',
-    'tenant_id',
-    'target_tenant_id',
-    'operation_id',
-    'nonce',
-    'config_hash',
-    'commit_sha',
-    'public_api_url',
-    'env',
-  ]) {
-    if (!new RegExp(`^      ${input}:`, 'm').test(workflow))
-      fail(`workflow does not declare dispatch input ${input}.`);
+  try {
+    assertProducerDispatchInputs(workflow);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
   }
   if (release && !process.exitCode) {
     try {
@@ -249,6 +261,7 @@ module.exports = {
   assertCanonicalProducerPaths,
   assertProducerIdentity,
   assertEnvironmentProducerWorkflow,
+  assertProducerDispatchInputs,
   assertProducerRelease,
   resolveProducerReleaseCommit,
   readProducerFilesAtCommit,

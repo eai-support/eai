@@ -42,6 +42,8 @@ const GENERATED_CONFIG_FILES = new Set([
 ]);
 const CANONICAL_WORKFLOW_PATH = '.github/workflows/eai-app.yml';
 const CANONICAL_COLLECTOR_PATH = 'scripts/source-unknown-deployment-evidence.mjs';
+const LOCAL_E2E_ORIGIN = /^https:\/\/[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$/;
+const LOCAL_E2E_AUDIENCE_PREFIX = 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/';
 const MAX_IMAGE_ARCHIVE_BYTES = 10 * 1024 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_GOVERNED_CONFIG_TOTAL_BYTES = 32 * 1024 * 1024;
@@ -168,6 +170,52 @@ function validateDeploymentBinding(options, mode) {
   return targetTenant;
 }
 
+function localE2eBinding(options, mode, environment, root) {
+  const flag = option(options, 'localE2eTunnel');
+  const expiresAt = option(options, 'localE2eExpiresAt');
+  if (!['', 'false', 'true'].includes(flag) || (flag !== 'true' && expiresAt)) {
+    throw new Error('Local deployment inputs conflict.');
+  }
+  if (flag !== 'true') return null;
+  const origin = option(options, 'publicApiUrl');
+  const operationId = option(options, 'operationId');
+  const repositoryId = option(options, 'repositoryId');
+  if (
+    mode !== 'eai-cli-generated' ||
+    !['preview', 'dev'].includes(environment) ||
+    option(options, 'githubEventName') !== 'workflow_dispatch' ||
+    option(options, 'reusableCall') === 'true' ||
+    !LOCAL_E2E_ORIGIN.test(origin) ||
+    !/^[1-9][0-9]*$/.test(repositoryId) ||
+    !Number.isSafeInteger(Number(repositoryId)) ||
+    String(Number(repositoryId)) !== repositoryId ||
+    !/^cli-managed-[a-f0-9]{32}$/.test(operationId) ||
+    !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?\+00:00$/.test(expiresAt) ||
+    !Number.isFinite(Date.parse(expiresAt)) ||
+    Date.parse(expiresAt) <= Date.now() ||
+    Date.parse(expiresAt) > Date.now() + 2 * 60 * 60 * 1000
+  ) {
+    throw new Error('Local deployment requires an exact direct DEV/preview tunnel binding.');
+  }
+  const binding = JSON.parse(readRegularFileNoFollow(root, '.eai/cli-managed-source-operation.json').toString('utf8'));
+  if (
+    binding.schemaVersion !== 'eai.cli_managed_source_operation.v1' ||
+    binding.sourceMode !== mode ||
+    binding.operationId !== operationId ||
+    binding.environment !== environment ||
+    binding.templateCommitSha?.match(/^[a-f0-9]{40}$/) === null ||
+    !/^[a-f0-9]{40}$/.test(binding.templateCommitSha || '')
+  ) {
+    throw new Error('Local deployment original source binding is invalid.');
+  }
+  const tuple = ['eai.cli-managed-local-e2e-aud.v1', origin, operationId, repositoryId, binding.templateCommitSha, expiresAt];
+  return {
+    mode: 'local-tunnel-v1', origin, expiresAt,
+    templateCommitSha: binding.templateCommitSha,
+    audience: LOCAL_E2E_AUDIENCE_PREFIX + createHash('sha256').update(JSON.stringify(tuple)).digest('hex'),
+  };
+}
+
 function validateDispatch(options) {
   validateDeploymentBinding(options, sourceMode(options));
   const environment = option(options, 'environment', 'preview');
@@ -189,18 +237,15 @@ function validateDispatch(options) {
   if (endpoint !== (preferredEndpoint || legacyEndpoint || endpoint)) {
     throw new Error('Resolved PublicAPI URL does not match its inputs.');
   }
-  if (
-    !/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(
-      endpoint,
-    )
-  ) {
+  const root = resolve(option(options, 'root', process.cwd()));
+  const local = localE2eBinding(options, sourceMode(options), environment, root);
+  if (!local && !/^https:\/\/(?:dev-api\.au|(?:test-api|api)\.(?:au|ca|eu))\.myenterprise\.ai\/public\/?$/.test(endpoint)) {
     throw new Error(
       'Managed deployment requires a trusted EAI regional PublicAPI HTTPS URL ending in /public.',
     );
   }
   const commit = option(options, 'commit');
   const workflowSha = option(options, 'workflowSha');
-  const root = resolve(option(options, 'root', process.cwd()));
   const configHash = buildConfigHash(root);
   if (option(options, 'expectedConfigHash') !== configHash) {
     throw new Error(
@@ -1878,6 +1923,7 @@ async function collectEvidence(options) {
   const mode = sourceMode(options);
   const targetTenant = validateDeploymentBinding(options, mode);
   const root = resolve(option(options, 'root', process.cwd()));
+  const local = localE2eBinding(options, mode, option(options, 'environment', 'preview'), root);
   const outputDir = resolve(
     root,
     option(options, 'outputDir', '.eai-build/evidence'),
@@ -2021,6 +2067,7 @@ async function collectEvidence(options) {
   const collectorDigest = `sha256:${createHash('sha256').update(collectorBytes).digest('hex')}`;
 
   const evidence = {
+    ...(local ? { localE2e: local } : {}),
     ...(mode === 'eai-cli-generated' ? { sourceMode: mode } : {}),
     ...(targetTenant ? { targetTenantId: targetTenant } : {}),
     environment,

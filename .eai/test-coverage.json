@@ -204,7 +204,7 @@
         },
         {
           "id": "eai-cli-managed-tenantinfra-deploy",
-          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce.",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate.",
           "owned_paths": [
             ".eai/test-coverage.json",
             "docs-site/static/cli-help.txt",
