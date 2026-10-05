@@ -2962,7 +2962,7 @@ Create a new workspace and bootstrap admin access.
 - `--name <name>` — Workspace display name (required)
 - `--slug <slug>` — Workspace slug, kebab-case (required)
 - `--parent <id>` — Parent workspace ID (creates a child workspace)
-- `--domain <domains>` — Comma-separated domain list
+- `--domain <domain>` — One workspace domain. A comma-separated list is rejected.
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
 - `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
