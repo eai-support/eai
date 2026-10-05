@@ -112,14 +112,16 @@ export function validateCliManagedSourceOperation(
       || repair.originalDeletedPaths.some((path, i, paths) => typeof path !== 'string'
         || !isManagedAppSourcePath(path) || (i > 0 && path <= paths[i - 1]))))
       || (v2 && (value.bundleSchemaVersion !== 'eai.cli_managed_source_bundle.v2'
-        || Object.keys(repair).sort().join(',') !== 'originalBundleSha256,originalDeletedPaths,originalFileChecksumsSha256,originalReview,reason,replacementBundleSha256,replacementControlPath,replacementFileCount,replacementPath,replacementTotalBytes,schemaVersion'
+        || Object.keys(repair).sort().join(',') !== 'originalBundleSha256,originalDeletedPaths,originalFileChecksumsSha256,originalReview,reason,replacementBundleSha256,replacementControlPath,replacementFileCount,replacementPaths,replacementTotalBytes,schemaVersion'
         || repair.reason !== 'reviewed-scaffold-evidence-refresh'
         || repair.originalBundleSha256 === value.bundleSha256
         || !/^sha256:[a-f0-9]{64}$/.test(repair.originalBundleSha256 || '')
         || repair.replacementBundleSha256 !== value.bundleSha256
         || !Number.isSafeInteger(repair.replacementFileCount) || repair.replacementFileCount! < 1 || repair.replacementFileCount! > CLI_MANAGED_SOURCE_LIMITS.maxFiles
         || !Number.isSafeInteger(repair.replacementTotalBytes) || repair.replacementTotalBytes! < 1 || repair.replacementTotalBytes! > CLI_MANAGED_SOURCE_LIMITS.maxTotalBytes
-        || repair.replacementPath !== 'tests/source-unknown-deployment-evidence.test.mjs'
+        || !Array.isArray(repair.replacementPaths)
+        || repair.replacementPaths.length !== 4
+        || repair.replacementPaths.join(',') !== 'run.ps1,run.sh,tests/cross-platform-lifecycle.test.mjs,tests/source-unknown-deployment-evidence.test.mjs'
         || repair.replacementControlPath !== 'scripts/source-unknown-deployment-evidence.mjs'
         || !Array.isArray(repair.originalDeletedPaths) || repair.originalDeletedPaths.length !== 0))
       || (!v1 && !v2)

@@ -76,6 +76,6 @@ export interface CliManagedSourceReviewRepair {
   replacementBundleSha256?: string;
   replacementFileCount?: number;
   replacementTotalBytes?: number;
-  replacementPath?: string;
+  replacementPaths?: string[];
   replacementControlPath?: string;
 }

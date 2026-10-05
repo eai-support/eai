@@ -170,7 +170,8 @@ export async function recoverReviewedCliManagedSourceEvidence(
 ): Promise<CliManagedSourceOperation> {
   const original = validateCliManagedSourceOperation(operation, scope);
   if (bundle.schemaVersion !== 'eai.cli_managed_source_bundle.v2'
-    || !bundle.files.some(file => file.path === 'tests/source-unknown-deployment-evidence.test.mjs')
+    || !['run.ps1', 'run.sh', 'tests/cross-platform-lifecycle.test.mjs',
+      'tests/source-unknown-deployment-evidence.test.mjs'].every(path => bundle.files.some(file => file.path === path))
     || (original.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== bundle.schemaVersion
     || original.status !== 'pending_review' || !original.githubLinkSessionId
     || !original.review || original.review.mergedSha || original.deployment

@@ -239,7 +239,8 @@ describe('managed publication authority and readiness', () => {
   test('explicit V2 repair preserves the original operation and PR while replacing only the reviewed test', async () => {
     const replacement = { ...bundle, schemaVersion: 'eai.cli_managed_source_bundle.v2' as const,
       bundleSha256: `sha256:${'e'.repeat(64)}`,
-      files: [{ ...bundle.files[0], path: 'tests/source-unknown-deployment-evidence.test.mjs' }] };
+      files: ['run.ps1', 'run.sh', 'tests/cross-platform-lifecycle.test.mjs',
+        'tests/source-unknown-deployment-evidence.test.mjs'].map(path => ({ ...bundle.files[0], path })) };
     const originalReview = { number: 2, headBranch: `eai-cli/${operation().operationId}`,
       headSha: '1'.repeat(40), baseSha: '2'.repeat(40) };
     const original: CliManagedSourceOperation = { ...operation('pending_review'),
@@ -250,8 +251,8 @@ describe('managed publication authority and readiness', () => {
       originalBundleSha256: original.bundleSha256,
       originalFileChecksumsSha256: `sha256:${'f'.repeat(64)}`, originalDeletedPaths: [],
       replacementBundleSha256: replacement.bundleSha256,
-      replacementFileCount: replacement.files.length, replacementTotalBytes: 3,
-      replacementPath: 'tests/source-unknown-deployment-evidence.test.mjs',
+      replacementFileCount: replacement.files.length, replacementTotalBytes: 12,
+      replacementPaths: ['run.ps1', 'run.sh', 'tests/cross-platform-lifecycle.test.mjs', 'tests/source-unknown-deployment-evidence.test.mjs'],
       replacementControlPath: 'scripts/source-unknown-deployment-evidence.mjs' };
     const prepared: CliManagedSourceOperation = { ...original, bundleSha256: replacement.bundleSha256,
       reviewRepair, upload: { ...operation().upload!, sha256: replacement.bundleSha256, purpose: 'review-repair' } };
@@ -271,11 +272,11 @@ describe('managed publication authority and readiness', () => {
     }));
     expect(upload).toHaveBeenCalledOnce();
 
-    for (const drift of ['purpose', 'originalBundle', 'replacementPath', 'replacementControlPath', 'repository', 'head', 'preparedHead'] as const) {
+    for (const drift of ['purpose', 'originalBundle', 'replacementPaths', 'replacementControlPath', 'repository', 'head', 'preparedHead'] as const) {
       const altered = structuredClone(prepared);
       if (drift === 'purpose') delete altered.upload!.purpose;
       if (drift === 'originalBundle') altered.reviewRepair!.originalBundleSha256 = `sha256:${'9'.repeat(64)}`;
-      if (drift === 'replacementPath') altered.reviewRepair!.replacementPath = 'src/app/page.tsx';
+      if (drift === 'replacementPaths') altered.reviewRepair!.replacementPaths = ['src/app/page.tsx'];
       if (drift === 'replacementControlPath') altered.reviewRepair!.replacementControlPath = 'scripts/other.mjs';
       if (drift === 'repository') altered.repository.id = 999;
       if (drift === 'head') altered.reviewRepair!.originalReview.headSha = '9'.repeat(40);
