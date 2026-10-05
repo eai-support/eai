@@ -129,6 +129,8 @@ env:
 jobs:
   build:
     outputs:
+      deployment_environment: ${{ steps.dispatch-binding.outputs.deployment_environment }}
+      github_environment: ${{ steps.dispatch-binding.outputs.github_environment }}
       config_hash: ${{ steps.deployment-binding.outputs.config_hash }}
       source_commit_sha: ${{ steps.invocation.outputs.source_commit_sha }}
       image_artifact_id: ${{ steps.image-artifact.outputs.artifact-id }}
@@ -195,6 +197,7 @@ jobs:
           printf 'config_hash=%s\n' "$config_hash" >> "$GITHUB_OUTPUT"
 
       - name: Validate immutable dispatch and trusted endpoint
+        id: dispatch-binding
         env:
           APP_KEY: ${{ inputs.app_key }}
           TENANT_ID: ${{ inputs.tenant_id }}
@@ -367,6 +370,8 @@ jobs:
 
   handoff:
     needs: build
+    environment:
+      name: ${{ needs.build.outputs.github_environment }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -395,7 +400,7 @@ jobs:
           OPERATION_ID: ${{ inputs.operation_id }}
           NONCE: ${{ inputs.nonce }}
           CONFIG_HASH: ${{ needs.build.outputs.config_hash }}
-          DEPLOY_ENVIRONMENT: ${{ inputs.env || inputs.environment || 'preview' }}
+          DEPLOY_ENVIRONMENT: ${{ needs.build.outputs.deployment_environment }}
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           SOURCE_COMMIT_SHA: ${{ needs.build.outputs.source_commit_sha }}
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
@@ -1106,65 +1111,153 @@ jobs:
               node -e "$bounded_response_reader" file
 
       - name: Assert evidence accepted
+        env:
+          APP_KEY: ${{ inputs.app_key }}
+          TENANT_ID: ${{ inputs.tenant_id }}
+          TARGET_TENANT_ID: ${{ inputs.target_tenant_id }}
+          OPERATION_ID: ${{ inputs.operation_id }}
+          CONFIG_HASH: ${{ needs.build.outputs.config_hash }}
+          SOURCE_COMMIT_SHA: ${{ needs.build.outputs.source_commit_sha }}
+          SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
+          DEPLOY_ENVIRONMENT: ${{ needs.build.outputs.deployment_environment }}
         run: |
           node - <<'NODE'
           const fs = require('node:fs');
           const path = require('node:path');
-          const responsePath = '.eai-build/evidence/workflow-evidence-response.json';
-          const maxBytes = 1024 * 1024;
-          const sameFileIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
-          const targetDirectory = path.resolve(path.dirname(responsePath));
-          const filesystemRoot = path.parse(targetDirectory).root;
-          const ancestors = [];
-          let current = filesystemRoot;
-          for (const component of ['', ...path.relative(filesystemRoot, targetDirectory).split(/[\\/]/).filter(Boolean)]) {
-            if (component) current = path.join(current, component);
-            const status = fs.lstatSync(current);
-            if (status.isSymbolicLink() || !status.isDirectory()) throw new Error('Deployment handoff response ancestors must be no-follow directories.');
-            ancestors.push({ path: current, dev: status.dev, ino: status.ino });
-          }
-          const assertAncestors = () => {
-            for (const identity of ancestors) {
-              const status = fs.lstatSync(identity.path);
-              if (status.isSymbolicLink() || !status.isDirectory() || !sameFileIdentity(identity, status)) throw new Error('Deployment handoff response ancestors changed during verification.');
+          function readBoundedJson(responsePath) {
+            const maxBytes = 1024 * 1024;
+            const sameFileIdentity = (left, right) => left.dev === right.dev && left.ino === right.ino;
+            const targetDirectory = path.resolve(path.dirname(responsePath));
+            const filesystemRoot = path.parse(targetDirectory).root;
+            const ancestors = [];
+            let current = filesystemRoot;
+            for (const component of ['', ...path.relative(filesystemRoot, targetDirectory).split(/[\\/]/).filter(Boolean)]) {
+              if (component) current = path.join(current, component);
+              const status = fs.lstatSync(current);
+              if (status.isSymbolicLink() || !status.isDirectory()) throw new Error('Deployment handoff response ancestors must be no-follow directories.');
+              ancestors.push({ path: current, dev: status.dev, ino: status.ino });
             }
+            const assertAncestors = () => {
+              for (const identity of ancestors) {
+                const status = fs.lstatSync(identity.path);
+                if (status.isSymbolicLink() || !status.isDirectory() || !sameFileIdentity(identity, status)) throw new Error('Deployment handoff response ancestors changed during verification.');
+              }
+            };
+            const before = fs.lstatSync(responsePath);
+            if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1 || !Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Deployment handoff response must be a bounded no-follow regular file.');
+            if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) throw new Error('No-follow response verification is unavailable.');
+            if (!Number.isSafeInteger(fs.constants.O_NONBLOCK) || fs.constants.O_NONBLOCK <= 0) throw new Error('Nonblocking response verification is unavailable.');
+            const descriptor = fs.openSync(responsePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
+            let bytes;
+            try {
+              const opened = fs.fstatSync(descriptor);
+              assertAncestors();
+              if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Deployment handoff response changed before verification.');
+              const chunks = [];
+              const buffer = Buffer.allocUnsafe(64 * 1024);
+              let offset = 0;
+              while (offset < opened.size) {
+                const bytesRead = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - offset), offset);
+                if (bytesRead < 1) throw new Error('Deployment handoff response was truncated during verification.');
+                chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
+                offset += bytesRead;
+              }
+              const growthProbe = Buffer.allocUnsafe(1);
+              if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error('Deployment handoff response grew during verification.');
+              const afterDescriptor = fs.fstatSync(descriptor);
+              assertAncestors();
+              const afterPath = fs.lstatSync(responsePath);
+              for (const status of [afterDescriptor, afterPath]) {
+                if (!status.isFile() || status.nlink !== 1 || !sameFileIdentity(opened, status) || status.size !== opened.size || status.mtimeMs !== opened.mtimeMs || status.ctimeMs !== opened.ctimeMs) throw new Error('Deployment handoff response changed during verification.');
+              }
+              bytes = Buffer.concat(chunks, offset);
+            } finally {
+              fs.closeSync(descriptor);
+            }
+            return JSON.parse(bytes.toString('utf8'));
+          }
+          function validateHandoffReceipt(payload, expected) {
+            const record = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+            const response = record(payload?.response) ? payload.response : payload;
+            const request = response?.deploymentRequest;
+            const fields = ['sourceMode', 'tenantId', 'appScopeTenantId', 'targetTenantId', 'appKey',
+              'environment', 'operationId', 'commitSha', 'configHash', 'workflowPath', 'ref',
+              'workflowRunId', 'workflowBlobSha', 'collectorDigest', 'artifactDigest', 'imageDigest'];
+            if (!record(expected) || !record(response) || !record(request) ||
+                fields.some((key) => typeof expected[key] !== 'string' || !expected[key] || request[key] !== expected[key]) ||
+                !['preview', 'dev', 'test', 'prod'].includes(expected.environment) ||
+                !['source-unknown', 'eai-cli-generated'].includes(expected.sourceMode) ||
+                !/^[a-f0-9]{40}$/.test(expected.commitSha) ||
+                !/^[a-f0-9]{40}$/.test(expected.workflowBlobSha) ||
+                !/^sha256:[a-f0-9]{64}$/.test(expected.configHash) ||
+                !/^sha256:[a-f0-9]{64}$/.test(expected.collectorDigest) ||
+                !/^sha256:[a-f0-9]{64}$/.test(expected.artifactDigest) ||
+                !/(?:^|@)sha256:[a-f0-9]{64}$/.test(expected.imageDigest) ||
+                expected.workflowPath !== '.github/workflows/eai-app.yml' ||
+                !/^refs\/heads\/[^\s]+$/.test(expected.ref) ||
+                !/^[1-9][0-9]*$/.test(expected.workflowRunId) ||
+                !Number.isSafeInteger(expected.repositoryId) || expected.repositoryId < 1 ||
+                request.repositoryId !== expected.repositoryId ||
+                !record(expected.repo) || !record(request.repo) ||
+                typeof expected.repo.owner !== 'string' || !expected.repo.owner ||
+                typeof expected.repo.name !== 'string' || !expected.repo.name ||
+                request.repo.owner !== expected.repo.owner || request.repo.name !== expected.repo.name ||
+                !record(expected.imageArtifact) || !record(request.imageArtifact) ||
+                ['id', 'name', 'archiveDigest'].some((key) => request.imageArtifact[key] !== expected.imageArtifact[key]) ||
+                !Number.isSafeInteger(expected.imageArtifact.id) || expected.imageArtifact.id < 1 ||
+                expected.imageArtifact.name !== 'eai-generated-app-image' ||
+                !/^sha256:[a-f0-9]{64}$/.test(expected.imageArtifact.archiveDigest) ||
+                (expected.sourceMode === 'eai-cli-generated' && request.sourceOperationId !== expected.operationId) ||
+                request.status !== response.status || !record(request.handoff) || request.handoff.backend !== 'TenantInfra') {
+              throw new Error('Deployment handoff receipt does not match the exact dispatched source and artifact.');
+            }
+            const safeId = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,255}$/.test(value);
+            if (response.status === 'handoff_pending') {
+              if (response.requiresTenantInfra !== true || request.requiresTenantInfra !== true ||
+                  !safeId(request.requestId) || response.deploymentRequestId !== request.requestId ||
+                  !['pending', 'not_configured'].includes(request.handoff.status)) {
+                throw new Error('Persisted deployment handoff receipt is invalid.');
+              }
+              return { status: 'handoff_pending', deploymentId: request.requestId };
+            }
+            // INVARIANT: configured transport alone is not proof that TenantInfra accepted this operation.
+            if (!['awaiting-runtime', 'accepted', 'queued', 'running', 'deployed-awaiting-readiness', 'active'].includes(response.status) ||
+                response.requiresTenantInfra !== false || request.requiresTenantInfra !== false ||
+                request.handoff.status !== 'configured' || !safeId(response.deploymentId) ||
+                request.deploymentId !== response.deploymentId || response.deploymentRequestId !== response.deploymentId) {
+              throw new Error('TenantInfra has not accepted the exact deployment handoff lifecycle.');
+            }
+            return { status: response.status, deploymentId: response.deploymentId };
+          }
+          const body = readBoundedJson('.eai-build/evidence/workflow-evidence-response.json');
+          const evidence = readBoundedJson('.eai-build/evidence/source-unknown-deployment-evidence.json');
+          const [owner, name] = (process.env.GITHUB_REPOSITORY || '').split('/');
+          const expected = {
+            sourceMode: process.env.SOURCE_MODE,
+            tenantId: process.env.TENANT_ID,
+            appScopeTenantId: process.env.TENANT_ID,
+            targetTenantId: process.env.TARGET_TENANT_ID || process.env.TENANT_ID,
+            appKey: process.env.APP_KEY,
+            environment: process.env.DEPLOY_ENVIRONMENT,
+            operationId: process.env.OPERATION_ID,
+            commitSha: process.env.SOURCE_COMMIT_SHA,
+            configHash: process.env.CONFIG_HASH,
+            workflowPath: evidence.workflowPath,
+            ref: process.env.GITHUB_REF,
+            workflowRunId: process.env.GITHUB_RUN_ID,
+            workflowBlobSha: evidence.workflowBlobSha,
+            collectorDigest: evidence.collectorDigest,
+            artifactDigest: evidence.artifactDigest,
+            imageDigest: evidence.imageDigest,
+            repositoryId: Number(process.env.GITHUB_REPOSITORY_ID),
+            repo: { owner, name },
+            imageArtifact: evidence.imageArtifact,
           };
-          const before = fs.lstatSync(responsePath);
-          if (before.isSymbolicLink() || !before.isFile() || before.nlink !== 1 || !Number.isSafeInteger(before.size) || before.size < 1 || before.size > maxBytes) throw new Error('Deployment handoff response must be a bounded no-follow regular file.');
-          if (!Number.isSafeInteger(fs.constants.O_NOFOLLOW) || fs.constants.O_NOFOLLOW <= 0) throw new Error('No-follow response verification is unavailable.');
-          if (!Number.isSafeInteger(fs.constants.O_NONBLOCK) || fs.constants.O_NONBLOCK <= 0) throw new Error('Nonblocking response verification is unavailable.');
-          const descriptor = fs.openSync(responsePath, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK);
-          let bytes;
-          try {
-            const opened = fs.fstatSync(descriptor);
-            assertAncestors();
-            if (!opened.isFile() || opened.nlink !== 1 || !sameFileIdentity(before, opened) || opened.size !== before.size || opened.mtimeMs !== before.mtimeMs || opened.ctimeMs !== before.ctimeMs) throw new Error('Deployment handoff response changed before verification.');
-            const chunks = [];
-            const buffer = Buffer.allocUnsafe(64 * 1024);
-            let offset = 0;
-            while (offset < opened.size) {
-              const bytesRead = fs.readSync(descriptor, buffer, 0, Math.min(buffer.length, opened.size - offset), offset);
-              if (bytesRead < 1) throw new Error('Deployment handoff response was truncated during verification.');
-              chunks.push(Buffer.from(buffer.subarray(0, bytesRead)));
-              offset += bytesRead;
-            }
-            const growthProbe = Buffer.allocUnsafe(1);
-            if (fs.readSync(descriptor, growthProbe, 0, 1, offset) !== 0) throw new Error('Deployment handoff response grew during verification.');
-            const afterDescriptor = fs.fstatSync(descriptor);
-            assertAncestors();
-            const afterPath = fs.lstatSync(responsePath);
-            for (const status of [afterDescriptor, afterPath]) {
-              if (!status.isFile() || status.nlink !== 1 || !sameFileIdentity(opened, status) || status.size !== opened.size || status.mtimeMs !== opened.mtimeMs || status.ctimeMs !== opened.ctimeMs) throw new Error('Deployment handoff response changed during verification.');
-            }
-            bytes = Buffer.concat(chunks, offset);
-          } finally {
-            fs.closeSync(descriptor);
+          const result = validateHandoffReceipt(body, expected);
+          if (result.status === 'handoff_pending') {
+            throw new Error('TenantInfra handoff remains pending; retain and recover the existing operation.');
           }
-          const body = JSON.parse(bytes.toString('utf8'));
-          const response = body && typeof body.response === 'object' && !Array.isArray(body.response) ? body.response : body;
-          const accepted = response.status === 'accepted';
-          const deferred = response.status === 'handoff_pending' && response.requiresTenantInfra === true && typeof response.deploymentRequestId === 'string' && response.deploymentRequestId.trim();
-          if (!accepted && !deferred) throw new Error(`Expected accepted evidence or persisted handoff, got ${response.status || '<missing>'}.`);
+          console.log('TenantInfra accepted the exact handoff; runtime readiness remains a separate check.');
           NODE
 
       - name: Upload handoff responses

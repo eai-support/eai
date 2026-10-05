@@ -49,6 +49,8 @@ const producerPinVerifier = requireFromTest(
   '../../scripts/verify-managed-deploy-producer-pin.cjs',
 ) as {
   assertCanonicalProducerPaths: (pin: Record<string, unknown>) => void;
+  assertProducerIdentity: (pin: Record<string, unknown>) => void;
+  assertEnvironmentProducerWorkflow: (workflow: string) => void;
   assertProducerRelease: (
     pin: Record<string, unknown>,
     runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
@@ -599,7 +601,7 @@ describe('EAI managed deployment helpers', () => {
     expect(handoffJob).toContain('reader.cancel().catch');
     expect(handoffJob).toContain("'.eai-build/evidence/source-unknown-deployment-evidence.json'");
     expect(handoffJob).toContain(
-      "const responsePath = '.eai-build/evidence/workflow-evidence-response.json'",
+      "readBoundedJson('.eai-build/evidence/workflow-evidence-response.json')",
     );
     expect(handoffJob).toContain('Deployment handoff response grew during verification');
     expect(handoffJob.match(/--max-filesize 1048576/g)).toHaveLength(2);
@@ -736,7 +738,12 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '57806b6d279d299e41cbfd151ac50f8bb4623273' },
+      candidate: { commit: 'c6887cf724582682134624c58611f11b0a8d84e9' },
+      githubProducerIdentity: {
+        profile: 'github-environment-v1',
+        templateCommitSha: 'c6887cf724582682134624c58611f11b0a8d84e9',
+        workflowSha256: 'sha256:b25a643e5618d9f1a870fe4ae6be4b75bd27d0af23b48fae4eb78c371825bb38',
+      },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
     });
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
@@ -746,12 +753,83 @@ describe('EAI managed deployment helpers', () => {
     }
   });
 
+  test('binds the packaged environment profile to the exact candidate commit and workflow', async () => {
+    const root = canonicalManagedDeployResourceRoot();
+    const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
+    expect(() => producerPinVerifier.assertProducerIdentity(pin)).not.toThrow();
+    for (const replacement of [
+      undefined,
+      { ...pin.githubProducerIdentity, profile: 'github-ref-v1' },
+      { ...pin.githubProducerIdentity, templateCommitSha: '57806b6d279d299e41cbfd151ac50f8bb4623273' },
+      { ...pin.githubProducerIdentity, workflowSha256: `sha256:${'f'.repeat(64)}` },
+      { ...pin.githubProducerIdentity, environment: 'preview' },
+    ]) {
+      expect(() => producerPinVerifier.assertProducerIdentity({ ...pin, githubProducerIdentity: replacement }))
+        .toThrow('identity must match');
+    }
+  });
+
+  test('rejects raw input and fallback environments in the installed OIDC handoff', async () => {
+    const workflow = await readFile(join(canonicalManagedDeployResourceRoot(), EAI_MANAGED_WORKFLOW_PATH), 'utf8');
+    expect(() => producerPinVerifier.assertEnvironmentProducerWorkflow(workflow)).not.toThrow();
+    for (const replacement of [
+      'name: ${{ inputs.env }}',
+      "name: ${{ needs.build.outputs.github_environment || 'eai-generated-preview' }}",
+    ]) {
+      expect(() => producerPinVerifier.assertEnvironmentProducerWorkflow(
+        workflow.replace('name: ${{ needs.build.outputs.github_environment }}', replacement),
+      )).toThrow('validated dispatch build outputs');
+    }
+    expect(() => producerPinVerifier.assertEnvironmentProducerWorkflow(workflow.replaceAll(
+      'DEPLOY_ENVIRONMENT: ${{ needs.build.outputs.deployment_environment }}', 'DEPLOY_ENVIRONMENT: ${{ inputs.env }}',
+    ))).toThrow('validated dispatch build outputs');
+    expect(() => producerPinVerifier.assertEnvironmentProducerWorkflow(workflow.replace(
+      'github_environment: ${{ steps.dispatch-binding.outputs.github_environment }}', 'github_environment: ${{ inputs.env }}',
+    ))).toThrow('validated dispatch build outputs');
+  });
+
+  test('installed collector emits only a fully validated deployment environment', async () => {
+    const project = await temporaryDirectory('eai-installed-environment-');
+    await writeFile(join(project, 'eai.runtime.json'), '{}\n');
+    await promisify(execFile)('git', ['init', '-q'], { cwd: project });
+    await promisify(execFile)('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '--allow-empty', '-m', 'fixture'], { cwd: project });
+    const commit = (await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: project })).stdout.trim();
+    const configHash = await buildManagedDeployConfigHash(project);
+    await installCanonicalManagedDeployFiles(project);
+    const collector = join(project, EAI_MANAGED_EVIDENCE_SCRIPT_PATH);
+    const output = join(project, 'validated-outputs');
+    const args = [collector, 'validate-dispatch', '--root', project, '--source-mode', 'eai-cli-generated',
+      '--app-key', 'fixture-app', '--tenant-id', 'company-1', '--target-tenant-id', 'runtime-1',
+      '--operation-id', `cli-managed-${'a'.repeat(32)}`, '--nonce', 'b'.repeat(64),
+      '--expected-config-hash', configHash, '--public-api-url', 'https://dev-api.au.myenterprise.ai/public',
+      '--commit', commit, '--workflow-sha', commit, '--github-output', output];
+    for (const environment of ['preview', 'dev', 'test', 'prod']) {
+      await writeFile(output, '');
+      await promisify(execFile)(process.execPath, [...args, '--environment', environment]);
+      expect(await readFile(output, 'utf8')).toBe(`deployment_environment=${environment}\ngithub_environment=eai-generated-${environment}\n`);
+    }
+    for (const invalid of [
+      ['--environment', 'demo'],
+      ['--environment', 'preview', '--preferred-environment', 'prod'],
+      ['--environment', 'preview', '--preferred-environment', 'preview', '--legacy-environment', 'dev'],
+      ['--environment', 'preview', '--workflow-sha', 'f'.repeat(40)],
+    ]) {
+      await writeFile(output, '');
+      await expect(promisify(execFile)(process.execPath, [...args, ...invalid])).rejects.toMatchObject({ code: 1 });
+      expect(await readFile(output, 'utf8')).toBe('');
+    }
+  });
+
   test('requires the real producer release tag to resolve to the exact candidate commit', () => {
     const commit = 'c'.repeat(40);
     const tagObject = 'd'.repeat(40);
     const workflow = Buffer.from('name: reviewed workflow\n');
     const collector = Buffer.from('#!/usr/bin/env node\n');
     const pin = {
+      githubProducerIdentity: {
+        profile: 'github-environment-v1', templateCommitSha: commit,
+        workflowSha256: `sha256:${createHash('sha256').update(workflow).digest('hex')}`,
+      },
       candidate: {
         commit,
         workflow: {

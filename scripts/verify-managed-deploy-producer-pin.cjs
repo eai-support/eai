@@ -20,6 +20,38 @@ function assertCanonicalProducerPaths(pin) {
   }
 }
 
+function assertProducerIdentity(pin) {
+  const identity = pin.githubProducerIdentity;
+  if (
+    !identity ||
+    Object.keys(identity).sort().join(',') !== 'profile,templateCommitSha,workflowSha256' ||
+    identity.profile !== 'github-environment-v1' ||
+    !/^[a-f0-9]{40}$/.test(identity.templateCommitSha || '') ||
+    !/^sha256:[a-f0-9]{64}$/.test(identity.workflowSha256 || '') ||
+    identity.templateCommitSha !== pin.candidate?.commit ||
+    identity.workflowSha256 !== pin.candidate?.workflow?.sha256
+  ) {
+    throw new Error('GitHub environment producer identity must match the exact candidate commit and workflow digest.');
+  }
+}
+
+function assertEnvironmentProducerWorkflow(workflow) {
+  const handoffJobs = workflow.split('\n  handoff:\n');
+  const handoff = handoffJobs[1] || '';
+  if (
+    handoffJobs.length !== 2 ||
+    !/^    environment:\n      name: \$\{\{ needs\.build\.outputs\.github_environment \}\}$/m.test(handoff) ||
+    !/^      github_environment: \$\{\{ steps\.dispatch-binding\.outputs\.github_environment \}\}$/m.test(workflow) ||
+    !/^      deployment_environment: \$\{\{ steps\.dispatch-binding\.outputs\.deployment_environment \}\}$/m.test(workflow) ||
+    !/^        id: dispatch-binding$/m.test(workflow) ||
+    !workflow.includes('source-unknown-deployment-evidence.mjs validate-dispatch') ||
+    !/^          DEPLOY_ENVIRONMENT: \$\{\{ needs\.build\.outputs\.deployment_environment \}\}$/m.test(handoff) ||
+    /^          DEPLOY_ENVIRONMENT: (?!\$\{\{ needs\.build\.outputs\.deployment_environment \}\}$)/m.test(handoff)
+  ) {
+    throw new Error('OIDC handoff environment must consume only the validated dispatch build outputs.');
+  }
+}
+
 function resolveProducerReleaseCommit(tag, runGit = execFileSync) {
   let output;
   try {
@@ -100,6 +132,7 @@ function readProducerFilesAtCommit(commit, runGit = execFileSync) {
 }
 
 function assertProducerRelease(pin, runGit = execFileSync) {
+  assertProducerIdentity(pin);
   if (
     pin.releaseGate?.status !== 'released' ||
     !/^v\d+\.\d+\.\d+$/.test(pin.releaseGate?.tag || '') ||
@@ -155,6 +188,7 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
     fail('candidate commit must be exact.');
   try {
     assertCanonicalProducerPaths(pin);
+    assertProducerIdentity(pin);
   } catch (error) {
     fail(error instanceof Error ? error.message : String(error));
     return;
@@ -172,6 +206,11 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
     join(resourceRoot, pin.candidate.workflow.path),
     'utf8',
   );
+  try {
+    assertEnvironmentProducerWorkflow(workflow);
+  } catch (error) {
+    fail(error instanceof Error ? error.message : String(error));
+  }
   for (const input of [
     'source_mode',
     'app_key',
@@ -208,6 +247,8 @@ module.exports = {
   PRODUCER_FILES,
   PRODUCER_REMOTE,
   assertCanonicalProducerPaths,
+  assertProducerIdentity,
+  assertEnvironmentProducerWorkflow,
   assertProducerRelease,
   resolveProducerReleaseCommit,
   readProducerFilesAtCommit,

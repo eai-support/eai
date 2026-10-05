@@ -2,14 +2,14 @@
   "schemaVersion": "eai.managed-deploy-producer-pin.v1",
   "repository": "eai-support/eai-app-template",
   "candidate": {
-    "commit": "57806b6d279d299e41cbfd151ac50f8bb4623273",
+    "commit": "c6887cf724582682134624c58611f11b0a8d84e9",
     "workflow": {
       "path": ".github/workflows/eai-app.yml",
-      "sha256": "sha256:2a2d4d904546d121a5f26b9a191903afb8b5dc9e0d21857242b61701134fffc6"
+      "sha256": "sha256:b25a643e5618d9f1a870fe4ae6be4b75bd27d0af23b48fae4eb78c371825bb38"
     },
     "collector": {
       "path": "scripts/source-unknown-deployment-evidence.mjs",
-      "sha256": "sha256:c60592ac0d489da41400042f086015fb67f939783a9020ef36ef7a0f8e16238f"
+      "sha256": "sha256:5fe955129286d16b218c53a153c946815cc4352db4025125263ed71324de3090"
     }
   },
   "releaseGate": {
@@ -17,5 +17,10 @@
     "tag": null,
     "commit": null,
     "reason": "Publish the reviewed app-template candidate, then replace this gate with its new immutable tag and the same exact commit before releasing the CLI."
+  },
+  "githubProducerIdentity": {
+    "profile": "github-environment-v1",
+    "templateCommitSha": "c6887cf724582682134624c58611f11b0a8d84e9",
+    "workflowSha256": "sha256:b25a643e5618d9f1a870fe4ae6be4b75bd27d0af23b48fae4eb78c371825bb38"
   }
 }

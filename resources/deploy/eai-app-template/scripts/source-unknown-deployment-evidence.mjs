@@ -33,6 +33,7 @@ const MANAGED_ENVIRONMENTS = new Set([
   'prod',
   'demo',
 ]);
+const GITHUB_DEPLOYMENT_ENVIRONMENTS = new Set(['preview', 'dev', 'test', 'prod']);
 const GOVERNED_ROOT_FILES = ['eai.config.ts', 'eai.runtime.json'];
 const GOVERNED_CONFIG_ROOTS = ['src/eai.config'];
 const GENERATED_CONFIG_FILES = new Set([
@@ -169,6 +170,10 @@ function validateDeploymentBinding(options, mode) {
 
 function validateDispatch(options) {
   validateDeploymentBinding(options, sourceMode(options));
+  const environment = option(options, 'environment', 'preview');
+  if (!GITHUB_DEPLOYMENT_ENVIRONMENTS.has(environment)) {
+    throw new Error('GitHub deployment requires preview, dev, test, or prod.');
+  }
   const endpoint = option(options, 'publicApiUrl');
   const preferredEndpoint = option(options, 'preferredPublicApiUrl');
   const legacyEndpoint = option(options, 'legacyPublicApiUrl');
@@ -216,6 +221,11 @@ function validateDispatch(options) {
       'Dispatched commit, checked-out source, and workflow identity must match. Start a new operation after a branch update.',
     );
   }
+  // SECURITY: the OIDC job receives only the environment admitted by the exact dispatch validation.
+  appendOutputs(option(options, 'githubOutput', process.env.GITHUB_OUTPUT || ''), {
+    deployment_environment: environment,
+    github_environment: `eai-generated-${environment}`,
+  });
 }
 
 function parseArgs(argv) {
@@ -2096,37 +2106,71 @@ function readJson(path) {
   );
 }
 
-function responseStatus(payload) {
-  if (payload?.response && typeof payload.response === 'object') {
-    return {
-      status: payload.response.status,
-      requiresTenantInfra: payload.response.requiresTenantInfra,
-      deploymentRequestId: payload.response.deploymentRequestId,
-    };
+function validateHandoffReceipt(payload, expected) {
+  const record = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+  const response = record(payload?.response) ? payload.response : payload;
+  const request = response?.deploymentRequest;
+  const fields = ['sourceMode', 'tenantId', 'appScopeTenantId', 'targetTenantId', 'appKey',
+    'environment', 'operationId', 'commitSha', 'configHash', 'workflowPath', 'ref',
+    'workflowRunId', 'workflowBlobSha', 'collectorDigest', 'artifactDigest', 'imageDigest'];
+  if (!record(expected) || !record(response) || !record(request) ||
+      fields.some((key) => typeof expected[key] !== 'string' || !expected[key] || request[key] !== expected[key]) ||
+      !['preview', 'dev', 'test', 'prod'].includes(expected.environment) ||
+      !['source-unknown', 'eai-cli-generated'].includes(expected.sourceMode) ||
+      !/^[a-f0-9]{40}$/.test(expected.commitSha) ||
+      !/^[a-f0-9]{40}$/.test(expected.workflowBlobSha) ||
+      !/^sha256:[a-f0-9]{64}$/.test(expected.configHash) ||
+      !/^sha256:[a-f0-9]{64}$/.test(expected.collectorDigest) ||
+      !/^sha256:[a-f0-9]{64}$/.test(expected.artifactDigest) ||
+      !/(?:^|@)sha256:[a-f0-9]{64}$/.test(expected.imageDigest) ||
+      expected.workflowPath !== '.github/workflows/eai-app.yml' ||
+      !/^refs\/heads\/[^\s]+$/.test(expected.ref) ||
+      !/^[1-9][0-9]*$/.test(expected.workflowRunId) ||
+      !Number.isSafeInteger(expected.repositoryId) || expected.repositoryId < 1 ||
+      request.repositoryId !== expected.repositoryId ||
+      !record(expected.repo) || !record(request.repo) ||
+      typeof expected.repo.owner !== 'string' || !expected.repo.owner ||
+      typeof expected.repo.name !== 'string' || !expected.repo.name ||
+      request.repo.owner !== expected.repo.owner || request.repo.name !== expected.repo.name ||
+      !record(expected.imageArtifact) || !record(request.imageArtifact) ||
+      ['id', 'name', 'archiveDigest'].some((key) => request.imageArtifact[key] !== expected.imageArtifact[key]) ||
+      !Number.isSafeInteger(expected.imageArtifact.id) || expected.imageArtifact.id < 1 ||
+      expected.imageArtifact.name !== 'eai-generated-app-image' ||
+      !/^sha256:[a-f0-9]{64}$/.test(expected.imageArtifact.archiveDigest) ||
+      (expected.sourceMode === 'eai-cli-generated' && request.sourceOperationId !== expected.operationId) ||
+      request.status !== response.status || !record(request.handoff) || request.handoff.backend !== 'TenantInfra') {
+    throw new Error('Deployment handoff receipt does not match the exact dispatched source and artifact.');
   }
-  return {
-    status: payload?.status,
-    requiresTenantInfra: payload?.requiresTenantInfra,
-    deploymentRequestId: payload?.deploymentRequestId,
-  };
+  const safeId = (value) => typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._~:-]{0,255}$/.test(value);
+  if (response.status === 'handoff_pending') {
+    if (response.requiresTenantInfra !== true || request.requiresTenantInfra !== true ||
+        !safeId(request.requestId) || response.deploymentRequestId !== request.requestId ||
+        !['pending', 'not_configured'].includes(request.handoff.status)) {
+      throw new Error('Persisted deployment handoff receipt is invalid.');
+    }
+    return { status: 'handoff_pending', deploymentId: request.requestId };
+  }
+  // INVARIANT: configured transport alone is not proof that TenantInfra accepted this operation.
+  if (!['awaiting-runtime', 'accepted', 'queued', 'running', 'deployed-awaiting-readiness', 'active'].includes(response.status) ||
+      response.requiresTenantInfra !== false || request.requiresTenantInfra !== false ||
+      request.handoff.status !== 'configured' || !safeId(response.deploymentId) ||
+      request.deploymentId !== response.deploymentId || response.deploymentRequestId !== response.deploymentId) {
+    throw new Error('TenantInfra has not accepted the exact deployment handoff lifecycle.');
+  }
+  return { status: response.status, deploymentId: response.deploymentId };
 }
 
 function assertHandoffSubmitted(options) {
   const responsePath = resolve(option(options, 'response'));
   assertExists(responsePath, 'Deployment handoff response');
-  const actual = responseStatus(readJson(responsePath));
-  const deferredHandoff =
-    actual.status === 'handoff_pending' &&
-    actual.requiresTenantInfra === true &&
-    typeof actual.deploymentRequestId === 'string' &&
-    actual.deploymentRequestId.trim().length > 0;
-  if (actual.status !== 'accepted' && !deferredHandoff)
-    throw new Error(
-      `Expected accepted evidence or a persisted pending handoff, got ${actual.status || '<missing>'}.`,
-    );
+  const payload = readJson(responsePath);
+  const actual = validateHandoffReceipt(payload, readJson(option(options, 'binding')));
   process.stdout.write(
-    `${actual.status} ${actual.deploymentRequestId || ''}\n`,
+    `${actual.status} ${actual.deploymentId}\n`,
   );
+  if (actual.status === 'handoff_pending') {
+    throw new Error('TenantInfra handoff remains pending; retain and recover the existing operation.');
+  }
 }
 
 const { command, options } = parseArgs(process.argv.slice(2));
