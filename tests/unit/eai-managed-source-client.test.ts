@@ -246,12 +246,13 @@ describe('managed publication authority and readiness', () => {
       bundleSchemaVersion: replacement.schemaVersion, upload: undefined,
       repository: { ...operation().repository, id: 12345, nodeId: 'R_original' }, review: originalReview };
     const reviewRepair = { schemaVersion: 'eai.cli_managed_source_review_repair.v2' as const,
-      reason: 'reviewed-scaffold-test-refresh' as const, originalReview,
+      reason: 'reviewed-scaffold-evidence-refresh' as const, originalReview,
       originalBundleSha256: original.bundleSha256,
       originalFileChecksumsSha256: `sha256:${'f'.repeat(64)}`, originalDeletedPaths: [],
       replacementBundleSha256: replacement.bundleSha256,
       replacementFileCount: replacement.files.length, replacementTotalBytes: 3,
-      replacementPath: 'tests/source-unknown-deployment-evidence.test.mjs' };
+      replacementPath: 'tests/source-unknown-deployment-evidence.test.mjs',
+      replacementControlPath: 'scripts/source-unknown-deployment-evidence.mjs' };
     const prepared: CliManagedSourceOperation = { ...original, bundleSha256: replacement.bundleSha256,
       reviewRepair, upload: { ...operation().upload!, sha256: replacement.bundleSha256, purpose: 'review-repair' } };
     const repaired: CliManagedSourceOperation = { ...prepared, upload: undefined,
@@ -270,11 +271,12 @@ describe('managed publication authority and readiness', () => {
     }));
     expect(upload).toHaveBeenCalledOnce();
 
-    for (const drift of ['purpose', 'originalBundle', 'replacementPath', 'repository', 'head', 'preparedHead'] as const) {
+    for (const drift of ['purpose', 'originalBundle', 'replacementPath', 'replacementControlPath', 'repository', 'head', 'preparedHead'] as const) {
       const altered = structuredClone(prepared);
       if (drift === 'purpose') delete altered.upload!.purpose;
       if (drift === 'originalBundle') altered.reviewRepair!.originalBundleSha256 = `sha256:${'9'.repeat(64)}`;
       if (drift === 'replacementPath') altered.reviewRepair!.replacementPath = 'src/app/page.tsx';
+      if (drift === 'replacementControlPath') altered.reviewRepair!.replacementControlPath = 'scripts/other.mjs';
       if (drift === 'repository') altered.repository.id = 999;
       if (drift === 'head') altered.reviewRepair!.originalReview.headSha = '9'.repeat(40);
       if (drift === 'preparedHead') altered.review!.headSha = '9'.repeat(40);
