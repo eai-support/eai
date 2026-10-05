@@ -67,9 +67,14 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
 
 /** SECURITY: recovery can replace only the exact unmerged review derived from the original partial bundle. */
 export interface CliManagedSourceReviewRepair {
-  schemaVersion: 'eai.cli_managed_source_review_repair.v1';
-  reason: 'legacy-partial-omission-deletions';
+  schemaVersion: 'eai.cli_managed_source_review_repair.v1' | 'eai.cli_managed_source_review_repair.v2';
+  reason: 'legacy-partial-omission-deletions' | 'reviewed-scaffold-test-refresh';
   originalReview: { number: number; headBranch: string; headSha: string; baseSha: string };
   originalFileChecksumsSha256: string;
   originalDeletedPaths: string[];
+  originalBundleSha256?: string;
+  replacementBundleSha256?: string;
+  replacementFileCount?: number;
+  replacementTotalBytes?: number;
+  replacementPath?: string;
 }

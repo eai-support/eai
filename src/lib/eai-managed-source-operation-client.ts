@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
-import { ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
+import { CLI_MANAGED_SOURCE_LIMITS, ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type {
   CliManagedSourceOperation,
@@ -103,19 +103,31 @@ export function validateCliManagedSourceOperation(
   if (value.reviewRepair) {
     const repair = value.reviewRepair;
     const original = repair.originalReview;
-    if ((value.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== 'eai.cli_managed_source_bundle.v1'
+    const v1 = repair.schemaVersion === 'eai.cli_managed_source_review_repair.v1';
+    const v2 = repair.schemaVersion === 'eai.cli_managed_source_review_repair.v2';
+    if ((v1 && ((value.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== 'eai.cli_managed_source_bundle.v1'
       || Object.keys(repair).sort().join(',') !== 'originalDeletedPaths,originalFileChecksumsSha256,originalReview,reason,schemaVersion'
-      || repair.schemaVersion !== 'eai.cli_managed_source_review_repair.v1'
       || repair.reason !== 'legacy-partial-omission-deletions'
+      || !Array.isArray(repair.originalDeletedPaths) || repair.originalDeletedPaths.length < 1 || repair.originalDeletedPaths.length > 500
+      || repair.originalDeletedPaths.some((path, i, paths) => typeof path !== 'string'
+        || !isManagedAppSourcePath(path) || (i > 0 && path <= paths[i - 1]))))
+      || (v2 && (value.bundleSchemaVersion !== 'eai.cli_managed_source_bundle.v2'
+        || Object.keys(repair).sort().join(',') !== 'originalBundleSha256,originalDeletedPaths,originalFileChecksumsSha256,originalReview,reason,replacementBundleSha256,replacementFileCount,replacementPath,replacementTotalBytes,schemaVersion'
+        || repair.reason !== 'reviewed-scaffold-test-refresh'
+        || repair.originalBundleSha256 === value.bundleSha256
+        || !/^sha256:[a-f0-9]{64}$/.test(repair.originalBundleSha256 || '')
+        || repair.replacementBundleSha256 !== value.bundleSha256
+        || !Number.isSafeInteger(repair.replacementFileCount) || repair.replacementFileCount! < 1 || repair.replacementFileCount! > CLI_MANAGED_SOURCE_LIMITS.maxFiles
+        || !Number.isSafeInteger(repair.replacementTotalBytes) || repair.replacementTotalBytes! < 1 || repair.replacementTotalBytes! > CLI_MANAGED_SOURCE_LIMITS.maxTotalBytes
+        || repair.replacementPath !== 'tests/source-unknown-deployment-evidence.test.mjs'
+        || !Array.isArray(repair.originalDeletedPaths) || repair.originalDeletedPaths.length !== 0))
+      || (!v1 && !v2)
       || !original || Object.keys(original).sort().join(',') !== 'baseSha,headBranch,headSha,number'
       || !Number.isSafeInteger(original.number) || original.number < 1
       || original.headBranch !== `eai-cli/${value.operationId}`
       || !/^[a-f0-9]{40}$/.test(original.headSha) || !/^[a-f0-9]{40}$/.test(original.baseSha)
-      || !/^sha256:[a-f0-9]{64}$/.test(repair.originalFileChecksumsSha256)
-      || !Array.isArray(repair.originalDeletedPaths) || repair.originalDeletedPaths.length < 1 || repair.originalDeletedPaths.length > 500
-      || repair.originalDeletedPaths.some((path, i, paths) => typeof path !== 'string'
-        || !isManagedAppSourcePath(path) || (i > 0 && path <= paths[i - 1]))) {
-      throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Review repair does not bind a bounded original partial-source review.');
+      || !/^sha256:[a-f0-9]{64}$/.test(repair.originalFileChecksumsSha256)) {
+      throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Review repair does not bind the original review and bounded replacement.');
     }
   }
   if (value.upload?.purpose !== undefined && (value.upload.purpose !== 'review-repair'

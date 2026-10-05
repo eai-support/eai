@@ -6,7 +6,7 @@ import * as source from '../../src/lib/eai-managed-source.js';
 import * as recovery from '../../src/commands/eai-managed-deploy-recovery.js';
 import * as output from '../../src/commands/eai-managed-deploy-output.js';
 import { resumeManagedSource } from '../../src/commands/eai-managed-deploy-managed-source.js';
-import { recoverLegacyCliManagedSourceReview } from '../../src/lib/eai-managed-source-publication-client.js';
+import { recoverLegacyCliManagedSourceReview, recoverReviewedCliManagedSourceEvidence } from '../../src/lib/eai-managed-source-publication-client.js';
 import type { ManagedDeployExecutionContext } from '../../src/commands/eai-managed-deploy-contract.js';
 import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
@@ -89,7 +89,7 @@ describe('actor-bound GitHub linking', () => {
   test('resumes the named handoff without creating another session', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     const create = vi.spyOn(client, 'createCliManagedGithubLinkSession');
-    vi.spyOn(client, 'getCliManagedGithubLinkSession').mockResolvedValue(response(session()));
+    vi.spyOn(client, 'getCliManagedGithubLinkSession').mockImplementation(async () => response(session()));
     await verifyCliGithubIdentity(client, scope, { sessionId: 'github-link-123', interactive: false, timeoutMs: 1000 });
     expect(create).not.toHaveBeenCalled();
   });
@@ -185,8 +185,8 @@ describe('managed publication authority and readiness', () => {
       review: { ...originalReview, headSha: '3'.repeat(40) } };
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'getCliManagedGithubLinkSession').mockResolvedValue(response(session()));
-    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(prepared));
-    vi.spyOn(client, 'getCliManagedSourceOperation').mockResolvedValue(response(repaired));
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockImplementation(async () => response(prepared));
+    vi.spyOn(client, 'getCliManagedSourceOperation').mockImplementation(async () => response(repaired));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
     const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
     return { client, original, prepared, repaired, prepare, upload };
@@ -234,6 +234,56 @@ describe('managed publication authority and readiness', () => {
       { ...bundle, schemaVersion: 'eai.cli_managed_source_bundle.v2' })).rejects.toBeInstanceOf(source.ManagedSourceError);
     expect(fixture.prepare).not.toHaveBeenCalled();
     expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test('explicit V2 repair preserves the original operation and PR while replacing only the reviewed test', async () => {
+    const replacement = { ...bundle, schemaVersion: 'eai.cli_managed_source_bundle.v2' as const,
+      bundleSha256: `sha256:${'e'.repeat(64)}`,
+      files: [{ ...bundle.files[0], path: 'tests/source-unknown-deployment-evidence.test.mjs' }] };
+    const originalReview = { number: 2, headBranch: `eai-cli/${operation().operationId}`,
+      headSha: '1'.repeat(40), baseSha: '2'.repeat(40) };
+    const original: CliManagedSourceOperation = { ...operation('pending_review'),
+      bundleSchemaVersion: replacement.schemaVersion, upload: undefined,
+      repository: { ...operation().repository, id: 12345, nodeId: 'R_original' }, review: originalReview };
+    const reviewRepair = { schemaVersion: 'eai.cli_managed_source_review_repair.v2' as const,
+      reason: 'reviewed-scaffold-test-refresh' as const, originalReview,
+      originalBundleSha256: original.bundleSha256,
+      originalFileChecksumsSha256: `sha256:${'f'.repeat(64)}`, originalDeletedPaths: [],
+      replacementBundleSha256: replacement.bundleSha256,
+      replacementFileCount: replacement.files.length, replacementTotalBytes: 3,
+      replacementPath: 'tests/source-unknown-deployment-evidence.test.mjs' };
+    const prepared: CliManagedSourceOperation = { ...original, bundleSha256: replacement.bundleSha256,
+      reviewRepair, upload: { ...operation().upload!, sha256: replacement.bundleSha256, purpose: 'review-repair' } };
+    const repaired: CliManagedSourceOperation = { ...prepared, upload: undefined,
+      review: { ...originalReview, headSha: '3'.repeat(40) } };
+    const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+    vi.spyOn(client, 'getCliManagedGithubLinkSession').mockImplementation(async () => response(session()));
+    const prepare = vi.spyOn(client, 'prepareCliManagedSource').mockImplementation(async () => response(prepared));
+    vi.spyOn(client, 'getCliManagedSourceOperation').mockImplementation(async () => response(repaired));
+    vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
+    const upload = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response({ status: 'pending_review' }));
+    expect(await recoverReviewedCliManagedSourceEvidence(client, scope, original, replacement)).toEqual(repaired);
+    expect(prepare).toHaveBeenCalledWith(scope.tenantId, scope.appKey, expect.objectContaining({
+      repairReview: true, bundleSchemaVersion: replacement.schemaVersion,
+      bundleSha256: replacement.bundleSha256,
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, original.bundleSha256),
+    }));
+    expect(upload).toHaveBeenCalledOnce();
+
+    for (const drift of ['purpose', 'originalBundle', 'replacementPath', 'repository', 'head', 'preparedHead'] as const) {
+      const altered = structuredClone(prepared);
+      if (drift === 'purpose') delete altered.upload!.purpose;
+      if (drift === 'originalBundle') altered.reviewRepair!.originalBundleSha256 = `sha256:${'9'.repeat(64)}`;
+      if (drift === 'replacementPath') altered.reviewRepair!.replacementPath = 'src/app/page.tsx';
+      if (drift === 'repository') altered.repository.id = 999;
+      if (drift === 'head') altered.reviewRepair!.originalReview.headSha = '9'.repeat(40);
+      if (drift === 'preparedHead') altered.review!.headSha = '9'.repeat(40);
+      prepare.mockResolvedValueOnce(response(altered));
+      upload.mockClear();
+      await expect(recoverReviewedCliManagedSourceEvidence(client, scope, original, replacement))
+        .rejects.toBeInstanceOf(source.ManagedSourceError);
+      expect(upload).not.toHaveBeenCalled();
+    }
   });
 
   test('keeps idempotency stable for the exact source and different across actors or deployment scopes', () => {

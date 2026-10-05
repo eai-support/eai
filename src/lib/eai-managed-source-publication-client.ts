@@ -161,6 +161,73 @@ export async function recoverLegacyCliManagedSourceReview(
   return uploadCliManagedSource(client, scope, link, bundle, prepared);
 }
 
+/** SECURITY: a V2 retry may replace only the reviewed scaffold test on the original unmerged PR. */
+export async function recoverReviewedCliManagedSourceEvidence(
+  client: PlatformAPIClient,
+  scope: CliManagedSourceScope,
+  operation: CliManagedSourceOperation,
+  bundle: CliManagedSourceBundle,
+): Promise<CliManagedSourceOperation> {
+  const original = validateCliManagedSourceOperation(operation, scope);
+  if (bundle.schemaVersion !== 'eai.cli_managed_source_bundle.v2'
+    || !bundle.files.some(file => file.path === 'tests/source-unknown-deployment-evidence.test.mjs')
+    || (original.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') !== bundle.schemaVersion
+    || original.status !== 'pending_review' || !original.githubLinkSessionId
+    || !original.review || original.review.mergedSha || original.deployment
+    || original.repository.private !== true || !original.repository.id || !original.repository.nodeId
+    || original.templateCommitSha !== bundle.templateCommitSha || original.configHash !== bundle.configHash
+    || (original.reviewRepair && original.reviewRepair.schemaVersion !== 'eai.cli_managed_source_review_repair.v2')) {
+    throw new ManagedSourceError('MANAGED_SOURCE_RECOVERY_UNAVAILABLE', 'Only the original unmerged V2 scaffold review can request evidence-test repair.');
+  }
+  const originalBundleSha256 = original.reviewRepair?.originalBundleSha256 ?? original.bundleSha256;
+  if (originalBundleSha256 === bundle.bundleSha256 && !original.reviewRepair) {
+    throw new ManagedSourceError('MANAGED_SOURCE_RECOVERY_UNAVAILABLE', 'The reviewed scaffold test has not changed; no replacement source was sent.');
+  }
+  if (original.reviewRepair && (original.bundleSha256 !== bundle.bundleSha256
+    || original.reviewRepair.replacementBundleSha256 !== bundle.bundleSha256)) {
+    throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'The local repair bundle differs from the sealed replacement.');
+  }
+  const link = validateCliGithubLinkSession(await responseSession(await client.getCliManagedGithubLinkSession(
+    scope.tenantId, scope.appKey, original.githubLinkSessionId, scope.targetTenantId, scope.environment,
+  )), scope, original.githubLinkSessionId, true);
+  if (link.status !== 'verified') throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Original GitHub identity is unavailable; no source was sent.');
+  validateCliManagedSourceOperation(original, scope, { verifiedGithubUser: link.verifiedGithubUser });
+  const prepared = validateCliManagedSourceOperation(await responseOperation(await client.prepareCliManagedSource(
+    scope.tenantId, scope.appKey, {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1', bundleSchemaVersion: bundle.schemaVersion,
+      repairReview: true, targetTenantId: scope.targetTenantId, environment: scope.environment,
+      templateCommitSha: bundle.templateCommitSha, bundleSha256: bundle.bundleSha256, configHash: bundle.configHash,
+      fileCount: bundle.files.length, totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, originalBundleSha256),
+      githubLinkSessionId: original.githubLinkSessionId,
+    },
+  )), scope, { operationId: original.operationId, templateCommitSha: original.templateCommitSha,
+    bundleSha256: bundle.bundleSha256, configHash: original.configHash, bundleSchemaVersion: bundle.schemaVersion,
+    githubLinkSessionId: original.githubLinkSessionId, verifiedGithubUser: original.verifiedGithubUser });
+  if (prepared.repository.owner !== original.repository.owner || prepared.repository.name !== original.repository.name
+    || prepared.repository.id !== original.repository.id || prepared.repository.nodeId !== original.repository.nodeId
+    || prepared.repository.private !== true || prepared.status !== 'pending_review' || prepared.deployment
+    || !prepared.review || prepared.review.mergedSha
+    || (['number', 'headBranch', 'headSha', 'baseSha'] as const).some(key => prepared.review![key] !== original.review![key])) {
+    throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'The original review or repository changed during repair preparation.');
+  }
+  if (!prepared.upload && prepared.reviewRepair?.schemaVersion === 'eai.cli_managed_source_review_repair.v2'
+    && original.reviewRepair && JSON.stringify(prepared.reviewRepair) === JSON.stringify(original.reviewRepair)) return prepared;
+  const repair = prepared.reviewRepair;
+  if (!repair || repair.schemaVersion !== 'eai.cli_managed_source_review_repair.v2'
+    || prepared.upload?.purpose !== 'review-repair'
+    || repair.originalBundleSha256 !== originalBundleSha256
+    || repair.replacementBundleSha256 !== bundle.bundleSha256
+    || repair.replacementFileCount !== bundle.files.length
+    || repair.replacementTotalBytes !== bundle.files.reduce((total, file) => total + file.size, 0)
+    || (['number', 'headBranch', 'headSha', 'baseSha'] as const).some(key =>
+      (original.reviewRepair?.originalReview ?? original.review!)[key] !== repair.originalReview[key as keyof typeof repair.originalReview])
+    || (original.reviewRepair && JSON.stringify(original.reviewRepair) !== JSON.stringify(repair))) {
+    throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'V2 repair authority does not match the original review and replacement bundle; no source was sent.');
+  }
+  return uploadCliManagedSource(client, scope, link, bundle, prepared);
+}
+
 /** Persist original operation recovery authority before submitting bytes to the verified Portal origin. */
 export async function submitCliManagedSource(
   client: PlatformAPIClient,

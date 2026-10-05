@@ -7,6 +7,7 @@ import {
   pollCliManagedSource,
   recoverAcceptedCliManagedSourceUpload,
   recoverLegacyCliManagedSourceReview,
+  recoverReviewedCliManagedSourceEvidence,
   resumeCliManagedSourceUpload,
   submitCliManagedSource,
 } from "../lib/eai-managed-source-client.js";
@@ -53,6 +54,15 @@ export async function resumeManagedSource(
       'The original review has no protected local retry authority.', `Restore its original recovery authority before retrying ${operationId}.`);
     const { bundle } = await buildCliManagedSourceBundle(context.root);
     current = await recoverLegacyCliManagedSourceReview(client, managedScope, current, bundle);
+  }
+  if (options.retry && current.status === 'pending_review' && current.review
+    && current.repository.id && current.repository.nodeId
+    && (!current.reviewRepair || current.upload?.purpose === 'review-repair')
+    && current.bundleSchemaVersion === 'eai.cli_managed_source_bundle.v2') {
+    if (missingCliSourceRetryAuthority) fail('RETRY_AUTHORITY_UNAVAILABLE',
+      'The original review has no protected local retry authority.', `Restore its original recovery authority before retrying ${operationId}.`);
+    const { bundle } = await buildCliManagedSourceBundle(context.root);
+    current = await recoverReviewedCliManagedSourceEvidence(client, managedScope, current, bundle);
   }
   if (
     options.retry &&
