@@ -56,6 +56,7 @@ const producerPinVerifier = requireFromTest(
     pin: Record<string, unknown>,
     runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
   ) => void;
+  assertLinkedTemplateRelease: (pin: Record<string, unknown>, linkedSources: Record<string, unknown>) => void;
   resolveProducerReleaseCommit: (
     tag: string,
     runGit?: (command: string, args: string[], options?: unknown) => string | Buffer,
@@ -964,6 +965,30 @@ describe('EAI managed deployment helpers', () => {
         },
       }),
     ).toThrow(/release is blocked/);
+  });
+
+  test('requires the linked app template release to match the managed deployment producer', () => {
+    const commit = 'c'.repeat(40);
+    const pin = { candidate: { commit }, releaseGate: { tag: 'v9.9.9' } };
+    const linkedSources = {
+      schemaVersion: 1,
+      appTemplate: {
+        repo: 'https://github.com/eai-support/eai-app-template.git',
+        version: 'v9.9.9',
+        commit,
+        packageLockSha256: 'a'.repeat(64),
+      },
+    };
+    expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
+    for (const appTemplate of [
+      { ...linkedSources.appTemplate, version: 'v1.0.2' },
+      { ...linkedSources.appTemplate, commit: 'd'.repeat(40) },
+      { ...linkedSources.appTemplate, repo: 'https://github.com/other/template.git' },
+      { ...linkedSources.appTemplate, packageLockSha256: 'not-a-digest' },
+    ]) {
+      expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, { ...linkedSources, appTemplate }))
+        .toThrow('linked app template must use the same released tag and commit');
+    }
   });
 
   test('requires producer pin entries to name only the canonical packaged paths', () => {

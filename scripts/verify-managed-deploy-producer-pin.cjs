@@ -187,6 +187,21 @@ function assertProducerRelease(pin, runGit = execFileSync) {
   }
 }
 
+function assertLinkedTemplateRelease(pin, linkedSources) {
+  const template = linkedSources?.appTemplate;
+  if (
+    linkedSources?.schemaVersion !== 1 ||
+    template?.repo !== PRODUCER_REMOTE ||
+    template?.version !== pin.releaseGate?.tag ||
+    template?.commit !== pin.candidate?.commit ||
+    !/^[a-f0-9]{64}$/.test(template?.packageLockSha256 || '')
+  ) {
+    throw new Error(
+      'linked app template must use the same released tag and commit as the managed deployment producer.',
+    );
+  }
+}
+
 function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
   const root = resolve(__dirname, '..');
   const resourceRoot = join(root, 'resources', 'deploy', 'eai-app-template');
@@ -242,6 +257,10 @@ function verifyProducerPin({ release = false, runGit = execFileSync } = {}) {
   if (release && !process.exitCode) {
     try {
       assertProducerRelease(pin, runGit);
+      const linkedSources = JSON.parse(
+        readFileSync(join(root, 'resources', 'linked-sources.json'), 'utf8'),
+      );
+      assertLinkedTemplateRelease(pin, linkedSources);
     } catch (error) {
       fail(error instanceof Error ? error.message : String(error));
     }
@@ -264,6 +283,7 @@ module.exports = {
   assertEnvironmentProducerWorkflow,
   assertProducerDispatchInputs,
   assertProducerRelease,
+  assertLinkedTemplateRelease,
   resolveProducerReleaseCommit,
   readProducerFilesAtCommit,
   verifyProducerPin,
