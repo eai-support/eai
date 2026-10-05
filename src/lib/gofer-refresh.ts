@@ -15,6 +15,7 @@ import {
 import type { GoferInstallOptions } from './gofer-installer.js';
 import type { GoferManagedFileState, ProjectManifest } from './project-manifest.js';
 import { saveProjectManifest } from './project-manifest.js';
+import { assertCliMayWriteProjectManifest } from './project-manifest.js';
 
 const execFileAsync = promisify(execFile);
 export const DEFAULT_GOFER_REPO_URL = 'https://github.com/eai-support/eai-gofer.git';
@@ -487,6 +488,7 @@ export async function planGoferRefresh(
   manifest: ProjectManifest | null,
   options: GoferInstallOptions = {},
 ): Promise<GoferRefreshPlan> {
+  await assertCliMayWriteProjectManifest(projectRoot);
   const resourcesSource = await resolveGoferResourcesSource();
   const bundle = resourcesSource.metadata;
   const desiredFiles = new Map<string, ManagedCandidate>();
@@ -675,6 +677,7 @@ export async function applyGoferRefresh(
   plan: GoferRefreshPlan,
   options: { readonly force?: boolean } = {},
 ): Promise<{ summary: GoferRefreshSummary; backupDirectory: string | null; manifest: ProjectManifest }> {
+  await assertCliMayWriteProjectManifest(plan.projectRoot);
   const force = options.force ?? false;
   const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   const backupRoot = join(plan.projectRoot, '.specify', '_backup', 'gofer-refresh', timestamp);
