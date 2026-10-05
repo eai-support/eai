@@ -120,7 +120,7 @@ describe('resource type diagnostics', () => {
     await client.createTenant({
       name: 'Root Tenant',
       slug: 'root-tenant',
-      domain: ['root.example.com'],
+      domain: 'root.example.com',
       homeRegion: 'eu',
     });
 
@@ -130,9 +130,8 @@ describe('resource type diagnostics', () => {
         method: 'POST',
         body: JSON.stringify({
           displayName: 'Root Tenant',
-          name: 'Root Tenant',
           slug: 'root-tenant',
-          domain: ['root.example.com'],
+          domain: 'root.example.com',
           usecase: 'generic',
           homeRegion: 'eu',
         }),

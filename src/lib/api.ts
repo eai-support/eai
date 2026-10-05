@@ -1924,7 +1924,7 @@ export class PlatformAPIClient {
     name: string;
     slug: string;
     parent?: string;
-    domain?: string[];
+    domain?: string;
     usecase?: TenantUsecase;
     industry?: string;
     starterTemplate?: string;
@@ -1947,10 +1947,8 @@ export class PlatformAPIClient {
 
     return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants`, 'POST', {
       displayName: data.name,
-      name: data.name,
       slug: data.slug,
-      parentTenant: data.parent,
-      domain: data.domain,
+      ...(data.domain ? { domain: data.domain } : {}),
       usecase: data.usecase || 'generic',
       ...(data.homeRegion ? { homeRegion: data.homeRegion } : {}),
       ...(data.industry ? { industry: data.industry } : {}),
