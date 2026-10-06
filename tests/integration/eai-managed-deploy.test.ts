@@ -364,7 +364,7 @@ describe('eai deploy app --target eai', () => {
     expect(receipt.bundleSha256).toBe(result.bundleSha256);
   });
 
-  test('requires browser verification before accepting the source choice', async () => {
+  test.each(['eai-managed', 'customer-owned'] as const)('requires browser verification before accepting the %s source choice', async source => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const identity = stubManagedOperation().getMockImplementation()!;
     const requests: string[] = [];
@@ -374,9 +374,12 @@ describe('eai deploy app --target eai', () => {
       return url.endsWith('/github-link-sessions') ? jsonResponse(linkedGitHubSession('pending')) : identity(input);
     }));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', source,
+      ...(source === 'customer-owned' ? ['--repo', 'enterprise/planning-portal', '--installation-id', '12345'] : []), '--format', 'json'], { from: 'user' });
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') } });
     expect(requests.some(url => url.endsWith('/preparations') || url.includes('/source-unknown/'))).toBe(false);
+    expect(requests.filter(url => url.endsWith('/github-link-sessions'))).toHaveLength(1);
+    expect(requests.some(url => url.includes('api.github.com'))).toBe(false);
   });
 
   test('rejects an unapproved PublicAPI origin before any authenticated request', async () => {

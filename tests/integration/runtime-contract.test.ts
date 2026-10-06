@@ -1,12 +1,12 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
-import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { validateRuntimeContract } from '../../src/lib/runtime-contract.js';
-import { runDeployDoctor } from '../../src/commands/deploy.js';
+import { deployCommand, runDeployDoctor } from '../../src/commands/deploy.js';
 
 const execFileAsync = promisify(execFile);
 const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
@@ -120,6 +120,66 @@ async function addProtectedReadinessSmoke(root: string): Promise<void> {
 describe('runtime contract validation and deploy doctor', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  test('own Azure setup and trigger use the customer workflow without EAI hosting requests', async () => {
+    const root = await createRuntimeProject();
+    const originalCwd = process.cwd();
+    const originalPath = process.env.PATH;
+    const originalLog = process.env.FAKE_GH_LOG;
+    const binDir = join(root, 'bin');
+    const ghLog = join(root, 'gh.log');
+    const fetchMock = vi.fn(() => { throw new Error('Own Azure must not request EAI hosting'); });
+    vi.stubGlobal('fetch', fetchMock);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    try {
+      await mkdir(binDir);
+      await writeFile(join(binDir, 'gh'), `#!/bin/sh
+printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
+case "$1 $2" in
+  'secret list') printf '[]\\n' ;;
+  'workflow run') exit 0 ;;
+  *) exit 91 ;;
+esac
+`);
+      await chmod(join(binDir, 'gh'), 0o755);
+      await writeFile(join(root, '.env.local'), 'NEXT_PUBLIC_APP_NAME=customer-azure\n');
+      process.env.PATH = `${binDir}:${originalPath ?? ''}`;
+      process.env.FAKE_GH_LOG = ghLog;
+      process.chdir(root);
+
+      await deployCommand.parseAsync(['setup', '--repo', 'customer/azure-app'], { from: 'user' });
+      const workflow = await readFile(join(root, '.github/workflows/deploy-demo.yml'), 'utf8');
+      expect(workflow).toContain('uses: azure/login@v2');
+      expect(workflow).toContain('az webapp deploy');
+      expect(workflow).toContain('client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID }}');
+      expect(workflow).toContain('subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID }}');
+      expect(workflow).not.toContain('source-unknown');
+      expect(workflow).not.toContain('cli-managed');
+
+      output.mockClear();
+      await deployCommand.parseAsync(['env', '--provider', 'azure', '--format', 'json'], { from: 'user' });
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+        provider: 'azure', validationStatus: 'pass',
+        requiredProtectedEnvNames: expect.arrayContaining(['AUTH_SECRET', 'ENTRA_CLIENT_SECRET']),
+      });
+      await deployCommand.parseAsync([
+        'trigger', '--repo', 'customer/azure-app', '--branch', 'customer-preview', '--format', 'json',
+      ], { from: 'user' });
+      expect((await readFile(ghLog, 'utf8')).trim().split('\n')).toEqual([
+        ...Array<string>(5).fill('secret list --repo customer/azure-app'),
+        'workflow run deploy-demo.yml --repo customer/azure-app --ref customer-preview',
+      ]);
+      expect(fetchMock).not.toHaveBeenCalled();
+    } finally {
+      process.chdir(originalCwd);
+      if (originalPath === undefined) delete process.env.PATH;
+      else process.env.PATH = originalPath;
+      if (originalLog === undefined) delete process.env.FAKE_GH_LOG;
+      else process.env.FAKE_GH_LOG = originalLog;
+      vi.unstubAllGlobals();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   test('validates a provider-neutral runtime contract with tenant/workflow keys', async () => {

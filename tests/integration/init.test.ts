@@ -219,6 +219,16 @@ describe("eai init", () => {
         tenantId: "parent", parentTenantId: "parent", verticalKey: "receipt-app",
       } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false, hasPrevPage: false }));
     });
+    const hostingSpies = [
+      vi.spyOn(PlatformAPIClient.prototype, "createCliManagedGithubLinkSession"),
+      vi.spyOn(PlatformAPIClient.prototype, "prepareCliManagedSource"),
+      vi.spyOn(PlatformAPIClient.prototype, "registerSourceUnknownApp"),
+      vi.spyOn(PlatformAPIClient.prototype, "setupSourceUnknownWorkflow"),
+      vi.spyOn(PlatformAPIClient.prototype, "submitSourceUnknownWorkflowEvidence"),
+      vi.spyOn(PlatformAPIClient.prototype, "requestSourceUnknownDeployment"),
+      vi.spyOn(PlatformAPIClient.prototype, "bootstrapSourceUnknownRuntime"),
+    ];
+    for (const spy of hostingSpies) spy.mockRejectedValue(new Error("Local init must not publish or request EAI hosting"));
     const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("controlled-init-exit"); });
     const output = captureConsole();
     try {
@@ -229,6 +239,7 @@ describe("eai init", () => {
       if (failScaffold) await expect(run).rejects.toThrow("controlled-init-exit"); else await run;
       expect(createSpy).toHaveBeenCalledTimes(select ? 0 : 1);
       expect(listSpy).toHaveBeenCalledTimes(select ? 1 : 0);
+      for (const spy of hostingSpies) expect(spy).not.toHaveBeenCalled();
       const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
       expect(receipt).toMatchObject({ status: "acknowledged", actorId: "actual-request-actor", parentTenantId: "parent",
         runtimeTenantId: "parent", enrollmentId: "original-enrollment", createdApp, createdChildTenant: false,
@@ -238,6 +249,7 @@ describe("eai init", () => {
     } finally {
       for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
       output.restore(); tenantSpy.mockRestore(); getTenantSpy.mockRestore(); capabilitySpy.mockRestore(); createSpy.mockRestore(); listSpy.mockRestore(); exitSpy.mockRestore();
+      for (const spy of hostingSpies) spy.mockRestore();
     }
   });
 
