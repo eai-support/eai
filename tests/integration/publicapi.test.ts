@@ -174,6 +174,27 @@ describe('eai publicapi', () => {
     expect(output).not.toContain('bodyText');
   });
 
+  test('keeps the server meaning of a root workspace conflict on the raw request path', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', message: 'A workspace with this slug already exists.', field: 'slug',
+    }), { status: 409 }));
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(publicApiCommand.parseAsync([
+      'post', '/v4/platform/tenants',
+      '--data', '{"displayName":"Root Workspace","slug":"root-workspace","homeRegion":"au"}', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    const output = outputSpy.mock.calls.flat().join('');
+    expect(output).toContain('"code": "TENANT_SLUG_CONFLICT"');
+    expect(output).toContain('A workspace with this slug already exists.');
+    expect(output).not.toContain('under this parent');
+    expect(output).not.toContain('"field"');
+  });
+
   test('includes machine-readable mutation remediation for a strict v4 405', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

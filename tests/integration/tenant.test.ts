@@ -966,6 +966,25 @@ describe('child workspace creation admission', () => {
     expect(headers.has('Prefer')).toBe(false);
   });
 
+  test('does not describe a root workspace conflict as a child conflict', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', message: 'A workspace with this slug already exists.', field: 'slug',
+    }), { status: 409 })));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--home-region', 'au', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = JSON.stringify(parseJsonOutput(outputSpy));
+    expect(output).toContain('TENANT_SLUG_CONFLICT');
+    expect(output).toContain('A workspace with this slug already exists.');
+    expect(output).not.toContain('under this parent');
+  });
+
   test('displays actionable immediate validation guidance in text output', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       error: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Rejected value: tax-file-secret',

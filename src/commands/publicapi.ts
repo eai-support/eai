@@ -5,7 +5,7 @@
 import { readFile } from 'node:fs/promises';
 import { Command } from 'commander';
 import { findProjectRoot } from '../lib/config.js';
-import { PlatformAPIClient, parseApiError, type PlatformMethod } from '../lib/api.js';
+import { PlatformAPIClient, isChildTenantCreateRequest, parseApiError, type PlatformMethod } from '../lib/api.js';
 import { normalizeFormat, makeSpinner } from '../lib/context.js';
 import { findGuidance } from '../lib/error-guidance/match.js';
 import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
@@ -149,7 +149,9 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
     const response = await client.requestPublicApi(requestPath, { method, body, params });
 
     if (!response.ok) {
-      const error = await parseApiError(response);
+      const error = await parseApiError(response, {
+        childTenantCreate: isChildTenantCreateRequest(method, requestPath, body),
+      });
       const guidance = findGuidance({
         operation: `${method} ${requestPath}`,
         status: error.status,

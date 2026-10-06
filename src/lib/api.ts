@@ -347,6 +347,26 @@ const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
   },
 };
 
+/** Request context that lets callers opt in to response guidance specific to one operation. */
+export interface ParseApiErrorContext {
+  childTenantCreate?: boolean;
+}
+
+const CHILD_TENANT_CREATE_PATH = /^\/v4\/platform\/tenants\/[^/?#]+\/children\/?$/;
+const PLATFORM_TENANT_CREATE_PATH = /^\/v4\/platform\/tenants\/?$/;
+
+/** Child creates use the parent's children route, or the tenant route with a parent in the body. */
+export function isChildTenantCreateRequest(method: string, path: string, body?: unknown): boolean {
+  if (method.toUpperCase() !== 'POST') return false;
+  const pathname = path.split(/[?#]/, 1)[0] ?? '';
+  if (CHILD_TENANT_CREATE_PATH.test(pathname)) return true;
+  if (!PLATFORM_TENANT_CREATE_PATH.test(pathname)) return false;
+  const parent = body && typeof body === 'object' && !Array.isArray(body)
+    ? (body as Record<string, unknown>).parentTenant
+    : undefined;
+  return typeof parent === 'string' && parent.trim() !== '';
+}
+
 function childTenantAdmissionError(status: number, body: unknown): ParsedApiError | undefined {
   if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
   const record = body as Record<string, unknown>;
@@ -601,8 +621,12 @@ function normalizePublicApiV4Path(path: string): string {
 /**
  * Extracts published validation locations or compatible FastAPI detail metadata
  * without returning rejected values or server-provided validation messages.
+ * Child-create guidance applies only when the caller identifies that request.
  */
-export async function parseApiError(response: Response): Promise<ParsedApiError> {
+export async function parseApiError(
+  response: Response,
+  context: ParseApiErrorContext = {},
+): Promise<ParsedApiError> {
   const bodyText = await response.text();
   const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
   const safeBodyText = validationCode ? {} : { bodyText };
@@ -631,7 +655,9 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
       invalidFields?: ValidationFieldIssue[];
     };
 
-    const admissionError = childTenantAdmissionError(response.status, body);
+    const admissionError = context.childTenantCreate
+      ? childTenantAdmissionError(response.status, body)
+      : undefined;
     if (admissionError) return admissionError;
 
     const publishedValidationMessage = Array.isArray(body.invalidFields)

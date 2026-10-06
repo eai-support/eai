@@ -4,7 +4,7 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { PlatformAPIClient, parseApiError } from '../../src/lib/api.js'
+import { PlatformAPIClient, isChildTenantCreateRequest, parseApiError } from '../../src/lib/api.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
@@ -91,10 +91,33 @@ describe('PlatformAPIClient', () => {
       { detail: { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' } },
       { detail: { error: code, message: 'tax-file-secret', details: { field, input: 'tax-file-secret' } } },
     ]) {
-      const parsed = await parseApiError(new Response(JSON.stringify(body), { status }))
+      const parsed = await parseApiError(new Response(JSON.stringify(body), { status }), { childTenantCreate: true })
       expect(parsed).toEqual({ status, code, field, message })
       expect(JSON.stringify(parsed)).not.toContain('tax-file-secret')
     }
+  })
+
+  test('keeps the server meaning of tenant codes outside a child-create request', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT',
+      message: 'A workspace with this slug already exists.',
+      field: 'slug',
+    }), { status: 409 }))
+    expect(parsed.code).toBe('TENANT_SLUG_CONFLICT')
+    expect(parsed.message).toBe('A workspace with this slug already exists.')
+    expect(parsed).not.toHaveProperty('field')
+  })
+
+  test.each([
+    ['POST', '/v4/platform/tenants/parent-tenant/children', undefined, true],
+    ['POST', '/v4/platform/tenants/parent-tenant/children/', undefined, true],
+    ['post', '/v4/platform/tenants', { parentTenant: 'parent-tenant' }, true],
+    ['POST', '/v4/platform/tenants', { slug: 'root-workspace' }, false],
+    ['POST', '/v4/platform/tenants', { parentTenant: '' }, false],
+    ['GET', '/v4/platform/tenants/parent-tenant/children', undefined, false],
+    ['POST', '/v4/platform/tenants/parent-tenant/apps', undefined, false],
+  ])('recognises only child-create requests (%s %s)', (method, path, body, expected) => {
+    expect(isChildTenantCreateRequest(method, path, body)).toBe(expected)
   })
 
   test('does not relay a caller-controlled field or arbitrary provider validation message', async () => {
@@ -102,7 +125,7 @@ describe('PlatformAPIClient', () => {
       error: 'TENANT_SLUG_INVALID',
       message: 'Rejected value: tax-file-secret',
       field: 'tax-file-secret',
-    }), { status: 422 }))
+    }), { status: 422 }), { childTenantCreate: true })
     expect(parsed).toEqual({
       status: 422,
       code: 'TENANT_SLUG_INVALID',

@@ -725,7 +725,7 @@ tenantCommand
       });
 
       if (!res.ok) {
-        const error = await parseApiError(res);
+        const error = await parseApiError(res, { childTenantCreate: Boolean(options.parent) });
         if (options.format === "json") {
           out.json({ ok: false, status: error.status, error });
         } else if (spinner) {
