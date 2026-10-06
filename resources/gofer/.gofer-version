@@ -347,11 +347,12 @@
       },
       {
         "target_path": "node-scripts/eai-app-template-readiness.mjs",
-        "source_path": ".specify/scripts/node/eai-app-template-readiness.mjs",
+        "source_path": "extension/resources/node-scripts/eai-app-template-readiness.mjs",
         "operation": "copy_exact_script",
         "base_sha256": null,
-        "result_sha256": "bb2c15ac1133f9c10b5f699ced16c4c04d271ddbd1a23a1f42936bb1b700b1c9",
-        "source_sha256": "bb2c15ac1133f9c10b5f699ced16c4c04d271ddbd1a23a1f42936bb1b700b1c9"
+        "result_sha256": "6a33b8494944b0c91c54dcde27ce55b50ffd45fe0e1c3f685b6493441ff50903",
+        "source_sha256": "6a33b8494944b0c91c54dcde27ce55b50ffd45fe0e1c3f685b6493441ff50903",
+        "source_commit": "529b69bf2d54ac6c1e66776f573983526a660dd4"
       }
     ],
     "source_base_commit": "2b2a2eb5cabc34f480260a3c20fbf3042e23a1dd"

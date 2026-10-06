@@ -104,24 +104,47 @@ function sourceFailure(code) {
   return { status: 'failed', code };
 }
 
+/** SECURITY: Resolve Windows npm shims to the selected package's Node entrypoint without a shell. */
+export async function resolveCliExecution(cli, platform = process.platform, searchPath = process.env.PATH || '') {
+  const args = ['deploy', 'source', 'validate', '--format', 'json'];
+  if (/\.(?:c?js|mjs)$/i.test(cli)) {
+    return { command: process.execPath, args: [path.resolve(cli), ...args] };
+  }
+  if (platform !== 'win32' || /\.exe$/i.test(cli)) return { command: cli, args };
+  const shimNames = cli === 'eai'
+    ? searchPath.split(path.delimiter).map((directory) => path.join(directory, 'eai.cmd'))
+    : [path.resolve(cli)];
+  for (const shim of shimNames) {
+    if (path.basename(shim).toLowerCase() !== 'eai.cmd' || !await exists(shim)) continue;
+    const directory = path.dirname(shim);
+    const packageRoots = [
+      path.join(directory, '@enterpriseai', 'cli'),
+      path.join(path.dirname(directory), '@enterpriseai', 'cli'),
+      path.join(directory, 'node_modules', '@enterpriseai', 'cli'),
+    ];
+    for (const packageRoot of packageRoots) {
+      try {
+        const manifest = await readJson(path.join(packageRoot, 'package.json'));
+        if (manifest.name !== '@enterpriseai/cli' || manifest.bin?.eai !== 'dist/index.js') continue;
+        const entrypoint = path.join(packageRoot, 'dist', 'index.js');
+        if (await exists(entrypoint)) {
+          return { command: process.execPath, args: [entrypoint, ...args] };
+        }
+      } catch { /* A shim without the selected CLI package cannot prove source readiness. */ }
+    }
+    return null;
+  }
+  return null;
+}
+
 /** INVARIANT: Reuse the selected CLI publication boundary without auth, publication, or source-content output. */
 async function checkManagedSourceReadiness(root, cli = 'eai') {
-  const args = ['deploy', 'source', 'validate', '--format', 'json'];
-  let command = cli;
-  let commandArgs = args;
-  if (/\.(?:c?js|mjs)$/i.test(cli)) {
-    command = process.execPath;
-    commandArgs = [path.resolve(cli), ...args];
-  } else if (process.platform === 'win32') {
-    // SECURITY: cmd shims receive only a quoted executable and fixed arguments, never shell syntax from a path.
-    if (/["%\!\r\n&|<>^]/.test(cli)) return sourceFailure('SOURCE_VALIDATOR_UNAVAILABLE');
-    command = process.env.ComSpec || 'cmd.exe';
-    commandArgs = ['/d', '/s', '/c', `""${cli}" ${args.join(' ')}"`];
-  }
+  const execution = await resolveCliExecution(cli);
+  if (!execution) return sourceFailure('SOURCE_VALIDATOR_UNAVAILABLE');
   let stdout;
   let exitCode = 0;
   try {
-    ({ stdout } = await execute(command, commandArgs, {
+    ({ stdout } = await execute(execution.command, execution.args, {
       cwd: root, encoding: 'utf8', timeout: 60_000, maxBuffer: 64 * 1024, windowsHide: true,
     }));
   } catch (error) {

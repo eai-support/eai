@@ -379,7 +379,7 @@ describe('eai deploy app --target eai', () => {
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'GITHUB_LINK_REQUIRED', message: expect.stringContaining('--github-link-session github-link-123') } });
     expect(requests.some(url => url.endsWith('/preparations') || url.includes('/source-unknown/'))).toBe(false);
     expect(requests.filter(url => url.endsWith('/github-link-sessions'))).toHaveLength(1);
-    expect(requests.some(url => url.includes('api.github.com'))).toBe(false);
+    expect(requests.some(url => new URL(url).hostname === 'api.github.com')).toBe(false);
   });
 
   test('rejects an unapproved PublicAPI origin before any authenticated request', async () => {

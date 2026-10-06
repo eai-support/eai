@@ -15,8 +15,8 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, relative } from "node:path";
-import { fileURLToPath } from "node:url";
+import { delimiter, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createTestEnvironment,
   type TestEnvironment,
@@ -59,7 +59,7 @@ const GOFER_OPTIONAL_INSTALLER_SHA256 = {
 } as const;
 const SOURCE_READINESS_COMMIT = "a2638c537cb2025bbcac2baed2f971875c00f3e3";
 const SOURCE_READINESS_SCRIPT_SHA256 =
-  "bb2c15ac1133f9c10b5f699ced16c4c04d271ddbd1a23a1f42936bb1b700b1c9";
+  "6a33b8494944b0c91c54dcde27ce55b50ffd45fe0e1c3f685b6493441ff50903";
 const SOURCE_READINESS_BLOCK_SHA256: Readonly<Record<string, string>> = {
   ".specify/commands/3_gofer_plan.md":
     "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
@@ -80,6 +80,7 @@ interface SourceReadinessOverlayFile {
   readonly base_sha256: string | null;
   readonly result_sha256: string;
   readonly source_block_sha256?: string;
+  readonly source_commit?: string;
   readonly insertion_anchor?: string;
   readonly insertion_side?: "before" | "after";
   readonly block_bytes?: number;
@@ -275,6 +276,8 @@ describe("eai gofer refresh", () => {
           "node-scripts/eai-app-template-readiness.mjs",
         );
         expect(file.result_sha256).toBe(SOURCE_READINESS_SCRIPT_SHA256);
+        expect(file.source_commit).toBe("529b69bf2d54ac6c1e66776f573983526a660dd4");
+        expect(file.source_path).toBe("extension/resources/node-scripts/eai-app-template-readiness.mjs");
       } else {
         const anchor = Buffer.from(file.insertion_anchor!);
         const anchorIndex = bundled.indexOf(anchor);
@@ -324,6 +327,46 @@ describe("eai gofer refresh", () => {
     );
     expect(packageManifest.files).toContain("resources");
   });
+
+  test("resolves Windows npm shims to Node without executing shim text or ComSpec", async () => {
+    const directory = join(env.dir, "CLI path & %literal%");
+    const packageRoot = join(directory, "node_modules", "@enterpriseai", "cli");
+    const entrypoint = join(packageRoot, "dist", "index.js");
+    const marker = join(env.dir, "shell-was-executed");
+    await mkdir(join(packageRoot, "dist"), { recursive: true });
+    await writeFile(join(directory, "eai.cmd"), `echo unsafe > "${marker}"`);
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "@enterpriseai/cli", bin: { eai: "dist/index.js" } }));
+    await writeFile(entrypoint, "console.log(JSON.stringify({args:process.argv.slice(2),cwd:process.cwd()}));");
+    const moduleUrl = pathToFileURL(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs")).href;
+    const result = await runChild(process.execPath, ["--input-type=module", "--eval", `
+      import {resolveCliExecution} from ${JSON.stringify(moduleUrl)};
+      import {execFileSync} from 'node:child_process';
+      const selected = await resolveCliExecution('eai', 'win32', ${JSON.stringify(directory)});
+      if (!selected || selected.command !== process.execPath) throw new Error('Expected Node entrypoint');
+      process.stdout.write(execFileSync(selected.command, selected.args, {cwd:${JSON.stringify(env.dir)},encoding:'utf8'}));
+    `], { cwd: env.dir, env: { ...process.env, ComSpec: `cmd.exe /c echo unsafe > "${marker}"` } });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ args: ["deploy", "source", "validate", "--format", "json"], cwd: await realpath(env.dir) });
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test.each(["missing-shim", "wrong-package", "wrong-bin", "missing-entrypoint"])(
+    "fails closed on Windows when the selected shim has %s", async (fault) => {
+      const directory = join(env.dir, "selected-cli");
+      const packageRoot = join(directory, "node_modules", "@enterpriseai", "cli");
+      await mkdir(join(packageRoot, "dist"), { recursive: true });
+      if (fault !== "missing-shim") await writeFile(join(directory, "eai.cmd"), "untrusted shim text");
+      await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: fault === "wrong-package" ? "unrelated-cli" : "@enterpriseai/cli", bin: { eai: fault === "wrong-bin" ? "alternate.js" : "dist/index.js" } }));
+      if (fault !== "missing-entrypoint") await writeFile(join(packageRoot, "dist", "index.js"), "");
+      const moduleUrl = pathToFileURL(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs")).href;
+      const result = await runChild(process.execPath, ["--input-type=module", "--eval", `
+        import {resolveCliExecution} from ${JSON.stringify(moduleUrl)};
+        console.log(JSON.stringify(await resolveCliExecution('eai', 'win32', ${JSON.stringify([directory, env.dir].join(delimiter))})));
+      `], { cwd: env.dir });
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toBeNull();
+    },
+  );
 
   test.each([
     {
