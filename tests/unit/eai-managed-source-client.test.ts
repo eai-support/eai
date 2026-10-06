@@ -727,6 +727,98 @@ describe('managed publication authority and readiness', () => {
     return { client, original, renewed, pending, read, link, createLink, prepare, build, persisted, token, upload };
   }
 
+  function expiredReviewRepairFixture(version: 'v1' | 'v2') {
+    const fixture = reviewRepairFixture();
+    const replacement = version === 'v1' ? bundle : { ...bundle,
+      schemaVersion: 'eai.cli_managed_source_bundle.v2' as const, bundleSha256: `sha256:${'e'.repeat(64)}`,
+      files: ['run.ps1', 'run.sh', 'tests/cross-platform-lifecycle.test.mjs',
+        'tests/source-unknown-deployment-evidence.test.mjs'].map(path => ({ ...bundle.files[0], path })) };
+    const repair = version === 'v1' ? fixture.prepared.reviewRepair! : {
+      schemaVersion: 'eai.cli_managed_source_review_repair.v2' as const,
+      reason: 'reviewed-scaffold-evidence-refresh' as const, originalReview: fixture.original.review!,
+      originalBundleSha256: bundle.bundleSha256, originalFileChecksumsSha256: `sha256:${'f'.repeat(64)}`,
+      originalDeletedPaths: [], replacementBundleSha256: replacement.bundleSha256,
+      replacementFileCount: replacement.files.length, replacementTotalBytes: 12,
+      replacementPaths: ['run.ps1', 'run.sh', 'tests/cross-platform-lifecycle.test.mjs',
+        'tests/source-unknown-deployment-evidence.test.mjs'],
+      replacementControlPath: 'scripts/source-unknown-deployment-evidence.mjs',
+    };
+    const expired: CliManagedSourceOperation = { ...fixture.original, bundleSchemaVersion: replacement.schemaVersion,
+      bundleSha256: replacement.bundleSha256, reviewRepair: repair, upload: undefined };
+    const renewed: CliManagedSourceOperation = { ...expired, upload: {
+      ...operation().upload!, sha256: replacement.bundleSha256, purpose: 'review-repair', ticket: 'renewed-review-ticket',
+    } };
+    const applied: CliManagedSourceOperation = { ...expired, review: { ...expired.review!, headSha: '3'.repeat(40) } };
+    const read = vi.mocked(fixture.client.getCliManagedSourceOperation)
+      .mockReset().mockResolvedValueOnce(response(expired)).mockImplementation(async () => response(applied));
+    fixture.prepare.mockResolvedValue(response(renewed));
+    const build = vi.spyOn(source, 'buildCliManagedSourceBundle').mockResolvedValue({ bundle: replacement, totalBytes: version === 'v1' ? 3 : 12 });
+    vi.spyOn(output, 'printManagedSourceCompletion').mockResolvedValue(undefined);
+    return { ...fixture, expired, renewed, applied, read, build, replacement };
+  }
+
+  test.each(['v1', 'v2'] as const)('renews an omitted expired %s review repair ticket and uploads the same sealed snapshot once', async version => {
+    const fixture = expiredReviewRepairFixture(version);
+    const execution = retryExecution(fixture.client, fixture.expired);
+    await resumeManagedSource(execution, fixture.expired.operationId);
+    expect(fixture.prepare).toHaveBeenCalledExactlyOnceWith(scope.tenantId, scope.appKey, expect.objectContaining({
+      repairReview: true, bundleSchemaVersion: fixture.replacement.schemaVersion,
+      bundleSha256: fixture.replacement.bundleSha256,
+      idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
+      githubLinkSessionId: fixture.expired.githubLinkSessionId,
+    }));
+    expect(fixture.upload).toHaveBeenCalledExactlyOnceWith(fixture.renewed.upload!.url, expect.objectContaining({
+      headers: expect.objectContaining({ 'X-EAI-Upload-Ticket': 'renewed-review-ticket' }),
+      body: JSON.stringify({ tenantId: scope.tenantId, appKey: scope.appKey,
+        targetTenantId: scope.targetTenantId, environment: scope.environment, bundle: fixture.replacement }),
+    }));
+    await resumeManagedSource(execution, fixture.expired.operationId);
+    expect(fixture.prepare).toHaveBeenCalledTimes(1);
+    expect(fixture.upload).toHaveBeenCalledTimes(1);
+    expect(fixture.build).toHaveBeenCalledExactlyOnceWith(execution.context.root);
+  });
+
+  test.each(['v1', 'v2'] as const)('already-applied %s review repair remains read-only without an upload ticket', async version => {
+    const fixture = expiredReviewRepairFixture(version);
+    fixture.read.mockReset().mockResolvedValue(response(fixture.applied));
+    await resumeManagedSource(retryExecution(fixture.client, fixture.applied), fixture.applied.operationId);
+    expect(fixture.build).not.toHaveBeenCalled();
+    expect(fixture.client.getCliManagedGithubLinkSession).not.toHaveBeenCalled();
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test.each(['v1', 'v2'] as const)('observing expired %s review repair without explicit retry sends no source', async version => {
+    const fixture = expiredReviewRepairFixture(version);
+    const execution = retryExecution(fixture.client, fixture.expired);
+    await resumeManagedSource({ ...execution, options: { ...execution.options, retry: undefined } }, fixture.expired.operationId);
+    expect(fixture.build).not.toHaveBeenCalled();
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test.each(['v1', 'v2'] as const)('expired %s repair cannot renew without the protected original retry authority', async version => {
+    const fixture = expiredReviewRepairFixture(version);
+    await expect(resumeManagedSource({ ...retryExecution(fixture.client, fixture.expired), missingCliSourceRetryAuthority: true }, fixture.expired.operationId))
+      .rejects.toMatchObject({ code: 'RETRY_AUTHORITY_UNAVAILABLE' });
+    expect(fixture.build).not.toHaveBeenCalled();
+    expect(fixture.prepare).not.toHaveBeenCalled();
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
+  test.each(['actor', 'target', 'repository', 'replacement'] as const)('expired V2 repair rejects changed prepared %s authority before upload', async changed => {
+    const fixture = expiredReviewRepairFixture('v2');
+    const prepared = structuredClone(fixture.renewed);
+    if (changed === 'actor') prepared.actorId = 'different-actor';
+    if (changed === 'target') prepared.targetTenantId = 'different-target';
+    if (changed === 'repository') prepared.repository.id = 999;
+    if (changed === 'replacement') prepared.reviewRepair!.replacementBundleSha256 = `sha256:${'9'.repeat(64)}`;
+    fixture.prepare.mockResolvedValue(response(prepared));
+    await expect(resumeManagedSource(retryExecution(fixture.client, fixture.expired), fixture.expired.operationId))
+      .rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(fixture.upload).not.toHaveBeenCalled();
+  });
+
   test.each(['accepted', 'publishing'] as const)('orchestrator renews a present expired %s ticket on the same operation and observes replay without a second upload', async status => {
     const fixture = retryFixture(status);
     const execution = retryExecution(fixture.client, fixture.original);

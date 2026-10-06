@@ -46,9 +46,14 @@ export async function resumeManagedSource(
       NEW_SOURCE_OPERATION_ACTION,
     );
   }
+  // INVARIANT: an expired ticket is omitted; only an advanced review head proves the sealed repair was applied.
+  const unappliedReviewRepair = current.reviewRepair && current.review
+    && (['number', 'headBranch', 'headSha', 'baseSha'] as const).every(
+      key => current.review![key] === current.reviewRepair!.originalReview[key],
+    );
   if (options.retry && current.status === 'pending_review' && current.review
     && current.repository.id && current.repository.nodeId
-    && (!current.reviewRepair || current.upload?.purpose === 'review-repair')
+    && (!current.reviewRepair || current.upload?.purpose === 'review-repair' || unappliedReviewRepair)
     && (current.bundleSchemaVersion ?? 'eai.cli_managed_source_bundle.v1') === 'eai.cli_managed_source_bundle.v1') {
     if (missingCliSourceRetryAuthority) fail('RETRY_AUTHORITY_UNAVAILABLE',
       'The original review has no protected local retry authority.', `Restore its original recovery authority before retrying ${operationId}.`);
@@ -57,7 +62,7 @@ export async function resumeManagedSource(
   }
   if (options.retry && current.status === 'pending_review' && current.review
     && current.repository.id && current.repository.nodeId
-    && (!current.reviewRepair || current.upload?.purpose === 'review-repair')
+    && (!current.reviewRepair || current.upload?.purpose === 'review-repair' || unappliedReviewRepair)
     && current.bundleSchemaVersion === 'eai.cli_managed_source_bundle.v2') {
     if (missingCliSourceRetryAuthority) fail('RETRY_AUTHORITY_UNAVAILABLE',
       'The original review has no protected local retry authority.', `Restore its original recovery authority before retrying ${operationId}.`);
