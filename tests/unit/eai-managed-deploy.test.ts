@@ -744,10 +744,10 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb' },
+      candidate: { commit: 'b4121d60a5ab382d0ba2859939e0b2e4043f8cec' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb',
+        templateCommitSha: 'b4121d60a5ab382d0ba2859939e0b2e4043f8cec',
         workflowSha256: 'sha256:e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb',
       },
       releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
