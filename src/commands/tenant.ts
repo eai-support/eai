@@ -714,11 +714,14 @@ tenantCommand
       });
 
       if (!res.ok) {
-        const body = await res.text();
-        if (spinner) {
-          spinner.fail(`${res.status}: ${body}`);
+        const error = await parseApiError(res);
+        if (options.format === "json") {
+          out.json({ ok: false, status: error.status, error });
+        } else if (spinner) {
+          const prefix = error.code ? `${error.code}: ` : "";
+          spinner.fail(`${error.status}: ${prefix}${error.message}`);
         } else {
-          process.stderr.write(`${body || res.statusText}\n`);
+          out.error(error.message);
         }
         process.exit(1);
       }

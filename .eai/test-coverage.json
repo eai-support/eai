@@ -91,7 +91,7 @@
         },
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and deployed read-only CLI smoke.",
           "owned_paths": [
             "src/**",
             "tests/**",

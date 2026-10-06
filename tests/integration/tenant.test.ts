@@ -929,6 +929,83 @@ describe('tenant list filtering', () => {
   });
 });
 
+describe('child workspace creation admission', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant', displayName: 'Parent Workspace', slug: 'parent-tenant', isActive: true, homeRegion: 'au',
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+  });
+
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
+  ])('emits a structured immediate $status rejection without creating or bootstrapping a workspace', async ({ status, code, field, message }) => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({
+      error: code, message: 'Rejected value: tax-file-secret', details: { field, input: 'tax-file-secret' },
+    }), { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const refreshSpy = vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus');
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual({ ok: false, status, error: { status, code, field, message } });
+    expect(JSON.stringify([...outputSpy.mock.calls, ...stderrSpy.mock.calls])).not.toContain('tax-file-secret');
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.has('Prefer')).toBe(false);
+  });
+
+  test('displays actionable immediate validation guidance in text output', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Rejected value: tax-file-secret',
+    }), { status: 422 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain('TENANT_SLUG_INVALID');
+    expect(output).toContain('lowercase kebab-case');
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('accepts synchronous existing-child reuse without opting in to an operation', async () => {
+    const tenant = { doc: { id: 'existing-child', slug: 'child-workspace' }, reused: true };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify(tenant), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'existing-child', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: true,
+    } });
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual(expect.objectContaining({ tenant, bootstrap: null, bootstrapError: null }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Prefer')).toBe(false);
+  });
+});
+
 describe('tenant delete hard purge contract', () => {
   test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
     vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');

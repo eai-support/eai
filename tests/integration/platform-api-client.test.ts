@@ -74,6 +74,49 @@ describe('PlatformAPIClient', () => {
       message: 'Unprocessable Entity',
     })
   })
+
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'This portal slug is already in use. Choose a different portal slug.' },
+    { status: 422, code: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.' },
+    { status: 422, code: 'TENANT_PORTAL_SLUG_INVALID', field: 'portalSlug', message: 'Use a lowercase kebab-case portal slug, beginning and ending with a letter or number.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
+    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'Pass --home-region au|ca|eu with a supported home region.' },
+    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.' },
+  ])('keeps safe child-create guidance for $code/$field without rejected input', async ({ status, code, field, message }) => {
+    for (const body of [
+      { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' },
+      { error: code, message: 'tax-file-secret', details: { field, input: 'tax-file-secret' } },
+      { error: code, message: 'tax-file-secret', detail: { field, input: 'tax-file-secret' } },
+      { detail: { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' } },
+      { detail: { error: code, message: 'tax-file-secret', details: { field, input: 'tax-file-secret' } } },
+    ]) {
+      const parsed = await parseApiError(new Response(JSON.stringify(body), { status }))
+      expect(parsed).toEqual({ status, code, field, message })
+      expect(JSON.stringify(parsed)).not.toContain('tax-file-secret')
+    }
+  })
+
+  test('does not relay a caller-controlled field or arbitrary provider validation message', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_INVALID',
+      message: 'Rejected value: tax-file-secret',
+      field: 'tax-file-secret',
+    }), { status: 422 }))
+    expect(parsed).toEqual({
+      status: 422,
+      code: 'TENANT_SLUG_INVALID',
+      message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.',
+    })
+
+    const provider = await parseApiError(new Response(JSON.stringify({
+      error: 'PROVIDER_VALIDATION_FAILED',
+      message: 'Rejected value: tax-file-secret',
+      field: 'slug',
+    }), { status: 422 }))
+    expect(provider).toEqual({ status: 422, code: 'PROVIDER_VALIDATION_FAILED', message: 'Request validation failed' })
+    expect(JSON.stringify(provider)).not.toContain('tax-file-secret')
+  })
   test('caps published object type preflight lookups at the orchestrator limit', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

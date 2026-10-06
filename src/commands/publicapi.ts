@@ -168,6 +168,7 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
           status: error.status,
           error: {
             code: error.code,
+            ...(error.field ? { field: error.field } : {}),
             message: error.message,
             bodyText: error.bodyText,
           },
