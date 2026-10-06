@@ -97,6 +97,17 @@ describe('PlatformAPIClient', () => {
     }
   })
 
+  test.each([
+    { status: 422, code: 'TENANT_SLUG_CONFLICT' },
+    { status: 409, code: 'TENANT_RENAME_CONFLICT' },
+  ])('leaves an unexpected $code/$status child-create error to the generic parser', async ({ status, code }) => {
+    const body = { error: code, message: 'Server explanation', field: 'slug' }
+    const scoped = await parseApiError(new Response(JSON.stringify(body), { status }), { childTenantCreate: true })
+    const generic = await parseApiError(new Response(JSON.stringify(body), { status }))
+    expect(scoped).toEqual(generic)
+    expect(scoped).not.toHaveProperty('field')
+  })
+
   test('keeps the server meaning of tenant codes outside a child-create request', async () => {
     const parsed = await parseApiError(new Response(JSON.stringify({
       error: 'TENANT_SLUG_CONFLICT',
