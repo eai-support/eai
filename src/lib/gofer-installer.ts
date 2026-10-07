@@ -1,15 +1,18 @@
-import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { constants, lstatSync, realpathSync, readdirSync } from 'node:fs';
 import {
   access,
   chmod,
   copyFile,
+  lstat,
   mkdir,
   readFile,
   readdir,
+  rename,
+  rm,
   writeFile,
 } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export type GoferWorkflowProfile = 'standard' | 'enterpriseai';
@@ -105,12 +108,14 @@ export const GOFER_RESOURCE_MAPPINGS: readonly GoferManagedResourceMapping[] = [
   { sourceSubdirectory: 'gemini', targetSegments: ['.gemini'] },
 ] as const;
 
+/** INVARIANT: install the release marker while leaving a workspace's model policy user-owned. */
 export async function installGoferResources(
   workspacePath: string,
   options: GoferInstallOptions = {},
 ): Promise<GoferInstallSummary> {
   const targetPath = resolve(workspacePath);
   const resourcesPath = resolveGoferResourcesPath();
+  const goferVersion = await readGoferResourceVersion(resourcesPath);
   const workflowProfile = options.workflowProfile ?? 'enterpriseai';
   const summary: MutableGoferInstallSummary = {
     copied: 0,
@@ -123,6 +128,7 @@ export async function installGoferResources(
   };
 
   await assertDirectory(resourcesPath);
+  await access(join(resourcesPath, 'templates', 'gofer-model-policy.yaml'), constants.R_OK);
   await createGoferDirectories(targetPath);
 
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
@@ -134,6 +140,9 @@ export async function installGoferResources(
       { makeExecutable: mapping.makeExecutable },
     );
   }
+
+  summary[await writeGoferVersionMarker(targetPath, goferVersion)] += 1;
+  summary[await copyDefaultModelPolicy(resourcesPath, targetPath)] += 1;
 
   summary.commands = await countFiles(join(resourcesPath, 'claude-commands'), '.md');
   summary.agents = await countFiles(join(resourcesPath, 'claude-agents'), '.md');
@@ -151,8 +160,114 @@ export async function installGoferResources(
 }
 
 export function resolveGoferResourcesPath(): string {
+  const override = process.env.EAI_GOFER_REFRESH_RESOURCES_PATH;
+  if (override !== undefined) return validateGoferResourceOverride(override);
   const moduleDir = dirname(fileURLToPath(import.meta.url));
   return resolve(moduleDir, '..', '..', 'resources', 'gofer');
+}
+
+/** INVARIANT: workspace health must identify the exact installed Gofer release, never an inferred 0.0.0. */
+export async function readGoferResourceVersion(resourcesPath: string): Promise<string> {
+  let metadata: unknown;
+  try {
+    metadata = JSON.parse(await readFile(join(resourcesPath, '.gofer-version'), 'utf-8')) as unknown;
+  } catch {
+    throw new Error('Gofer resources are missing valid release metadata.');
+  }
+  const source = metadata !== null && typeof metadata === 'object'
+    ? metadata as { version?: unknown; describe?: unknown }
+    : {};
+  const version = typeof source.version === 'string'
+    ? source.version
+    : typeof source.describe === 'string'
+      ? source.describe.replace(/^v/, '').replace(/-\d+-g[a-f0-9]+$/, '')
+      : '';
+  if (!/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error('Gofer resources have no exact release version.');
+  }
+  return version;
+}
+
+/** SECURITY: explicit local assets must be a complete regular tree; initial install and refresh use the same source. */
+export function validateGoferResourceOverride(path: string): string {
+  if (!isAbsolute(path) || realpathSync(path) !== path || !lstatSync(path).isDirectory()) {
+    throw new Error('Gofer resources override must be a canonical absolute regular directory.');
+  }
+  let files = 0;
+  const populated = new Set<string>();
+  const regularFiles = new Set<string>();
+  const containsFiles = (directory: string): boolean => {
+    let present = false;
+    for (const entry of readdirSync(directory)) {
+      const child = join(directory, entry);
+      const status = lstatSync(child);
+      if (status.isSymbolicLink() || (!status.isDirectory() && !status.isFile()) || (status.isFile() && status.nlink !== 1)) {
+        throw new Error('Gofer resources override cannot contain links or special files.');
+      }
+      if (status.isFile()) regularFiles.add(child);
+      if (++files > 16384) throw new Error('Gofer resources override exceeds its 16,384-entry limit.');
+      present = (status.isDirectory() ? containsFiles(child) : true) || present;
+    }
+    if (present) populated.add(directory);
+    return present;
+  };
+  if (!containsFiles(path)) throw new Error('Gofer resources override is empty.');
+  for (const sourceSubdirectory of [...GOFER_RESOURCE_MAPPINGS.map(({ sourceSubdirectory }) => sourceSubdirectory), 'instruction-templates']) {
+    const directory = join(path, sourceSubdirectory);
+    if (!populated.has(directory)) throw new Error(`Gofer resources override is incomplete: ${sourceSubdirectory}`);
+  }
+  for (const template of ['base/agents-base.md', 'base/claude-base.md', 'base/copilot-base.md',
+    'gofer/gofer-claude.md', 'gofer/gofer-copilot.md', 'workflow/principles.md', 'languages/typescript.md', 'languages/generic.md']) {
+    if (!regularFiles.has(join(path, 'instruction-templates', template))) throw new Error(`Gofer resources override is incomplete: ${template}`);
+  }
+  if (!regularFiles.has(join(path, '.gofer-version'))) throw new Error('Gofer resources override is incomplete: .gofer-version');
+  if (!regularFiles.has(join(path, 'templates', 'gofer-model-policy.yaml'))) {
+    throw new Error('Gofer resources override is incomplete: gofer-model-policy.yaml');
+  }
+  return path;
+}
+
+async function writeGoferVersionMarker(
+  workspacePath: string,
+  version: string,
+): Promise<'copied' | 'updated' | 'unchanged'> {
+  const target = join(workspacePath, '.specify', '.gofer-version');
+  let exists = false;
+  try {
+    const status = await lstat(target);
+    if (!status.isFile() || status.nlink !== 1) throw new Error('Gofer version marker must be a regular file.');
+    exists = true;
+    if (await readFile(target, 'utf-8') === `${version}\n`) return 'unchanged';
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  const staged = join(dirname(target), `.gofer-version.${randomUUID()}.tmp`);
+  try {
+    await writeFile(staged, `${version}\n`, {
+      flag: constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      mode: 0o600,
+    });
+    await rename(staged, target);
+  } finally {
+    await rm(staged, { force: true });
+  }
+  return exists ? 'updated' : 'copied';
+}
+
+async function copyDefaultModelPolicy(
+  resourcesPath: string,
+  workspacePath: string,
+): Promise<'copied' | 'unchanged'> {
+  const target = join(workspacePath, '.specify', 'memory', 'gofer-model-policy.yaml');
+  try {
+    const status = await lstat(target);
+    if (!status.isFile() || status.nlink !== 1) throw new Error('Gofer model policy must be a regular file.');
+    return 'unchanged';
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+  await copyFile(join(resourcesPath, 'templates', 'gofer-model-policy.yaml'), target, constants.COPYFILE_EXCL);
+  return 'copied';
 }
 
 async function assertDirectory(path: string): Promise<void> {

@@ -187,6 +187,52 @@ Accessibility:
   eai --no-color <command>
 ```
 
+## eai init --help
+
+```text
+Usage: eai init [options] [name]
+
+Scaffold a new application
+
+Arguments:
+  name                                        Name for the app (kebab-case)
+
+Options:
+  --from <repo>                               GitHub repo URL or local path for template (default: "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts                    Allow a custom template to run its Object Type generator (default: false)
+  --skip-prompts                              Use defaults without interactive prompts (default: false)
+  --current-dir                               Scaffold into the current directory instead of creating ./<name> (default: false)
+  --tenant <id>                               Main company workspace ID (compatibility alias for --company-workspace)
+  --company-workspace, --company-tenant <id>  Main company workspace ID that owns this app
+  --parent-tenant <id>                        Immediate parent company workspace ID for the new child company
+  --child-tenant <name>                       Create or reuse a child company workspace display name for the app runtime boundary
+  --create-child-tenant                       Prompt for a child company workspace instead of using the selected company workspace
+  --no-gofer                                  Skip installing Gofer AI CLI assets
+  --no-install                                Skip installing the generated app dependencies
+  --package-profile <profile>                 Package profile to record for block catalog discovery: external, internal, or hybrid (default: "external")
+  --display-name <name>                       Display name for the app
+  --description <description>                 One-sentence description for the app
+  --binding-receipt <path>                    Write private init acknowledgement outside the project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>              Fresh UUID binding this invocation to its private receipt
+  --app-key <key>                             Bind the local project to an existing app instead of creating a new app
+  --template-version <tag>                    Scaffold from a specific published app-template release (for example v1.2.0)
+  --no-splash                                 Skip the interactive EAI wordmark
+  -h, --help                                  display help for command
+
+Gofer AI CLI assets are installed by default:
+  .specify/ commands, scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  AGENTS.md and .agents/skills for Google Antigravity and Codex CLI
+  .system/skills as a legacy Codex mirror
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
+
+Use --no-gofer only when you need a bare app scaffold.
+```
+
 ## eai update --help
 
 ```text
@@ -238,6 +284,75 @@ Notes:
   - `eai gofer refresh --check` previews safe repo-local Gofer asset updates.
   - `eai template check` previews app-template and UI drift without writing files.
   - Template and UI component changes are not auto-merged into existing repos yet.
+```
+
+## eai deploy app --help
+
+```text
+Usage: eai deploy app [options] <app-key>
+
+Deploy local app source through EAI-maintained or customer-owned GitHub to
+TenantInfra
+
+Arguments:
+  app-key                             Existing EAI app key
+
+Options:
+  --target <target>                   Hosting target (eai)
+  --tenant-id <id>                    Company tenant that owns the app
+                                      enrollment
+  --target-tenant-id <id>             Required exact tenant that receives the
+                                      deployed runtime
+  --repo <owner/name>                 Exact GitHub repository
+  --source <source>                   Source ownership
+                                      (eai-managed|customer-owned); required
+                                      without an interactive prompt
+  --github-link-session <session-id>  Resume the exact EAI-account GitHub
+                                      browser verification
+  --installation-id <id>              Exact EAI GitHub App installation ID
+  --branch <branch>                   Exact branch to bind and dispatch
+                                      (default: "main")
+  --workflow <path>                   Canonical EAI workflow path (default:
+                                      ".github/workflows/eai-app.yml")
+  --environment <environment>         Deployment environment (default:
+                                      "preview")
+  --commit <sha>                      Expected exact 40 character commit SHA
+  --resume <operation-id>             Read and wait for one exact existing
+                                      operation
+  --retry <operation-id>              Retry evidence handoff, resume dispatched
+                                      work, or start an undispatched operation
+  --wait                              Poll the exact operation until it reaches
+                                      a terminal status (default: true)
+  --no-wait                           Return after dispatch instead of polling
+                                      the exact operation
+  --timeout <seconds>                 Maximum exact-operation polling time
+                                      (default: "1200")
+  --format <format>                   Output format (text|json) (default:
+                                      "text")
+  --json                              Output raw JSON (deprecated, use --format
+                                      json) (default: false)
+  -h, --help                          display help for command
+
+Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
+```
+
+## eai deploy source validate --help
+
+```text
+Usage: eai deploy source validate [options]
+
+Check local app source for EAI-managed publication without publishing
+
+Options:
+  --project-dir <path>  Exact generated-app directory (defaults to the current
+                        project)
+  --format <format>     Output format (text|json) (default: "text")
+  -h, --help            display help for command
 ```
 
 ## eai errors --help
@@ -595,6 +710,28 @@ eai resources schema --tenant-id <workspace-id> --format json
 eai dev
 ```
 
+## Check Source Before EAI Hosting
+
+After building an app, check its source before choosing EAI-managed publication:
+
+```bash
+eai deploy source validate --format json
+```
+
+The check uses the same source guard as publication. It reads local files without
+signing in, publishing, or writing a deployment receipt. The upload includes the
+complete authored app: frontend and backend code, custom runners, tests, scripts,
+assets, documentation and ordinary config files. Executable script permissions
+are bound into the source digest and retained in GitHub. NCB's generation layout
+does not constrain Installer/CLI source.
+
+Deployment-owned Docker, workflow, platform authentication and tenant-binding
+controls remain protected. Credentials, dependencies, build caches and local
+agent state are excluded. A custom runtime needs an approved runtime contract;
+it cannot be silently replaced by the template runtime. The check reports
+unsupported controls and preserves your changes. A passing source check does
+not prove that the build, deployment or hosted readiness has completed.
+
 ## Object Type Identifiers
 
 Do not move every Object Type field to kebab-case. A definition keeps both a
@@ -660,6 +797,19 @@ Prefer product-shaped commands before `eai publicapi`:
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+For protected POSIX qualification, named `eai init <name> --skip-prompts` can
+optionally pair `--binding-receipt <absolute-path>` with
+`--binding-receipt-nonce <canonical-UUIDv4>`. The destination must be fresh, in
+an owner-only directory outside the project and Git trees. A pending reservation
+grants no creation ownership. An acknowledged `eai.init_app_binding.v1` record
+retains the original request gateway/actor, actual immutable enrollment and
+parent/runtime tenant IDs, and actual creation flags, including after later
+scaffold failure. Selected or concurrently reused apps keep false flags.
+Preserve an existing receipt and choose a fresh private path/nonce for a new
+invocation; an existing destination rejects before provider work. Keep this
+private evidence out of Git and source bundles. Normal init produces no extra
+binding receipt; Windows delivery requires separate evidence.
 
 ## Related Reference
 
@@ -864,8 +1014,6 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 # Examples
 
-import Link from '@docusaurus/Link';
-
 # Examples
 
 These examples show how the CLI, eai-gofer, and EAI App Template work together.
@@ -876,7 +1024,7 @@ These examples show how the CLI, eai-gofer, and EAI App Template work together.
 | ----------------------------------------- | --------------------------------------------------------------------------------------- |
 | [Build a Task Tracker](./task-tracker.md) | Scaffold an app, define Object Types, publish them, and build ResourceAPI-backed pages. |
 | [Add AI Chat](./ai-chat.md)               | Add streaming chat, document upload, and RAG indexing through template hooks.           |
-| <Link to="/scenarios/">Business Scenarios</Link> | Browse industry-specific workflows before deciding what to build. |
+| [Business Scenarios](/scenarios/) | Browse industry-specific workflows before deciding what to build. |
 
 ## Standard Loop
 

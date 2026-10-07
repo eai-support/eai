@@ -7,9 +7,22 @@
  */
 
 import { getAccessToken } from './auth.js';
+import {
+  isManagedDeploymentIdentifier,
+  isManagedScopeIdentifier,
+} from './eai-managed-identifiers.js';
+import { requireManagedPublicApiUrl } from './managed-public-api.js';
+import { captureProfileConfig, getActiveProfile, getProfileCaptureGeneration } from './profile.js';
 import { toObjectTypeSlug } from './utils.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
+/** Sanitized authority from the exact bearer and gateway used by an opted-in init request. */
+export interface InitRequestAuthority {
+  publicApiUrl: string;
+  actorId: string;
+}
+/** Captures sanitized exact-request identity once; the bearer secret never enters receipt evidence. */
+export type InitRequestAuthorityObserver = (authority: InitRequestAuthority) => void;
 type ResourceWhere = Record<string, unknown>;
 
 const PUBLIC_AI_PATH = '/v4/ai';
@@ -24,10 +37,44 @@ const PUBLIC_VERTICALS_DAISY_PATH = '/v4/verticals/daisy';
 const PUBLIC_WEBHOOKS_PATH = '/v4/webhooks';
 const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
 export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
+export const MANAGED_PUBLIC_REQUEST_TIMEOUT_MS = 30_000;
+export const MANAGED_SOURCE_UPLOAD_TIMEOUT_MS = 180_000;
+export const INIT_APP_CREATE_REQUEST_TIMEOUT_MS = 90_000;
+const managedResponseSignals = new WeakMap<Response, AbortSignal>();
+const managedTimeoutReasons = new WeakSet<object>();
+
+/** Distinguish this client's issued deadline from unrelated provider/caller aborts. */
+export function isManagedPublicRequestTimeout(error: unknown): boolean {
+  return typeof error === 'object' && error !== null && managedTimeoutReasons.has(error);
+}
+
+/** Bound the managed caller while retaining the issued signal's exact abort reason. */
+export async function awaitManagedRequestDeadline<T>(signal: AbortSignal, result: Promise<T>): Promise<T> {
+  signal.throwIfAborted();
+  return new Promise<T>((resolve, reject) => {
+    const abort = (): void => reject(signal.reason);
+    signal.addEventListener('abort', abort, { once: true });
+    result.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
+/** Native body reads may expose AbortError; retain the actual managed timeout reason. */
+export async function readManagedPublicResponseText(response: Response): Promise<string> {
+  const signal = managedResponseSignals.get(response);
+  try {
+    return signal ? await awaitManagedRequestDeadline(signal, response.text()) : await response.text();
+  } catch (error) {
+    if (signal?.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+    throw error;
+  }
+}
 
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
-  return fetch(`${baseUrl}${PUBLIC_API_REACHABILITY_PATH}`, {
+  const authorized = captureProfileConfig(getActiveProfile())?.managedDeploymentApiUrl !== undefined;
+  const endpoint = authorized ? requireManagedPublicApiUrl(baseUrl) : baseUrl;
+  return fetch(`${endpoint}${PUBLIC_API_REACHABILITY_PATH}`, {
     signal: AbortSignal.timeout(timeoutMs),
+    ...(authorized ? { redirect: 'error' as const } : {}),
   });
 }
 
@@ -166,6 +213,9 @@ export interface SourceUnknownAppRegistrationRequest {
   configPath?: string;
   runtimePath?: string;
   sourceMode?: 'source-unknown';
+  installationId?: number;
+  githubLinkSessionId?: string;
+  targetTenantId?: string;
   adoptionMode?: 'connect-existing' | 'adopted-observed';
   schemaProvenance?: SourceUnknownSchemaProvenance;
   observedDeployment?: {
@@ -180,33 +230,47 @@ export interface SourceUnknownAppRegistrationRequest {
   validationSummary?: Record<string, unknown>;
 }
 
+/** Immutable source binding used to issue a server-owned workflow operation. */
 export interface SourceUnknownWorkflowSetupRequest {
   environment?: string;
   workflowPath?: string;
   ref?: string;
   commitSha?: string;
   configHash?: string;
+  targetTenantId?: string;
+  deployOnSuccess?: boolean;
+  githubLinkSessionId?: string;
   handoverIntent?: 'no-code-to-cli';
 }
 
+/** Collector-produced build proof; GitHub OIDC supplies authority at the server. */
 export interface SourceUnknownWorkflowEvidenceRequest {
   operationId: string;
   nonce: string;
+  sourceMode?: 'source-unknown' | 'eai-cli-generated';
+  targetTenantId?: string;
   environment?: string;
   workflowPath: string;
+  workflowBlobSha: string;
+  collectorDigest: string;
   ref: string;
   commitSha: string;
   configHash: string;
   artifactDigest: string;
+  imageArtifact: {
+    id: string | number;
+    name: 'eai-generated-app-image';
+    archiveDigest: string;
+  };
   imageDigest: string;
   schemaProvenance: SourceUnknownSchemaProvenance;
-  workflowRun?: Record<string, unknown>;
-  oidcClaims: Record<string, unknown>;
-  validationSummary?: Record<string, unknown>;
+  workflowRun: { id: string | number; attempt: string | number; workflow?: string; job?: string };
+  validationSummary: { status: 'passed' };
 }
 
 export interface SourceUnknownDeploymentRequest {
   operationId: string;
+  targetTenantId?: string;
   environment?: string;
   repoOwner?: string;
   repoName?: string;
@@ -220,6 +284,126 @@ export interface SourceUnknownDeploymentRequest {
   deploymentTarget?: Record<string, unknown>;
   validationSummary?: Record<string, unknown>;
 }
+
+/** Browser OAuth proof is scoped to the authenticated EAI actor, app and runtime intent. */
+export interface CliManagedGithubLinkRequest {
+  schemaVersion: 'eai.cli_managed_github_link.v1';
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+  idempotencyKey: string;
+}
+
+/** A GitHub login or matching email alone is not a verified actor association. */
+export interface CliManagedGithubLinkSession {
+  schemaVersion: 'eai.cli_managed_github_link_session.v1';
+  sessionId: string;
+  status: 'pending' | 'verified' | 'expired' | 'failed';
+  tenantId: string;
+  appKey: string;
+  targetTenantId: string;
+  environment: string;
+  actorId: string;
+  expiresAt: string;
+  browserUrl: string;
+  verifiedGithubUser?: { id: number; login: string; proofId: string; actorId: string };
+}
+
+/** The server selects the managed repository; no client GitHub credential or destination is accepted. */
+export interface CliManagedSourcePreparationRequest {
+  schemaVersion: 'eai.cli_managed_source_preparation.v1';
+  bundleSchemaVersion?: 'eai.cli_managed_source_bundle.v1' | 'eai.cli_managed_source_bundle.v2';
+  repairReview?: true;
+  templateCommitSha: string;
+  bundleSha256: string;
+  configHash: string;
+  fileCount: number;
+  totalBytes: number;
+  idempotencyKey: string;
+  githubLinkSessionId: string;
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+}
+
+/** Exact source operation; callers must not substitute the latest deployment. */
+export interface SourceUnknownOperationResponse {
+  tenantId: string;
+  targetTenantId?: string;
+  appKey: string;
+  operationId: string;
+  environment?: string;
+  configHash?: string;
+  status: string;
+  requiresTenantInfra?: boolean;
+  deploymentId?: string;
+  activeUrl?: string;
+  latestPointerVersion?: number;
+  expectedLatestVersion?: number;
+  runtimeIdentity?: {
+    clientId?: string;
+    principalId?: string;
+  };
+  setup: Record<string, unknown>;
+  evidence?: Record<string, unknown> | null;
+  deploymentRequest?: Record<string, unknown> | null;
+  history?: Array<Record<string, unknown>>;
+}
+
+export interface ManagedDeploymentSourceRevision {
+  operationId: string;
+  sourceOperationId?: string;
+  sourceMode: 'source-unknown' | 'eai-cli-generated';
+  appScopeTenantId: string;
+  targetTenantId: string;
+  repoOwner: string;
+  repoName: string;
+  repositoryId: string | number;
+  installationId: string | number;
+  branchRef: string;
+  workflowPath: string;
+  workflowHeadBranch: string;
+  sourceCommitSha: string;
+  reviewHeadSha?: string;
+  commitSha: string;
+  workflowRunId: string | number;
+  workflowBlobSha: string;
+  collectorDigest: string;
+  configHash: string;
+  artifactDigest: string;
+  imageArtifact: {
+    id: string | number;
+    name: string;
+    archiveDigest: string;
+  };
+  imageDigest: string;
+}
+
+/** Unified exact-operation projection used by status and operation-bound deploy doctor. */
+export type ManagedDeploymentOperationResponse = Omit<SourceUnknownOperationResponse, 'tenantId'> & {
+  sourceMode: 'source-unknown' | 'eai-cli-generated';
+  sourceStatus: string;
+  appScopeTenantId: string;
+  environment: string;
+  configHash: string;
+  actorId?: string;
+  source?: Record<string, unknown>;
+  sourceRevision: ManagedDeploymentSourceRevision;
+  deployment: {
+    deploymentId: string;
+    status: string;
+    [key: string]: unknown;
+  };
+  doctor: {
+    deploymentId: string;
+    status: string;
+    ready: boolean;
+    scope: {
+      tenantId: string;
+      appKey: string;
+      environment: string;
+    };
+    [key: string]: unknown;
+  };
+};
 
 export interface CapabilityEvaluationRequest {
   tenantId: string;
@@ -282,6 +466,7 @@ export interface BuilderReadinessResult {
 }
 
 export interface RotateEntraSecretResult {
+  appName: string | null;
   clientId: string;
   clientSecret: string;
   tenantId: string;
@@ -538,7 +723,7 @@ function normalizePublicApiV4Path(path: string): string {
  * without returning rejected values or server-provided validation messages.
  */
 export async function parseApiError(response: Response): Promise<ParsedApiError> {
-  const bodyText = await response.text();
+  const bodyText = await readManagedPublicResponseText(response);
   const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
   const safeBodyText = validationCode ? {} : { bodyText };
 
@@ -707,12 +892,37 @@ function parseBuilderReadiness(body: Record<string, unknown>): BuilderReadinessR
 }
 
 export class PlatformAPIClient {
+  private readonly profileAuthorizedGateway: boolean;
+  private readonly profileCaptureGeneration = getProfileCaptureGeneration();
+  private readonly profileName = getActiveProfile();
   constructor(
     private readonly baseUrl: string,
     private readonly tenantId: string,
-  ) {}
+    private readonly requestOptions: {
+      publicRequestRedirect?: RequestRedirect;
+      managedRequestTimeoutMs?: number;
+    } = {},
+  ) {
+    this.profileAuthorizedGateway = captureProfileConfig(getActiveProfile())?.managedDeploymentApiUrl !== undefined;
+    if (this.profileAuthorizedGateway) this.baseUrl = requireManagedPublicApiUrl(baseUrl);
+  }
+
+  private fetchPublic(url: string, options: RequestInit): Promise<Response> {
+    this.assertProfileAuthority();
+    // SECURITY: an explicitly authorized private gateway cannot redirect its credentials to another destination.
+    return fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
+  }
+
+  /** SECURITY: callers sending directly to a bound upload origin must recheck this after credential awaits. */
+  assertProfileAuthority(): void {
+    if (this.profileCaptureGeneration !== getProfileCaptureGeneration()
+      || this.profileName !== getActiveProfile()) {
+      throw new Error('Private managed API client authority changed; create a new client for the selected profile.');
+    }
+  }
 
   private async headers(): Promise<Record<string, string>> {
+    this.assertProfileAuthority();
     const token = await getAccessToken();
     const h: Record<string, string> = {
       'Content-Type': 'application/json',
@@ -726,6 +936,34 @@ export class PlatformAPIClient {
     return h;
   }
 
+  private async initReceiptHeaders(observer?: InitRequestAuthorityObserver, signal?: AbortSignal): Promise<Record<string, string>> {
+    if (!observer) return this.headers();
+    if (this.baseUrl.length > 4096) throw new Error('Init receipt gateway exceeds its size bound.');
+    const gateway = new URL(this.baseUrl);
+    if (gateway.username || gateway.password || gateway.search || gateway.hash
+      || (gateway.protocol !== 'https:' && !(gateway.protocol === 'http:'
+        && ['localhost', '127.0.0.1', '[::1]'].includes(gateway.hostname)))) {
+      throw new Error('Init receipt requires an original HTTPS or private localhost gateway.');
+    }
+    const headers = await this.headers();
+    signal?.throwIfAborted();
+    const token = headers.Authorization?.replace(/^Bearer /, '');
+    if (!token || token.length > 32 * 1024 || token.split('.').length !== 3) {
+      throw new Error('Init receipt requires a bounded original bearer actor oid.');
+    }
+    let claims: unknown;
+    try { claims = JSON.parse(Buffer.from(token?.split('.')[1] || '', 'base64url').toString('utf8')); }
+    catch { throw new Error('Init receipt requires the original bearer actor oid.'); }
+    if (!claims || typeof claims !== 'object' || Array.isArray(claims)
+      || !Object.hasOwn(claims, 'oid')) throw new Error('Init receipt requires the original bearer actor oid.');
+    const actorId = (claims as Record<string, unknown>).oid;
+    if (typeof actorId !== 'string' || !/^[A-Za-z0-9._:@-]{1,256}$/.test(actorId)) {
+      throw new Error('Init receipt requires the original bearer actor oid.');
+    }
+    observer({ publicApiUrl: this.baseUrl, actorId });
+    return headers;
+  }
+
   // --------------- V4 PublicAPI routing ---------------
 
   private async publicRequest(
@@ -733,12 +971,79 @@ export class PlatformAPIClient {
     method: PlatformMethod = 'GET',
     body?: unknown,
     params?: Record<string, unknown>,
+    initAuthority?: InitRequestAuthorityObserver,
+    initRequestCeilingMs?: number,
   ): Promise<Response> {
-    return fetch(`${this.baseUrl}${appendParams(path, params)}`, {
+    const signal = initAuthority
+      ? (initRequestCeilingMs === undefined
+        ? this.managedRequestSignal()
+        : this.boundedManagedRequestSignal(initRequestCeilingMs))
+      : undefined;
+    const headers = signal ? await awaitManagedRequestDeadline(signal, this.initReceiptHeaders(initAuthority, signal))
+      : await this.headers();
+    signal?.throwIfAborted();
+    const request = this.fetchPublic(`${this.baseUrl}${appendParams(path, params)}`, {
       method,
-      headers: await this.headers(),
+      headers,
+      ...(signal ? { signal, redirect: 'error' as const } : {}),
+      ...(this.requestOptions.publicRequestRedirect
+        && !signal
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
+    const response = signal ? await awaitManagedRequestDeadline(signal, request) : await request;
+    if (signal) managedResponseSignals.set(response, signal);
+    return response;
+  }
+
+  /** Shared managed requests keep the 30s ceiling. */
+  managedRequestSignal(timeoutMs?: number): AbortSignal {
+    return this.boundedManagedRequestSignal(MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, timeoutMs);
+  }
+
+  /** Source publication may copy verified Git objects before recording one durable review. */
+  managedSourceUploadSignal(timeoutMs?: number): AbortSignal {
+    return this.boundedManagedRequestSignal(MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, timeoutMs);
+  }
+
+  /** The init create POST may use a longer ceiling; client and per-read limits can only tighten it. */
+  private boundedManagedRequestSignal(ceilingMs: number, timeoutMs?: number): AbortSignal {
+    const budgets = [ceilingMs,
+      this.requestOptions.managedRequestTimeoutMs, timeoutMs]
+      .filter((value): value is number => value !== undefined);
+    if (budgets.some((value) => !Number.isSafeInteger(value) || value < 1)) {
+      throw new RangeError('Managed HTTP timeout must be a positive bounded integer.');
+    }
+    const signal = AbortSignal.timeout(Math.min(...budgets));
+    signal.addEventListener('abort', () => managedTimeoutReasons.add(signal.reason), { once: true });
+    return signal;
+  }
+
+  /** Keep the managed deadline active through response consumption and reject redirects. */
+  private async managedPublicRequest(
+    path: string,
+    method: PlatformMethod = 'GET',
+    body?: unknown,
+    options?: { timeoutMs?: number; bearerToken?: string },
+  ): Promise<Response> {
+    this.assertProfileAuthority();
+    const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
+    const signal = this.managedRequestSignal(options?.timeoutMs);
+    const headers = await awaitManagedRequestDeadline(signal, this.headers());
+    signal.throwIfAborted();
+    if (options?.bearerToken !== undefined) headers.Authorization = `Bearer ${options.bearerToken}`;
+    try {
+      const response = await this.fetchPublic(`${baseUrl}${path}`, {
+        method, headers, redirect: 'error', signal,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+      managedResponseSignals.set(response, signal);
+      return response;
+    } catch (error) {
+      if (signal.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+      throw error;
+    }
   }
 
   async requestPublicApi(path: string, options?: PublicApiRequestOptions): Promise<Response> {
@@ -761,6 +1066,7 @@ export class PlatformAPIClient {
       where?: ResourceWhere;
       cursor?: string;
     },
+    initAuthority?: InitRequestAuthorityObserver,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const params = new URLSearchParams();
@@ -770,8 +1076,8 @@ export class PlatformAPIClient {
     if (options?.where) params.set('where', JSON.stringify(options.where));
     if (options?.cursor) params.set('cursor', options.cursor);
     const qs = params.toString();
-    const url = `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`;
-    return fetch(url, { headers: await this.headers() });
+    return this.publicRequest(`${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}${qs ? `?${qs}` : ''}`,
+      'GET', undefined, undefined, initAuthority);
   }
 
   async streamResources(
@@ -786,12 +1092,12 @@ export class PlatformAPIClient {
     if (options?.cursor) params.set('cursor', options.cursor);
     const qs = params.toString();
     const url = `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/stream${qs ? `?${qs}` : ''}`;
-    return fetch(url, { headers: await this.headers() });
+    return this.fetchPublic(url, { headers: await this.headers() });
   }
 
   async getResource(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}`,
       { headers: await this.headers() },
     );
@@ -799,7 +1105,7 @@ export class PlatformAPIClient {
 
   async createResource(objectType: string, data: Record<string, unknown>): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ data }),
@@ -813,7 +1119,7 @@ export class PlatformAPIClient {
     version: number,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}`, {
       method: 'PUT',
       headers: await this.headers(),
       body: JSON.stringify({ data, version }),
@@ -822,7 +1128,7 @@ export class PlatformAPIClient {
 
   async deleteResource(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}`, {
       method: 'DELETE',
       headers: await this.headers(),
     });
@@ -833,7 +1139,7 @@ export class PlatformAPIClient {
     items: Array<{ data: Record<string, unknown> }>,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/create`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/create`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ items }),
@@ -846,7 +1152,7 @@ export class PlatformAPIClient {
     options?: { projectionMode?: 'deferred' | 'sync' },
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/import`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/import`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -861,7 +1167,7 @@ export class PlatformAPIClient {
     items: Array<{ id: string; data: Record<string, unknown>; version: number }>,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/update`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/update`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ items }),
@@ -870,7 +1176,7 @@ export class PlatformAPIClient {
 
   async batchDeleteResources(objectType: string, ids: string[]): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/delete`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/batch/delete`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ ids }),
@@ -887,7 +1193,7 @@ export class PlatformAPIClient {
     },
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/aggregate`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/aggregate`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(request),
@@ -901,7 +1207,7 @@ export class PlatformAPIClient {
     params?: Record<string, unknown>,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/actions/${action}`,
       {
         method: 'POST',
@@ -917,7 +1223,7 @@ export class PlatformAPIClient {
     join?: unknown;
     limit?: number;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/query`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/query`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -981,7 +1287,7 @@ export class PlatformAPIClient {
   }
 
   async getSchema(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/schema/${this.tenantId}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/schema/${this.tenantId}`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -992,7 +1298,7 @@ export class PlatformAPIClient {
   }
 
   async getResourceStorageStatus(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -1003,14 +1309,14 @@ export class PlatformAPIClient {
   }
 
   async getResourceStorageDoctor(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/doctor`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/doctor`, {
       method: 'GET',
       headers: await this.headers(),
     });
   }
 
   async getResourceStorageSchemaStatus(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/schema-status`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/schema-status`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -1023,7 +1329,7 @@ export class PlatformAPIClient {
     provisioningMode?: string;
   }): Promise<Response> {
     const backend = options.backend === 'mongodb' ? 'documentdb' : options.backend;
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/provision`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1040,7 +1346,7 @@ export class PlatformAPIClient {
     dryRun?: boolean;
     objectTypes?: string[];
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/sync-schema`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/storage/sync-schema`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1082,7 +1388,7 @@ export class PlatformAPIClient {
     limit?: number;
     includePayload?: boolean;
   }): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/search`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/search`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1109,7 +1415,7 @@ export class PlatformAPIClient {
     h['Content-Type'] = 'application/octet-stream';
 
     const filename = encodeURIComponent(basename(filePath));
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}?filename=${filename}`,
       {
         method: 'POST',
@@ -1125,7 +1431,7 @@ export class PlatformAPIClient {
     propertyName: string,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -1137,7 +1443,7 @@ export class PlatformAPIClient {
     propertyName: string,
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/files/${propertyName}`, {
       method: 'DELETE',
       headers: await this.headers(),
     });
@@ -1145,7 +1451,7 @@ export class PlatformAPIClient {
 
   async getHistory(objectType: string, id: string): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/history`,
       { headers: await this.headers() },
     );
@@ -1160,7 +1466,7 @@ export class PlatformAPIClient {
     conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_AI_PATH}/chat/${this.tenantId}/${workflowId}/${stage}`,
       {
         method: 'POST',
@@ -1181,7 +1487,7 @@ export class PlatformAPIClient {
     conversationId: string,
     params?: Record<string, unknown>,
   ): Promise<Response> {
-    return fetch(
+    return this.fetchPublic(
       `${this.baseUrl}${PUBLIC_AI_PATH}/chat/stream/${this.tenantId}/${workflowId}/${stage}`,
       {
         method: 'POST',
@@ -1207,7 +1513,7 @@ export class PlatformAPIClient {
       params.append('workflow_keys', workflowKey);
     }
 
-    const response = await fetch(`${this.baseUrl}${PUBLIC_INTEGRATIONS_PATH}/builder/readiness?${params.toString()}`, {
+    const response = await this.fetchPublic(`${this.baseUrl}${PUBLIC_INTEGRATIONS_PATH}/builder/readiness?${params.toString()}`, {
       method: 'GET',
       headers: await this.headers(),
     });
@@ -1230,7 +1536,7 @@ export class PlatformAPIClient {
     tenantId = this.tenantId,
   ): Promise<RuntimeWorkflowStatusResult> {
     const params = new URLSearchParams({ tenant_id: tenantId });
-    const response = await fetch(
+    const response = await this.fetchPublic(
       `${this.baseUrl}${PUBLIC_WORKFLOWS_PATH}/runtime/${encodeURIComponent(workflowKey)}/status?${params.toString()}`,
       {
         method: 'GET',
@@ -1257,7 +1563,7 @@ export class PlatformAPIClient {
     displayName?: string;
     reason?: string;
   }): Promise<RuntimeWorkflowRequestResult> {
-    const response = await fetch(`${this.baseUrl}${PUBLIC_WORKFLOWS_PATH}/runtime-requests`, {
+    const response = await this.fetchPublic(`${this.baseUrl}${PUBLIC_WORKFLOWS_PATH}/runtime-requests`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1344,7 +1650,7 @@ export class PlatformAPIClient {
 
     const endpoint = `${PUBLIC_DATA_DOCUMENTS_PATH}/upload`;
 
-    return fetch(`${this.baseUrl}${endpoint}`, {
+    return this.fetchPublic(`${this.baseUrl}${endpoint}`, {
       method: 'POST',
       headers: h,
       body: form,
@@ -1360,7 +1666,7 @@ export class PlatformAPIClient {
   }
 
   async indexDocument(documentId: string): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/rag-index`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_DATA_DOCUMENTS_PATH}/rag-index`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1410,11 +1716,14 @@ export class PlatformAPIClient {
     );
   }
 
-  async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest): Promise<Response> {
+  async createTenantApp(parentTenantId: string, data: TenantAppCreateRequest, initAuthority?: InitRequestAuthorityObserver): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/apps`,
       'POST',
       data,
+      undefined,
+      initAuthority,
+      INIT_APP_CREATE_REQUEST_TIMEOUT_MS,
     );
   }
 
@@ -1461,11 +1770,75 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownAppRegistrationRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/register`,
       'POST',
       data,
     );
+  }
+
+  /** Start a one-time browser proof or reuse an existing verified actor connection. */
+  async createCliManagedGithubLinkSession(tenantId: string, appKey: string, data: CliManagedGithubLinkRequest, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/github-link-sessions`,
+      'POST', data, { timeoutMs },
+    );
+  }
+
+  /** Read only the exact actor-bound browser operation, never a latest-session pointer. */
+  async getCliManagedGithubLinkSession(tenantId: string, appKey: string, sessionId: string, targetTenantId: string, environment: string, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, sessionId)}/github-link-sessions/${encodeURIComponent(sessionId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+      undefined, { timeoutMs },
+    );
+  }
+
+  /** Prepare bounded local source; successful preparation does not mean it has been deployed. */
+  async prepareCliManagedSource(tenantId: string, appKey: string, data: CliManagedSourcePreparationRequest): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/preparations`,
+      'POST', data,
+    );
+  }
+
+  /** Read the exact managed publication, including its bot review and deployment progress. */
+  async getCliManagedSourceOperation(tenantId: string, appKey: string, operationId: string, targetTenantId: string, environment: string, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey, operationId)}/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET',
+      undefined, { timeoutMs },
+    );
+  }
+
+  /** Read one sealed managed deployment operation; the server derives source mode and environment. */
+  async getManagedDeploymentOperation(
+    tenantId: string,
+    appKey: string,
+    operationId: string,
+    targetTenantId: string,
+    timeoutMs?: number,
+  ): Promise<Response> {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || !isManagedDeploymentIdentifier(operationId)
+      || !isManagedScopeIdentifier(targetTenantId)) {
+      throw new Error('Managed deployment identifiers must be safe opaque path segments.');
+    }
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/managed-deployments/operations/${encodeURIComponent(operationId)}?targetTenantId=${encodeURIComponent(targetTenantId)}`,
+      'GET',
+      undefined, { timeoutMs },
+    );
+  }
+
+  private cliManagedSourcePath(tenantId: string, appKey: string, operationId?: string): string {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || (operationId !== undefined && !isManagedDeploymentIdentifier(operationId))) {
+      throw new Error('Managed source tenant, app and operation identifiers must be safe opaque path segments.');
+    }
+    return `${PUBLIC_PLATFORM_PATH}/tenants/${tenantId}/apps/${appKey}/cli-managed-source`;
   }
 
   async setupSourceUnknownWorkflow(
@@ -1473,7 +1846,7 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownWorkflowSetupRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-setup`,
       'POST',
       data,
@@ -1486,15 +1859,9 @@ export class PlatformAPIClient {
     data: SourceUnknownWorkflowEvidenceRequest,
     githubOidcToken: string,
   ): Promise<Response> {
-    const headers = await this.headers();
-    headers.Authorization = `Bearer ${githubOidcToken}`;
-    return fetch(
-      `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(data),
-      },
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/workflow-evidence`,
+      'POST', data, { bearerToken: githubOidcToken },
     );
   }
 
@@ -1503,16 +1870,53 @@ export class PlatformAPIClient {
     appKey: string,
     data: SourceUnknownDeploymentRequest,
   ): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deploy`,
       'POST',
       data,
     );
   }
 
+  /** Prepare source-bound runtime identity before the workflow can request handoff. */
+  async bootstrapSourceUnknownRuntime(
+    tenantId: string,
+    appKey: string,
+    environment: string,
+    sourceOperationId: string,
+    targetTenantId: string,
+  ): Promise<Response> {
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/environments/${encodeURIComponent(environment)}/runtime-bootstrap`,
+      'POST',
+      { sourceOperationId, targetTenantId, sourceMode: 'source-unknown' },
+    );
+  }
+
   async getLatestSourceUnknownDeployment(tenantId: string, appKey: string): Promise<Response> {
-    return this.publicRequest(
+    return this.managedPublicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/deployments/latest`,
+      'GET',
+    );
+  }
+
+  /** Read one tenant/app-bound source operation by its server-issued identifier. */
+  async getSourceUnknownOperation(
+    tenantId: string,
+    appKey: string,
+    operationId: string,
+    targetTenantId?: string,
+  ): Promise<Response> {
+    if (!isManagedScopeIdentifier(tenantId)
+      || !isManagedScopeIdentifier(appKey)
+      || !isManagedDeploymentIdentifier(operationId)
+      || (targetTenantId !== undefined && !isManagedScopeIdentifier(targetTenantId))) {
+      throw new Error('Source-unknown operation identifiers must be safe opaque path segments.');
+    }
+    const query = targetTenantId
+      ? `?targetTenantId=${encodeURIComponent(targetTenantId)}`
+      : '';
+    return this.managedPublicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/source-unknown/operations/${encodeURIComponent(operationId)}${query}`,
       'GET',
     );
   }
@@ -1584,7 +1988,7 @@ export class PlatformAPIClient {
   }
 
   async evaluateCapability(request: CapabilityEvaluationRequest): Promise<CapabilityDecision> {
-    const response = await fetch(`${this.baseUrl}${PUBLIC_PLATFORM_PATH}/capabilities/evaluate`, {
+    const response = await this.fetchPublic(`${this.baseUrl}${PUBLIC_PLATFORM_PATH}/capabilities/evaluate`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({
@@ -1620,7 +2024,7 @@ export class PlatformAPIClient {
   }
 
   async provisionMe(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/me/provision`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/me/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify({ tenant_id: this.tenantId }),
@@ -1637,9 +2041,12 @@ export class PlatformAPIClient {
   }
 
   async listCurrentUserTenants(): Promise<Response> {
-    return fetch(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/tenants`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/tenants`, {
       method: 'GET',
       headers: await this.headers(),
+      ...(this.requestOptions.publicRequestRedirect
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
     });
   }
 
@@ -1653,7 +2060,7 @@ export class PlatformAPIClient {
     }
 
     const body: Record<string, string> = { tenant_id: tenantId };
-    return fetch(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/me/provision`, {
+    return this.fetchPublic(`${this.baseUrl}${PUBLIC_IDENTITY_PATH}/me/provision`, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(body),
@@ -1731,7 +2138,9 @@ export class PlatformAPIClient {
     redirectUris: string[];
     existingClientId?: string;
     idempotent?: boolean;
+    requireAppBinding?: boolean;
   }): Promise<{
+    appName: string | null;
     clientId: string;
     clientSecret: string | null;
     existing: boolean;
@@ -1748,11 +2157,12 @@ export class PlatformAPIClient {
       redirect_uris: request.redirectUris,
       ...(request.existingClientId ? { existing_client_id: request.existingClientId } : {}),
       idempotent: request.idempotent ?? false,
+      ...(request.requireAppBinding ? { require_app_binding: true } : {}),
     };
 
     const endpoint = `${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps`;
     const url = `${this.baseUrl}${endpoint}`;
-    const res = await fetch(url, {
+    const res = await this.fetchPublic(url, {
       method: 'POST',
       headers: await this.headers(),
       body: JSON.stringify(body),
@@ -1799,6 +2209,7 @@ export class PlatformAPIClient {
       Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
 
     return {
+      appName: readStringField(data as Record<string, unknown>, 'appName', 'app_name'),
       clientId,
       clientSecret: data.clientSecret ?? data.client_secret ?? null,
       existing: Boolean(data.existing),
@@ -1816,13 +2227,14 @@ export class PlatformAPIClient {
   async rotateEntraAppSecret(request: {
     tenantId: string;
     clientId: string;
+    appName?: string;
   }): Promise<RotateEntraSecretResult> {
-    const response = await fetch(
+    const response = await this.fetchPublic(
       `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}/rotate-secret`,
       {
         method: 'POST',
         headers: await this.headers(),
-        body: JSON.stringify({ tenant_id: request.tenantId }),
+        body: JSON.stringify({ tenant_id: request.tenantId, ...(request.appName ? { app_name: request.appName } : {}) }),
       },
     );
 
@@ -1839,7 +2251,10 @@ export class PlatformAPIClient {
     const data = await response.json() as Record<string, unknown>;
     const clientId = readStringField(data, 'clientId', 'client_id');
     const clientSecret = readStringField(data, 'clientSecret', 'client_secret');
-    if (!clientId || !clientSecret) {
+    const tenantId = readStringField(data, 'tenantId', 'tenant_id');
+    const appName = readStringField(data, 'appName', 'app_name');
+    if (!clientId || !clientSecret || clientId !== request.clientId || tenantId !== request.tenantId
+      || (request.appName !== undefined && appName !== request.appName)) {
       throw new PlatformAPIRequestError({
         operation: 'Entra app secret rotation',
         status: response.status,
@@ -1848,9 +2263,10 @@ export class PlatformAPIClient {
     }
 
     return {
+      appName,
       clientId,
       clientSecret,
-      tenantId: readStringField(data, 'tenantId', 'tenant_id') ?? request.tenantId,
+      tenantId,
       expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
     };
   }
@@ -1860,7 +2276,7 @@ export class PlatformAPIClient {
     clientId: string;
     deleteRegistration?: boolean;
   }): Promise<DeprovisionEntraAppResult> {
-    const response = await fetch(
+    const response = await this.fetchPublic(
       `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}`,
       {
         method: 'DELETE',
