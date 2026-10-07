@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Release-aligned documentation bundle for `@enterpriseai/cli` v3.18.4.
+> Release-aligned documentation bundle for `@enterpriseai/cli` v3.19.0.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -603,7 +603,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.18.4** (2026-09-29): Use workspace terminology in customer-facing guidance.
+The current CLI release is **v3.19.0** (2026-10-07): Add managed app deployment and align installer dependencies.
 
 ---
 
@@ -654,10 +654,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.4 |
-| Released | 2026-09-29 |
-| Last Material Change | Use workspace terminology in customer-facing guidance |
-| Source Commit | `9c7efe3e4252abf86e0dd5c33dcc4eb8e4f96bb7` |
+| Version | 3.19.0 |
+| Released | 2026-10-07 |
+| Last Material Change | Add managed app deployment and align installer dependencies |
+| Source Commit | `8ffb3deba2be8d633fcc867f1a0e28c0e181bf74` |
 
 
 ## Install
@@ -2266,7 +2266,7 @@ Before committing a project that uses the EAI CLI:
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.18.4. The same catalog powers human stderr output, JSON output for AI
+v3.19.0. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
