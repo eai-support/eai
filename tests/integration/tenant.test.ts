@@ -1001,6 +1001,27 @@ describe('child workspace creation admission', () => {
     const output = stderrSpy.mock.calls.flat().join('');
     expect(output).toContain('TENANT_SLUG_INVALID');
     expect(output).toContain('lowercase kebab-case');
+    expect(output).toContain('(field: slug)');
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('includes the allowlisted rejected field in text output without echoing upstream text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'Rejected value: tax-file-secret',
+    }), { status: 409 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain(
+      '409: TENANT_SLUG_CONFLICT: This portal slug is already in use. Choose a different portal slug. (field: portalSlug)',
+    );
     expect(output).not.toContain('tax-file-secret');
   });
 

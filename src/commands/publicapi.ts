@@ -158,7 +158,10 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
         serverCode: error.code,
         message: error.message,
       });
-      const failureMessage = `${method} ${requestPath} failed: ${error.status} ${error.message}`;
+      // `field` is allowlisted by parseApiError; `error.code` is deliberately not echoed in text
+      // because for non-admission errors it is the raw upstream `body.error` string.
+      const fieldSuffix = error.field ? ` (field: ${error.field})` : '';
+      const failureMessage = `${method} ${requestPath} failed: ${error.status} ${error.message}${fieldSuffix}`;
       if (spinner) {
         spinner.fail(failureMessage);
       } else if (format !== 'json') {

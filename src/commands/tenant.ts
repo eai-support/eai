@@ -726,13 +726,15 @@ tenantCommand
 
       if (!res.ok) {
         const error = await parseApiError(res, { childTenantCreate: Boolean(options.parent) });
+        // `field` is allowlisted by parseApiError, so it is safe to print.
+        const fieldSuffix = error.field ? ` (field: ${error.field})` : "";
         if (options.format === "json") {
           out.json({ ok: false, status: error.status, error });
         } else if (spinner) {
           const prefix = error.code ? `${error.code}: ` : "";
-          spinner.fail(`${error.status}: ${prefix}${error.message}`);
+          spinner.fail(`${error.status}: ${prefix}${error.message}${fieldSuffix}`);
         } else {
-          out.error(error.message);
+          out.error(`${error.message}${fieldSuffix}`);
         }
         process.exit(1);
       }
