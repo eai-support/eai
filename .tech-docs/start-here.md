@@ -64,5 +64,3 @@ subscription, and organisation policy are confirmed by the provider.
 ## Current Release
 
 The current CLI release is **v3.19.0** (2026-10-07): Add managed app deployment and align installer dependencies.
-
-
