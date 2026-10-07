@@ -22,6 +22,7 @@ import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
 import { acknowledgedSelectedAppBinding } from '../lib/init-app-binding.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
+import { createLocalAppCredential, LocalAppCredentialError } from '../lib/local-app-credential.js';
 
 interface ScopedEntraOptions {
   companyTenant?: string;
@@ -29,12 +30,18 @@ interface ScopedEntraOptions {
   tenantId?: string;
   rotateSecret?: boolean;
   deauthorize?: boolean;
+  createLocalSecret?: boolean;
+  reissueLocalSecret?: boolean;
 }
 
 /** SECURITY: Setup derives its runtime from the exact enrolled app, never the cached active workspace. */
 async function scopedEntraBinding(
   root: string, env: Record<string, string>, publicApiUrl: string, options: ScopedEntraOptions,
 ): Promise<{ appKey: string; runtimeTenantId: string } | undefined> {
+  if (options.reissueLocalSecret && !options.createLocalSecret)
+    throw new Error("Explicit credential reissue requires scoped --create-local-secret setup.");
+  if (options.createLocalSecret && (!options.companyTenant || !options.appKey))
+    throw new Error('Creating a local app credential requires the exact app and company workspace.');
   if (!options.companyTenant && !options.appKey && !options.tenantId) return undefined;
   if (!options.companyTenant || !options.appKey || !/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(options.appKey)
     || options.rotateSecret || options.deauthorize
@@ -302,6 +309,8 @@ provisionCommand
   .option('--tenant-id <id>', 'Require the scoped app enrollment to use this runtime workspace')
   .option('--force', 'Re-check the remote app registration even if ENTRA_CLIENT_ID already exists locally', false)
   .option('--rotate-secret', 'Rotate the existing ENTRA_CLIENT_ID secret and write the new value to .env.local', false)
+  .option('--reissue-local-secret', 'Explicitly authorize one additional credential after an uncertain local setup request; requires --create-local-secret and exact app scope', false)
+  .option('--create-local-secret', 'For scoped app setup only, issue a local credential when none is available; preserve existing credentials', false)
   .option('--deauthorize', 'Remove workspace authorization and delete the Entra app registration for cleanup', false)
   .option('--client-id <id>', 'Client ID to deauthorize; defaults to ENTRA_CLIENT_ID in .env.local')
   .option('--keep-registration', 'Only remove workspace authorization; do not delete the Entra app registration', false)
@@ -329,6 +338,7 @@ What happens:
   - With --deauthorize --force, removes tenant authorization, deletes the app registration, and removes local ENTRA_CLIENT_ID/SECRET
   - With --redirect-uri, registers the given deployed callback(s) in addition to the local one (the platform merges them with any already registered)
   - With --company-tenant and --app-key, verifies this project's exact enrollment and runtime access before idempotent sign-in setup; existing secrets are preserved
+  - With --create-local-secret and that exact scope, creates a credential for a fresh local project only when its secret is missing; existing app credentials remain valid
 
 Diagnostics:
   - Uses the PublicAPI URL from the active profile, .env.local BASE_URL_PUBLIC_API, environment, or the default API
@@ -351,7 +361,7 @@ Diagnostics:
     }
 
     // Check if ENTRA_CLIENT_ID already exists
-    const scoped = Boolean(options.companyTenant || options.appKey || options.tenantId);
+    const scoped = Boolean(options.companyTenant || options.appKey || options.tenantId || options.createLocalSecret || options.reissueLocalSecret);
     if (!scoped && hasUsableLocalEntraClientId(env) && !options.force && !options.rotateSecret && !options.deauthorize) {
       out.warn(`ENTRA_CLIENT_ID is already set for ${chalk.cyan(appName)}.`);
       out.info(`Use ${chalk.cyan('eai provision entra --force')} to re-check the remote registration and confirm ENTRA_CLIENT_ID.`);
@@ -480,6 +490,7 @@ Diagnostics:
     out.info(`Provisioning Entra app registration for ${chalk.cyan(appName)}...`);
 
     let result: {
+      appName: string | null;
       clientId: string;
       clientSecret: string | null;
       existing: boolean;
@@ -505,12 +516,18 @@ Diagnostics:
         appName,
         redirectUris,
         existingClientId: existingClientId ?? undefined,
+        requireAppBinding: options.createLocalSecret === true,
         // The platform route is intentionally idempotent: it creates on first run and
         // returns the existing app ID on later runs without attempting secret rotation.
         idempotent: true,
       });
     } catch (err) {
       handleProvisionError(err, diag);
+    }
+
+    if (options.createLocalSecret && (result.appName !== appName || result.tenantId !== tenantId)) {
+      out.error("The platform did not confirm the selected app registration. Existing credentials are preserved.");
+      process.exit(1);
     }
 
     if (scoped && result.tenantId && result.tenantId !== tenantId) {
@@ -562,7 +579,39 @@ Diagnostics:
     if (result.existing && !result.clientSecret) {
       out.info(`App registration already exists for ${chalk.cyan(appName)}.`);
       if (scoped && !hasUsableLocalEntraSecret(env)) {
-        try {
+        if (options.createLocalSecret) {
+          reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, true);
+          if (result.tenantId !== tenantId) {
+            out.error('App credential setup did not return the verified workspace.');
+            process.exit(1);
+          }
+          // SECURITY: Only explicit, enrolled-app setup can issue a credential; a valid local secret is never replaced.
+          const currentEnv = await loadEnvFile(root);
+          if (JSON.stringify(currentEnv) !== JSON.stringify(env)) {
+            out.error('The local app configuration changed during setup. Existing credentials are preserved.');
+            process.exit(1);
+          }
+          try {
+            env.ENTRA_CLIENT_SECRET = await createLocalAppCredential({ root,
+              binding: { tenantId, appName, clientId: result.clientId }, patches: optionalEnv, expectedEnv: currentEnv,
+              reissue: options.reissueLocalSecret === true,
+              issue: async () => {
+                const issued = await client.rotateEntraAppSecret({ tenantId, clientId: result.clientId, appName });
+                if (issued.appName !== appName || issued.clientId !== result.clientId || issued.tenantId !== tenantId
+                  || !hasUsableLocalEntraSecret({ ENTRA_CLIENT_SECRET: issued.clientSecret }))
+                  throw new Error('App credential response does not match the verified registration.');
+                return issued.clientSecret;
+              },
+            });
+          } catch (error) {
+            if (error instanceof LocalAppCredentialError) {
+              out.error(error.message);
+              out.info("Your existing app and credentials are preserved. A recovered credential never triggers another automatic request.");
+              process.exit(1);
+            }
+            handleSecretRotationError(error, diag);
+          }
+        } else try {
           const { patches } = await pullCloudEnvValues({ label: appName, includeSecrets: true });
           if (patches.ENTRA_CLIENT_ID === result.clientId && hasUsableLocalEntraSecret(patches)) {
             await patchEnvFile(root, { ENTRA_CLIENT_SECRET: patches.ENTRA_CLIENT_SECRET });

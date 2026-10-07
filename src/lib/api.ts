@@ -466,6 +466,7 @@ export interface BuilderReadinessResult {
 }
 
 export interface RotateEntraSecretResult {
+  appName: string | null;
   clientId: string;
   clientSecret: string;
   tenantId: string;
@@ -2137,7 +2138,9 @@ export class PlatformAPIClient {
     redirectUris: string[];
     existingClientId?: string;
     idempotent?: boolean;
+    requireAppBinding?: boolean;
   }): Promise<{
+    appName: string | null;
     clientId: string;
     clientSecret: string | null;
     existing: boolean;
@@ -2154,6 +2157,7 @@ export class PlatformAPIClient {
       redirect_uris: request.redirectUris,
       ...(request.existingClientId ? { existing_client_id: request.existingClientId } : {}),
       idempotent: request.idempotent ?? false,
+      ...(request.requireAppBinding ? { require_app_binding: true } : {}),
     };
 
     const endpoint = `${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps`;
@@ -2205,6 +2209,7 @@ export class PlatformAPIClient {
       Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
 
     return {
+      appName: readStringField(data as Record<string, unknown>, 'appName', 'app_name'),
       clientId,
       clientSecret: data.clientSecret ?? data.client_secret ?? null,
       existing: Boolean(data.existing),
@@ -2222,13 +2227,14 @@ export class PlatformAPIClient {
   async rotateEntraAppSecret(request: {
     tenantId: string;
     clientId: string;
+    appName?: string;
   }): Promise<RotateEntraSecretResult> {
     const response = await this.fetchPublic(
       `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}/rotate-secret`,
       {
         method: 'POST',
         headers: await this.headers(),
-        body: JSON.stringify({ tenant_id: request.tenantId }),
+        body: JSON.stringify({ tenant_id: request.tenantId, ...(request.appName ? { app_name: request.appName } : {}) }),
       },
     );
 
@@ -2245,7 +2251,10 @@ export class PlatformAPIClient {
     const data = await response.json() as Record<string, unknown>;
     const clientId = readStringField(data, 'clientId', 'client_id');
     const clientSecret = readStringField(data, 'clientSecret', 'client_secret');
-    if (!clientId || !clientSecret) {
+    const tenantId = readStringField(data, 'tenantId', 'tenant_id');
+    const appName = readStringField(data, 'appName', 'app_name');
+    if (!clientId || !clientSecret || clientId !== request.clientId || tenantId !== request.tenantId
+      || (request.appName !== undefined && appName !== request.appName)) {
       throw new PlatformAPIRequestError({
         operation: 'Entra app secret rotation',
         status: response.status,
@@ -2254,9 +2263,10 @@ export class PlatformAPIClient {
     }
 
     return {
+      appName,
       clientId,
       clientSecret,
-      tenantId: readStringField(data, 'tenantId', 'tenant_id') ?? request.tenantId,
+      tenantId,
       expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
     };
   }
