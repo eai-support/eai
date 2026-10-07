@@ -1,2 +1,0 @@
-description = "Guide a red-green-refactor loop tied to spec acceptance criteria."
-prompt = "{{include: ../../../.specify/commands/gofer_tdd.md}}"

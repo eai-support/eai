@@ -30,9 +30,9 @@ quadrantChart
     x-axis Low Maturity --> High Maturity
     y-axis Low Value --> High Value
     quadrant-1 Strategic Investment
-    quadrant-2 Quick Wins
+    quadrant-2 Optimize
     quadrant-3 Deprecate
-    quadrant-4 Optimize
+    quadrant-4 Quick Wins
     {{CAPABILITY_1}}: [{{X1}}, {{Y1}}]
     {{CAPABILITY_2}}: [{{X2}}, {{Y2}}]
     {{CAPABILITY_3}}: [{{X3}}, {{Y3}}]

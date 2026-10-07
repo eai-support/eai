@@ -25,7 +25,7 @@ describe('explicit complete Gofer resource source', () => {
       await writeFile(join(resources, sourceSubdirectory, 'fixture.md'), 'fixture-resource');
     }
     await cp(join(bundled, 'instruction-templates'), join(resources, 'instruction-templates'), { recursive: true });
-    await cp(join(bundled, 'claude-commands/0_gofer_start.md'), join(resources, 'claude-commands/0_gofer_start.md'));
+    await cp(join(bundled, 'claude-commands/eai.md'), join(resources, 'claude-commands/eai.md'));
     await cp(join(bundled, 'templates/gofer-model-policy.yaml'), join(resources, 'templates/gofer-model-policy.yaml'));
     await writeFile(join(resources, '.gofer-version'), JSON.stringify({ version: '3.13.4', describe: 'v3.13.4' }));
     await mkdir(project);

@@ -1,7 +1,8 @@
 #!/bin/bash
-# Report implementation status across feature branches
+# Sync implementation status across feature branches
 #
-# This script reports related commits. It never changes tasks.md.
+# This script checks which tasks were actually implemented in git commits
+# and updates tasks.md to reflect the actual implementation state.
 #
 # Usage: sync-implementation-status.sh <feature-dir>
 # Example: sync-implementation-status.sh .specify/specs/025-ai-usage-tracking
@@ -36,7 +37,7 @@ fi
 # This requires reading tasks.md, extracting file paths from task descriptions,
 # and checking if those files were modified in the commits
 
-echo "✓ Report complete. No task state was changed."
+echo "✓ Analysis complete"
 echo ""
 echo "MANUAL STEP REQUIRED:"
 echo "1. Review git commits for this feature"

@@ -61,7 +61,7 @@
     {
       "id": "R3",
       "label": "UX or implementation changed after validation",
-      "watch": ["ui-preview-brief.md", "ui-approval.md", "src", "tests"],
+      "watch": ["ui-preview-brief.md", "ui-show-and-tell.md", "src", "tests"],
       "baselineArtifact": "validation-report.md",
       "reopenStage": "6_validate"
     }

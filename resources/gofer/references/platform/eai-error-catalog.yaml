@@ -41,13 +41,11 @@ catalog:
   - errorId: EAI_TENANT_ACCESS_REQUIRED
     match:
       containsAny:
-        - 'no workspace'
         - 'no tenant'
-        - 'workspace required'
-        - 'workspace required'
-        - 'insufficient workspace role'
-    meaning: The user lacks the workspace context needed for app delivery.
-    likelyCause: No membership, wrong workspace, or insufficient role.
+        - 'tenant required'
+        - 'insufficient tenant role'
+    meaning: The user lacks the workspace access needed for app delivery.
+    likelyCause: No membership, the wrong workspace, or an insufficient role.
     recovery:
       - 'eai workspace list --format json'
       - 'eai workspace select <workspace-slug>'
@@ -61,7 +59,7 @@ catalog:
         - 'Invite failed'
         - 'eai user invite'
         - '502'
-    meaning: A workspace member invite or role assignment reached an external service failure, and the target person may already exist as a direct workspace member with the wrong role.
+    meaning: A workspace member invite or role assignment reached an external service failure, and the target person may already have direct workspace membership with the wrong role.
     likelyCause: The invite/add path failed after, or despite, an existing workspace member record. Retrying the same invite may not change the member role.
     recovery:
       - 'Run eai errors explain user_invite_external_service_existing_member --format json when advertised'
@@ -73,6 +71,24 @@ catalog:
       - 'Tell the affected app user to sign out and sign back in because Auth.js session or JWT role data may be cached'
       - 'Do not edit databases or cloud portals directly unless EAI guidance reports an operator-only block'
     nextGate: tenant_member_role_verified
+  - errorId: EAI_APP_TOKEN_TENANT_CONTEXT_REQUIRED
+    match:
+      containsAny:
+        - 'app_token_tenant_context_required'
+        - 'MISSING_TENANT'
+        - 'Tenant context required for app tokens'
+    meaning: A platform automation app-token user lookup reached EAI but did not carry the required workspace context.
+    likelyCause: The caller used a root platform user or membership route such as /v4/platform/users/by-email or /v4/platform/users/{oid}/memberships instead of the tenant-scoped /v4/platform/tenants/{tenantId}/... route family, or the target environment has not deployed the matching PublicAPI/AdminAPI tenant-scoped routing hardening.
+    recovery:
+      - 'Run eai errors explain app_token_tenant_context_required --format json when advertised'
+      - 'eai whoami'
+      - 'eai workspace list --format json'
+      - 'Do not start by changing workspace members, role definitions, Entra configuration, databases, or cloud portals'
+      - 'Retry user lookup through /v4/platform/tenants/<tenant-id>/users/by-email?email=<email>'
+      - 'Retry membership lookup through /v4/platform/tenants/<tenant-id>/users/<oid>/memberships'
+      - 'Keep workspace member and role-definition reads on /v4/platform/tenants/<tenant-id>/members and /v4/platform/tenants/<tenant-id>/role-definitions'
+      - 'If workspace-scoped routes still return MISSING_TENANT, capture redacted route shape, HTTP status, server code, CLI version, active workspace slug, and deployed PublicAPI/AdminAPI versions for platform support'
+    nextGate: tenant_scoped_platform_route_verified
   - errorId: EAI_ENTRA_REDIRECT_URI_MISMATCH
     match:
       containsAny:
@@ -150,9 +166,23 @@ catalog:
     meaning: Object types cannot be published until app resources are provisioned.
     likelyCause: '`eai types seed` ran before `eai app provision` completed.'
     recovery:
-      - 'eai app provision <key> --tenant-id <workspace-id> --select --format json'
-      - 'eai types validate'
-      - 'eai types seed --tenant-key <key> --tenant-id <workspace-id> --format json'
+      - 'eai app provision <key> --tenant-id <tenant-id> --select --format json'
+      - 'eai types validate --tenant-key <key> --tenant-id <tenant-id>'
+      - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json'
+    nextGate: types_publish_ready
+  - errorId: EAI_APP_MANIFEST_VALIDATION_FAILED
+    match:
+      containsAny:
+        - 'app_manifest_validation_failed'
+        - 'app manifest save failed for both supported request shapes'
+    meaning: The maintained CLI could not match the deployed app-manifest request contract.
+    likelyCause: The installed CLI is old, or another manifest field fails after request-shape negotiation.
+    recovery:
+      - 'eai update --check'
+      - 'If eai update --check reports upgrade_required, obtain approval and run eai update'
+      - 'eai types validate --tenant-key <key> --tenant-id <tenant-id>'
+      - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --dry-run --format json'
+      - 'eai types seed --tenant-key <key> --tenant-id <tenant-id> --format json'
     nextGate: types_publish_ready
   - errorId: EAI_RESOURCE_NOT_READY
     match:
@@ -164,11 +194,39 @@ catalog:
     meaning: Backing resources or preview surfaces are not ready yet.
     likelyCause: Provisioning completed partially or downstream services are still unhealthy.
     recovery:
-      - 'eai resources storage status --tenant-id <workspace-id> --format json'
-      - 'eai resources storage doctor --tenant-id <workspace-id> --format json'
-      - 'eai verify storage --tenant-id <workspace-id>'
-      - 'eai resources schema --tenant-id <workspace-id> --format json'
+      - 'eai resources storage status --tenant-id <tenant-id> --format json'
+      - 'eai resources storage doctor --tenant-id <tenant-id> --format json'
+      - 'eai verify storage --tenant-id <tenant-id>'
+      - 'eai resources schema --tenant-id <tenant-id> --format json'
     nextGate: schema_storage_ready
+  - errorId: EAI_RESOURCEAPI_TENANT_CONTEXT_MISSING
+    match:
+      containsAny:
+        - 'RESOURCEAPI_TENANT_CONTEXT_MISSING'
+        - 'missing_tenant_context'
+    meaning: PublicAPI could not resolve tenant context for a tenant-scoped ResourceAPI request.
+    likelyCause: The app or caller omitted the effective tenant headers, or the BFF stripped tenant context before forwarding the request.
+    recovery:
+      - 'Retry the same /v4/data/resources/<tenant-id>/... request in four modes: path tenant only, tenant header only, X-Tenant-Id only, and both headers'
+      - 'Inspect the app BFF or proxy and confirm it forwards both tenant and X-Tenant-Id server-authoritatively for tenant-scoped calls'
+      - 'Use eai publicapi get /v4/platform/tenants/<tenant-id>/resource-metadata to confirm the tenant-level public contract'
+      - 'Use eai resources storage doctor --tenant-id <tenant-id> --format json after workspace context is fixed'
+    nextGate: tenant_context_resolved
+  - errorId: EAI_RESOURCEAPI_INSTALL_UNAVAILABLE
+    match:
+      containsAny:
+        - 'RESOURCEAPI_INSTALL_UNAVAILABLE'
+        - 'install_registry_no_match'
+        - 'RESOURCEAPI_INSTALL_REGISTRY_NO_MATCH'
+    meaning: PublicAPI could not resolve a usable ResourceAPI install for the tenant-scoped request.
+    likelyCause: Either workspace context was inconsistent across path and headers, or the workspace metadata/schema projection is incomplete for this app.
+    recovery:
+      - 'Compare /v4/platform/tenants/<tenant-id>/resource-metadata with /v4/data/resources/<tenant-id>/storage before concluding the workspace is unprovisioned'
+      - 'If the same /storage request flips between 200 and 503 by header mode, treat it as a workspace-context contract mismatch first'
+      - 'Check publishedObjectTypes in tenant resource metadata and treat it as operational state'
+      - 'Run eai resources storage doctor --tenant-id <tenant-id> --format json'
+      - 'Inspect the app BFF or proxy before escalating to a platform-only fault'
+    nextGate: storage_contract_verified
   - errorId: EAI_RESOURCE_SEARCH_EMBEDDING_REQUIRED
     match:
       containsAny:
@@ -179,19 +237,19 @@ catalog:
     meaning: Full-text resource search can be available on the v4 passive ResourceAPI surface while hybrid or vector search is not ready yet.
     likelyCause: The app or agent used the default hybrid v4 passive ResourceAPI search path before storage doctor reported semantic search readiness.
     recovery:
-      - 'eai resources storage doctor --tenant-id <workspace-id> --format json'
-      - 'If capabilities.search.fulltext is true, retry with eai resources search "<query>" --fulltext --tenant-id <workspace-id>'
+      - 'eai resources storage doctor --tenant-id <tenant-id> --format json'
+      - 'If capabilities.search.fulltext is true, retry with eai resources search "<query>" --fulltext --tenant-id <tenant-id>'
       - 'Use --hybrid or --vector only after capabilities.search.hybrid or capabilities.search.vector is true'
       - 'If semantic search is required for the scenario, record a platform capability gap in service-fit-matrix.md'
-      - 'Do not apply this fallback to legacy v1/v3 or active ResourceAPI behavior'
+      - 'Apply this fallback only to the published passive ResourceAPI search contract'
     nextGate: resource_search_mode_selected
   - errorId: EAI_WORKFLOW_NOT_READY
     match:
       containsAny:
         - 'workflow readiness failed'
         - 'workflow unavailable'
-    meaning: Required workflow support is not yet ready for this repo or workspace.
-    likelyCause: Workflow dependencies, package profile, or workspace features are missing.
+    meaning: Required workflow support is not yet ready for this repo or tenant.
+    likelyCause: Workflow dependencies, package profile, or tenant features are missing.
     recovery:
       - 'eai workflow readiness --format json'
       - 'eai --describe'

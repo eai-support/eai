@@ -1,5 +1,7 @@
 {
   "schemaVersion": 1,
+  "requireDeliveryCheckpoint": true,
+  "requirePriorityPlan": true,
   "loopId": "{{featureId}}",
   "profile": "standard",
   "objective": "Keep feature delivery aligned with current goals, approved scope, implementation evidence, and validation gates.",
@@ -27,7 +29,7 @@
     {
       "id": "closed-loop-audit",
       "stage": "6_validate",
-      "command": "node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict",
+      "command": "node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict --completion",
       "purpose": "Verify goal, traceability, drift, and validation freshness before final scoring.",
       "runWhen": "before validation scoring"
     }

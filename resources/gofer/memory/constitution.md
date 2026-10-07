@@ -135,7 +135,7 @@ Gofer consists of three coordinated components:
 - Manages UI (tree views, commands, progress panels)
 - Launches Language Server as child process
 - Auto-creates provider-neutral `.vscode/mcp.json` for VS Code/Copilot, Claude
-  Code, Codex, Gemini, and compatible agent apps
+  Code, Codex, Google Antigravity, Grok Build, and compatible agent apps
 
 **Language Server** (`/language-server/`):
 
@@ -333,10 +333,11 @@ and MUST NOT be conflated.
   canonical Gofer stages MUST be ≤2048 bytes (≤2KB). Codex preloads ~2% of
   context for skill name+description text; over-budget triggers a global drop of
   ALL skill descriptions, not per-bundle eviction (NFR-004, SC-006).
-- **Per-CLI parity**: Numbered stages, utilities, and helper commands are
-  emitted to Claude, Codex, Gemini, Copilot, VS Code, GitHub prompts, agent
-  skills, and system skills unless their frontmatter explicitly says otherwise
-  (FR-007, SC-012).
+- **Per-host parity**: Numbered stages, utilities, and helper commands are
+  emitted for Claude, Codex, Copilot, Google Antigravity, Grok Build, and VS
+  Code through their configured command, prompt, agent-skill, and system-skill
+  formats unless frontmatter explicitly says otherwise. The `.gemini/` emitter
+  remains legacy file-format compatibility only (FR-007, SC-012).
 - **Flat tree**: Codex skill files emit at depth ≤2 from `.agents/skills/`; no
   `<tenant>/<stage>/` nesting (FR-008).
 - **No fictional config keys**: The official Codex disable knob is per-skill
@@ -370,8 +371,9 @@ configured CLI surfaces:
 - `extension/resources/claude-prompts/` (Claude-mirror, VSCode)
 - `extension/resources/copilot-prompts/` (Copilot)
 - `.github/prompts/` (GitHub Prompts)
-- `.agents/skills/gofer/` (Codex)
-- `.gemini/commands/gofer/` (Gemini)
+- `.agents/skills/gofer/` (Codex and Google Antigravity)
+- `.grok/skills/` (Grok Build)
+- `.gemini/commands/gofer/` (legacy Gemini file-format compatibility)
 - `.system/skills/` (system)
 
 ### Anti-drift Guard
