@@ -48,8 +48,8 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
-const GOFER_RELEASE_COMMIT = "8722126e3fece5e8057428e04a2d81fc660ffac5";
-const GOFER_RELEASE_TAG = "v3.14.1";
+const GOFER_RELEASE_COMMIT = "bdf9f6f748aca90c37499e71eed5c4f91d79c3d0";
+const GOFER_RELEASE_TAG = "v3.14.2";
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
   "bash-scripts/install-optional-tools.sh":
     "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",

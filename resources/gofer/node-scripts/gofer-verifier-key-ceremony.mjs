@@ -8,7 +8,7 @@
  * so this tool prints the exact commands and changes nothing outside your
  * trust folder. Run it in a terminal yourself. Do not run it through an agent.
  */
-import { generateKeyPairSync, randomUUID } from 'node:crypto';
+import { createHash, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open } from 'node:fs/promises';
 import path from 'node:path';
@@ -18,6 +18,7 @@ import { VERIFIER_EVALUATOR, accountTrustRoot, protectedVerifierRegistryPath } f
 import { promptHidden } from './gofer-tty-prompt.mjs';
 
 const denied = () => new Error('VERIFIER_KEY_CEREMONY_REQUIRES_REVIEW');
+const shellQuote = value => `'${value.replaceAll("'", "'\"'\"'")}'`;
 
 async function writeExclusive(filename, value) {
   const file = await open(filename, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL |
@@ -25,13 +26,23 @@ async function writeExclusive(filename, value) {
   try { await file.writeFile(value, 'utf8'); await file.sync(); } finally { await file.close(); }
 }
 
-/** `existingEntries` are the entries already in the protected registry, so
- * the pending file replaces it without dropping earlier verifier keys. */
-export async function runVerifierKeyCeremony({ trustRoot, getPassphrase, existingEntries = [],
+async function requireUninitializedRegistry(registryPath) {
+  try {
+    await lstat(registryPath);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw denied();
+  }
+  throw denied();
+}
+
+/** First-key setup only: an installed registry requires reviewed rotation. */
+export async function runVerifierKeyCeremony({ trustRoot, getPassphrase, existingEntries,
   keyId = `heldout-verifier-${randomUUID()}`, registryPath = protectedVerifierRegistryPath() } = {}) {
   if (!path.isAbsolute(trustRoot ?? '') || typeof getPassphrase !== 'function' ||
-      !/^[a-zA-Z0-9._-]{8,80}$/.test(keyId) || !Array.isArray(existingEntries) ||
-      existingEntries.some(entry => entry?.evaluator !== VERIFIER_EVALUATOR || entry.keyId === keyId)) throw denied();
+      !path.isAbsolute(registryPath) || !/^[a-zA-Z0-9._-]{8,80}$/.test(keyId) ||
+      existingEntries !== undefined) throw denied();
+  await requireUninitializedRegistry(registryPath);
   const rootInfo = await lstat(trustRoot);
   if (!rootInfo.isDirectory() || rootInfo.uid !== process.getuid() || (rootInfo.mode & 0o077) !== 0) throw denied();
   const active = path.join(trustRoot, 'active-keys');
@@ -42,6 +53,7 @@ export async function runVerifierKeyCeremony({ trustRoot, getPassphrase, existin
   const passphrase = await getPassphrase('New verifier passphrase (12+ characters): ');
   assertStrongPassphrase(passphrase);
   if (passphrase !== await getPassphrase('Repeat the passphrase: ')) throw denied();
+  await requireUninitializedRegistry(registryPath);
 
   const pair = generateKeyPairSync('ed25519');
   const publicKeyPem = pair.publicKey.export({ type: 'spki', format: 'pem' }).toString();
@@ -51,12 +63,27 @@ export async function runVerifierKeyCeremony({ trustRoot, getPassphrase, existin
   await writeExclusive(path.join(active, 'heldout-verifier.json'), `${JSON.stringify({ schemaVersion: 1,
     host: 'codex', evaluator: VERIFIER_EVALUATOR, keyId })}\n`);
   const pendingPath = path.join(trustRoot, 'verifier-registry.pending.json');
-  await writeExclusive(pendingPath, `${JSON.stringify({ schemaVersion: 1, evaluators: [
-    ...existingEntries, { keyId, host: 'codex', evaluator: VERIFIER_EVALUATOR, publicKeyPem }] }, null, 2)}\n`);
+  const pendingBytes = `${JSON.stringify({ schemaVersion: 1, evaluators: [
+    { keyId, host: 'codex', evaluator: VERIFIER_EVALUATOR, publicKeyPem }] }, null, 2)}\n`;
+  await writeExclusive(pendingPath, pendingBytes);
+  const pendingSha256 = createHash('sha256').update(pendingBytes, 'utf8').digest('hex');
   const directory = path.dirname(registryPath);
+  const stageTemplate = path.join(directory, `${path.basename(registryPath)}.${keyId}.XXXXXX`);
+  const installScript = [
+    'set -eu',
+    'PATH=/usr/bin:/bin; export PATH',
+    `stage=$(mktemp ${shellQuote(stageTemplate)})`,
+    `trap 'rm -f -- "$stage"' EXIT`,
+    `install -o root -m 0600 ${shellQuote(pendingPath)} "$stage"`,
+    // SECURITY: Check the root-owned copy against ceremony bytes, not the mutable pending file.
+    'if command -v sha256sum >/dev/null 2>&1; then staged_hash=$(sha256sum < "$stage"); elif command -v shasum >/dev/null 2>&1; then staged_hash=$(shasum -a 256 < "$stage"); else exit 1; fi',
+    `[ "\${staged_hash%% *}" = ${shellQuote(pendingSha256)} ]`,
+    'chmod 0644 "$stage"',
+    `link "$stage" ${shellQuote(registryPath)}`,
+  ].join('; ');
   return Object.freeze({ keyId, publicKeyPem, pendingPath, installCommands: Object.freeze([
-    `sudo mkdir -p "${directory}"`,
-    `sudo install -o root -g wheel -m 0644 "${pendingPath}" "${registryPath}"`,
+    `sudo /bin/mkdir -p ${shellQuote(directory)}`,
+    `sudo /bin/sh -c ${shellQuote(installScript)}`,
   ]) });
 }
 
