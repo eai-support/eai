@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.4 |
-| Released | 2026-09-29 |
-| Last Material Change | Use workspace terminology in customer-facing guidance |
-| Source Commit | `9c7efe3e4252abf86e0dd5c33dcc4eb8e4f96bb7` |
+| Version | 3.19.0 |
+| Released | 2026-10-07 |
+| Last Material Change | Add managed app deployment and align installer dependencies |
+| Source Commit | `8ffb3deba2be8d633fcc867f1a0e28c0e181bf74` |
 
 
 ## Install
