@@ -744,14 +744,25 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'b4121d60a5ab382d0ba2859939e0b2e4043f8cec' },
+      candidate: { commit: '3af817f688d374b6260dcffcecb53c4bb94675ef' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'b4121d60a5ab382d0ba2859939e0b2e4043f8cec',
+        templateCommitSha: '3af817f688d374b6260dcffcecb53c4bb94675ef',
         workflowSha256: 'sha256:e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb',
       },
-      releaseGate: { status: 'awaiting-producer-release', tag: null, commit: null },
+      releaseGate: {
+        status: 'released',
+        tag: 'v1.0.7',
+        commit: '3af817f688d374b6260dcffcecb53c4bb94675ef',
+      },
     });
+    const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
+    expect(linkedSources.appTemplate).toMatchObject({
+      version: 'v1.0.7',
+      commit: '3af817f688d374b6260dcffcecb53c4bb94675ef',
+      packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
+    });
+    expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
     expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);
     const evidenceTest = await readFile(join(root, pin.candidate.evidenceTest.path));
