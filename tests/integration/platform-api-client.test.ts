@@ -4,11 +4,238 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { PlatformAPIClient, isChildTenantCreateRequest, parseApiError } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { getAccessToken } from '../../src/lib/auth.js'
+import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
+  })
+
+  test('caps managed requests and preserves a tighter client or per-read budget', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 50)
+    const tight = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 75 })
+    await tight.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 5000)
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, 50, 75])
+    expect(fetchMock.mock.calls.every(([, init]) => init?.signal instanceof AbortSignal && init.redirect === 'error')).toBe(true)
+  })
+
+  test('gives only source upload a bounded longer deadline while preserving tighter command budgets', () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    const tight = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 75 })
+    client.managedSourceUploadSignal()
+    client.managedSourceUploadSignal(50)
+    tight.managedSourceUploadSignal()
+    client.managedRequestSignal()
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([
+      MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, 50, 75, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    ])
+  })
+
+  test.each([0, -1, Infinity, NaN, 0.5])('rejects invalid managed HTTP budget %s before credentials or fetch', async timeoutMs => {
+    const token = vi.mocked(getAccessToken)
+    token.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', timeoutMs)).rejects.toThrow('positive bounded integer')
+    expect(token).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('aborts an actual hung fetch lifetime without retrying or dropping the original authority', async () => {
+    let requestSignal: AbortSignal | undefined
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      requestSignal = init?.signal ?? undefined
+      if (!requestSignal) throw new Error('A managed deadline signal is required')
+      // A real in-flight fetch owns a live socket; this mock retains that lifetime until abort.
+      const alive = setInterval(() => {}, 1000)
+      try {
+        return await new Promise<Response>((_resolve, reject) => {
+          requestSignal!.addEventListener('abort', () => reject(requestSignal!.reason), { once: true })
+        })
+      } finally { clearInterval(alive) }
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    let error: unknown
+    try { await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 25) }
+    catch (caught) { error = caught }
+    expect(requestSignal?.aborted).toBe(true)
+    expect(isManagedPublicRequestTimeout(error)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]).toEqual([
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant',
+      expect.objectContaining({ method: 'GET', redirect: 'error', headers: expect.objectContaining({ Authorization: 'Bearer <fixture-access-token>' }) }),
+    ])
+  })
+
+  test('keeps the deadline active after headers and classifies a hung exact-operation body', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal
+      if (!signal) throw new Error('A managed deadline signal is required')
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const alive = setInterval(() => {}, 1000)
+          signal.addEventListener('abort', () => {
+            clearInterval(alive)
+            controller.error(new DOMException('Native body read aborted', 'AbortError'))
+          }, { once: true })
+          controller.enqueue(new TextEncoder().encode('{'))
+        },
+      })
+      return new Response(body, { status: 200, headers: { 'Content-Type': 'application/json' } })
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(readExactOperation(client, 'tenant-one', 'runtime-tenant', 'my-app', 'operation-one', 'source-unknown', 25)).rejects.toMatchObject({
+      code: 'SOURCE_OPERATION_TIMEOUT',
+      nextAction: 'Keep the original recovery receipt and use --retry operation-one against its saved gateway; do not dispatch a duplicate workflow.',
+    })
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+  })
+
+  test('times out slow credential acquisition before any managed authority is sent', async () => {
+    let finishToken!: (value: string) => void
+    vi.mocked(getAccessToken).mockImplementationOnce(() => new Promise(resolve => { finishToken = resolve }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const alive = setInterval(() => {}, 1000)
+    try {
+      const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one', { managedRequestTimeoutMs: 25 })
+      await expect(client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')).rejects.toMatchObject({ name: 'TimeoutError' })
+      finishToken('<fixture-access-token>')
+      await Promise.resolve()
+      expect(fetchMock).not.toHaveBeenCalled()
+    } finally { clearInterval(alive) }
+  })
+
+  test.each(['AbortError', 'TimeoutError'])('does not misclassify an unrelated provider %s as its own deadline', async name => {
+    const error = new DOMException('Provider aborted independently', name)
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(error)
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(readExactOperation(client, 'tenant-one', 'runtime-tenant', 'my-app', 'operation-one')).rejects.toBe(error)
+    expect(isManagedPublicRequestTimeout(error)).toBe(false)
+  })
+
+  test('passes only the remaining polling budget into the next exact HTTP read', async () => {
+    let now = 10_000
+    vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      now += 990
+      return new Response(JSON.stringify({ operationId: 'operation-one', appKey: 'my-app', appScopeTenantId: 'tenant-one', targetTenantId: 'runtime-tenant', sourceMode: 'source-unknown', environment: 'preview', status: 'pending', sourceStatus: 'issued', setup: {} }))
+    })
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(pollExactOperation(client, { tenantId: 'tenant-one', targetTenantId: 'runtime-tenant', appKey: 'my-app', operationId: 'operation-one' }, true, 1)).rejects.toMatchObject({ code: 'SOURCE_OPERATION_TIMEOUT' })
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([1000, 10])
+  })
+
+  test('applies the same body-active deadline to legacy OIDC evidence without replacing its credential', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const digest = `sha256:${'b'.repeat(64)}`
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    const response = await client.submitSourceUnknownWorkflowEvidence('tenant-one', 'my-app', {
+      operationId: 'source-unknown-abc123', nonce: 'one-time-nonce', sourceMode: 'source-unknown',
+      workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'a'.repeat(40), collectorDigest: digest,
+      ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: digest, artifactDigest: digest,
+      imageArtifact: { id: '123', name: 'eai-generated-app-image', archiveDigest: digest }, imageDigest: digest,
+      schemaProvenance: { templateVersion: '3.12.0', schemaDigest: digest, validatorDigest: digest },
+      workflowRun: { id: '456', attempt: '1' }, validationSummary: { status: 'passed' },
+    }, '<fixture-github-oidc>')
+    expect(await readManagedPublicResponseText(response)).toBe('{}')
+    expect(timeout).toHaveBeenCalledExactlyOnceWith(MANAGED_PUBLIC_REQUEST_TIMEOUT_MS)
+    expect(fetchMock).toHaveBeenCalledExactlyOnceWith(
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/source-unknown/workflow-evidence',
+      expect.objectContaining({ method: 'POST', redirect: 'error', signal: expect.any(AbortSignal), headers: expect.objectContaining({ Authorization: 'Bearer <fixture-github-oidc>' }) }),
+    )
+  })
+
+  test('keeps managed source preparation and actor linking on tenant/app-scoped v4 routes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    const link = { schemaVersion: 'eai.cli_managed_github_link.v1' as const, targetTenantId: 'runtime-tenant', environment: 'preview' as const, idempotencyKey: '12345678-1234-1234-1234-123456789abc' }
+    await client.createCliManagedGithubLinkSession('tenant-one', 'my-app', link)
+    await client.getCliManagedGithubLinkSession('tenant-one', 'my-app', 'link-one', 'runtime-tenant', 'preview')
+    const prep = {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1' as const, templateCommitSha: 'a'.repeat(40),
+      bundleSha256: `sha256:${'b'.repeat(64)}`, configHash: `sha256:${'c'.repeat(64)}`, fileCount: 2, totalBytes: 120, githubLinkSessionId: 'link-one',
+      targetTenantId: link.targetTenantId, environment: link.environment, idempotencyKey: link.idempotencyKey,
+    }
+    await client.prepareCliManagedSource('tenant-one', 'my-app', prep)
+    await client.getCliManagedSourceOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant', 'preview')
+    await client.getManagedDeploymentOperation('tenant-one', 'my-app', 'operation-one', 'runtime-tenant')
+    expect(fetchMock.mock.calls.map(([url, init]) => [url, init?.method])).toEqual([
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions', 'POST'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/github-link-sessions/link-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/preparations', 'POST'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/cli-managed-source/operations/operation-one?targetTenantId=runtime-tenant&environment=preview', 'GET'],
+      ['https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-one/apps/my-app/managed-deployments/operations/operation-one?targetTenantId=runtime-tenant', 'GET'],
+    ])
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual(link)
+    expect(JSON.parse(String(fetchMock.mock.calls[2][1]?.body))).toEqual(prep)
+    expect(fetchMock.mock.calls[2][1]?.headers).toMatchObject({ Authorization: 'Bearer <fixture-access-token>' })
+    expect(fetchMock.mock.calls.every(([, init]) => init?.redirect === 'error')).toBe(true)
+  })
+
+  test.each(['operation/other', '../operation', '', 'operation?query=value'])('rejects a non-opaque managed operation ID %s before an HTTP request', async operationId => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(client.getCliManagedSourceOperation('tenant-one', 'my-app', operationId, 'runtime-tenant', 'preview')).rejects.toThrow('safe opaque path segments')
+    await expect(client.getManagedDeploymentOperation('tenant-one', 'my-app', operationId, 'runtime-tenant')).rejects.toThrow('safe opaque path segments')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('preserves dotted app and tenant scope segments on managed operation routes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant.parent')
+
+    await client.getManagedDeploymentOperation(
+      'tenant.parent',
+      'planning.portal',
+      'source-unknown-abc123',
+      'runtime.child',
+    )
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant.parent/apps/planning.portal/managed-deployments/operations/source-unknown-abc123?targetTenantId=runtime.child',
+      expect.objectContaining({ method: 'GET', redirect: 'error' }),
+    )
+  })
+
+  test.each([
+    ['operation/other', 'runtime-tenant'],
+    ['../operation', 'runtime-tenant'],
+    ['', 'runtime-tenant'],
+    ['operation?query=value', 'runtime-tenant'],
+    ['source-unknown-abc123', '../runtime-tenant'],
+  ])('rejects unsafe legacy operation binding %s / %s before an HTTP request', async (operationId, targetTenantId) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-one')
+    await expect(client.getSourceUnknownOperation(
+      'tenant-one',
+      'my-app',
+      operationId,
+      targetTenantId,
+    )).rejects.toThrow('safe opaque path segments')
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('rejects an untrusted managed PublicAPI origin before acquiring or sending a bearer token', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const tokenMock = vi.mocked(getAccessToken)
+    tokenMock.mockClear()
+    const client = new PlatformAPIClient('https://attacker.example/public', 'tenant-parent')
+
+    await expect(
+      client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review'),
+    ).rejects.toThrow('trusted EAI regional PublicAPI')
+    expect(tokenMock).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('formats FastAPI field validation details with a stable reason code', async () => {
@@ -608,12 +835,144 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('gives only receipt-bound app creation a 90s ceiling without retrying the POST', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'exact-create-actor' })).toString('base64url')}.signature`
+    vi.mocked(getAccessToken).mockResolvedValueOnce(token).mockResolvedValueOnce(token)
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    const client = new PlatformAPIClient('http://localhost:18000', 'tenant-parent')
+    const capture = vi.fn()
+
+    await client.createTenantApp('tenant-parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    await client.listResources('tenant-vertical-enrollment', { where: { verticalKey: 'app' } }, capture)
+
+    expect(timeout.mock.calls.map(([ms]) => ms)).toEqual([
+      INIT_APP_CREATE_REQUEST_TIMEOUT_MS,
+      MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    ])
+    expect(fetchMock.mock.calls.map(([, init]) => init?.method)).toEqual(['POST', 'GET'])
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error', signal: expect.any(AbortSignal) })
+  })
+
+  test('a timed-out create POST is not retried or converted into a read acknowledgement', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'exact-create-actor' })).toString('base64url')}.signature`
+    vi.mocked(getAccessToken).mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal
+      if (!signal) throw new Error('The exact create request must carry a deadline')
+      return await new Promise<Response>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true })
+      })
+    })
+    const client = new PlatformAPIClient('http://localhost:18000', 'tenant-parent', { managedRequestTimeoutMs: 20 })
+    const capture = vi.fn()
+
+    let failure: unknown
+    try {
+      await client.createTenantApp('tenant-parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    } catch (error) {
+      failure = error
+    }
+    expect(isManagedPublicRequestTimeout(failure)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('POST')
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'exact-create-actor' })
+  })
+
+  test('init acknowledgement captures the exact refreshed bearer actor once, without an identity read', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'actual-request-actor' })).toString('base64url')}.signature`
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear(); acquire.mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 201 }))
+    const capture = vi.fn()
+    await new PlatformAPIClient('http://localhost:18000', 'parent', { publicRequestRedirect: 'follow' })
+      .createTenantApp('parent', { appDisplayName: 'App', verticalKey: 'app' }, capture)
+    expect(acquire).toHaveBeenCalledTimes(1)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'actual-request-actor' })
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ redirect: 'error', signal: expect.any(AbortSignal), headers: { Authorization: `Bearer ${token}` } })
+    expect(JSON.stringify(capture.mock.calls)).not.toContain(token)
+  })
+
+  test('ordinary listResources keeps its query, redirect option and single token acquisition without a receipt deadline', async () => {
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear()
+    const deadline = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    await new PlatformAPIClient('https://example.test/public', 'parent', { publicRequestRedirect: 'manual' })
+      .listResources('tenant_vertical_enrollment', { page: 2, limit: 17, sort: '-createdAt', where: { verticalKey: 'a+b' } })
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [input, init] = fetchMock.mock.calls[0]
+    const url = new URL(String(input))
+    expect(url.pathname).toBe('/public/v4/data/resources/parent/tenant-vertical-enrollment')
+    expect(Object.fromEntries(url.searchParams)).toEqual({ page: '2', limit: '17', sort: '-createdAt', where: JSON.stringify({ verticalKey: 'a+b' }) })
+    expect(init).toMatchObject({ method: 'GET', redirect: 'manual', headers: { Authorization: 'Bearer <fixture-access-token>', 'X-Tenant-Id': 'parent' } })
+    expect(init?.signal).toBeUndefined(); expect(deadline).not.toHaveBeenCalled()
+  })
+
+  test('opted-in init stops slow headers before fetch or authority capture, including late token completion', async () => {
+    let finish!: (token: string) => void
+    vi.mocked(getAccessToken).mockImplementationOnce(() => new Promise(resolve => { finish = resolve }))
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const capture = vi.fn()
+    const alive = setInterval(() => {}, 1000)
+    try {
+      await expect(new PlatformAPIClient('http://localhost:18000', 'parent', { managedRequestTimeoutMs: 25 })
+        .createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toMatchObject({ name: 'TimeoutError' })
+      finish(`header.${Buffer.from(JSON.stringify({ oid: 'late-actor' })).toString('base64url')}.signature`)
+      await new Promise(resolve => setTimeout(resolve, 0))
+      expect(fetchMock).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled()
+    } finally { clearInterval(alive) }
+  })
+
+  test('opted-in init body remains within the original request deadline even if its body never settles', async () => {
+    vi.mocked(getAccessToken).mockResolvedValueOnce(`header.${Buffer.from(JSON.stringify({ oid: 'actual-actor' })).toString('base64url')}.signature`)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      const response = new Response('{}')
+      vi.spyOn(response, 'text').mockImplementation(() => new Promise(() => {}))
+      return response
+    })
+    const capture = vi.fn()
+    const alive = setInterval(() => {}, 1000)
+    try {
+      const response = await new PlatformAPIClient('http://localhost:18000', 'parent', { managedRequestTimeoutMs: 25 })
+        .createTenantApp('parent', { appDisplayName: 'App' }, capture)
+      await expect(readManagedPublicResponseText(response)).rejects.toMatchObject({ name: 'TimeoutError' })
+      expect(fetchMock).toHaveBeenCalledTimes(1); expect(capture).toHaveBeenCalledTimes(1)
+      expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
+    } finally { clearInterval(alive) }
+  })
+
+  test('opted-in selection captures its exact bearer with one enrollment GET and no create', async () => {
+    const token = `header.${Buffer.from(JSON.stringify({ oid: 'selected-actor' })).toString('base64url')}.signature`
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear(); acquire.mockResolvedValueOnce(token)
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{"docs":[]}'))
+    const capture = vi.fn()
+    await new PlatformAPIClient('http://localhost:18000', 'parent').listResources('tenant-vertical-enrollment', { where: { verticalKey: 'app' } }, capture)
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0]?.[1]?.method).toBe('GET')
+    expect(capture).toHaveBeenCalledExactlyOnceWith({ publicApiUrl: 'http://localhost:18000', actorId: 'selected-actor' })
+  })
+
+  test('missing actor and unsafe init gateway fail before the next provider call, without fallback', async () => {
+    const acquire = vi.mocked(getAccessToken)
+    acquire.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const capture = vi.fn()
+    await expect(new PlatformAPIClient('https://user:secret@example.test', 'parent').createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toThrow(/gateway/)
+    expect(acquire).not.toHaveBeenCalled()
+    acquire.mockResolvedValueOnce(`header.${Buffer.from(JSON.stringify({ sub: 'not-an-oid' })).toString('base64url')}.signature`)
+    await expect(new PlatformAPIClient('http://localhost:18000', 'parent').createTenantApp('parent', { appDisplayName: 'App' }, capture)).rejects.toThrow(/oid/)
+    expect(acquire).toHaveBeenCalledTimes(1); expect(fetchMock).not.toHaveBeenCalled(); expect(capture).not.toHaveBeenCalled()
+  })
+
   test('registers source-unknown app repositories through the public platform router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
       repoOwner: 'enterpriseaigroup',
       repoName: 'rates-review',
@@ -637,7 +996,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       repoOwner: 'enterpriseaigroup',
@@ -665,7 +1024,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.registerSourceUnknownApp('tenant-parent', 'rates-review', {
       repoOwner: 'enterpriseaigroup',
       repoName: 'rates-review',
@@ -694,7 +1053,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/register')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       repoOwner: 'enterpriseaigroup',
@@ -727,7 +1086,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.setupSourceUnknownWorkflow('tenant-parent', 'rates-review', {
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
@@ -739,7 +1098,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-setup')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       environment: 'preview',
@@ -755,31 +1114,27 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.submitSourceUnknownWorkflowEvidence('tenant-parent', 'rates-review', {
       operationId: 'source-unknown-op',
       nonce: 'nonce-token',
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
       ref: 'refs/heads/main',
-      commitSha: 'abcdef1234567890',
-      configHash: 'sha256:config',
+      commitSha: 'a'.repeat(40),
+      configHash: `sha256:${'e'.repeat(64)}`,
       artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      imageArtifact: { id: '98765', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+      schemaProvenance: { templateVersion: '1', baseTemplateSha: 'b'.repeat(40), schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}` },
       workflowRun: { id: '123456789', attempt: 1 },
-      oidcClaims: {
-        repository: 'enterpriseaigroup/rates-review',
-        ref: 'refs/heads/main',
-        sha: 'abcdef1234567890',
-        run_id: '123456789',
-      },
       validationSummary: { status: 'passed' },
     }, 'github-oidc-token')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/workflow-evidence')
     expect(init?.method).toBe('POST')
     expect(init?.headers).toEqual(expect.objectContaining({
       Authorization: 'Bearer github-oidc-token',
@@ -790,19 +1145,25 @@ describe('PlatformAPIClient', () => {
       environment: 'preview',
       workflowPath: '.github/workflows/eai-app.yml',
       ref: 'refs/heads/main',
-      commitSha: 'abcdef1234567890',
-      configHash: 'sha256:config',
+      commitSha: 'a'.repeat(40),
+      configHash: `sha256:${'e'.repeat(64)}`,
       artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
       imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      imageArtifact: { id: '98765', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+      schemaProvenance: { templateVersion: '1', baseTemplateSha: 'b'.repeat(40), schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}` },
       workflowRun: { id: '123456789', attempt: 1 },
-      oidcClaims: {
-        repository: 'enterpriseaigroup/rates-review',
-        ref: 'refs/heads/main',
-        sha: 'abcdef1234567890',
-        run_id: '123456789',
-      },
       validationSummary: { status: 'passed' },
     })
+  })
+
+  test('bootstraps a source-unknown runtime with the exact operation and explicit target', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
+    await client.bootstrapSourceUnknownRuntime('tenant-parent', 'rates-review', 'preview', 'source-unknown-op', 'tenant-runtime')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/environments/preview/runtime-bootstrap')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({ sourceOperationId: 'source-unknown-op', targetTenantId: 'tenant-runtime', sourceMode: 'source-unknown' })
   })
 
   test('requests source-unknown deployment handoff through the public platform router', async () => {
@@ -810,7 +1171,7 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 202 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.requestSourceUnknownDeployment('tenant-parent', 'rates-review', {
       operationId: 'source-unknown-op',
       environment: 'preview',
@@ -836,7 +1197,7 @@ describe('PlatformAPIClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deploy')
     expect(init?.method).toBe('POST')
     expect(JSON.parse(String(init?.body))).toEqual({
       operationId: 'source-unknown-op',
@@ -866,13 +1227,35 @@ describe('PlatformAPIClient', () => {
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 200 }))
 
-    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
     await client.getLatestSourceUnknownDeployment('tenant-parent', 'rates-review')
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
 
-    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(String(url)).toBe('https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/deployments/latest')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
+  test('reads one exact source-unknown operation with the authorized target tenant', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 200 }))
+
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'tenant-parent')
+    await client.getSourceUnknownOperation(
+      'tenant-parent',
+      'rates-review',
+      'source-unknown-abc123',
+      'tenant-runtime',
+    )
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe(
+      'https://test-api.au.myenterprise.ai/public/v4/platform/tenants/tenant-parent/apps/rates-review/source-unknown/operations/source-unknown-abc123?targetTenantId=tenant-runtime',
+    )
     expect(init?.method).toBe('GET')
     expect(init?.body).toBeUndefined()
   })

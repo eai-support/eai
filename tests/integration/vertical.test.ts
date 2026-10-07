@@ -22,9 +22,25 @@ import {
   verticalCommand,
 } from '../../src/commands/vertical.js';
 
-const API_BASE = 'https://test-api.example.com';
+const API_BASE = 'https://test-api.au.myenterprise.ai/public';
 const COMPANY_TENANT_ID = 'company-tenant';
 const PLATFORM_PARENT_ID = 'eai-developers';
+
+function workflowEvidenceFixture(): Record<string, unknown> {
+  return {
+    operationId: 'source-unknown-op', nonce: 'nonce-token', environment: 'preview',
+    workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'f'.repeat(40),
+    collectorDigest: `sha256:${'9'.repeat(64)}`, ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
+    configHash: `sha256:${'e'.repeat(64)}`, artifactDigest: `sha256:${'a'.repeat(64)}`,
+    imageArtifact: { id: '987654321', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` },
+    imageDigest: `sha256:${'b'.repeat(64)}`,
+    schemaProvenance: {
+      templateVersion: 'eai.generated_app_config.v1', baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
+      schemaDigest: `sha256:${'c'.repeat(64)}`, validatorDigest: `sha256:${'d'.repeat(64)}`,
+    },
+    workflowRun: { id: '123456789', attempt: '1' }, validationSummary: { status: 'passed' },
+  };
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -272,6 +288,80 @@ describe('eai app', () => {
       status: 'deleted',
       verified: true,
     });
+  });
+
+  test.each([
+    ['current-parent-child', 'success', 1],
+    ['plan-missing-targets', 'plan', 0],
+    ['plan-duplicate-targets', 'plan', 0],
+    ['plan-missing-parent', 'plan', 0],
+    ['plan-unknown-contract', 'plan', 0],
+    ['receipt-foreign-target', 'receipt', 1],
+    ['receipt-missing-target', 'receipt', 1],
+    ['receipt-duplicate-target', 'receipt', 1],
+    ['receipt-reordered-targets', 'receipt', 1],
+    ['legacy-unexpected-targets', 'receipt', 1],
+  ])('binds deletion to original scoped plan without another request: %s', async (scenario, phase, expectedDeletes) => {
+    await seedLoggedInTenant();
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const hash = 'a'.repeat(64);
+    const targets = ['child-tenant', COMPANY_TENANT_ID];
+    const plan: Record<string, unknown> = {
+      tenantId: COMPANY_TENANT_ID, appKey: 'post-pilot', confirmationRequired: 'post-pilot',
+      ownershipManifestHash: hash, environments: ['preview', 'dev', 'test', 'prod'],
+      cleanupContract: 'eai.app-scoped-cleanup.v2', runtimeTenantIds: targets,
+    };
+    const receipt: Record<string, unknown> = {
+      schemaVersion: 'eai.app-deletion-receipt.v1', operationId: 'appdel-operation-1',
+      planHash: hash, ownershipManifestHash: hash, tenantId: COMPANY_TENANT_ID,
+      appKey: 'post-pilot', status: 'deleted', verified: true, runtimeTenantIds: [...targets],
+    };
+    if (scenario === 'plan-missing-targets') delete plan.runtimeTenantIds;
+    if (scenario === 'plan-duplicate-targets') plan.runtimeTenantIds = [...targets, COMPANY_TENANT_ID];
+    if (scenario === 'plan-missing-parent') plan.runtimeTenantIds = ['child-tenant'];
+    if (scenario === 'plan-unknown-contract') plan.cleanupContract = 'unknown-contract';
+    if (scenario === 'receipt-foreign-target') receipt.runtimeTenantIds = ['foreign-child', COMPANY_TENANT_ID];
+    if (scenario === 'receipt-missing-target') receipt.runtimeTenantIds = [COMPANY_TENANT_ID];
+    if (scenario === 'receipt-duplicate-target') receipt.runtimeTenantIds = [...targets, COMPANY_TENANT_ID];
+    if (scenario === 'receipt-reordered-targets') receipt.runtimeTenantIds = [...targets].reverse();
+    if (scenario === 'legacy-unexpected-targets') { delete plan.runtimeTenantIds; delete plan.cleanupContract; }
+    let identities = 0; let contexts = 0; let plans = 0; let deletes = 0;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input); const method = requestMethod(init);
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        identities += 1;
+        return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace',
+          slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/management` && method === 'GET') {
+        contexts += 1; return jsonResponse({ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', region: 'au' });
+      }
+      if (url.endsWith('/apps/post-pilot/deletion-plan') && method === 'GET') {
+        plans += 1; return jsonResponse(plan);
+      }
+      if (url.endsWith('/apps/post-pilot') && method === 'DELETE') {
+        deletes += 1; return jsonResponse(receipt);
+      }
+      throw new Error(`unexpected provider request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const invocation = appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+      '--confirm', 'post-pilot', '--non-interactive', '--format', 'json'], { from: 'user' });
+    if (phase === 'success') {
+      await invocation;
+      expect(JSON.parse(outputSpy.mock.calls.map(call => String(call[0])).join(''))).toMatchObject({ runtimeTenantIds: targets });
+    } else {
+      await expect(invocation).rejects.toThrow('fixture-process-exit');
+      expect(outputSpy).not.toHaveBeenCalled();
+      expect(errorSpy.mock.calls.map(call => String(call[0])).join('')).toContain(
+        phase === 'plan' ? 'invalid app deletion ownership plan' : 'verified app deletion receipt',
+      );
+    }
+    expect({ identities, contexts, plans, deletes }).toEqual({ identities: 1, contexts: 1, plans: 1, deletes: expectedDeletes });
+    expect(fetchMock).toHaveBeenCalledTimes(3 + expectedDeletes);
+    exitSpy.mockRestore();
   });
 
   test('requires an exact app-key confirmation for non-interactive deletion', () => {
@@ -1001,6 +1091,10 @@ describe('eai app', () => {
         }),
       }),
     );
+    const authenticatedCalls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).startsWith(API_BASE));
+    expect(authenticatedCalls.length).toBeGreaterThan(0);
+    expect(authenticatedCalls.filter(([, init]) => init?.redirect !== 'error')
+      .map(([input]) => requestUrl(input))).toEqual([]);
   });
 
   test.each([
@@ -1072,85 +1166,24 @@ describe('eai app', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
+    const evidence = workflowEvidenceFixture();
+    const evidencePath = join(env.dir, 'workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify(evidence));
     await appCommand.parseAsync([
-      'workflow-evidence',
-      'planning-portal',
-      '--tenant-id',
-      COMPANY_TENANT_ID,
-      '--repo',
-      'enterpriseaigroup/planning-portal',
-      '--operation-id',
-      'source-unknown-op',
-      '--nonce',
-      'nonce-token',
-      '--commit',
-      'abcdef1234567890',
-      '--config-hash',
-      'sha256:config',
-      '--artifact-digest',
-      'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-      '--image-digest',
-      'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      '--workflow-run-id',
-      '123456789',
-      '--workflow-run-attempt',
-      '1',
-      '--github-oidc-token',
-      'github-oidc-token',
-      '--template-version',
-      'eai.generated_app_config.v1',
-      '--base-template-sha',
-      '483c609cd974fa732c8ccb5ce37855911f881d76',
-      '--schema-digest',
-      'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-      '--validator-digest',
-      'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-      '--format',
-      'json',
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token', '--format', 'json',
     ], { from: 'user' });
 
-    expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/workflow-evidence`,
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          Authorization: 'Bearer github-oidc-token',
-        }),
-        body: JSON.stringify({
-          operationId: 'source-unknown-op',
-          nonce: 'nonce-token',
-          environment: 'preview',
-          workflowPath: '.github/workflows/eai-app.yml',
-          ref: 'refs/heads/main',
-          commitSha: 'abcdef1234567890',
-          configHash: 'sha256:config',
-          artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-          imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-          schemaProvenance: {
-            templateVersion: 'eai.generated_app_config.v1',
-            baseTemplateSha: '483c609cd974fa732c8ccb5ce37855911f881d76',
-            schemaDigest: 'sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
-            validatorDigest: 'sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd',
-          },
-          workflowRun: {
-            id: '123456789',
-            attempt: 1,
-          },
-          oidcClaims: {
-            repository: 'enterpriseaigroup/planning-portal',
-            ref: 'refs/heads/main',
-            sha: 'abcdef1234567890',
-            workflow_ref: 'enterpriseaigroup/planning-portal/.github/workflows/eai-app.yml@refs/heads/main',
-            run_id: '123456789',
-            run_attempt: '1',
-          },
-          validationSummary: {
-            status: 'passed_by_cli',
-            appValidated: true,
-          },
-        }),
-      }),
-    );
+    const evidenceCall = fetchMock.mock.calls.find(([input]) => requestUrl(input).endsWith('/workflow-evidence'));
+    expect(evidenceCall).toBeDefined();
+    expect(evidenceCall?.[1]?.headers).toEqual(expect.objectContaining({ Authorization: 'Bearer github-oidc-token' }));
+    expect(JSON.parse(String(evidenceCall?.[1]?.body))).toEqual(evidence);
+    expect(String(evidenceCall?.[1]?.body)).not.toContain('passed_by_cli');
+    expect(String(evidenceCall?.[1]?.body)).not.toContain('oidcClaims');
+    const authenticatedCalls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).startsWith(API_BASE));
+    expect(authenticatedCalls.length).toBeGreaterThan(0);
+    expect(authenticatedCalls.filter(([, init]) => init?.redirect !== 'error')
+      .map(([input]) => requestUrl(input))).toEqual([]);
   });
 
   test('HP008 requests source-unknown deployment handoff under the company tenant', async () => {
@@ -1347,18 +1380,146 @@ describe('eai app', () => {
     ).toThrow('Schema provenance requires --base-template-sha, --approved-source-sha, or --approved-release.');
   });
 
-  test('BC004 rejects workflow evidence without schema provenance before request', () => {
-    expect(() =>
-      buildSourceUnknownWorkflowEvidenceData({
-        repo: 'enterpriseaigroup/planning-portal',
-        operationId: 'source-unknown-op',
-        nonce: 'nonce-token',
-        commit: 'abcdef1234567890',
-        configHash: 'sha256:config',
-        artifactDigest: 'sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
-        imageDigest: 'sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
-      }),
-    ).toThrow('Workflow evidence requires schema provenance');
+  test.each([
+    ['missing image archive', { imageArtifact: undefined }],
+    ['missing run identity', { workflowRun: undefined }],
+    ['invalid run attempt', { workflowRun: { id: '123', attempt: '0' } }],
+    ['invalid artifact ID', { imageArtifact: { id: '-1', name: 'eai-generated-app-image', archiveDigest: `sha256:${'f'.repeat(64)}` } }],
+    ['short commit', { commitSha: 'short' }],
+    ['invalid config digest', { configHash: 'sha256:config' }],
+    ['invalid environment', { environment: 'production' }],
+    ['missing provenance', { schemaProvenance: undefined }],
+    ['invented CLI pass', { validationSummary: { status: 'passed_by_cli' } }],
+    ['lookup is not validation', { validationSummary: { status: 'passed', appValidated: true } }],
+    ['untrusted OIDC claims', { oidcClaims: { repository: 'attacker/repo' } }],
+    ['invalid workflow blob', { workflowBlobSha: 'not-a-git-blob' }],
+    ['invalid collector digest', { collectorDigest: 'sha256:short' }],
+    ['invalid source mode', { sourceMode: 'customer' }],
+    ['invalid target tenant', { targetTenantId: '../other' }],
+    ['managed evidence without target tenant', { sourceMode: 'eai-cli-generated' }],
+  ])('BC004 rejects noncanonical evidence: %s', (_label, mutation) => {
+    expect(() => buildSourceUnknownWorkflowEvidenceData({ ...workflowEvidenceFixture(), ...mutation })).toThrow();
+  });
+
+  test('preserves distinct canonical artifact, archive, and image digests without synthesizing proof', () => {
+    const fixture = workflowEvidenceFixture();
+    expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
+  });
+
+  test('preserves the explicit source-unknown collector mode without deriving authority', () => {
+    const fixture = {
+      ...workflowEvidenceFixture(),
+      sourceMode: 'source-unknown',
+      targetTenantId: 'runtime-child',
+    };
+    expect(buildSourceUnknownWorkflowEvidenceData(fixture)).toEqual(fixture);
+  });
+
+  test.each([
+    { operationId: 'cli-managed-source-op', sourceMode: 'eai-cli-generated' },
+    { operationId: 'source-unknown-op', sourceMode: 'eai-cli-generated' },
+    { operationId: 'cli-managed-source-op', sourceMode: 'source-unknown' },
+    { operationId: 'cli-managed-source-op' },
+  ])('rejects managed CLI evidence on the legacy command before tenant context or network: %j', async binding => {
+    const evidencePath = join(env.dir, 'managed-cli-workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify({
+      ...workflowEvidenceFixture(),
+      ...binding,
+      targetTenantId: 'runtime-child',
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+      '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('source-unknown evidence only'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([undefined, 'source-unknown', 'eai-cli-generated'])(
+    'rejects an actual CLI-managed operation on the legacy command before authentication: %s', async sourceMode => {
+      const evidencePath = join(env.dir, 'canonical-managed-workflow-evidence.json');
+      await writeFile(evidencePath, JSON.stringify({
+        ...workflowEvidenceFixture(),
+        operationId: `cli-managed-${'a'.repeat(32)}`,
+        ...(sourceMode ? { sourceMode } : {}),
+        targetTenantId: 'runtime-child',
+      }));
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(appCommand.parseAsync([
+        'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+        '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+        '--format', 'json',
+      ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+      expect(console.error).toHaveBeenCalledWith(expect.stringMatching(/source-unknown (?:evidence only|namespace)/));
+      expect(fetchMock).not.toHaveBeenCalled();
+    },
+  );
+
+  test('rejects an unsafe workflow-evidence operation ID before tenant context or network access', async () => {
+    await seedLoggedInTenant();
+    const evidencePath = join(env.dir, 'unsafe-workflow-evidence.json');
+    await writeFile(evidencePath, JSON.stringify({
+      ...workflowEvidenceFixture(),
+      operationId: '../other?operation=1',
+    }));
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'workflow-evidence', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--evidence-file', evidencePath, '--github-oidc-token', 'github-oidc-token',
+      '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('operationId is missing or invalid'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('rejects an unsafe deployment handoff operation ID before tenant context or network access', async () => {
+    await seedLoggedInTenant();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      'deploy-source-unknown', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--operation-id', '../other?operation=1', '--skip-validate', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+    expect(console.error).toHaveBeenCalledWith(expect.stringContaining('safe exact managed-deployment identifier'));
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    ['connect-existing', ['--repo', 'enterprise/planning-portal']],
+    ['adopt-observed', ['--repo', 'enterprise/planning-portal', '--url', 'https://planning.example.com']],
+    ['workflow-setup', []],
+    ['workflow-evidence', ['--evidence-file', 'unused-evidence.json']],
+    ['deploy-source-unknown', ['--operation-id', 'source-unknown-op']],
+    ['deploy-source-unknown-status', []],
+  ])('rejects an untrusted managed origin before tenant traffic for %s', async (command, args) => {
+    await seedLoggedInTenant();
+    if (command === 'workflow-evidence') {
+      await writeFile(join(env.dir, 'unused-evidence.json'), JSON.stringify(workflowEvidenceFixture()));
+    }
+    process.env.BASE_URL_PUBLIC_API = 'https://attacker.example.invalid/public';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync([
+      command,
+      'planning-portal',
+      ...args,
+      '--tenant-id',
+      COMPANY_TENANT_ID,
+      '--skip-validate',
+      '--format',
+      'json',
+    ], { from: 'user' })).rejects.toThrow('trusted EAI regional PublicAPI');
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   test('BC005 rejects invalid deployment handoff artifact digest before request', () => {

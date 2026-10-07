@@ -26,6 +26,31 @@ template for EnterpriseAI app-delivery work.
 
 ## Implementation Contract
 
+For EAI-maintained source, include all customer-authored app files in the
+managed-source upload: UI and backend code, custom runners, tests, scripts,
+documentation, assets, and supported dot configuration. EAI-owned
+authentication, platform-service, deployment, and workflow controls remain
+protected. Credentials and local-tool metadata remain excluded. Read the
+installed CLI's `eai deploy source validate --help` for its normalized source
+boundary. Do not maintain a second allowlist in Gofer.
+
+After selecting EAI-maintained source, run the read-only managed-source check
+before implementation, after source changes, and before claiming readiness:
+
+```bash
+node .specify/scripts/node/eai-app-template-readiness.mjs --root . --source eai-managed --json
+```
+
+If the app uses an explicitly selected CLI executable, add `--cli <executable>`
+to preserve that selection and its private profile. A missing validator,
+unsupported edit, or malformed result blocks managed-source readiness. The
+checker never publishes, changes the app, or replaces deployment evidence.
+Preserve the complete customer app source on failure. An unsupported custom
+runtime is an explicit failure; resolve its compatibility through the owning
+template or a supported runtime. Never omit business changes or customer app
+files, restore files automatically, or weaken protected EAI controls to pass.
+Local-only and customer-owned source retain their own validation paths.
+
 - Use Object Types as the data model contract.
 - Keep the PascalCase model `name` distinct from the exact lowercase
   kebab-case stored `slug`. Emitted `linkTypes[].targetObjectType`, runtime

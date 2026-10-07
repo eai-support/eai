@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import inquirer from 'inquirer';
@@ -57,6 +57,12 @@ function createTenantEntry(
     ...overrides,
   };
 }
+
+const profileFixture = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: () => profileFixture.home || actual.homedir() };
+});
 
 const originalBaseUrlPublicApi = process.env.BASE_URL_PUBLIC_API;
 const originalRoutingBootstrapPublicApiUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL;
@@ -1217,6 +1223,8 @@ describe('PublicAPI URL routing order', () => {
 
 describe('active tenant PublicAPI env sync', () => {
   test('named profiles preserve their configured endpoint when tenant metadata has a production region', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'eai-tenant-profile-'));
+    profileFixture.home = home;
     vi.mocked(profile.getActiveProfile).mockReturnValue('local');
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
@@ -1244,16 +1252,33 @@ describe('active tenant PublicAPI env sync', () => {
       return new Response(`Unhandled request: ${href}`, { status: 500 });
     }));
 
-    const context = await resolveActiveTenantContext({
-      projectRoot: '/workspace',
-      publicApiUrl: 'http://localhost:8000',
-      interactive: false,
-      tenantId: 'tenant-au',
-    });
+    try {
+      await mkdir(join(home, '.eai'), { mode: 0o700 });
+      await writeFile(join(home, '.eai', 'config.json'), JSON.stringify({
+        profiles: {
+          local: {
+            publicApiUrl: 'http://localhost:8000',
+            authTenantName: 'fixture-tenant',
+            authTenantId: 'fixture-tenant-id',
+            authClientId: 'fixture-client-id',
+          },
+        },
+      }), { mode: 0o600 });
+      const context = await resolveActiveTenantContext({
+        projectRoot: '/workspace',
+        publicApiUrl: 'http://localhost:8000',
+        interactive: false,
+        tenantId: 'tenant-au',
+      });
 
-    expect(context.publicApiUrl).toBe('http://localhost:8000');
-    expect(context.publicApiEnvSync).toBeUndefined();
-    expect(patchEnvFileSpy).not.toHaveBeenCalled();
+      expect(context.publicApiUrl).toBe('http://localhost:8000');
+      expect(context.publicApiEnvSync).toBeUndefined();
+      expect(patchEnvFileSpy).not.toHaveBeenCalled();
+    } finally {
+      profileFixture.home = '';
+      profile.setActiveProfile('default');
+      await rm(home, { recursive: true, force: true });
+    }
   });
 
   test('HP001 TENANT-REGION-001: selecting an EU tenant updates stale AU BASE_URL_PUBLIC_API', async () => {

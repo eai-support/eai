@@ -16,6 +16,7 @@ import {
   cp,
   mkdtemp,
   chmod,
+  realpath,
 } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -45,7 +46,9 @@ import {
   promptForTenantFromHierarchy,
 } from "../lib/tenant-hierarchy.js";
 import {
+  isManagedPublicRequestTimeout,
   parseApiError,
+  readManagedPublicResponseText,
   PlatformAPIClient,
   type CapabilityDecision,
   type ParsedApiError,
@@ -55,6 +58,7 @@ import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
 import { getActiveProfile, loadProfileConfig } from "../lib/profile.js";
+import { acknowledgedCreatedAppBinding, acknowledgedSelectedAppBinding, reserveInitBindingReceipt, type ReservedInitBindingReceipt } from "../lib/init-app-binding.js";
 import { getNpmExecOptions, getNpmExecutable } from "../lib/npm.js";
 import {
   errMsg,
@@ -107,6 +111,16 @@ export function describeAppCreationFailure(error: ParsedApiError): string {
     `Getting started: ${ONBOARDING_DOCS_URL}`,
   );
   return lines.join("\n");
+}
+
+/** An aborted create can have committed server-side, so recovery must inspect before any retry. */
+export function describeAppCreationTimeout(appKey: string, companyTenantId: string): string {
+  return [
+    `App creation timed out waiting for ${appKey} in workspace ${companyTenantId}. The platform may already have created it; no second create request was sent.`,
+    "Check the exact workspace and app before trying again:",
+    `eai app list --tenant-id ${companyTenantId} --format json [read-only]`,
+    `If one exact ${appKey} enrollment exists, select that existing app with --app-key ${appKey} and a fresh init receipt. If none exists, retry creation with a fresh receipt.`,
+  ].join("\n");
 }
 
 export function describeCreateFlowFailure(error: unknown): string {
@@ -516,6 +530,8 @@ export const initCommand = new Command("init")
   )
   .option("--display-name <name>", "Display name for the app")
   .option("--description <description>", "One-sentence description for the app")
+  .option("--binding-receipt <path>", "Write private init acknowledgement outside the project (explicit noninteractive use)")
+  .option("--binding-receipt-nonce <uuid>", "Fresh UUID binding this invocation to its private receipt")
   .option(
     "--app-key <key>",
     "Bind the local project to an existing app instead of creating a new app",
@@ -543,6 +559,11 @@ Use --no-gofer only when you need a bare app scaffold.
 `,
   )
   .action(async (nameArg, options) => {
+    if ((options.bindingReceipt !== undefined || options.bindingReceiptNonce !== undefined)
+      && (!options.skipPrompts || !nameArg)) throw new Error("Init binding receipts require a named --skip-prompts invocation.");
+    const receiptProjectBase = options.bindingReceipt === undefined ? process.cwd() : await realpath(process.cwd());
+    const bindingReceipt = await reserveInitBindingReceipt(options.bindingReceipt, options.bindingReceiptNonce,
+      options.currentDir ? receiptProjectBase : resolve(receiptProjectBase, nameArg || "."), options.appKey ? "select" : "create");
     await printEaiSplash(options.splash);
     const publicApiUrl = await resolvePublicApiUrl();
     const tenantContext = await loadActiveTenantForInit(publicApiUrl);
@@ -565,6 +586,7 @@ Use --no-gofer only when you need a bare app scaffold.
             options.companyTenant || options.tenant,
             options.appKey,
             false,
+            bindingReceipt,
           )
         : await createTenantAppForInit(
             publicApiUrl,
@@ -578,6 +600,7 @@ Use --no-gofer only when you need a bare app scaffold.
             options.childTenant,
             Boolean(options.createChildTenant),
             false,
+            bindingReceipt,
           );
       parentTenantId = binding.parentTenantId;
       tenantId = binding.runtimeTenantId;
@@ -1176,8 +1199,7 @@ async function runCreateFlow(
       : resolve(process.cwd(), answers.name);
     await reportCreateCompletion(
       targetDir,
-      publicApiUrlForHomeRegion(binding?.runtimeTenantHomeRegion) ||
-        tenantContext.publicApiUrl,
+      resolveCreateCompletionPublicApiUrl(tenantContext.publicApiUrl, binding?.runtimeTenantHomeRegion),
       binding?.runtimeTenantId || tenantContext.activeTenant.id,
       answers.aiTool,
       options.gofer !== false,
@@ -1186,6 +1208,12 @@ async function runCreateFlow(
     out.error(describeCreateFlowFailure(error));
     process.exit(1);
   }
+}
+
+/** INVARIANT: selected private routing survives runtime-region readiness; public defaults follow the runtime region. */
+export function resolveCreateCompletionPublicApiUrl(publicApiUrl: string, runtimeHomeRegion?: string | null): string {
+  return (getActiveProfile() !== "default" ? publicApiUrl : undefined)
+    || publicApiUrlForHomeRegion(runtimeHomeRegion) || publicApiUrl;
 }
 
 function validateCreateAiTool(value: string | undefined): CreateAiTool | undefined {
@@ -1787,8 +1815,8 @@ function nonEmptyString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-async function readJsonPayload(response: Response): Promise<unknown> {
-  const body = await response.text();
+async function readJsonPayload(response: Response, managed = false): Promise<unknown> {
+  const body = managed ? await readManagedPublicResponseText(response) : await response.text();
   if (!body.trim()) return {};
   try {
     return JSON.parse(body) as unknown;
@@ -1850,6 +1878,7 @@ async function reuseTenantAppForInit(
   companyFlag: string | undefined,
   requestedAppKey: string,
   interactive: boolean,
+  receipt?: ReservedInitBindingReceipt,
 ): Promise<InitTenantAppBinding> {
   const appKey = requestedAppKey.trim();
   if (!appKey) {
@@ -1864,11 +1893,13 @@ async function reuseTenantAppForInit(
     interactive,
   );
   const client = new PlatformAPIClient(publicApiUrl, companyTenantId);
-  const res = await client.listResources("tenant-vertical-enrollment", {
+  const selectionOptions = {
     limit: 50,
     where: { verticalKey: appKey },
-  });
-  const payload = await readJsonPayload(res);
+  };
+  const res = receipt ? await client.listResources("tenant-vertical-enrollment", selectionOptions, receipt.captureAuthority)
+    : await client.listResources("tenant-vertical-enrollment", selectionOptions);
+  const payload = await readJsonPayload(res, Boolean(receipt));
   if (!res.ok) {
     const error = await parseApiError(
       new Response(JSON.stringify(payload), {
@@ -1884,6 +1915,11 @@ async function reuseTenantAppForInit(
   let selection: ExistingAppSelection;
   try {
     selection = selectExistingAppSelection(payload, appKey);
+    if (receipt) {
+      const acknowledged = acknowledgedSelectedAppBinding(payload, appKey, companyTenantId);
+      if (acknowledged.runtimeTenantId !== selection.runtimeTenantId) throw new Error("Init receipt selection runtime differs from the exact enrollment.");
+      await receipt.acknowledge(acknowledged);
+    }
   } catch (error) {
     out.error(errMsg(error));
     process.exit(1);
@@ -1928,6 +1964,7 @@ async function createTenantAppForInit(
   childTenantOption: string | undefined,
   createChildTenantFlag: boolean,
   interactive: boolean,
+  receipt?: ReservedInitBindingReceipt,
 ): Promise<InitTenantAppBinding> {
   const companyTenantId = await promptCompanyTenantForInit(
     publicApiUrl,
@@ -2007,7 +2044,7 @@ async function createTenantAppForInit(
     process.exit(1);
   }
 
-  const res = await client.createTenantApp(companyTenantId, {
+  const createRequest = {
     appDisplayName: appSeed.displayName,
     verticalKey: appSeed.slug,
     ...(immediateParentTenantId !== companyTenantId
@@ -2016,8 +2053,19 @@ async function createTenantAppForInit(
     ...(childTenantDisplayName ? { childTenantDisplayName } : {}),
     templateKey: "eai-app-template",
     source: "eai-cli",
-    usecase: "generic",
-  });
+    usecase: "generic" as const,
+  };
+  let res: Response;
+  try {
+    res = receipt ? await client.createTenantApp(companyTenantId, createRequest, receipt.captureAuthority)
+      : await client.createTenantApp(companyTenantId, createRequest);
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) {
+      out.error(describeAppCreationTimeout(appSeed.slug, companyTenantId));
+      process.exit(1);
+    }
+    throw error;
+  }
 
   if (!res.ok) {
     const error = await parseApiError(res);
@@ -2025,7 +2073,17 @@ async function createTenantAppForInit(
     process.exit(1);
   }
 
-  const payload = (await res.json()) as Record<string, unknown>;
+  let payload: Record<string, unknown>;
+  try {
+    payload = (receipt ? JSON.parse(await readManagedPublicResponseText(res)) : await res.json()) as Record<string, unknown>;
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) {
+      out.error(describeAppCreationTimeout(appSeed.slug, companyTenantId));
+      process.exit(1);
+    }
+    throw error;
+  }
+  if (receipt) await receipt.acknowledge(acknowledgedCreatedAppBinding(payload, appSeed.slug, companyTenantId, immediateParentTenantId));
   const childTenant = payload.childTenant;
   const childTenantId =
     childTenant && typeof childTenant === "object"
@@ -2074,7 +2132,11 @@ async function hydrateEnvFromLoginContext(
   const envKey = appName.replace(/-/g, "_").toUpperCase();
 
   const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
-  if (regionalPublicApiUrl) {
+  const profileName = getActiveProfile();
+  const profileConfig = await loadProfileConfig(profileName);
+  if (profileConfig?.publicApiUrl) {
+    patches.BASE_URL_PUBLIC_API = profileConfig.publicApiUrl;
+  } else if (regionalPublicApiUrl) {
     patches.BASE_URL_PUBLIC_API = regionalPublicApiUrl;
   } else {
     try {
@@ -2084,17 +2146,15 @@ async function hydrateEnvFromLoginContext(
     }
   }
 
-  try {
-    const profileName = getActiveProfile();
-    const profileConfig = await loadProfileConfig(profileName);
-    if (profileConfig?.authTenantName) {
-      patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
-    }
-    if (profileConfig?.authTenantId) {
-      patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
-    }
-  } catch {
-    // Default profile has no config file.
+  if (patches.BASE_URL_PUBLIC_API) {
+    patches.ROUTING_BOOTSTRAP_PUBLIC_API_URL = patches.BASE_URL_PUBLIC_API;
+  }
+
+  if (profileConfig?.authTenantName) {
+    patches.ENTRA_TENANT_NAME = profileConfig.authTenantName;
+  }
+  if (profileConfig?.authTenantId) {
+    patches.ENTRA_TENANT_ID = profileConfig.authTenantId;
   }
 
   try {

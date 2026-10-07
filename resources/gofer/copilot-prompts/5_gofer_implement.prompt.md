@@ -731,6 +731,26 @@ If implementation was interrupted:
 
 ## EnterpriseAI Runtime Deployment Preflight Gate
 
+For selected EAI-maintained source, check the current app before implementation,
+after each source edit batch, and before any readiness claim or publication:
+
+```bash
+node .specify/scripts/node/eai-app-template-readiness.mjs --root . --source eai-managed --json
+```
+
+Verify `eai deploy source validate --help` from the installed CLI first. Add
+`--cli <executable>` when the app already selected a CLI executable; do not fall
+back to a global CLI after that executable fails. Require `ready: true` and
+`sourceValidation.status: passed`. A missing validator, rejected scope, or
+malformed result blocks this capability. Include all customer-authored app files,
+including runners, tests, backend code, scripts, documentation, and supported dot
+configuration. Preserve protected EAI authentication, platform-service,
+deployment, and workflow controls from `.specify/references/platform/eai-app-template.md`.
+Unsupported custom runtimes must fail explicitly. Never omit business changes or
+customer app files, weaken protected controls, or restore files automatically.
+Local-only and customer-owned source retain their validation paths.
+This read-only check does not prove publication, runtime health, or deployment.
+
 The standard Gofer workflow is the public default. EnterpriseAI deployment
 preflight is migration-only and runs only when `workflowProfile` is explicitly
 `enterpriseai`.

@@ -1,0 +1,111 @@
+import { beforeEach, afterEach, describe, test, expect, vi } from 'vitest';
+import { mkdtemp, cp, mkdir, writeFile, readFile, rm, symlink, link, realpath } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+vi.mock('node:fs', async (original) => {
+  const actual = await original<typeof import('node:fs')>();
+  return { ...actual, readdirSync: vi.fn(actual.readdirSync) };
+});
+import { readdirSync } from 'node:fs';
+import { GOFER_RESOURCE_MAPPINGS, installGoferResources, renderGoferManagedTextFiles, resolveGoferResourcesPath } from '../../src/lib/gofer-installer.js';
+import { planGoferRefresh } from '../../src/lib/gofer-refresh.js';
+import { setActiveProfile } from '../../src/lib/profile.js';
+
+describe('explicit complete Gofer resource source', () => {
+  let root: string;
+  let resources: string;
+  let project: string;
+  beforeEach(async () => {
+    root = await realpath(await mkdtemp(join(tmpdir(), 'eai-gofer-override-')));
+    resources = join(root, 'resources'); project = join(root, 'project');
+    const bundled = fileURLToPath(new URL('../../resources/gofer', import.meta.url));
+    for (const { sourceSubdirectory } of GOFER_RESOURCE_MAPPINGS) {
+      await mkdir(join(resources, sourceSubdirectory), { recursive: true });
+      await writeFile(join(resources, sourceSubdirectory, 'fixture.md'), 'fixture-resource');
+    }
+    await cp(join(bundled, 'instruction-templates'), join(resources, 'instruction-templates'), { recursive: true });
+    await cp(join(bundled, 'claude-commands/0_gofer_start.md'), join(resources, 'claude-commands/0_gofer_start.md'));
+    await cp(join(bundled, 'templates/gofer-model-policy.yaml'), join(resources, 'templates/gofer-model-policy.yaml'));
+    await writeFile(join(resources, '.gofer-version'), JSON.stringify({ version: '3.13.4', describe: 'v3.13.4' }));
+    await mkdir(project);
+    setActiveProfile('default'); vi.mocked(readdirSync).mockClear();
+  });
+  afterEach(async () => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); await rm(root, { recursive: true, force: true }); });
+
+  test('initial copy, generated instructions and refresh share the explicit source with zero latest fetches', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    vi.stubEnv('EAI_GOFER_REFRESH_SOURCE', 'latest');
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    const template = join(resources, 'instruction-templates/base/agents-base.md');
+    await writeFile(template, (await readFile(template, 'utf8')) + '\nfixture-selected-gofer\n');
+    await writeFile(join(resources, 'references/selected-source.md'), 'fixture-selected-reference');
+    await installGoferResources(project);
+    const captureReads = vi.mocked(readdirSync).mock.calls.length;
+    expect(captureReads).toBeGreaterThan(0);
+    expect(await readFile(join(project, 'AGENTS.md'), 'utf8')).toContain('fixture-selected-gofer');
+    expect(await readFile(join(project, '.specify/references/selected-source.md'), 'utf8')).toBe('fixture-selected-reference');
+    expect((await renderGoferManagedTextFiles(project)).find((file) => file.relativePath === 'AGENTS.md')?.content).toContain('fixture-selected-gofer');
+    const plan = await planGoferRefresh(project, null);
+    expect(plan.items.find((item) => item.relativePath === '.specify/references/selected-source.md')).toBeDefined();
+    expect(vi.mocked(readdirSync).mock.calls.length).toBeGreaterThan(captureReads);
+    expect(provider).not.toHaveBeenCalled();
+  });
+  test('initial install records the exact Gofer version and preserves the repo-owned model policy', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    await installGoferResources(project);
+    expect(await readFile(join(project, '.specify/.gofer-version'), 'utf8')).toBe('3.13.4\n');
+    expect(await readFile(join(project, '.specify/memory/gofer-model-policy.yaml'), 'utf8')).toBe(
+      await readFile(join(resources, 'templates/gofer-model-policy.yaml'), 'utf8'),
+    );
+
+    await writeFile(join(project, '.specify/memory/gofer-model-policy.yaml'), 'profile: customer-owned\n');
+    await installGoferResources(project);
+    expect(await readFile(join(project, '.specify/memory/gofer-model-policy.yaml'), 'utf8')).toBe('profile: customer-owned\n');
+    const plan = await planGoferRefresh(project, null);
+    expect(plan.items.find((item) => item.relativePath === '.specify/.gofer-version')?.action).toBe('unchanged');
+    expect(plan.items.find((item) => item.relativePath === '.specify/memory/gofer-model-policy.yaml')).toBeUndefined();
+    await writeFile(join(resources, '.gofer-version'), JSON.stringify({ version: '3.13.5', describe: 'v3.13.5' }));
+    const nextPlan = await planGoferRefresh(project, null);
+    expect(nextPlan.items.find((item) => item.relativePath === '.specify/.gofer-version')).toMatchObject({
+      action: 'adopt-update',
+      contents: Buffer.from('3.13.5\n'),
+    });
+  });
+  test.each(['missing-directory', 'missing-template', 'missing-policy', 'missing-version', 'symlink', 'hardlink', 'relative', 'empty'])('invalid explicit source fails before project writes or provider: %s', async (kind) => {
+    let selected = resources;
+    if (kind === 'missing-directory') await rm(join(resources, 'agents-skills'), { recursive: true });
+    if (kind === 'missing-template') await rm(join(resources, 'instruction-templates/base/agents-base.md'));
+    if (kind === 'missing-policy') await rm(join(resources, 'templates/gofer-model-policy.yaml'));
+    if (kind === 'missing-version') await rm(join(resources, '.gofer-version'));
+    if (kind === 'symlink') await symlink(join(resources, 'references'), join(resources, 'alias'));
+    if (kind === 'hardlink') await link(join(resources, 'instruction-templates/base/agents-base.md'), join(resources, 'alias'));
+    if (kind === 'relative') selected = './resources';
+    if (kind === 'empty') selected = '';
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', selected);
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    await expect(installGoferResources(project)).rejects.toThrow();
+    await expect(readFile(join(project, 'AGENTS.md'))).rejects.toThrow();
+    await expect(planGoferRefresh(project, null)).rejects.toThrow();
+    expect(provider).not.toHaveBeenCalled();
+  });
+  test('bundled default performs no override tree capture', () => {
+    expect(resolveGoferResourcesPath()).toBe(fileURLToPath(new URL('../../resources/gofer', import.meta.url)));
+    expect(readdirSync).not.toHaveBeenCalled();
+  });
+  test('rechecks an explicit resource tree after its first successful use', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    await installGoferResources(project);
+    await rm(join(resources, 'instruction-templates/base/agents-base.md'));
+    await expect(renderGoferManagedTextFiles(project)).rejects.toThrow('incomplete');
+  });
+  test('does not truncate another file through a hardlinked version marker', async () => {
+    vi.stubEnv('EAI_GOFER_REFRESH_RESOURCES_PATH', resources);
+    const victim = join(root, 'victim');
+    await writeFile(victim, 'keep this file');
+    await mkdir(join(project, '.specify'), { recursive: true });
+    await link(victim, join(project, '.specify/.gofer-version'));
+    await expect(installGoferResources(project)).rejects.toThrow('regular file');
+    expect(await readFile(victim, 'utf8')).toBe('keep this file');
+  });
+});
