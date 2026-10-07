@@ -486,12 +486,97 @@ export interface DeprovisionEntraAppResult {
   appRegistrationDeleted: boolean;
 }
 
-/** Safe API error summary; rejected request bodies are never retained for HTTP 422. */
+/** Safe API error summary; validation and known child-create errors omit raw response bodies. */
 export interface ParsedApiError {
   status: number;
   code?: string;
+  field?: 'slug' | 'portalSlug' | 'homeRegion';
   message: string;
   bodyText?: string;
+}
+
+const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
+  status: number;
+  fields: readonly NonNullable<ParsedApiError['field']>[];
+  message: string;
+}> = {
+  TENANT_SLUG_CONFLICT: {
+    status: 409,
+    fields: ['slug', 'portalSlug'],
+    message: 'A child workspace with this slug already exists under this parent. Choose a different slug.',
+  },
+  TENANT_SLUG_INVALID: {
+    status: 422,
+    fields: ['slug'],
+    message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.',
+  },
+  TENANT_PORTAL_SLUG_INVALID: {
+    status: 422,
+    fields: ['portalSlug'],
+    message: 'Use a lowercase kebab-case portal slug, beginning and ending with a letter or number.',
+  },
+  HOME_REGION_REQUIRED: {
+    status: 422,
+    fields: ['homeRegion'],
+    message: 'Pass --home-region au|ca|eu to select the child workspace home region.',
+  },
+  HOME_REGION_INVALID: {
+    status: 422,
+    fields: ['homeRegion'],
+    message: 'Pass --home-region au|ca|eu with a supported home region.',
+  },
+  PARENT_HOME_REGION_REQUIRED: {
+    status: 422,
+    fields: ['homeRegion'],
+    message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.',
+  },
+};
+
+/** Request context that lets callers opt in to response guidance specific to one operation. */
+export interface ParseApiErrorContext {
+  childTenantCreate?: boolean;
+}
+
+const CHILD_TENANT_CREATE_PATH = /^\/v4\/platform\/tenants\/[^/?#]+\/children\/?$/;
+const PLATFORM_TENANT_CREATE_PATH = /^\/v4\/platform\/tenants\/?$/;
+
+/** Child creates use the parent's children route, or the tenant route with a parent in the body. */
+export function isChildTenantCreateRequest(method: string, path: string, body?: unknown): boolean {
+  if (method.toUpperCase() !== 'POST') return false;
+  const pathname = path.split(/[?#]/, 1)[0] ?? '';
+  if (CHILD_TENANT_CREATE_PATH.test(pathname)) return true;
+  if (!PLATFORM_TENANT_CREATE_PATH.test(pathname)) return false;
+  const parent = body && typeof body === 'object' && !Array.isArray(body)
+    ? (body as Record<string, unknown>).parentTenant
+    : undefined;
+  return typeof parent === 'string' && parent.trim() !== '';
+}
+
+function childTenantAdmissionError(status: number, body: unknown): ParsedApiError | undefined {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return undefined;
+  const record = body as Record<string, unknown>;
+  const detail = record.detail && typeof record.detail === 'object' && !Array.isArray(record.detail)
+    ? record.detail as Record<string, unknown>
+    : undefined;
+  const envelope = typeof detail?.error === 'string' ? detail : record;
+  const code = typeof envelope.error === 'string' ? envelope.error : undefined;
+  const guidance = code ? CHILD_TENANT_ADMISSION_GUIDANCE[code] : undefined;
+  if (!guidance || guidance.status !== status) return undefined;
+  const details = envelope.details && typeof envelope.details === 'object' && !Array.isArray(envelope.details)
+    ? envelope.details as Record<string, unknown>
+    : undefined;
+  const rawField = envelope.field ?? details?.field ?? detail?.field;
+  const field = guidance.fields.find((candidate) => candidate === rawField);
+
+  // SECURITY: derive known admission guidance from codes; upstream text can echo rejected values.
+  return {
+    status,
+    code,
+    ...(field ? { field } : {}),
+    message: code === 'TENANT_SLUG_CONFLICT' && field === 'portalSlug'
+      ? 'This portal slug is already in use. Choose a different portal slug.'
+      : guidance.message,
+  };
 }
 
 interface ValidationFieldIssue {
@@ -721,8 +806,12 @@ function normalizePublicApiV4Path(path: string): string {
 /**
  * Extracts published validation locations or compatible FastAPI detail metadata
  * without returning rejected values or server-provided validation messages.
+ * Child-create guidance applies only when the caller identifies that request.
  */
-export async function parseApiError(response: Response): Promise<ParsedApiError> {
+export async function parseApiError(
+  response: Response,
+  context: ParseApiErrorContext = {},
+): Promise<ParsedApiError> {
   const bodyText = await readManagedPublicResponseText(response);
   const validationCode = response.status === 422 ? 'VALIDATION_ERROR' : undefined;
   const safeBodyText = validationCode ? {} : { bodyText };
@@ -750,6 +839,11 @@ export async function parseApiError(response: Response): Promise<ParsedApiError>
       details?: string | { message?: string };
       invalidFields?: ValidationFieldIssue[];
     };
+
+    const admissionError = context.childTenantCreate
+      ? childTenantAdmissionError(response.status, body)
+      : undefined;
+    if (admissionError) return admissionError;
 
     const publishedValidationMessage = Array.isArray(body.invalidFields)
       ? formatValidationIssues(body.invalidFields)

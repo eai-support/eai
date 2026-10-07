@@ -4,7 +4,7 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
@@ -300,6 +300,83 @@ describe('PlatformAPIClient', () => {
       code: 'VALIDATION_ERROR',
       message: 'Unprocessable Entity',
     })
+  })
+
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'This portal slug is already in use. Choose a different portal slug.' },
+    { status: 422, code: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.' },
+    { status: 422, code: 'TENANT_PORTAL_SLUG_INVALID', field: 'portalSlug', message: 'Use a lowercase kebab-case portal slug, beginning and ending with a letter or number.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
+    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'Pass --home-region au|ca|eu with a supported home region.' },
+    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.' },
+  ])('keeps safe child-create guidance for $code/$field without rejected input', async ({ status, code, field, message }) => {
+    for (const body of [
+      { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' },
+      { error: code, message: 'tax-file-secret', details: { field, input: 'tax-file-secret' } },
+      { error: code, message: 'tax-file-secret', detail: { field, input: 'tax-file-secret' } },
+      { detail: { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' } },
+      { detail: { error: code, message: 'tax-file-secret', details: { field, input: 'tax-file-secret' } } },
+    ]) {
+      const parsed = await parseApiError(new Response(JSON.stringify(body), { status }), { childTenantCreate: true })
+      expect(parsed).toEqual({ status, code, field, message })
+      expect(JSON.stringify(parsed)).not.toContain('tax-file-secret')
+    }
+  })
+
+  test.each([
+    { status: 422, code: 'TENANT_SLUG_CONFLICT' },
+    { status: 409, code: 'TENANT_RENAME_CONFLICT' },
+  ])('leaves an unexpected $code/$status child-create error to the generic parser', async ({ status, code }) => {
+    const body = { error: code, message: 'Server explanation', field: 'slug' }
+    const scoped = await parseApiError(new Response(JSON.stringify(body), { status }), { childTenantCreate: true })
+    const generic = await parseApiError(new Response(JSON.stringify(body), { status }))
+    expect(scoped).toEqual(generic)
+    expect(scoped).not.toHaveProperty('field')
+  })
+
+  test('keeps the server meaning of tenant codes outside a child-create request', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT',
+      message: 'A workspace with this slug already exists.',
+      field: 'slug',
+    }), { status: 409 }))
+    expect(parsed.code).toBe('TENANT_SLUG_CONFLICT')
+    expect(parsed.message).toBe('A workspace with this slug already exists.')
+    expect(parsed).not.toHaveProperty('field')
+  })
+
+  test.each([
+    ['POST', '/v4/platform/tenants/parent-tenant/children', undefined, true],
+    ['POST', '/v4/platform/tenants/parent-tenant/children/', undefined, true],
+    ['post', '/v4/platform/tenants', { parentTenant: 'parent-tenant' }, true],
+    ['POST', '/v4/platform/tenants', { slug: 'root-workspace' }, false],
+    ['POST', '/v4/platform/tenants', { parentTenant: '' }, false],
+    ['GET', '/v4/platform/tenants/parent-tenant/children', undefined, false],
+    ['POST', '/v4/platform/tenants/parent-tenant/apps', undefined, false],
+  ])('recognises only child-create requests (%s %s)', (method, path, body, expected) => {
+    expect(isChildTenantCreateRequest(method, path, body)).toBe(expected)
+  })
+
+  test('does not relay a caller-controlled field or arbitrary provider validation message', async () => {
+    const parsed = await parseApiError(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_INVALID',
+      message: 'Rejected value: tax-file-secret',
+      field: 'tax-file-secret',
+    }), { status: 422 }), { childTenantCreate: true })
+    expect(parsed).toEqual({
+      status: 422,
+      code: 'TENANT_SLUG_INVALID',
+      message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.',
+    })
+
+    const provider = await parseApiError(new Response(JSON.stringify({
+      error: 'PROVIDER_VALIDATION_FAILED',
+      message: 'Rejected value: tax-file-secret',
+      field: 'slug',
+    }), { status: 422 }))
+    expect(provider).toEqual({ status: 422, code: 'PROVIDER_VALIDATION_FAILED', message: 'Request validation failed' })
+    expect(JSON.stringify(provider)).not.toContain('tax-file-secret')
   })
   test('caps published object type preflight lookups at the orchestrator limit', async () => {
     const fetchMock = vi

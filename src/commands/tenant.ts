@@ -725,11 +725,16 @@ tenantCommand
       });
 
       if (!res.ok) {
-        const body = await res.text();
-        if (spinner) {
-          spinner.fail(`${res.status}: ${body}`);
+        const error = await parseApiError(res, { childTenantCreate: Boolean(options.parent) });
+        // `field` is allowlisted by parseApiError, so it is safe to print.
+        const fieldSuffix = error.field ? ` (field: ${error.field})` : "";
+        if (options.format === "json") {
+          out.json({ ok: false, status: error.status, error });
+        } else if (spinner) {
+          const prefix = error.code ? `${error.code}: ` : "";
+          spinner.fail(`${error.status}: ${prefix}${error.message}${fieldSuffix}`);
         } else {
-          process.stderr.write(`${body || res.statusText}\n`);
+          out.error(`${error.message}${fieldSuffix}`);
         }
         process.exit(1);
       }
