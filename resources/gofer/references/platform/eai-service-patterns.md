@@ -8,128 +8,124 @@ patterns in `eai-app-template/docs/platform/eai-service-patterns.md`.
 
 - App browser code calls the local BFF at `/api/eai/...`.
 - App streaming calls use `/api/eai/stream/...`.
+- Workspace app data-plane access is user-delegated access through the BFF. Do
+  not add app-only `client_credentials` access for ordinary ResourceAPI reads,
+  writes, files, or search.
 - The CLI may call PublicAPI directly because `eai login` provides the user
   token.
 - Prefer named template SDK hooks and named `eai` commands before custom calls.
 - Use `eai publicapi` only for authorized PublicAPI V4 routes that do not yet
   have a named SDK or CLI command.
 - Do not generate direct downstream database, blob, search, or platform secrets.
+- Keep PascalCase Object Type model names separate from the exact stored `slug`.
+  Use lowercase kebab-case slugs in runtime paths and links; never re-derive or
+  rename a historical stored slug.
 
 ## Service Selection Matrix
 
-| Need                 | App Pattern                                                                       | CLI Pattern                                                                                                                                                           | Notes                                                                                                                             |
-| -------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| Frontend composition | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry                  | `eai gofer refresh` installs this reference pack                                                                                                                      | Keep config data-only; callbacks belong in overrides.                                                                             |
-| Data model           | Object Types in `src/eai.config/object-types.ts`                                  | `eai types validate`, `eai types seed`, `eai types diff`                                                                                                              | Object Types define ResourceAPI contracts.                                                                                        |
-| Structured resources | `useResources(type)` / `client.resources`                                         | `eai resources list/get/create/update/delete/query`                                                                                                                   | Default for workspace business data.                                                                                                 |
-| Resource actions     | `client.resources.executeAction(type, id, action)`                                | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...`                                                                           | Actions enforce object-type rules.                                                                                                |
-| Resource search      | local helper around `/v4/data/resources/{tenantId}/search` if SDK support is absent | `eai resources storage doctor --format json`, then `eai resources search "query" --fulltext`; use `--hybrid` or `--vector` only when doctor reports those modes ready | The stable route parameter is `{tenantId}`; its value is the EAI workspace ID. V4 passive ResourceAPI search is a projection over canonical data. Fulltext can be usable before semantic search modes are ready. |
-| Resource files       | local helper around resource file routes                                          | `eai resources file upload/get/delete`                                                                                                                                | Use when the file is attached to a typed ResourceAPI object property.                                                             |
-| Documents | One `useDocuments().upload(file, context)` OR `classify([file], context)` | One `eai docs upload` OR `eai docs classify`, with authorized context | Queued ResourceAPI upload; follow the document lifecycle rules below. |
-| Chat                 | `useChat(workflowId, stage).send/stream`                                          | `eai chat send`, `eai chat stream`                                                                                                                                    | Use v4 chat shape with `message`, `conversation_id`, and `params`.                                                                |
-| Advanced PublicAPI   | BFF/server helper                                                                 | `eai publicapi <method> /v4/...`                                                                                                                                      | Use only when named SDK/CLI support is missing.                                                                                   |
+| Need                  | App Pattern                                                                                                           | CLI Pattern                                                                                                                                                           | Notes                                                                                                                                                                                                                      |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend composition  | `src/eai.config` layout slots plus `src/eai.blocks.tsx` registry                                                      | `eai gofer refresh` installs this reference pack                                                                                                                      | Keep config data-only; callbacks belong in overrides.                                                                                                                                                                      |
+| Data model            | Object Types in `src/eai.config/object-types.ts`                                                                      | `eai app provision`, `eai types validate --tenant-key <key> --tenant-id <tenant-id>`, `eai types seed`, `eai types diff`                                              | Object Types define ResourceAPI contracts and must use app-owned storage bindings.                                                                                                                                         |
+| Structured resources  | `useResources(type)` / `client.resources`                                                                             | `eai resources list/get/create/update/delete/query`                                                                                                                   | Default for workspace business data. For workspace-scoped calls, treat the workspace ID in the path as canonical and have the app BFF forward both `tenant` and `X-Tenant-Id` headers with that ID server-authoritatively. |
+| Resource actions      | `client.resources.executeAction(type, id, action)`                                                                    | named resources command if available; otherwise `eai publicapi post /v4/data/resources/...`                                                                           | Actions enforce object-type rules.                                                                                                                                                                                         |
+| Resource search       | local helper around `/v4/data/resources/{tenant}/search` if SDK support is absent                                     | `eai resources storage doctor --format json`, then `eai resources search "query" --fulltext`; use `--hybrid` or `--vector` only when doctor reports those modes ready | V4 passive ResourceAPI search is a projection over canonical data. Fulltext can be usable before semantic search modes are ready.                                                                                          |
+| Resource files        | local helper around resource file routes                                                                              | `eai resources file upload/get/delete`                                                                                                                                | Use when the file is attached to a typed ResourceAPI object property.                                                                                                                                                      |
+| Documents             | `useDocuments().upload(file, context)`, `useDocuments().classify([file], context)`, or `useDocuments().ragIndex(...)` | `eai docs upload`, `eai docs classify`, or `eai docs index` with authorised context                                                                                   | Use the queued ResourceAPI document lifecycle below; index only a persisted document where the configured lifecycle supports it.                                                                                           |
+| Content understanding | Document and media extraction behind the app BFF                                                                      | `eai docs classify` with authorised context; use other commands only when advertised                                                                                  | Classification needs a configured app/workflow and persisted result readback before it is considered complete.                                                                                                             |
+| Chat                  | `useChat(workflowId, stage).send/stream`                                                                              | `eai chat send`, `eai chat stream`                                                                                                                                    | Use v4 chat shape with `message`, `conversation_id`, and `params`.                                                                                                                                                         |
+| AI services           | Template AI hooks and workflow-backed assistant steps                                                                 | `eai agent guide --format json`, advertised `eai ai` or workflow commands                                                                                             | Prefer platform AI services for app behavior. Avoid direct provider keys in app code unless EAI documents that integration.                                                                                                |
+| Workflows             | Workflow-backed tasks that can continue across user sessions                                                          | `eai workflow readiness --format json` and advertised workflow commands                                                                                               | Use for multi-step business processes, approvals, background work, and auditable state changes.                                                                                                                            |
+| Goals and targets     | Goal/target records tied to resources and workflow outcomes                                                           | `eai workflow readiness --format json`, `eai resources schema --format json`, and advertised goal/target commands                                                     | Use when the app must track business outcomes, service levels, operating targets, or completion evidence.                                                                                                                  |
+| Advanced PublicAPI    | BFF/server helper                                                                                                     | `eai publicapi <method> /v4/...`                                                                                                                                      | Use only when named SDK/CLI support is missing.                                                                                                                                                                            |
+
+## Workspace-Scoped Resource Diagnostics
+
+- For `/v4/data/resources/{tenantId}/...` requests, compare the same call in
+  four header modes before concluding the workspace is unprovisioned: workspace
+  ID only, `tenant` only, `X-Tenant-Id` only, and both headers.
+- If the same workspace-scoped endpoint flips between `200` and `503` based on
+  headers, suspect a workspace-context contract mismatch before an install or
+  schema failure.
+- Inspect the app BFF or proxy code before escalating to a platform-only fault.
+  The default app-template proxy should forward both workspace-context headers
+  server-authoritatively for workspace-scoped PublicAPI calls.
+- Treat `/v4/platform/tenants/{tenantId}/resource-metadata` and its
+  `publishedObjectTypes` as operational state, not descriptive metadata only.
+  Empty or stale published types can block `/storage` readiness even when the
+  workspace and app exist.
+- Use `eai resources storage doctor --tenant-id <tenant-id> --format json`
+  alongside direct `/storage` checks so install, schema, and projection issues
+  are evaluated from the workspace's public contract.
+
+If work must continue after the user leaves the page, have the signed-in user
+request a platform workflow/job and pass workspace, app, user, and purpose
+context into that workflow. Do not give the workspace app a broad service
+identity for normal data-plane access.
 
 ## Document Lifecycle Rules
 
-The #3453 standalone lifecycle is a candidate, not deployed capability or live
-acceptance evidence. Before generating or enabling an upload, verify the
-installed CLI/SDK supports the context contract and the target runtime supports
-the configured lifecycle. Provision the business document/analysis schemas and
-Admin Portal lifecycle binding first. Storage readiness and classifier
-readiness are separate checks; a published classifier alone is not enough.
-
-- Use one `POST /v4/data/documents/upload` for durable upload and queued
-  classification, with `storage_target=resourceapi`. Browser callers use the
-  local BFF `/api/eai/v4/data/documents/upload`; tokens stay server-side.
-- For standalone documents, send both `verticalKey` and `workflowKey`. PublicAPI
-  validates the authorised app/workflow and resolves optional
-  `config.documentLifecycle` on the existing classifier-target
-  `vertical-product-config` binding, never from the upload body.
-- Allowed binding values are `planning-assist-v1`, `planning-assess-v1`, and
-  `business-document-v1`. Omission preserves existing behaviour and does not
-  erase a saved selection on reassociation. Unsupported values fail validation.
-  Missing planning fields do not imply business mode.
-- Preserve working DAISY/Assess requests, planning/case relationships, rules,
-  stored records and in-flight jobs. Retain real authorised
-  `planning_application_id`, `business_request_id` and applicable
-  `assess_case_id` context (SDK: `planningApplicationId`, `businessRequestId`,
-  `assessCaseId`). Never fabricate a planning application, business request,
-  case or form submission for a standalone document. Optional real parents
-  must be supported by the selected lifecycle and authorised.
-- Call `classify([file], context)` for `processing_mode=classification`, OR
-  `upload(file, context)` for full requested processing. Do not upload and then
-  classify the same bytes again. The SDK supplies `storage_target=resourceapi`.
-  Do not generate context-free legacy file classification or a fallback to it.
-- Do not send lifecycle mappings, target collections, permissions, provider
-  credentials or worker pins from the client. Missing schema, storage,
-  service, app/workflow or classifier readiness must fail before upload-side
-  writes, not fall back to legacy storage or an unscoped classifier.
-- Retain the returned job/document IDs. Poll
-  `GET /v4/data/documents/jobs/{job_id}` with authorised context and read back
-  saved requested stages and provenance. Acknowledgement and provider success
-  are not completed classification, extraction, rule validation or persistence.
-  A polling timeout is incomplete; never re-upload automatically.
-- Indexing is an optional derived stage only where supported and requested.
-  Use authorised lifecycle file retrieval and cleanup. Invalidate stale work
-  and clean only owned outputs according to retention, never shared parents.
-- Direct `POST /v4/data/documents/classify-by-url` is analysis, not a durable
-  queued upload/save/readback/cleanup replacement. New workflow-selected URL
-  callers also supply the app/workflow pair. Preserve established unscoped
-  DAISY/Assess classifier behaviour without making it a new business-app default.
-
-Candidate example after provisioning and version checks, submitted once:
-
-```tsx
-const { classify } = useDocuments(tenantId);
-const response = await classify([file], {
-  verticalKey: appKey,
-  workflowKey,
-});
-if (!response.ok) throw new Error("Document submission failed.");
-const accepted = await response.json();
-```
-
-Retain the returned IDs and implement bounded status polling plus saved-result
-readback before reporting success. The equivalent CLI submission is:
-
-```bash
-eai docs classify ./document.pdf --tenant-id <tenant-id> \
-  --storage-target resourceapi --vertical-key <app-key> --workflow-key <workflow-key>
-```
-
-An authorised administrator selects the binding with
-`eai classifier target <classifier-key> --app <app-key> --workflow <workflow-key>
---document-lifecycle business-document-v1` after schema/storage and published
-classifier readiness checks. Verify this syntax with the installed command's
-`--help`. `--document-lifecycle` is a target-administration option, not an upload
-option.
-
-Scope is document-use migration, not all v3 retirement. Existing-record
-read/download/delete/status, old queued callbacks, reference files and real
-form attachments remain compatibility obligations. Replacement, client and
-tenant-setup proof must precede enforcement against approved new legacy
-admissions. Track package/plugin/docs publication and installed adoption
-separately from local source or generator checks; do not claim live acceptance.
-
+- Durable uploads and queued classification use
+  `POST /v4/data/documents/upload`. Browser callers use the app BFF at
+  `/api/eai/v4/data/documents/upload`.
+- Use `storage_target=resourceapi`. For a standalone business document, provide
+  both `verticalKey` and `workflowKey`; PublicAPI authorises that scope and
+  resolves the published classifier binding. Do not send a classifier, storage
+  mapping, provider credential, or lifecycle mapping from the client.
+- Use `classify([file], context)` for classification-only processing, or
+  `upload(file, context)` for the full requested lifecycle. Do not fall back to
+  the retired context-free `/v4/data/documents/classify` route.
+- Retain the accepted document and job identifiers. Poll the authorised job
+  endpoint, read back the persisted result, and clean only the outputs the
+  caller created according to the workspace retention policy.
+- `POST /v4/data/documents/classify-by-url` is direct analysis, not a durable
+  upload, stored-result, or cleanup replacement. Existing DAISY and Assess
+  planning/case context remains a compatibility obligation; do not fabricate it
+  for a standalone business document.
 
 ## Storage Backend Rules
 
-Keep Object Type identifiers in their correct layer. Configuration/model
-`name` is PascalCase; the exact stored `slug` is the lowercase
-kebab-case identifier used by relationship targets, runtime `target_type`,
-resource commands, paths, and governed v4 fields. Resolve same-manifest model
-name shorthand through the declared slug before publication. Never normalize
-or rename a historical stored slug.
+Workspace app Object Types must use app-owned storage bindings. For PostgreSQL
+types, use the `tenant-postgres` alias and table names that include the
+tenant/app prefix validated by
+`eai types validate --tenant-key <key> --tenant-id <tenant-id>`. Do not invent
+storage aliases or generic table names; derive them from `eai app provision`,
+`.eai/storage-bindings.json`, and the local Object Type helper.
 
-- `postgresql`: canonical structured resource storage.
-- `documentdb`: document-model persistence when the data genuinely needs it.
-- `blob`: large files or file-like resources behind API-mediated access.
+- `postgresql`: default for relational, transactional, reporting, workflow
+  state, audit, and structured workspace business data.
+- `documentdb`: document-model persistence for flexible JSON documents, nested
+  records, high-change schemas, and user-authored document state.
+- `blob`: large files, binary content, exports, and file-like resources behind
+  API-mediated access.
 - `search`: derived full-text/vector/hybrid projection, not the sole system of
   record for runtime writes. On the v4 passive ResourceAPI interface, treat
   full-text readiness separately from hybrid/vector readiness; semantic modes
   require `eai resources storage doctor` to report `capabilities.search.hybrid`
-  or `capabilities.search.vector`. Do not apply this fallback rule to legacy
-  v1/v3 or active ResourceAPI behavior.
+  or `capabilities.search.vector`. Apply this fallback only to the published
+  passive ResourceAPI search contract.
+- `content understanding`: use the EAI document and content services before
+  custom extraction code when the app must classify, extract, summarize, or
+  prepare evidence from documents or media.
+- `workflows`: use the EAI workflow layer for approvals, long-running work,
+  service goals, operating targets, and cross-user process state.
+- `AI services`: use platform AI hooks and workflow-backed agents first. Do not
+  add direct provider keys, ad hoc LLM clients, or non-EAI AI services unless
+  the platform lacks the capability and the exception is approved.
+
+## Business Decision Rules
+
+When Gofer plans an EAI app, it should make the normal platform choice on behalf
+of the business user.
+
+1. Use the simplest EAI Platform service that satisfies the requirement.
+2. Record the choice and reason in `service-fit-matrix.md`.
+3. Ask the user only when the choice affects cost, security, compliance,
+   deployment, data residency, external systems, or material business scope.
+4. If a capability appears missing, run live CLI discovery before recommending a
+   non-EAI service.
+5. If EAI does not expose the capability, use Azure second.
+6. Use any other platform only with explicit exception evidence.
 
 Document RAG indexing is a documents service pattern (`eai docs index` or
 `useDocuments().ragIndex(...)`), not a reason to create a search-only Object
@@ -137,8 +133,9 @@ Type.
 
 Do not create standalone PublicAPI v4 blob-upload flows. If a user asks to
 upload a file, first decide whether the file is a document workflow input or a
-ResourceAPI file property. Ask which workspace, workflow/stage, document purpose,
-Object Type, resource ID, and file property are involved before writing code.
+ResourceAPI file property. Ask which workspace, workflow/stage, document
+purpose, Object Type, resource ID, and file property are involved before writing
+code.
 
 ## Config-Driven UI Rules
 

@@ -8,7 +8,9 @@ import {
   GOFER_RESOURCE_MAPPINGS,
   installClaudeHooks,
   renderGoferManagedTextFiles,
+  readGoferResourceVersion,
   resolveGoferResourcesPath,
+  validateGoferResourceOverride,
   updateGitignore,
   updateVSCodeSettings,
 } from './gofer-installer.js';
@@ -342,8 +344,8 @@ async function resolveBundledGoferResourcesSource(warning?: string): Promise<Gof
 
 async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource | null> {
   const overridePath = process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'];
-  if (overridePath) {
-    const root = resolve(overridePath);
+  if (overridePath !== undefined) {
+    const root = validateGoferResourceOverride(overridePath);
     await assertCompleteGoferResources(root);
     return {
       root,
@@ -374,6 +376,9 @@ async function resolveLatestGoferResourcesSource(): Promise<GoferResourcesSource
 }
 
 async function resolveGoferResourcesSource(): Promise<GoferResourcesSource> {
+  if (process.env['EAI_GOFER_REFRESH_RESOURCES_PATH'] !== undefined) {
+    return (await resolveLatestGoferResourcesSource())!;
+  }
   if (!shouldUseLatestGoferSource()) {
     return resolveBundledGoferResourcesSource();
   }
@@ -397,6 +402,13 @@ export async function readGoferBundleMetadata(): Promise<GoferBundleMetadata> {
 async function collectBundledCandidates(resourcesRoot: string): Promise<ManagedCandidate[]> {
   const candidates: ManagedCandidate[] = [];
   await assertCompleteGoferResources(resourcesRoot);
+
+  candidates.push({
+    relativePath: '.specify/.gofer-version',
+    contents: Buffer.from(`${await readGoferResourceVersion(resourcesRoot)}\n`, 'utf-8'),
+    source: 'bundled',
+    executable: false,
+  });
 
   for (const mapping of GOFER_RESOURCE_MAPPINGS) {
     const sourceRoot = join(resourcesRoot, mapping.sourceSubdirectory);

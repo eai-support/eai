@@ -149,6 +149,73 @@ describe('eai publicapi', () => {
     expect(output).toContain(`"method": "${method}"`);
   });
 
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', action: 'Choose a different portal slug' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', action: '--home-region au|ca|eu' },
+  ])('forwards safe immediate child-create $status fields and guidance in JSON', async ({ status, code, field, action }) => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: code, message: 'Rejected value: tax-file-secret', details: { field },
+    }), { status }));
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(publicApiCommand.parseAsync([
+      'post', `/v4/platform/tenants/${TENANT_ID}/children`,
+      '--data', '{"displayName":"Child Workspace","slug":"child-workspace"}', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    const output = outputSpy.mock.calls.flat().join('');
+    expect(output).toContain(`"code": "${code}"`);
+    expect(output).toContain(`"field": "${field}"`);
+    expect(output).toContain(action);
+    expect(output).not.toContain('tax-file-secret');
+    expect(output).not.toContain('bodyText');
+  });
+
+  test('includes the allowlisted rejected field in generic text failures without echoing upstream text', async () => {
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'Rejected value: tax-file-secret',
+    }), { status: 409 }));
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(publicApiCommand.parseAsync([
+      'post', `/v4/platform/tenants/${TENANT_ID}/children`,
+      '--data', '{"displayName":"Child Workspace","slug":"child-workspace"}', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    const output = errorSpy.mock.calls.flat().join(' ');
+    expect(output).toContain(
+      'failed: 409 This portal slug is already in use. Choose a different portal slug. (field: portalSlug)',
+    );
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('keeps the server meaning of a root workspace conflict on the raw request path', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', message: 'A workspace with this slug already exists.', field: 'slug',
+    }), { status: 409 }));
+    vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+
+    await expect(publicApiCommand.parseAsync([
+      'post', '/v4/platform/tenants',
+      '--data', '{"displayName":"Root Workspace","slug":"root-workspace","homeRegion":"au"}', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    const output = outputSpy.mock.calls.flat().join('');
+    expect(output).toContain('"code": "TENANT_SLUG_CONFLICT"');
+    expect(output).toContain('A workspace with this slug already exists.');
+    expect(output).not.toContain('under this parent');
+    expect(output).not.toContain('"field"');
+  });
+
   test('includes machine-readable mutation remediation for a strict v4 405', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

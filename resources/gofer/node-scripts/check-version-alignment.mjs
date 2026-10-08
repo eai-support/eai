@@ -35,10 +35,7 @@ function readText(root, relativePath) {
 
 function collectVersions(root) {
   const codexPluginManifest = readJson(root, '.codex-plugin/plugin.json');
-  const releaseAssetVersion =
-    /eai-gofer-agent-plugin-([^/]+)\.zip$/.exec(
-      codexPluginManifest.gofer?.releaseAsset ?? ''
-    )?.[1] ?? 'missing';
+  const codexMarketplace = readJson(root, '.agents/plugins/marketplace.json');
 
   return [
     {
@@ -72,9 +69,9 @@ function collectVersions(root) {
       version: codexPluginManifest.version,
     },
     {
-      name: 'Codex plugin release asset',
-      path: '.codex-plugin/plugin.json#gofer.releaseAsset',
-      version: releaseAssetVersion,
+      name: 'Codex plugin marketplace',
+      path: '.agents/plugins/marketplace.json',
+      version: codexMarketplace.plugins?.[0]?.version ?? 'missing',
     },
     {
       name: 'workspace version marker',

@@ -10,6 +10,7 @@ const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
 const contextModule = new URL('../../dist/lib/support-context.js', import.meta.url).href;
 const errorModule = new URL('../../dist/lib/error-codes.js', import.meta.url).href;
 const outputModule = new URL('../../dist/lib/output.js', import.meta.url).href;
+const apiModule = new URL('../../dist/lib/api.js', import.meta.url).href;
 
 describe('support context from failing commands', () => {
   let environment: TestEnvironment;
@@ -151,24 +152,31 @@ describe('support context from failing commands', () => {
   });
 
   test.each([
-    { error: { code: 'DENIED', message: 'Bearer fixture-response-secret', suggestion: 'Ask an admin.' }, requestId: 'request-fixture' },
-    { error: 'DENIED', detail: 'clientSecret=fixture-response-secret', requestId: 'request-fixture' },
-    { code: 'DENIED', message: 'Bearer fixture-response-secret', requestId: 'request-fixture' },
-  ])('raw workspace JSON failures preserve their fields and show support without leaking credentials', async (body) => {
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion' },
+  ])('normalized workspace failures keep parseable stdout, local context and the support offer', async ({ status, code, field }) => {
     const script = `
-      import { installSupportErrorTracking, setSupportCommand, formatSupportErrorBody } from ${JSON.stringify(contextModule)};
+      import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(contextModule)};
+      import { parseApiError } from ${JSON.stringify(apiModule)};
+      import { json } from ${JSON.stringify(outputModule)};
       installSupportErrorTracking(); setSupportCommand('eai workspace create');
-      process.stderr.write(formatSupportErrorBody(${JSON.stringify(JSON.stringify(body))}));
+      const response = new Response(JSON.stringify({
+        error: ${JSON.stringify(code)}, message: 'Rejected input: fixture-response-secret',
+        details: { field: ${JSON.stringify(field)}, input: 'fixture-response-secret' },
+      }), { status: ${status} });
+      const error = await parseApiError(response, { childTenantCreate: true });
+      json({ ok: false, status: error.status, error });
       process.exit(1);
     `;
     const result = run(['--input-type=module', '-e', script]);
 
     expect(result.status).toBe(1);
-    const payload = JSON.parse(String(result.stderr));
-    expect(payload.requestId).toBe('request-fixture');
-    expect(payload.error?.code ?? payload.error ?? payload.code).toBe('DENIED');
-    expect(payload.error?.suggestion ?? payload.suggestion).toContain('Run eai support');
-    expect(String(result.stderr)).not.toContain('fixture-response-secret');
+    const payload = JSON.parse(String(result.stdout));
+    expect(payload).toMatchObject({ ok: false, status, error: { status, code, field } });
+    expect(Object.keys(payload).sort()).toEqual(['error', 'ok', 'status']);
+    expect(String(result.stderr)).toContain('Run eai support');
+    expect(await readContext()).toMatchObject({ command: 'eai workspace create', exitCode: 1 });
+    expect(`${result.stdout}${result.stderr}${JSON.stringify(await readContext())}`).not.toContain('fixture-response-secret');
   });
 
   test('support, error explanations and successful commands preserve the original failure', async () => {

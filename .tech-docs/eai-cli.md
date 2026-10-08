@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.18.4 |
-| Released | 2026-09-29 |
-| Last Material Change | Use workspace terminology in customer-facing guidance |
-| Source Commit | `9c7efe3e4252abf86e0dd5c33dcc4eb8e4f96bb7` |
+| Version | 3.19.2 |
+| Released | 2026-10-08 |
+| Last Material Change | Pin corrected App Template v1.0.10 evidence producer |
+| Source Commit | `c3f8e973214b512c831b9347bd34e7340df3b7e9` |
 
 
 ## Install
@@ -69,6 +69,28 @@ eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
+
+## Check Source Before EAI Hosting
+
+After building an app, check its source before choosing EAI-managed publication:
+
+```bash
+eai deploy source validate --format json
+```
+
+The check uses the same source guard as publication. It reads local files without
+signing in, publishing, or writing a deployment receipt. The upload includes the
+complete authored app: frontend and backend code, custom runners, tests, scripts,
+assets, documentation and ordinary config files. Executable script permissions
+are bound into the source digest and retained in GitHub. NCB's generation layout
+does not constrain Installer/CLI source.
+
+Deployment-owned Docker, workflow, platform authentication and tenant-binding
+controls remain protected. Credentials, dependencies, build caches and local
+agent state are excluded. A custom runtime needs an approved runtime contract;
+it cannot be silently replaced by the template runtime. The check reports
+unsupported controls and preserves your changes. A passing source check does
+not prove that the build, deployment or hosted readiness has completed.
 
 ## Object Type Identifiers
 
@@ -135,6 +157,19 @@ Prefer product-shaped commands before `eai publicapi`:
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+For protected POSIX qualification, named `eai init <name> --skip-prompts` can
+optionally pair `--binding-receipt <absolute-path>` with
+`--binding-receipt-nonce <canonical-UUIDv4>`. The destination must be fresh, in
+an owner-only directory outside the project and Git trees. A pending reservation
+grants no creation ownership. An acknowledged `eai.init_app_binding.v1` record
+retains the original request gateway/actor, actual immutable enrollment and
+parent/runtime tenant IDs, and actual creation flags, including after later
+scaffold failure. Selected or concurrently reused apps keep false flags.
+Preserve an existing receipt and choose a fresh private path/nonce for a new
+invocation; an existing destination rejects before provider work. Keep this
+private evidence out of Git and source bundles. Normal init produces no extra
+binding receipt; Windows delivery requires separate evidence.
 
 ## Related Reference
 

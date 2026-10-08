@@ -63,4 +63,6 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.18.4** (2026-09-29): Use workspace terminology in customer-facing guidance.
+The current CLI release is **v3.19.2** (2026-10-08): Pin corrected App Template v1.0.10 evidence producer.
+
+

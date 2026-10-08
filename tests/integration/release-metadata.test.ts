@@ -57,3 +57,62 @@ describe('release metadata updater', () => {
     }
   });
 });
+
+describe('managed-deployment release documentation', () => {
+  test('ships the managed deployment help and portable documentation', () => {
+    const help = readFileSync(path.join(repoRoot, 'docs-site/static/cli-help.txt'), 'utf-8');
+    const full = readFileSync(path.join(repoRoot, 'docs-site/static/llms-full.txt'), 'utf-8');
+    for (const asset of [help, full]) {
+      expect(asset).toContain('eai deploy app --help');
+      expect(asset).toContain('--target-tenant-id <id>');
+      expect(asset).toContain('--resume <operation-id>');
+    }
+    expect(full).not.toContain("import Link from '@docusaurus/Link'");
+    expect(full).not.toContain('<Link to=');
+    expect(full).toContain('[Business Scenarios](/scenarios/)');
+  });
+});
+
+describe('static registry release staging', () => {
+  test.skipIf(process.platform === 'win32')('stages every encoded alias from the new canonical Git blob', () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'eai-release-registry-'));
+    const canonical = 'docs-site/static/registry/@enterpriseai/cli';
+    const aliases = [
+      'docs-site/static/registry/%40enterpriseai%2Fcli',
+      'docs-site/static/registry/@enterpriseai%2fcli',
+      'docs-site/static/registry/@enterpriseai%2Fcli',
+    ];
+    const git = (...args: string[]) => execFileSync('git', args, { cwd: workspace, encoding: 'utf8' }).trim();
+
+    try {
+      git('init', '-q');
+      mkdirSync(path.join(workspace, 'docs-site/static/registry/@enterpriseai'), { recursive: true });
+      writeFileSync(path.join(workspace, canonical), '{"latest":"3.19.2"}\n');
+      git('add', canonical);
+      const expected = git('rev-parse', `:${canonical}`);
+      for (const [index, alias] of aliases.entries()) {
+        const old = execFileSync('git', ['hash-object', '-w', '--stdin'], {
+          cwd: workspace,
+          input: `{"latest":"3.19.${index}"}\n`,
+          encoding: 'utf8',
+        }).trim();
+        git('update-index', '--add', '--cacheinfo', `100644,${old},${alias}`);
+        expect(git('rev-parse', `:${alias}`)).toBe(old);
+      }
+
+      const release = readFileSync(path.join(repoRoot, 'release.sh'), 'utf8');
+      const start = release.indexOf('PACKUMENT_BLOB="$(git hash-object -w docs-site/static/registry/@enterpriseai/cli)"');
+      const end = release.indexOf('\ngit commit -m ', start);
+      expect(start).toBeGreaterThan(0);
+      expect(end).toBeGreaterThan(start);
+      execFileSync('/bin/bash', ['-e', '-c', release.slice(start, end)], { cwd: workspace });
+
+      for (const alias of aliases) {
+        expect(git('rev-parse', `:${alias}`)).toBe(expected);
+      }
+      expect(git('rev-parse', `:${canonical}`)).toBe(expected);
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+});

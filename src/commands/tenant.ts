@@ -33,7 +33,6 @@ import {
 } from "../lib/tenant-hierarchy.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
-import { formatSupportErrorBody } from "../lib/support-context.js";
 
 export {
   filterTenantAdminEntries,
@@ -726,11 +725,16 @@ tenantCommand
       });
 
       if (!res.ok) {
-        const body = await res.text();
-        if (spinner) {
-          spinner.fail(`${res.status}: ${formatSupportErrorBody(body)}`);
+        const error = await parseApiError(res, { childTenantCreate: Boolean(options.parent) });
+        // `field` is allowlisted by parseApiError, so it is safe to print.
+        const fieldSuffix = error.field ? ` (field: ${error.field})` : "";
+        if (options.format === "json") {
+          out.json({ ok: false, status: error.status, error });
+        } else if (spinner) {
+          const prefix = error.code ? `${error.code}: ` : "";
+          spinner.fail(`${error.status}: ${prefix}${error.message}${fieldSuffix}`);
         } else {
-          process.stderr.write(`${formatSupportErrorBody(body || res.statusText)}\n`);
+          out.error(`${error.message}${fieldSuffix}`);
         }
         process.exit(1);
       }

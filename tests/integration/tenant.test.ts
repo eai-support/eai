@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import inquirer from 'inquirer';
@@ -57,6 +57,12 @@ function createTenantEntry(
     ...overrides,
   };
 }
+
+const profileFixture = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: () => profileFixture.home || actual.homedir() };
+});
 
 const originalBaseUrlPublicApi = process.env.BASE_URL_PUBLIC_API;
 const originalRoutingBootstrapPublicApiUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL;
@@ -929,6 +935,123 @@ describe('tenant list filtering', () => {
   });
 });
 
+describe('child workspace creation admission', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant', displayName: 'Parent Workspace', slug: 'parent-tenant', isActive: true, homeRegion: 'au',
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+  });
+
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
+  ])('emits a structured immediate $status rejection without creating or bootstrapping a workspace', async ({ status, code, field, message }) => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({
+      error: code, message: 'Rejected value: tax-file-secret', details: { field, input: 'tax-file-secret' },
+    }), { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const refreshSpy = vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus');
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual({ ok: false, status, error: { status, code, field, message } });
+    expect(JSON.stringify([...outputSpy.mock.calls, ...stderrSpy.mock.calls])).not.toContain('tax-file-secret');
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.has('Prefer')).toBe(false);
+  });
+
+  test('does not describe a root workspace conflict as a child conflict', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', message: 'A workspace with this slug already exists.', field: 'slug',
+    }), { status: 409 })));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--home-region', 'au', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = JSON.stringify(parseJsonOutput(outputSpy));
+    expect(output).toContain('TENANT_SLUG_CONFLICT');
+    expect(output).toContain('A workspace with this slug already exists.');
+    expect(output).not.toContain('under this parent');
+  });
+
+  test('displays actionable immediate validation guidance in text output', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Rejected value: tax-file-secret',
+    }), { status: 422 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain('TENANT_SLUG_INVALID');
+    expect(output).toContain('lowercase kebab-case');
+    expect(output).toContain('(field: slug)');
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('includes the allowlisted rejected field in text output without echoing upstream text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'Rejected value: tax-file-secret',
+    }), { status: 409 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain(
+      '409: TENANT_SLUG_CONFLICT: This portal slug is already in use. Choose a different portal slug. (field: portalSlug)',
+    );
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('accepts synchronous existing-child reuse without opting in to an operation', async () => {
+    const tenant = { doc: { id: 'existing-child', slug: 'child-workspace' }, reused: true };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify(tenant), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'existing-child', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: true,
+    } });
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual(expect.objectContaining({ tenant, bootstrap: null, bootstrapError: null }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Prefer')).toBe(false);
+  });
+});
+
 describe('tenant delete hard purge contract', () => {
   test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
     vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
@@ -1100,6 +1223,8 @@ describe('PublicAPI URL routing order', () => {
 
 describe('active tenant PublicAPI env sync', () => {
   test('named profiles preserve their configured endpoint when tenant metadata has a production region', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'eai-tenant-profile-'));
+    profileFixture.home = home;
     vi.mocked(profile.getActiveProfile).mockReturnValue('local');
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
@@ -1127,16 +1252,33 @@ describe('active tenant PublicAPI env sync', () => {
       return new Response(`Unhandled request: ${href}`, { status: 500 });
     }));
 
-    const context = await resolveActiveTenantContext({
-      projectRoot: '/workspace',
-      publicApiUrl: 'http://localhost:8000',
-      interactive: false,
-      tenantId: 'tenant-au',
-    });
+    try {
+      await mkdir(join(home, '.eai'), { mode: 0o700 });
+      await writeFile(join(home, '.eai', 'config.json'), JSON.stringify({
+        profiles: {
+          local: {
+            publicApiUrl: 'http://localhost:8000',
+            authTenantName: 'fixture-tenant',
+            authTenantId: 'fixture-tenant-id',
+            authClientId: 'fixture-client-id',
+          },
+        },
+      }), { mode: 0o600 });
+      const context = await resolveActiveTenantContext({
+        projectRoot: '/workspace',
+        publicApiUrl: 'http://localhost:8000',
+        interactive: false,
+        tenantId: 'tenant-au',
+      });
 
-    expect(context.publicApiUrl).toBe('http://localhost:8000');
-    expect(context.publicApiEnvSync).toBeUndefined();
-    expect(patchEnvFileSpy).not.toHaveBeenCalled();
+      expect(context.publicApiUrl).toBe('http://localhost:8000');
+      expect(context.publicApiEnvSync).toBeUndefined();
+      expect(patchEnvFileSpy).not.toHaveBeenCalled();
+    } finally {
+      profileFixture.home = '';
+      profile.setActiveProfile('default');
+      await rm(home, { recursive: true, force: true });
+    }
   });
 
   test('HP001 TENANT-REGION-001: selecting an EU tenant updates stale AU BASE_URL_PUBLIC_API', async () => {

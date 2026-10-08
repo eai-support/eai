@@ -5,7 +5,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -13,6 +13,7 @@ import inquirer from "inquirer";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
 import {
   describeAppCreationFailure,
+  describeAppCreationTimeout,
   describeCloneFailure,
   describeCreateFlowFailure,
   describeGitCommitFailure,
@@ -23,6 +24,7 @@ import {
   resolveTemplateClonePlan,
   selectExistingAppSelection,
 } from "../../src/commands/init.js";
+import * as profile from "../../src/lib/profile.js";
 import * as auth from "../../src/lib/auth.js";
 import {
   getNpmExecOptions,
@@ -188,6 +190,7 @@ describe("eai init", () => {
     "fresh init --tool %s includes support review, consent, and welcome instructions",
     async (tool) => {
       workingDirectoryIs(ctx, env.dir);
+      const savedOptions = { ...initCommand.opts() };
       const consoleCapture = captureConsole();
       const tenantCtxSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
         publicApiUrl: TEST_PUBLIC_API_URL,
@@ -226,9 +229,8 @@ describe("eai init", () => {
           "CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md",
           ".agents/skills/eai/SKILL.md", ".system/skills/eai/SKILL.md",
           ".claude/commands/eai.md", ".github/skills/eai/SKILL.md", ".github/prompts/eai.prompt.md",
-          ".agents/skills/0_gofer_start/SKILL.md", ".system/skills/0_gofer_start/SKILL.md",
-          ".claude/commands/0_gofer_start.md", ".grok/skills/eai/SKILL.md",
-          ".gemini/commands/gofer/eai.md", ".gemini/commands/gofer/0_gofer_start.md", ".github/skills/0-gofer-start/SKILL.md",
+          ".grok/skills/eai/SKILL.md", ".gemini/commands/gofer/eai.md",
+          ".specify/commands/0_gofer_start.md", ".specify/commands/gofer_eai_first_run.md",
           ".specify/references/platform/eai-support.md",
         ]) {
           const content = await readFile(join(project, relativePath), "utf8");
@@ -240,8 +242,16 @@ describe("eai init", () => {
           expect(content, relativePath).toContain('say "get help" or type `eai support`');
           expect(content, relativePath).toContain("fragment carries only its id and token");
         }
+        for (const relativePath of [
+          ".agents/skills/0_gofer_start/SKILL.md", ".system/skills/0_gofer_start/SKILL.md",
+          ".claude/commands/0_gofer_start.md", ".gemini/commands/gofer/0_gofer_start.md",
+          ".github/skills/0-gofer-start/SKILL.md",
+        ]) {
+          await expectFileNotExists(ctx, join(`support-${tool}`, relativePath));
+        }
         expect(promptSpy).not.toHaveBeenCalled();
       } finally {
+        for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
         consoleCapture.restore();
         tenantCtxSpy.mockRestore();
         getTenantSpy.mockRestore();
@@ -251,6 +261,90 @@ describe("eai init", () => {
     },
     30_000,
   );
+
+  test.each([
+    { failScaffold: false, select: false, createdApp: true },
+    { failScaffold: true, select: false, createdApp: true },
+    { failScaffold: false, select: true, createdApp: false },
+    { failScaffold: false, select: false, createdApp: false },
+  ])("private acknowledgement retains actual enrollment/ownership %j outside Git", async ({ failScaffold, select, createdApp }) => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidenceDirectory = join(env.dir, "private-evidence");
+    await mkdir(evidenceDirectory, { mode: 0o700 });
+    const receiptPath = join(evidenceDirectory, "init.json");
+    if (failScaffold) await rm(join(templateRepo, ".git"), { recursive: true, force: true });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "<fixture-access-token-cache-not-used>", oid: "stale-cache-actor", expiresAt: Date.now() + 60_000,
+        tenantId: "ciam-guid", tenantName: "profile-test", clientId: "client-id" },
+      activeTenant: { id: "parent", displayName: "Parent", slug: "parent", domain: "parent.test", isActive: true, roles: ["tenant-admin"] },
+      memberships: [],
+    });
+    const getTenantSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockImplementation(async () => new Response(JSON.stringify({ id: "parent", ultimateParentId: "parent" })));
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockImplementation(async (_parent, request, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ tenantId: "parent", appKey: request.verticalKey, verticalKey: request.verticalKey,
+        app: { id: "original-enrollment", tenantId: "parent", parentTenantId: "parent", verticalKey: request.verticalKey },
+        childTenant: null, created: { app: createdApp, childTenant: false } }), { status: 201 });
+    });
+    const listSpy = vi.spyOn(PlatformAPIClient.prototype, "listResources").mockImplementation(async (_kind, _options, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ docs: [{ id: "original-enrollment", tenantId: "parent", data: {
+        tenantId: "parent", parentTenantId: "parent", verticalKey: "receipt-app",
+      } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false, hasPrevPage: false }));
+    });
+    const hostingSpies = [
+      vi.spyOn(PlatformAPIClient.prototype, "createCliManagedGithubLinkSession"),
+      vi.spyOn(PlatformAPIClient.prototype, "prepareCliManagedSource"),
+      vi.spyOn(PlatformAPIClient.prototype, "registerSourceUnknownApp"),
+      vi.spyOn(PlatformAPIClient.prototype, "setupSourceUnknownWorkflow"),
+      vi.spyOn(PlatformAPIClient.prototype, "submitSourceUnknownWorkflowEvidence"),
+      vi.spyOn(PlatformAPIClient.prototype, "requestSourceUnknownDeployment"),
+      vi.spyOn(PlatformAPIClient.prototype, "bootstrapSourceUnknownRuntime"),
+    ];
+    for (const spy of hostingSpies) spy.mockRejectedValue(new Error("Local init must not publish or request EAI hosting"));
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("controlled-init-exit"); });
+    const output = captureConsole();
+    try {
+      const run = initCommand.parseAsync(["receipt-app", "--skip-prompts", "--company-tenant", "parent", "--from", templateRepo,
+        ...(select ? ["--app-key", "receipt-app"] : []),
+        "--trust-template-scripts", "--no-gofer", "--no-install", "--no-splash", "--binding-receipt", receiptPath,
+        "--binding-receipt-nonce", "12345678-1234-4234-8234-123456789abc"], { from: "user" });
+      if (failScaffold) await expect(run).rejects.toThrow("controlled-init-exit"); else await run;
+      expect(createSpy).toHaveBeenCalledTimes(select ? 0 : 1);
+      expect(listSpy).toHaveBeenCalledTimes(select ? 1 : 0);
+      for (const spy of hostingSpies) expect(spy).not.toHaveBeenCalled();
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      expect(receipt).toMatchObject({ status: "acknowledged", actorId: "actual-request-actor", parentTenantId: "parent",
+        runtimeTenantId: "parent", enrollmentId: "original-enrollment", createdApp, createdChildTenant: false,
+        requestKind: select ? "select" : "create" });
+      expect(JSON.stringify(receipt)).not.toContain("<fixture-access-token-cache-not-used>");
+      if (!failScaffold) expect((await exec("git", ["-C", join(env.dir, "receipt-app"), "ls-files"])).stdout).not.toContain("init.json");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      output.restore(); tenantSpy.mockRestore(); getTenantSpy.mockRestore(); capabilitySpy.mockRestore(); createSpy.mockRestore(); listSpy.mockRestore(); exitSpy.mockRestore();
+      for (const spy of hostingSpies) spy.mockRestore();
+    }
+  });
+
+  test("a stale receipt rejects before tenant/auth/provider lookup", async () => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidence = join(env.dir, "private-evidence"); await mkdir(evidence, { mode: 0o700 });
+    const path = join(evidence, "stale.json"); await writeFile(path, "original", { mode: 0o600 });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext");
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp");
+    try {
+      await expect(initCommand.parseAsync(["receipt-app", "--skip-prompts", "--binding-receipt", path, "--binding-receipt-nonce",
+        "12345678-1234-4234-8234-123456789abc"], { from: "user" })).rejects.toMatchObject({ code: "EEXIST" });
+      expect(tenantSpy).not.toHaveBeenCalled(); expect(createSpy).not.toHaveBeenCalled(); expect(await readFile(path, "utf8")).toBe("original");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      tenantSpy.mockRestore(); createSpy.mockRestore();
+    }
+  });
 
   test("uses cmd.exe for the Windows npm launcher", () => {
     expect(getNpmExecOptions("win32")).toEqual({ shell: true });
@@ -445,8 +539,9 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
-      "my-app/.claude/commands/0_gofer_start.md",
+      "my-app/.claude/commands/eai.md",
     );
+    await expectFileContains(ctx, "my-app/.claude/commands/eai.md", ".specify/commands/*.md");
     await expectFileExists(
       ctx,
       "my-app/.claude/agents/codebase-analyzer.md",
@@ -462,32 +557,32 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/.eai-manifest.json");
     await expectFileExists(
       ctx,
-      "my-app/.system/skills/1_gofer_research/SKILL.md",
+      "my-app/.system/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/1_gofer_research/SKILL.md",
+      "my-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/0_gofer_start/SKILL.md",
+      "my-app/.specify/commands/0_gofer_start.md",
     );
     await expectFileExists(ctx, "my-app/.gemini/extension.json");
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/1_gofer_research.toml",
+      "my-app/.gemini/commands/gofer/eai.toml",
     );
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/0_gofer_start.toml",
+      "my-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/prompts/0_gofer_start.prompt.md",
+      "my-app/.github/prompts/eai.prompt.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/skills/0-gofer-start/SKILL.md",
+      "my-app/.github/skills/eai/SKILL.md",
     );
     await expectFileExists(ctx, "my-app/.github/copilot-instructions.md");
     await expectFileContains(ctx, "my-app/CLAUDE.md", "## Gofer Pipeline");
@@ -1196,7 +1291,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.claude/commands/0_gofer_start.md",
+      "quick-app/.claude/commands/eai.md",
     );
     await expectFileExists(
       ctx,
@@ -1212,15 +1307,15 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.agents/skills/1_gofer_research/SKILL.md",
+      "quick-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.gemini/commands/gofer/1_gofer_research.md",
+      "quick-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.github/skills/0-gofer-start/SKILL.md",
+      "quick-app/.github/skills/eai/SKILL.md",
     );
     const objectTypes = await readFile(
       join(env.dir, "quick-app", "src", "eai.config", "object-types.ts"),
@@ -1418,7 +1513,7 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.claude/commands/0_gofer_start.md",
+      "plain-app/.claude/commands/eai.md",
     );
     await expectFileNotExists(
       ctx,
@@ -1426,12 +1521,16 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.agents/skills/1_gofer_research/SKILL.md",
+      "plain-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
   });
 
-  test("HP001 INIT-REGION-001: init stamps BASE_URL_PUBLIC_API from active tenant homeRegion", async () => {
+  test.each(["default", "private-selected"])("HP001 INIT-REGION-001: init preserves selected profile %s or runtime region", async (profileName) => {
+    profile.setActiveProfile(profileName);
+    const config = profileName === "default" ? null : { publicApiUrl: TEST_PUBLIC_API_URL, authTenantName: "profile-test-tenant", authTenantId: "ciam-guid", authClientId: "client-id" };
+    const configSpy = vi.spyOn(profile, "captureProfileConfig").mockReturnValue(config);
+    const loadProfileSpy = vi.spyOn(profile, "loadProfileConfig").mockResolvedValue(config);
     workingDirectoryIs(ctx, env.dir);
 
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
@@ -1515,7 +1614,10 @@ void contractType;
         "utf-8",
       );
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public",
+        `BASE_URL_PUBLIC_API=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
+      );
+      expect(envContent).toContain(
+        `ROUTING_BOOTSTRAP_PUBLIC_API_URL=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=profile-test-tenant",
@@ -1527,6 +1629,7 @@ void contractType;
         "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
       );
     } finally {
+      configSpy.mockRestore(); loadProfileSpy.mockRestore(); profile.setActiveProfile("default");
       authSpy.mockRestore();
       publicApiSpy.mockRestore();
       tenantSpy.mockRestore();
@@ -1680,6 +1783,18 @@ describe("describeAppCreationFailure", () => {
 
     expect(message).toContain("eai errors list");
     expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
+describe("describeAppCreationTimeout", () => {
+  test("does not invite a second create after an ambiguous timeout", () => {
+    const message = describeAppCreationTimeout("incident-intake", "tenant-one");
+
+    expect(message).toContain("may already have created it");
+    expect(message).toContain("no second create request was sent");
+    expect(message).toContain("eai app list --tenant-id tenant-one --format json [read-only]");
+    expect(message).toContain("--app-key incident-intake");
+    expect(message).toContain("fresh init receipt");
   });
 });
 

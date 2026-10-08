@@ -141,7 +141,45 @@ _Example of marking unclear requirements:_
 - **App stack policy**: [EAI Platform including app template first, Azure second
   | approved non-EAI exception | not applicable]
 
-## UI Preview & Approval Gate _(application delivery only)_
+## Authentication Access Decision _(when authentication enters scope)_
+
+Use `.specify/references/platform/eai-auth-access.md`. Ask the business owner
+who may use the app before changing auth code.
+
+- **Access scope**: [workspace-only (default) | platform-authenticated with
+  explicit approval | not applicable yet]
+- **Owner confirmation and rationale**: [answer and date; unanswered must not
+  widen access]
+- **Target workspace**: [safe reference; not the shared CIAM directory ID]
+- **App permissions and data isolation**: [server-side rules; wider sign-in does
+  not grant workspace data access]
+- **Sign-in method**: [EAI sign-in | client SSO through EAI; confirmed
+  separately]
+- **SSO readiness**: [verified setup route and entitlement | blocked | not
+  applicable]
+- **Account continuity and recovery**: [membership preservation, rollback,
+  emergency sign-in; no secrets]
+- **Acceptance evidence**: [member, non-member, anonymous, cross-workspace,
+  revoked, and unavailable membership checks]
+
+## Capability Maturity & Validation Scope
+
+Record only capabilities that matter to this feature. Use one state:
+`not_applicable`, `planned`, `implemented`, `verified`, or `blocked`.
+
+| Capability               | State   | Why it applies now | Evidence required now                                                | Trigger to re-open |
+| ------------------------ | ------- | ------------------ | -------------------------------------------------------------------- | ------------------ |
+| Local user journey       | [state] | [reason]           | [test or review]                                                     | [change]           |
+| Browser preview          | [state] | [reason]           | [HTTP check and screenshot]                                          | [change]           |
+| Authentication           | [state] | [reason]           | [provider, callback, sign-in, session, protected API, denied access] | [change]           |
+| EAI Platform integration | [state] | [reason]           | [preflight and template evidence]                                    | [change]           |
+| Deployment               | [state] | [reason]           | [deployment and smoke evidence]                                      | [change]           |
+
+Do not mark a planned capability as failed. When a user changes scope, update
+this table, `plan.md`, `tasks.md`, `traceability.md`, and validation scope
+before work continues. Explain the effect in plain language.
+
+## UI Preview & Show-And-Tell Loop _(application delivery only)_
 
 - **First MVP preview**: [what must be shown first]
 - **Profile choice**: [external / internal / hybrid]
@@ -149,13 +187,13 @@ _Example of marking unclear requirements:_
 - **Coupling status**: [source-platform-coupled / source-platform-decoupled /
   hybrid-adapter]
 - **Public-readiness target**: [required / deferred / not applicable]
-- **EAI App Template constraints**: [which approved blocks/patterns must be
+- **EAI App Template constraints**: [which selected blocks/patterns must be
   reused]
 - **Block catalog evidence**: [`eai blocks list`, `eai blocks describe <id>`,
   selected block IDs, and any custom-block exception]
 - **Resource bindings**: [`eai resources schema` fields/actions/events used by
   selected blocks]
-- **Storybook story IDs**: [story IDs for reusable/ported blocks, or approved
+- **Storybook story IDs**: [story IDs for reusable/ported blocks, or reviewed
   exception]
 - **Theme override points**: [tokens, slots, CSS variables, data/action hooks]
 - **Block porting and source-platform decoupling**: [reuse/port/custom decision
@@ -163,12 +201,13 @@ _Example of marking unclear requirements:_
 - **Branding scope**: [logos/styling in scope or not]
 - **Preview validation requirement**: [screenshot, local render proof,
   Playwright-style checks]
-- **Approval requirement**: [who approves and what artifact records it]
+- **Show-and-tell requirement**: [what must be shown, how quickly, and what
+  artifact records user feedback]
 
 ## EnterpriseAI Service Fit _(application delivery only)_
 
-- **Capability selection must happen**: after UI approval and before plan/tasks
-  are considered complete
+- **Capability selection must happen**: after the first visible UI direction and
+  before plan/tasks are considered complete
 - **Evidence sources**: [`eai --describe`, `eai whoami`, `eai workspace select`,
   `eai resources schema`, `eai verify calls --format json`, or approved
   equivalent]

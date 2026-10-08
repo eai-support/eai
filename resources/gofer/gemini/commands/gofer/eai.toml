@@ -1,2 +1,2 @@
-description = "Start or continue EAI delivery and prepare support reports for approval."
+description = "Start or continue the EAI delivery pipeline."
 prompt = "{{include: ./eai.md}}"

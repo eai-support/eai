@@ -1,4 +1,6 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
 import { createSupportDraft, type SupportBundle } from '../../src/lib/support-report.js';
@@ -108,6 +110,40 @@ describe('local support report redaction', () => {
 });
 
 describe('support consent and request limits', () => {
+  test.each(['opaque-process-credential-fixture', ''])('redacts shadowed project credentials before interactive consent with process value %j', async (processValue) => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    const projectValue = 'opaque-project-credential-fixture';
+    await writeFile(join(home.dir, 'eai.config.ts'), 'export default {};\n');
+    await writeFile(join(home.dir, '.env.local'), `DATABASE_PASSWORD=${projectValue}\n`);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.stubEnv('DATABASE_PASSWORD', processValue);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
+    let previewAtConsent = '';
+    const confirm = vi.fn(async () => {
+      previewAtConsent = shown.join('\n');
+      return false;
+    });
+
+    await runSupport({ format: 'text', open: false, description: `The provider rejected ${projectValue} during setup.` }, {
+      confirm, isInteractive: true,
+    });
+    expect(confirm).toHaveBeenCalledOnce();
+    expect(previewAtConsent).toContain('[redacted]');
+    expect(previewAtConsent).not.toContain(projectValue);
+    expect(shown.join('\n')).not.toContain(projectValue);
+    expect(server.requests).toHaveLength(0);
+  });
+
   test('shows the report before asking for consent and sends nothing after the person refuses', async () => {
     const home = await createTestEnvironment();
     contexts.push(home);

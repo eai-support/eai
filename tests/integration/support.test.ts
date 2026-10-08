@@ -124,6 +124,68 @@ describe('eai support draft handoff', () => {
     expect(result.stdout + result.stderr).not.toContain('preview-private-fixture');
   });
 
+  test.each([
+    { overlap: 'populated', processValue: 'opaque-process-credential-fixture' },
+    { overlap: 'empty', processValue: '' },
+  ].flatMap(overlap => [
+    { ...overlap, mode: 'JSON preview', format: 'json', send: false },
+    { ...overlap, mode: 'text preview', format: 'text', send: false },
+    { ...overlap, mode: 'POST', format: 'json', send: true },
+  ]))('redacts shadowed project credentials in $mode with a $overlap process value', async ({ processValue, format, send }) => {
+    const home = await environment();
+    const server = await fixture();
+    const projectValue = 'opaque-project-credential-fixture';
+    await writeSupportSession(home.dir);
+    await writeFile(join(home.dir, 'eai.config.ts'), 'export default {};\n');
+    await writeFile(join(home.dir, '.env.local'), `DATABASE_PASSWORD=${projectValue}\n`);
+    const description = `The provider rejected ${projectValue}${processValue ? ` and ${processValue}` : ''} during setup.`;
+    const result = await runSupportCli(home.dir, [
+      'support', '--format', format, '--no-open', ...(send ? ['--yes'] : []),
+      '--description', description,
+    ], { EAI_WEBSITE_URL: server.origin, DATABASE_PASSWORD: processValue });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout + result.stderr).not.toContain(projectValue);
+    if (processValue) expect(result.stdout + result.stderr).not.toContain(processValue);
+    expect(result.stdout).toContain('[redacted]');
+    expect(server.requests).toHaveLength(send ? 1 : 0);
+    if (send) {
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, status: 'created' });
+      const posted = JSON.stringify(server.requests[0].body);
+      expect(posted).not.toContain(projectValue);
+      if (processValue) expect(posted).not.toContain(processValue);
+    } else if (format === 'json') {
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, status: 'consent_required' });
+    } else {
+      expect(result.stdout).toContain('Show this bundle to the person and ask for consent.');
+    }
+  });
+
+  test.each(['         x', 'x         ', '\t\nx\t\n'])('rejects a trimmed short description %j before posting', async (description) => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const result = await runSupportCli(home.dir, [
+      'support', '--format', 'json', '--yes', '--no-open', '--description', description,
+    ], { EAI_WEBSITE_URL: server.origin });
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.stdout)).toMatchObject({ ok: false, status: 'failed', error: { code: 'invalid_report' } });
+    expect(server.requests).toHaveLength(0);
+  });
+
+  test('posts the trimmed description at the website minimum length', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const result = await runSupportCli(home.dir, [
+      'support', '--format', 'json', '--yes', '--no-open', '--description', '   1234567890   ',
+    ], { EAI_WEBSITE_URL: server.origin });
+    expect(result.code).toBe(0);
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body.description).toBe('1234567890');
+    expect((JSON.parse(result.stdout) as SupportOutput).bundle?.description).toBe('1234567890');
+  });
+
   test('supplies the required tool version field when the harness version is unknown', async () => {
     const home = await environment();
     const server = await fixture();

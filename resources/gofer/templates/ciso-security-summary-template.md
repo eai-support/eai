@@ -1,7 +1,7 @@
 ---
-feature: "{{feature-name}}"
-created: "{{ISO-timestamp}}"
-updated: "{{ISO-timestamp}}"
+feature: '{{feature-name}}'
+created: '{{ISO-timestamp}}'
+updated: '{{ISO-timestamp}}'
 audience: ciso-risk
 source_inputs:
   - validation-report.md

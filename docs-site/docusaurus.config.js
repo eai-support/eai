@@ -20,6 +20,7 @@ const config = {
   organizationName: "eai-support",
   projectName: "eai",
   deploymentBranch: "gh-pages",
+  staticDirectories: [process.env.EAI_DOCS_BUILD_STATIC_DIR || "static"],
   trailingSlash: false,
   customFields: {
     documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",

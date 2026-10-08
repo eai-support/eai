@@ -1,9 +1,14 @@
 const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key/i;
 
+/** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
   return sensitiveKey.test(key);
 }
 
+/**
+ * Removes known credential values, credential-shaped text and unsafe terminal controls before review.
+ * Supply values from every credential source: pattern matching alone cannot identify opaque secrets.
+ */
 export function redactSupportText(text: string, sensitiveValues: readonly string[] = []): string {
   let safe = text;
   for (const value of sensitiveValues) {
@@ -25,6 +30,7 @@ export function redactSupportText(text: string, sensitiveValues: readonly string
     .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
 }
 
+/** Redacts a JSON-compatible tree without mutating it; sensitive-key values become placeholders and strings use text redaction. */
 export function redactSupportBundle<T>(value: T, sensitiveValues: readonly string[] = []): T {
   if (typeof value === 'string') return redactSupportText(value, sensitiveValues) as T;
   if (Array.isArray(value)) return value.map(item => redactSupportBundle(item, sensitiveValues)) as T;

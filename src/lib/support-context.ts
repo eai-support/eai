@@ -13,8 +13,9 @@ import { listErrorGuidance } from './error-guidance/catalog.js';
 import { findGuidance } from './error-guidance/match.js';
 import type { GuidanceLookupInput } from './error-guidance/types.js';
 import { getActiveProfile } from './profile.js';
-import { isSupportSensitiveKey, redactSupportBundle, redactSupportText } from './support-redaction.js';
+import { isSupportSensitiveKey, redactSupportText } from './support-redaction.js';
 
+/** Profile-scoped failure metadata; command arguments are excluded and diagnostic text is redacted and bounded. */
 export interface SupportErrorContext {
   readonly command: string;
   readonly exitCode: number;
@@ -27,6 +28,7 @@ export interface SupportErrorContext {
 const MAX_MESSAGE_LENGTH = 4096;
 const MAX_STDERR_LENGTH = 32768;
 const MAX_CONTEXT_BYTES = 16384;
+/** Shared escalation wording for text failures and the suggestion field of JSON errors. */
 export const SUPPORT_SUGGESTION = 'Run eai support to prepare a report for your approval.';
 
 let commandPath = 'eai';
@@ -46,11 +48,13 @@ export function setSupportCommand(command: string): void {
     : 'eai';
 }
 
+/** Keeps failures separate by profile without exposing the profile name in the cache filename. */
 export function getSupportContextPath(profile = getActiveProfile()): string {
   const profileHash = createHash('sha256').update(profile).digest('hex').slice(0, 16);
   return join(homedir(), '.eai', 'support', `last-error-${profileHash}.json`);
 }
 
+/** Updates pending failure metadata in memory; only recognized catalog identities and bounded, redacted text are retained. */
 export function recordSupportError(input: GuidanceLookupInput): void {
   const message = typeof input.message === 'string'
     ? redactSupportText(input.message, sensitiveEnvironmentValues()).trim()
@@ -83,23 +87,7 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-/** Preserve upstream JSON error fields while keeping the support offer in the same document. */
-export function formatSupportErrorBody(body: string): string {
-  let payload: Record<string, unknown> | undefined;
-  try { payload = asRecord(JSON.parse(body)); }
-  catch { return redactSupportText(body, sensitiveEnvironmentValues()); }
-  if (!payload) return redactSupportText(body, sensitiveEnvironmentValues());
-
-  const error = asRecord(payload.error);
-  const details = error ?? payload;
-  const suggestion = typeof details.suggestion === 'string' && details.suggestion
-    ? `${details.suggestion}\n\n${SUPPORT_SUGGESTION}` : SUPPORT_SUGGESTION;
-  const result = error
-    ? { ...payload, error: { ...error, suggestion } }
-    : { ...payload, suggestion };
-  return JSON.stringify(redactSupportBundle(result, sensitiveEnvironmentValues()), null, 2);
-}
-
+/** Recognizes error/ok/success envelopes without changing their output; successful or unrelated values leave pending context intact. */
 export function recordSupportJsonError(value: unknown): void {
   const payload = asRecord(value);
   if (!payload || (!payload.error && payload.ok !== false && payload.success !== false)) return;
@@ -143,7 +131,10 @@ function persistSupportContext(exitCode: number): void {
   }
 }
 
-/** Synchronous writes also cover commands that terminate immediately with process.exit(). */
+/**
+ * Installs tracking once per process, including immediate process.exit() failures.
+ * Nonzero exits atomically save private, profile-scoped context; support/errors commands preserve the original failure.
+ */
 export function installSupportErrorTracking(): void {
   if (trackingInstalled) return;
   trackingInstalled = true;
@@ -193,6 +184,10 @@ export function installSupportErrorTracking(): void {
   });
 }
 
+/**
+ * Returns validated, redacted context for the active profile, or null when no cache exists.
+ * Invalid or unreadable caches throw; reading never changes the saved failure.
+ */
 export function readSupportContext(): SupportErrorContext | null {
   const path = getSupportContextPath();
   try {

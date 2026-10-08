@@ -23,6 +23,7 @@ import {
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
   resolvePublicApiUrl,
+  type PublicApiRequestPolicy,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { loadRuntimeContract } from '../lib/runtime-contract.js';
@@ -34,6 +35,14 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
+import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
+import {
+  CLI_MANAGED_SOURCE_OPERATION_ID,
+  MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  requireManagedDeploymentIdentifier,
+  requireManagedScopeIdentifier,
+} from '../lib/eai-managed-identifiers.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -45,6 +54,14 @@ const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
+
+/** Scoped cleanup must retain the exact plan targets; legacy plans carry no target authority. */
+function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(target =>
+    typeof target === 'string' && target.length > 0 && target.length <= 256 && target.trim() === target,
+  ) && new Set(value).size === value.length && value.includes(companyTenantId);
+}
+
 
 /** Require the immutable deletion plan to cover every deployment environment exactly once. */
 export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
@@ -132,13 +149,15 @@ export interface AppWorkflowSetupOptions {
   json?: boolean;
 }
 
-export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
-  operationId: string;
-  nonce: string;
+/** Submit collector JSON with OIDC; legacy proof-construction options are rejected. */
+export interface AppWorkflowEvidenceOptions extends Partial<AppConnectExistingOptions> {
+  evidenceFile: string;
+  operationId?: string;
+  nonce?: string;
   environment?: string;
-  configHash: string;
-  artifactDigest: string;
-  imageDigest: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
   workflowRunId?: string;
   workflowRunAttempt?: string;
   githubOidcToken?: string;
@@ -480,79 +499,119 @@ export function buildSourceUnknownWorkflowSetupData(
   };
 }
 
+/** Accept only legacy source-unknown evidence; CLI-managed evidence uses its operation-specific workflow route. */
 export function buildSourceUnknownWorkflowEvidenceData(
-  options: AppWorkflowEvidenceOptions,
+  value: unknown,
 ): SourceUnknownWorkflowEvidenceRequest {
-  const repo = parseRepositorySlug(options.repo);
-  const operationId = options.operationId?.trim();
-  const nonce = options.nonce?.trim();
-  const environment = (options.environment || 'preview').trim();
-  const defaultBranch = (options.branch || 'main').trim();
-  const workflowPath = options.workflow?.trim() || '.github/workflows/eai-app.yml';
-  const ref = options.ref?.trim() || `refs/heads/${defaultBranch}`;
-  const commitSha = options.commit?.trim();
-  const configHash = options.configHash?.trim();
-  const artifactDigest = options.artifactDigest?.trim();
-  const imageDigest = options.imageDigest?.trim();
-  if (!operationId) throw new Error('Workflow evidence operation ID is required.');
-  if (!nonce) throw new Error('Workflow evidence nonce is required.');
-  if (!environment) throw new Error('Workflow evidence environment is required.');
-  if (!defaultBranch) throw new Error('Default branch is required.');
-  if (!commitSha) throw new Error('Workflow evidence commit SHA is required.');
-  if (!configHash) throw new Error('Workflow evidence config hash is required.');
-  if (!artifactDigest) throw new Error('Workflow evidence artifact digest is required.');
-  if (!imageDigest) throw new Error('Workflow evidence image digest is required.');
-  assertSha256Digest(artifactDigest, '--artifact-digest');
-  assertSha256Digest(imageDigest, '--image-digest');
-  const schemaProvenance = buildSchemaProvenance(options);
-  if (!schemaProvenance) {
-    throw new Error('Workflow evidence requires schema provenance: provide --template-version, --schema-digest, --validator-digest, and an approved source anchor.');
+  function record(input: unknown, fields: string[], label: string): Record<string, unknown> {
+    if (!isRecord(input) || Object.keys(input).some(key => !fields.includes(key))) {
+      throw new Error(`${label} must contain only canonical collector fields.`);
+    }
+    return input;
   }
-  const workflowRun: Record<string, unknown> = {};
-  if (options.workflowRunId?.trim()) workflowRun.id = options.workflowRunId.trim();
-  if (options.workflowRunAttempt?.trim()) {
-    const attempt = Number(options.workflowRunAttempt.trim());
-    workflowRun.attempt = Number.isFinite(attempt) ? attempt : options.workflowRunAttempt.trim();
+  function text(input: unknown, label: string, pattern?: RegExp): string {
+    if (typeof input !== 'string' || !input || input.trim() !== input || (pattern && !pattern.test(input))) {
+      throw new Error(`${label} is missing or invalid in workflow evidence.`);
+    }
+    return input;
   }
-
+  function positiveId(input: unknown, label: string): string | number {
+    if ((typeof input !== 'string' && typeof input !== 'number')
+      || !/^[1-9][0-9]*$/.test(String(input))
+      || (typeof input === 'number' && !Number.isSafeInteger(input))) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+    return input;
+  }
+  const body = record(value, ['operationId', 'nonce', 'sourceMode', 'targetTenantId', 'environment',
+    'workflowPath', 'workflowBlobSha', 'collectorDigest', 'ref', 'commitSha', 'configHash',
+    'artifactDigest', 'imageArtifact', 'imageDigest', 'schemaProvenance', 'workflowRun',
+    'validationSummary'], 'Workflow evidence');
+  const sha = /^[a-f0-9]{40}$/;
+  const digest = /^sha256:[a-f0-9]{64}$/;
+  if (body.sourceMode === 'eai-cli-generated'
+    || (typeof body.operationId === 'string' && (CLI_MANAGED_SOURCE_OPERATION_ID.test(body.operationId)
+      || body.operationId.startsWith('cli-managed-source-')))) {
+    throw new Error('This workflow-evidence command accepts source-unknown evidence only. Use the canonical EAI managed deployment workflow for CLI-managed evidence.');
+  }
+  const sourceMode = body.sourceMode === undefined
+    ? undefined
+    : text(body.sourceMode, 'sourceMode', /^source-unknown$/);
+  const targetTenantId = body.targetTenantId === undefined
+    ? undefined
+    : text(body.targetTenantId, 'targetTenantId', /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/);
+  const artifact = record(body.imageArtifact, ['id', 'name', 'archiveDigest'], 'imageArtifact');
+  if (artifact.name !== 'eai-generated-app-image') throw new Error('imageArtifact.name must be eai-generated-app-image.');
+  const run = record(body.workflowRun, ['id', 'attempt', 'workflow', 'job'], 'workflowRun');
+  const provenance = record(body.schemaProvenance, ['templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+    'approvedReleaseId', 'schemaDigest', 'validatorDigest'], 'schemaProvenance');
+  const validation = record(body.validationSummary, ['status'], 'validationSummary');
+  if (validation.status !== 'passed') throw new Error('validationSummary.status must be passed from the successful canonical workflow.');
+  if (!provenance.baseTemplateSha && !provenance.approvedSourceSha && !provenance.approvedReleaseId) {
+    throw new Error('Workflow evidence requires schema provenance with an approved source anchor.');
+  }
+  const operationId = text(
+    body.operationId,
+    'operationId',
+    MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  );
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('operationId must use the source-unknown namespace.');
+  }
   return {
     operationId,
-    nonce,
-    environment,
-    workflowPath,
-    ref,
-    commitSha,
-    configHash,
-    artifactDigest,
-    imageDigest,
-    schemaProvenance,
-    ...(Object.keys(workflowRun).length > 0 ? { workflowRun } : {}),
-    oidcClaims: {
-      repository: `${repo.owner}/${repo.name}`,
-      ref,
-      sha: commitSha,
-      workflow_ref: `${repo.owner}/${repo.name}/${workflowPath}@${ref}`,
-      ...(workflowRun.id ? { run_id: String(workflowRun.id) } : {}),
-      ...(workflowRun.attempt ? { run_attempt: String(workflowRun.attempt) } : {}),
+    nonce: text(body.nonce, 'nonce'),
+    ...(sourceMode ? { sourceMode: 'source-unknown' as const } : {}),
+    ...(targetTenantId ? { targetTenantId } : {}),
+    environment: text(body.environment, 'environment', /^(preview|dev|test|prod|demo)$/),
+    workflowPath: text(body.workflowPath, 'workflowPath', /^\.github\/workflows\/[^/]+\.ya?ml$/),
+    workflowBlobSha: text(body.workflowBlobSha, 'workflowBlobSha', sha),
+    collectorDigest: text(body.collectorDigest, 'collectorDigest', digest),
+    ref: text(body.ref, 'ref', /^refs\/heads\/[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,253}[A-Za-z0-9])?$/),
+    commitSha: text(body.commitSha, 'commitSha', sha),
+    configHash: text(body.configHash, 'configHash', digest),
+    artifactDigest: text(body.artifactDigest, 'artifactDigest', digest),
+    imageDigest: text(body.imageDigest, 'imageDigest', digest),
+    imageArtifact: {
+      id: positiveId(artifact.id, 'imageArtifact.id'), name: 'eai-generated-app-image',
+      archiveDigest: text(artifact.archiveDigest, 'imageArtifact.archiveDigest', digest),
     },
-    validationSummary: {
-      status: 'passed_by_cli',
-      appValidated: !options.skipValidate,
+    workflowRun: {
+      id: positiveId(run.id, 'workflowRun.id'), attempt: positiveId(run.attempt, 'workflowRun.attempt'),
+      ...(run.workflow !== undefined ? { workflow: text(run.workflow, 'workflowRun.workflow') } : {}),
+      ...(run.job !== undefined ? { job: text(run.job, 'workflowRun.job') } : {}),
     },
+    schemaProvenance: {
+      templateVersion: text(provenance.templateVersion, 'schemaProvenance.templateVersion'),
+      schemaDigest: text(provenance.schemaDigest, 'schemaProvenance.schemaDigest', digest),
+      validatorDigest: text(provenance.validatorDigest, 'schemaProvenance.validatorDigest', digest),
+      ...(provenance.baseTemplateSha !== undefined ? { baseTemplateSha: text(provenance.baseTemplateSha, 'schemaProvenance.baseTemplateSha', sha) } : {}),
+      ...(provenance.approvedSourceSha !== undefined ? { approvedSourceSha: text(provenance.approvedSourceSha, 'schemaProvenance.approvedSourceSha', sha) } : {}),
+      ...(provenance.approvedReleaseId !== undefined ? { approvedReleaseId: text(provenance.approvedReleaseId, 'schemaProvenance.approvedReleaseId') } : {}),
+    },
+    validationSummary: { status: validation.status },
   };
 }
 
 export function buildSourceUnknownDeploymentData(
   options: AppDeploySourceUnknownOptions,
 ): SourceUnknownDeploymentRequest {
-  const operationId = options.operationId?.trim();
+  if (!options.operationId?.trim()) {
+    throw new Error('Deployment handoff operation ID is required.');
+  }
+  const operationId = requireManagedDeploymentIdentifier(
+    options.operationId,
+    'Deployment handoff operation ID',
+  );
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('Deployment handoff requires an exact source-unknown operation ID.');
+  }
   const environment = (options.environment || 'preview').trim();
   const repo = options.repo?.trim() ? parseRepositorySlug(options.repo) : undefined;
   const workflowRunId = normaliseOptionalString(options.workflowRunId);
   const artifactDigest = options.artifactDigest?.trim();
   const imageDigest = options.imageDigest?.trim();
 
-  if (!operationId) throw new Error('Deployment handoff operation ID is required.');
   if (!environment) throw new Error('Deployment handoff environment is required.');
   if (artifactDigest) assertSha256Digest(artifactDigest, '--artifact-digest');
   if (imageDigest) assertSha256Digest(imageDigest, '--image-digest');
@@ -641,20 +700,54 @@ function fail(message: string): never {
 async function resolveAppManagementContext(options?: {
   tenantId?: string;
   interactive?: boolean;
+  managed?: boolean;
 }) {
+  if (options?.managed && options.tenantId !== undefined) {
+    requireManagedScopeIdentifier(options.tenantId, 'Tenant ID');
+  }
   const root = await findProjectRoot();
-  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const requestPolicy: PublicApiRequestPolicy | undefined = options?.managed
+    ? { validateUrl: requireManagedPublicApiUrl, redirect: 'error' }
+    : undefined;
+  const resolvedPublicApiUrl = await resolvePublicApiUrl(root ?? undefined, requestPolicy);
+  const publicApiUrl = requestPolicy?.validateUrl
+    ? requestPolicy.validateUrl(resolvedPublicApiUrl)
+    : resolvedPublicApiUrl;
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
     tenantId: options?.tenantId,
     interactive: options?.interactive,
+    requestPolicy,
   });
 
   return {
-    publicApiUrl: context.publicApiUrl,
+    publicApiUrl: requestPolicy?.validateUrl
+      ? requestPolicy.validateUrl(context.publicApiUrl)
+      : context.publicApiUrl,
     tenantId: context.activeTenant.id,
+    requestPolicy,
   };
+}
+
+type AppManagementContext = Awaited<ReturnType<typeof resolveAppManagementContext>>;
+
+async function resolveAppManagementCompanyTenantId(
+  context: AppManagementContext,
+  requestedTenantId?: string,
+): Promise<string> {
+  return requestedTenantId
+    ? context.tenantId
+    : resolveMainCompanyTenantId(context.publicApiUrl, context.tenantId, context.requestPolicy);
+}
+
+function createAppManagementClient(
+  context: AppManagementContext,
+  tenantId: string,
+): PlatformAPIClient {
+  return new PlatformAPIClient(context.publicApiUrl, tenantId, {
+    publicRequestRedirect: context.requestPolicy?.redirect,
+  });
 }
 
 async function validateVerticalEnrollment(
@@ -689,10 +782,8 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, 'Listing apps...');
 
@@ -741,10 +832,8 @@ verticalCommand
       tenantId: options.tenantId,
       interactive: !options.tenantId && !options.nonInteractive,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
     const plan = await readResponsePayload(planResponse);
@@ -757,14 +846,21 @@ verticalCommand
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
     const environments = plan.environments;
+    const scopedCleanup = plan.cleanupContract === 'eai.app-scoped-cleanup.v2';
+    const runtimeTargets = plan.runtimeTenantIds;
     if (
       plan.appKey !== appKey ||
       plan.confirmationRequired !== appKey ||
       !/^[a-f0-9]{64}$/.test(manifestHash) ||
-      !isCompleteAppDeletionEnvironmentSet(environments)
+      !isCompleteAppDeletionEnvironmentSet(environments) ||
+      (scopedCleanup
+        ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId)
+        : Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
     ) {
       fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
     }
+
+    const capturedRuntimeTargets = scopedCleanup ? [...runtimeTargets as string[]] : undefined;
 
     if (options.nonInteractive) {
       try {
@@ -805,6 +901,7 @@ verticalCommand
           : `${response.status} ${response.statusText}`,
       );
     }
+    const returnedRuntimeTargets = receipt.runtimeTenantIds;
     if (
       receipt.schemaVersion !== 'eai.app-deletion-receipt.v1' ||
       typeof receipt.operationId !== 'string' ||
@@ -813,7 +910,11 @@ verticalCommand
       receipt.status !== 'deleted' ||
       receipt.verified !== true ||
       receipt.appKey !== appKey ||
-      receipt.tenantId !== companyTenantId
+      receipt.tenantId !== companyTenantId ||
+      (capturedRuntimeTargets
+        ? !Array.isArray(returnedRuntimeTargets) || returnedRuntimeTargets.length !== capturedRuntimeTargets.length ||
+          !capturedRuntimeTargets.every((target, index) => returnedRuntimeTargets[index] === target)
+        : Object.hasOwn(receipt, 'runtimeTenantIds'))
     ) {
       spinner?.fail('App deletion could not be verified');
       fail('The platform did not return a verified app deletion receipt.');
@@ -982,9 +1083,7 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (name: string, options: VerticalCreateOptions & { tenantId?: string }) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
     const immediateParentTenantId =
       options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);
@@ -999,7 +1098,7 @@ verticalCommand
     }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const res = await client.createTenantApp(companyTenantId, {
       appDisplayName: String(data.displayName),
       verticalKey: String(data.verticalKey),
@@ -1056,11 +1155,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppConnectExistingOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1138,11 +1239,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppAdoptObservedOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1208,11 +1311,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppWorkflowSetupOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1271,27 +1376,28 @@ verticalCommand
 
 verticalCommand
   .command('workflow-evidence <key>')
-  .description('Submit source-unknown workflow evidence for a setup operation')
-  .requiredOption('--repo <owner/repo>', 'GitHub repository submitting evidence')
-  .requiredOption('--operation-id <id>', 'Source-unknown workflow setup operation ID')
-  .requiredOption('--nonce <nonce>', 'One-time setup nonce')
-  .requiredOption('--commit <sha>', 'Workflow commit SHA')
-  .requiredOption('--config-hash <hash>', 'Validated config hash')
-  .requiredOption('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
-  .requiredOption('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
+  .description('Submit canonical collector evidence with GitHub Actions OIDC')
+  .requiredOption('--evidence-file <path>', 'JSON evidence produced by the canonical successful workflow collector')
+  .option('--repo <owner/repo>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--operation-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--nonce <nonce>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--commit <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--config-hash <hash>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--artifact-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--image-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
   .option('--tenant-id <id>', 'Run against a specific company workspace')
-  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
-  .option('--branch <branch>', 'Default branch', 'main')
-  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
-  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
-  .option('--template-version <version>', 'Approved schema/template version')
-  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
-  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
-  .option('--approved-release <id>', 'Approved schema/validator release identifier')
-  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
-  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
-  .option('--workflow-run-id <id>', 'GitHub Actions run ID')
-  .option('--workflow-run-attempt <n>', 'GitHub Actions run attempt')
+  .option('--environment <environment>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--branch <branch>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow <path>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--ref <ref>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--template-version <version>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--base-template-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-source-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-release <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--schema-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--validator-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-attempt <n>', 'Deprecated: supply the canonical --evidence-file instead')
   .option('--github-oidc-token <token>', 'GitHub Actions OIDC token for workflow evidence submission')
   .option(
     '--github-oidc-audience <audience>',
@@ -1301,12 +1407,8 @@ verticalCommand
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', '\nUse --evidence-file from scripts/source-unknown-deployment-evidence.mjs collect after workflow checks succeed. Legacy evidence flags cannot construct accepted proof. PublicAPI verifies the GitHub OIDC token against the exact operation.\n')
   .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1316,10 +1418,26 @@ verticalCommand
 
     let evidenceRequest: SourceUnknownWorkflowEvidenceRequest;
     try {
-      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(options);
+      const legacy = ['repo', 'operationId', 'nonce', 'commit', 'configHash', 'artifactDigest', 'imageDigest',
+        'environment', 'branch', 'workflow', 'ref', 'templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+        'approvedRelease', 'schemaDigest', 'validatorDigest', 'workflowRunId', 'workflowRunAttempt'];
+      if (legacy.some(key => (options as unknown as Record<string, unknown>)[key] !== undefined)) {
+        throw new Error('Legacy evidence flags cannot be combined with --evidence-file; use the unchanged canonical collector JSON.');
+      }
+      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(
+        JSON.parse(await readSourceUnknownEvidenceFile(options.evidenceFile)),
+      );
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);
@@ -1378,11 +1496,6 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1396,6 +1509,14 @@ verticalCommand
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);
@@ -1440,11 +1561,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownStatusOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 

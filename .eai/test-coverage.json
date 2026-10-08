@@ -25,8 +25,13 @@
             "tests/integration/gofer.test.ts",
             "tests/integration/describe-contract.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": []
         },
         {
@@ -44,8 +49,13 @@
             "tests/integration/describe-contract.test.ts",
             "tests/integration/full-e2e-smoke.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": []
         },
         {
@@ -91,14 +101,21 @@
         },
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, local stack compatibility, and deployed read-only CLI smoke.",
+          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and deployed read-only CLI smoke. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged. Exact scoped local setup preserves existing credentials; optional create-local-secret requires enrolled-app/runtime access and exact issuer app/client/tenant proof. Private cooperative lock and pending/issued journal refuse uncertain automatic reissue, recover saved issuance, and require explicit reissue-local-secret consent. Existing deployed command schema and anonymous provisioning denial canaries cover the additive contract.",
+          "config_keys": [
+            "BASE_URL_PUBLIC_API",
+            "ROUTING_BOOTSTRAP_PUBLIC_API_URL"
+          ],
           "owned_paths": [
             "src/**",
             "tests/**",
             ".tech-docs/full-e2e-smoke-traceability.md",
+            ".tech-docs/eai-cli.md",
             "scripts/eai-full-e2e-smoke.cjs",
             "scripts/smoke-gofer-refresh-cache.cjs",
             "scripts/release-preflight.sh",
+            "scripts/clean-build-output.cjs",
+            "docs-site/static/registry/**",
             "scripts/sync-linked-sources.js",
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
             "release.sh",
@@ -110,12 +127,14 @@
             "tests/integration/whoami.test.ts",
             "tests/integration/tenant.test.ts",
             "tests/integration/init.test.ts",
+            "tests/unit/init-app-binding.test.ts",
             "tests/integration/create.test.ts",
             "tests/integration/splash.test.ts",
             "tests/integration/help.test.ts",
             "tests/integration/describe-contract.test.ts",
             "tests/integration/dev.test.ts",
             "tests/integration/update.test.ts",
+            "tests/unit/release-build.test.ts",
             "tests/integration/gofer.test.ts",
             "tests/integration/linked-sources.test.ts",
             "tests/integration/error-guidance.test.ts",
@@ -131,7 +150,8 @@
             "tests/integration/vertical.test.ts",
             "tests/integration/verify-calls.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts",
-            "tests/integration/full-e2e-smoke.test.ts"
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/unit/local-app-credential.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
@@ -183,6 +203,115 @@
             {
               "repository": "eai-testing-dev",
               "path": "tests/cross-service/contracts/platform-lifecycle/publicapi-v4-platform-lifecycle.spec.ts"
+            }
+          ]
+        },
+        {
+          "id": "eai-cli-managed-tenantinfra-deploy",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "docs-site/static/cli-help.txt",
+            "docs-site/static/llms.txt",
+            "docs-site/static/llms-full.txt",
+            "package.json",
+            "package-lock.json",
+            "resources/deploy/eai-app-template/**",
+            "scripts/verify-managed-deploy-producer-pin.cjs",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "src/commands/deploy.ts",
+            "src/commands/eai-managed-deploy.ts",
+            "src/commands/eai-managed-source-move.ts",
+            "src/commands/eai-managed-source-validate.ts",
+            "src/commands/vertical.ts",
+            "src/lib/api.ts",
+            "src/lib/eai-managed-deploy.ts",
+            "src/lib/eai-managed-source.ts",
+            "src/lib/eai-managed-source-*.ts",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/generate-release-docs.cjs",
+            "tests/integration/release-metadata.test.ts",
+            "src/commands/eai-managed-deploy*.ts",
+            "src/lib/eai-managed-deploy*.ts",
+            "src/lib/eai-managed-root-binding.ts",
+            "src/lib/eai-managed-directory-identity.ts",
+            "src/lib/eai-managed-identifiers.ts",
+            "src/lib/source-unknown-evidence-file.ts",
+            "src/lib/context.ts",
+            "src/lib/tenant-context.ts",
+            "src/lib/profile.ts",
+            "src/lib/managed-public-api.ts",
+            "src/lib/gofer-installer.ts",
+            "src/lib/gofer-refresh.ts",
+            "tests/unit/managed-profile-gateway.test.ts",
+            "tests/unit/gofer-resource-override.test.ts",
+            "tests/integration/create.test.ts",
+            "resources/gofer/**",
+            "tests/integration/gofer.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/eai-managed-deploy.test.ts",
+            "tests/unit/eai-managed-deploy-write.test.ts",
+            "tests/unit/eai-managed-source.test.ts",
+            "tests/unit/eai-managed-source-client.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/eai-managed-deploy.test.ts",
+            "tests/integration/vertical.test.ts",
+            "tests/integration/help.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/release-metadata.test.ts",
+            "tests/unit/eai-managed-source-race.test.ts",
+            "tests/unit/managed-profile-gateway.test.ts",
+            "tests/unit/gofer-resource-override.test.ts",
+            "tests/integration/create.test.ts",
+            "tests/integration/gofer.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/linked-sources.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"
+            }
+          ]
+        },
+        {
+          "id": "eai-cli-static-release-registry",
+          "description": "Release preparation stages every encoded packument alias from the canonical Git blob; the docs build emits the same bytes at each public fallback path without case-colliding during compilation.",
+          "owned_paths": [
+            "release.sh",
+            "docs-site/docusaurus.config.js",
+            "docs-site/package.json",
+            "docs-site/scripts/build-site.mjs",
+            "docs-site/scripts/build-site.test.mjs",
+            "docs-site/static/registry/**",
+            "tests/integration/release-metadata.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/integration/release-metadata.test.ts",
+            "docs-site/scripts/build-site.test.mjs"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests",
+            "Validate Docs"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": [],
+          "intentional_skipped_tests": [
+            {
+              "path": "tests/integration/release-metadata.test.ts",
+              "reason": "Only the Git-index static registry staging case requires a POSIX /bin/bash release host; the other release metadata cases remain cross-platform.",
+              "owner": "eai-cli"
             }
           ]
         },

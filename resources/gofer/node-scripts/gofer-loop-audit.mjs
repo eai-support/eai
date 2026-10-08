@@ -2,6 +2,9 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { reviewDelivery } from './gofer-delivery-check.mjs';
+import { inspectBlockers } from './gofer-blocker-control.mjs';
+import { reviewPriority } from './gofer-priority-check.mjs';
 
 const STAGE_ORDER = {
   '0_gofer_start': 0,
@@ -62,7 +65,10 @@ function parseArgs(argv) {
         args.featureDir = argv[++index] || '';
         break;
       case '--stage':
-        args.stage = argv[++index] || args.stage;
+        if (argv[index + 1] === undefined || argv[index + 1].startsWith('--')) {
+          throw new Error('--stage requires a value before the next option.');
+        }
+        args.stage = argv[++index];
         break;
       case '--init':
         args.init = true;
@@ -112,7 +118,11 @@ function parseArgs(argv) {
 }
 
 function normalizeStage(stage) {
-  return String(stage || '6_validate').trim();
+  const normalized = String(stage).trim();
+  if (!Object.hasOwn(STAGE_ORDER, normalized)) {
+    throw new Error(`Unknown stage: ${normalized}. Supported stages: ${Object.keys(STAGE_ORDER).join(', ')}`);
+  }
+  return normalized;
 }
 
 async function pathExists(targetPath) {
@@ -158,6 +168,8 @@ function createDefaultContract(featureDir) {
   const featureId = path.basename(featureDir);
   return {
     schemaVersion: 1,
+    requireDeliveryCheckpoint: true,
+    requirePriorityPlan: true,
     loopId: featureId,
     profile: 'standard',
     objective:
@@ -189,7 +201,7 @@ function createDefaultContract(featureDir) {
         id: 'closed-loop-audit',
         stage: '6_validate',
         command:
-          'node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict',
+          'node .specify/scripts/node/gofer-closed-loop-audit.mjs --feature-dir {FEATURE_DIR} --json --strict --completion',
         purpose: 'Verify goal, traceability, drift, and validation freshness before final scoring.',
         runWhen: 'before validation scoring',
       },
@@ -250,6 +262,12 @@ function validateContract(contract) {
 
   if (contract.schemaVersion !== 1) {
     findings.push('schemaVersion must be 1');
+  }
+  if (contract.requireDeliveryCheckpoint !== undefined && typeof contract.requireDeliveryCheckpoint !== 'boolean') {
+    findings.push('requireDeliveryCheckpoint must be a boolean');
+  }
+  if (contract.requirePriorityPlan !== undefined && typeof contract.requirePriorityPlan !== 'boolean') {
+    findings.push('requirePriorityPlan must be a boolean');
   }
   for (const field of ['loopId', 'profile', 'objective', 'entryStage']) {
     if (!hasMaterialText(contract[field])) {
@@ -441,6 +459,10 @@ ${formatList(result.blockingFindings)}
 
 ${formatList(result.warnings)}
 
+## Coverage Notes
+
+${formatList(result.coverageNotes)}
+
 ## Last Ledger Entry
 
 \`\`\`json
@@ -462,6 +484,7 @@ async function analyze(args) {
     contractCreated: false,
     blockingFindings: [],
     warnings: [],
+    coverageNotes: [],
     ledgerEntries: 0,
     maxIterations: null,
     lastLedgerEntry: null,
@@ -504,6 +527,34 @@ async function analyze(args) {
     const validation = validateLedger(ledgerResult.entries, contract, args.stage);
     result.blockingFindings.push(...validation.findings);
     result.warnings.push(...validation.warnings);
+  }
+
+  try {
+    result.blockerReview = await inspectBlockers(args.featureDir);
+    if (result.blockerReview.status === 'blocked') result.blockingFindings.push('Recorded blockers remain unresolved; inspect blocker-register.json before continuing affected work');
+    result.coverageNotes.push(result.blockerReview.coverage);
+  } catch {
+    result.blockingFindings.push('Blocker register or its evidence is invalid; stop affected work and review the local record');
+  }
+
+  if (STAGE_ORDER[args.stage] >= 4) {
+    if (contract?.requirePriorityPlan === true || await pathExists(path.join(args.featureDir, 'priority-plan.json'))) {
+      result.priorityReview = await reviewPriority(args.featureDir, { finish: STAGE_ORDER[args.stage] >= 6 });
+      result.blockingFindings.push(...result.priorityReview.findings);
+    } else {
+      result.coverageNotes.push('Legacy feature has no priority plan; priority and outcome receipts are unverified');
+    }
+    if (contract?.requireDeliveryCheckpoint === true || await pathExists(path.join(args.featureDir, 'delivery-checkpoint.json'))) {
+      try {
+        const delivery = await reviewDelivery(args.featureDir);
+        result.deliveryReview = delivery;
+        result.blockingFindings.push(...delivery.findings.map(item => `Delivery review: ${item}`));
+      } catch {
+        result.blockingFindings.push('Delivery review could not read the feature checkpoint');
+      }
+    } else {
+      result.coverageNotes.push('Delivery checkpoint not enabled for this legacy feature; task freshness is unverified');
+    }
   }
 
   if (result.blockingFindings.length > 0) {

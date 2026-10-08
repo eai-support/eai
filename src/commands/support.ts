@@ -7,6 +7,7 @@ import { collectSupportBundle, createSupportDraft, resolveSupportWebsite, Suppor
 
 const execFileAsync = promisify(execFile);
 
+/** Prompt/browser hooks for controlled callers; overriding interactivity never grants consent. */
 export interface SupportDependencies {
   readonly confirm?: () => Promise<boolean>;
   readonly isInteractive?: boolean;
@@ -26,6 +27,12 @@ async function confirmSupport(): Promise<boolean> {
   return answers.consent;
 }
 
+/**
+ * Previews a locally redacted report; options.yes asserts prior human consent to that report.
+ * JSON/noninteractive callers otherwise preview only; interactive text asks before sending.
+ * JSON emits consent_required, signed_out, created or failed and never opens a browser.
+ * Preparation/request failures set process.exitCode to 1; missing/expired/rejected sessions return a plain support link.
+ */
 export async function runSupport(options: SupportOptions, dependencies: SupportDependencies = {}): Promise<void> {
   const json = options.format === 'json';
   let plainUrl: string | undefined;
@@ -87,6 +94,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
   }
 }
 
+/** CLI support entry point; --yes is reserved for the person's explicit approval of the previewed report. */
 export const supportCommand = new Command('support')
   .description('Review a redacted error report and hand it to the Support page with consent')
   .option('--format <format>', 'Output format (text|json); JSON previews until consent is given', 'text')

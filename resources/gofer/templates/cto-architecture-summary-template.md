@@ -1,7 +1,7 @@
 ---
-feature: "{{feature-name}}"
-created: "{{ISO-timestamp}}"
-updated: "{{ISO-timestamp}}"
+feature: '{{feature-name}}'
+created: '{{ISO-timestamp}}'
+updated: '{{ISO-timestamp}}'
 audience: cto-architecture
 source_inputs:
   - plan.md
