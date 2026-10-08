@@ -44,6 +44,7 @@ import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
 import { errorsCommand } from './commands/errors.js';
+import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
@@ -56,8 +57,18 @@ import {
 import { setSimpleMode } from './lib/output.js';
 import { resolveCommandProfile, setActiveProfile } from './lib/profile.js';
 import { describeProgram } from './lib/schema-builder.js';
+import { installSupportErrorTracking, setSupportCommand } from './lib/support-context.js';
 
 const program = new Command();
+installSupportErrorTracking();
+
+function supportCommandPath(command: Command): string {
+  const names: string[] = [];
+  for (let current: Command | null = command; current; current = current.parent) {
+    names.unshift(current.name());
+  }
+  return names.join(' ');
+}
 
 program
   .name('eai')
@@ -68,7 +79,8 @@ program
   .option('--color', 'Force colored output')
   .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
-  .hook('preAction', async (thisCommand) => {
+  .hook('preAction', async (thisCommand, actionCommand) => {
+    setSupportCommand(supportCommandPath(actionCommand));
     const opts = thisCommand.optsWithGlobals();
 
     // Handle --simple flag
@@ -118,6 +130,7 @@ program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
 program.addCommand(errorsCommand);
+program.addCommand(supportCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
 program.addCommand(classifierCommand);
@@ -249,6 +262,21 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
   return null;
 }
 
+function readInvocationProfile(args: readonly string[]): string {
+  let profile = process.env.EAI_PROFILE?.trim() || 'default';
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--') break;
+    if (arg.startsWith('--profile=')) {
+      profile = arg.slice('--profile='.length).trim() || profile;
+    } else if (arg === '--profile' && args[index + 1] && !args[index + 1].startsWith('-')) {
+      profile = args[index + 1].trim() || profile;
+      index += 1;
+    }
+  }
+  return profile;
+}
+
 function isHelpInvocation(args: readonly string[]): boolean {
   return (
     args.length === 0 ||
@@ -281,6 +309,10 @@ if (cliArgs.includes('--describe')) {
   console.log(JSON.stringify(describeProgram(program), null, 2));
 } else {
   const topLevelCommandName = readTopLevelCommandName(cliArgs);
+  const invokedCommand = program.commands.find(command => command.name() === topLevelCommandName
+    || command.aliases().includes(topLevelCommandName ?? ''));
+  if (invokedCommand) setSupportCommand(`eai ${invokedCommand.name()}`);
+  setActiveProfile(readInvocationProfile(cliArgs));
   const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||

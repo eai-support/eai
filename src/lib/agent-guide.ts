@@ -64,6 +64,8 @@ const guide: AgentGuide = {
     'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
     'Use eai workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'Do not loop indefinitely; follow retry and stop conditions from eai errors explain.',
+    'For unresolved EAI errors or a request to get help, preview a locally redacted report with eai support --source harness --tool <current-tool> --format json. Show the bundle summary and ask the person for explicit consent.',
+    'Only after the person approves that bundle, repeat the support command with --yes --no-open and give them the returned Support link. Ask for fresh consent if the bundle changes. Never send the report directly to an API, assume consent, or paste secrets into the chat.',
     'Do not expose tokens, secrets, local env files, workspace identifiers, or request IDs unless the user explicitly asks to collect escalation evidence.',
   ],
   recoveryLoop: [
@@ -109,12 +111,30 @@ const guide: AgentGuide = {
     {
       step: 4,
       title: 'Apply listed fixes only',
-      instruction: 'Run mutating commands only when they are listed in the guidance entry and fit the current project state.',
+      instruction: 'Apply each listed fix once when it fits the current project state and its approval requirements are met. Run mutating commands only when the guidance lists them.',
     },
     {
       step: 5,
       title: 'Verify and stop',
-      instruction: 'Re-run the failed command or a read-only verification command. Stop when guidance stop conditions match or the same failure repeats after the listed retry limit.',
+      instruction: 'Re-run the failed command or a read-only verification command. Stop remediation when guidance stop conditions match or the same failure repeats after the listed retry limit, then offer the support preview.',
+    },
+    {
+      step: 6,
+      title: 'Prepare support with consent',
+      instruction: 'If the failure remains unresolved, show the locally redacted bundle summary and ask for explicit consent. Send only the approved bundle through eai support, then give the person its link. If the session is unavailable, give the plain Support link. Report text never goes in the URL; only the draft id and one-time token appear in its fragment.',
+      commands: [
+        {
+          command: 'eai support --source harness --tool <current-tool> --format json',
+          mutates: false,
+          purpose: 'Preview the redacted report without sending it; use codex, claude, vscode, grok, or antigravity for the current tool.',
+        },
+        {
+          command: 'eai support --source harness --tool <current-tool> --format json --yes --no-open',
+          mutates: true,
+          purpose: 'Create the draft only after the person explicitly approves the previewed bundle.',
+          when: 'The person approved this exact bundle; repeat the preview and consent if any report fields changed.',
+        },
+      ],
     },
   ],
   commonWorkflows: [
@@ -185,10 +205,11 @@ const guide: AgentGuide = {
     },
   ],
   stopConditions: [
-    'The same error repeats after the guidance retry limit.',
+    'The same error repeats after the guidance retry limit; stop remediation and offer a support preview.',
     'A command reports a paid plan, workspace role, or platform-side server blocker that the current user cannot change.',
-    'A mutating command is not listed in the guidance entry for this error.',
+    'A mutating remediation command is not listed in the guidance entry for this error.',
     'The command would require editing secrets or local env files without explicit user approval.',
+    'The person declines support consent or the report changes after approval; create no draft until the current bundle is approved.',
   ],
 };
 

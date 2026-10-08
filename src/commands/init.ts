@@ -485,6 +485,7 @@ export function consumeLastInitBinding(): InitTenantAppBinding | undefined {
   return binding;
 }
 
+/** Scaffolds an app and its managed guidance, with optional AI tool selection for generated instructions. */
 export const initCommand = new Command("init")
   .description("Scaffold a new application")
   .argument("[name]", "Name for the app (kebab-case)")
@@ -540,6 +541,10 @@ export const initCommand = new Command("init")
     "--template-version <tag>",
     "Scaffold from a specific published app-template release (for example v1.2.0)",
   )
+  .option(
+    "--tool <tool>",
+    "AI tool to prepare for: codex, claude, vscode, grok, or antigravity",
+  )
   .option("--no-splash", "Skip the interactive EAI wordmark")
   .addHelpText(
     "after",
@@ -559,6 +564,7 @@ Use --no-gofer only when you need a bare app scaffold.
 `,
   )
   .action(async (nameArg, options) => {
+    const aiTool = validateCreateAiTool(options.tool);
     if ((options.bindingReceipt !== undefined || options.bindingReceiptNonce !== undefined)
       && (!options.skipPrompts || !nameArg)) throw new Error("Init binding receipts require a named --skip-prompts invocation.");
     const receiptProjectBase = options.bindingReceipt === undefined ? process.cwd() : await realpath(process.cwd());
@@ -1011,6 +1017,9 @@ Use --no-gofer only when you need a bare app scaffold.
       );
     }
     out.nestedDim(`Template: ${templatePlan.displaySource}`);
+    if (aiTool) {
+      out.nestedInfo(`AI tool: ${CREATE_AI_TOOL_LABELS[aiTool]}. Run \`eai start\` in the project to open your AI workspace.`);
+    }
     if (options.gofer) {
       out.nestedDim(
         "Gofer: run eai start to open this project in a detected AI workspace with the public EAI skill.",
@@ -1245,6 +1254,7 @@ export function resolveCreateTenantContext(
   });
 }
 
+/** Builds init arguments from create's validated binding, onboarding answers, and selected AI tool. */
 export function buildForwardedInitArgs(
   nameArg: string | undefined,
   options: CreateCommandOptions,
@@ -1281,6 +1291,8 @@ export function buildForwardedInitArgs(
   if (options.packageProfile) {
     args.push("--package-profile", options.packageProfile);
   }
+  const aiTool = answers?.aiTool || validateCreateAiTool(options.tool);
+  if (aiTool) args.push("--tool", aiTool);
   return args;
 }
 
@@ -2996,6 +3008,25 @@ await client.resources.create('MyType', { title: 'Hello' });
 | \`eai deploy trigger\` | Trigger deployment |
 | \`eai verify\` | Platform connectivity check |
 | \`eai doctor\` | Diagnose issues |
+| \`eai support\` | Review and approve a support report |
+
+## Support after an unresolved EAI error
+
+After an \`eai\` command fails, run \`eai errors explain <code-or-reason> --format json\`.
+Follow its diagnostics, approval requirements, and fixes once. Stop at its retry limit.
+If the command still fails, prepare a report with
+\`eai support --source harness --tool <current-tool> --format json\`.
+Use \`codex\`, \`claude\`, \`vscode\`, \`grok\`, or \`antigravity\` for \`<current-tool>\`.
+This command previews the locally redacted bundle in a noninteractive harness.
+Show the person the bundle summary and ask for explicit consent in the chat.
+Only after they approve that bundle, repeat the command with \`--yes --no-open\` and give them the returned link.
+If the bundle changes, show it again and ask for fresh consent. Never assume consent or run \`--yes\` automatically.
+Keep secrets, tokens, raw logs, and local \`.env\` values out of the chat.
+The CLI creates the draft; the AI never calls the support API itself.
+Report content stays in the draft body. The Support link fragment carries only its id and token.
+If sign-in is unavailable, give the person the plain Support page link returned by the CLI.
+In the welcome reply, say: If anything fails, say "get help" or type \`eai support\`; I can prepare a report for you to approve.
+If the person asks for help with a silent failure, start with the same report preview.
 
 ## App Delivery Checklist
 

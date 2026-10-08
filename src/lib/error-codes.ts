@@ -10,6 +10,8 @@
 
 import { findGuidanceByCode } from './error-guidance/catalog.js';
 import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
+import { recordSupportError, SUPPORT_SUGGESTION } from './support-context.js';
+import { redactSupportBundle, redactSupportText } from './support-redaction.js';
 
 /** Stable public codes used by CLI output, automation, and support guidance. */
 export enum ErrorCode {
@@ -219,7 +221,7 @@ export function formatErrorJSON(
     error: {
       code,
       message,
-      suggestion,
+      suggestion: `${suggestion}\n\n${SUPPORT_SUGGESTION}`,
       ...(guidance ? { guidance: guidanceToJSON(guidance, context) } : {}),
       exitCode: 1,
     },
@@ -234,12 +236,13 @@ export function exitWithError(
   context?: Record<string, string>,
   format?: 'text' | 'json',
 ): never {
+  recordSupportError({ code, message: formatError(code, context) });
   if (format === 'json') {
-    console.error(JSON.stringify(formatErrorJSON(code, context), null, 2));
+    console.error(JSON.stringify(redactSupportBundle(formatErrorJSON(code, context)), null, 2));
   } else {
     // Import error symbol only when needed (avoids circular dependency)
     const errorSymbol = '✗';
-    const errorMessage = formatError(code, context);
+    const errorMessage = redactSupportText(formatError(code, context));
     console.error(`${errorSymbol} ${errorMessage}`);
   }
 

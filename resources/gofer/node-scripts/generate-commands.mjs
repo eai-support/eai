@@ -439,6 +439,26 @@ For app delivery, make EAI Platform choices for the business user.
 15. Ask the user only for material business, security, cost, deployment, destructive, or external-system decisions.`;
 }
 
+function buildSupportReportContract() {
+  return `## Support after an unresolved EAI error
+
+After an \`eai\` command fails, run \`eai errors explain <code-or-reason> --format json\`.
+Follow its diagnostics, approval requirements, and fixes once. Stop at its retry limit.
+If the command still fails, prepare a report with
+\`eai support --source harness --tool <current-tool> --format json\`.
+Use \`codex\`, \`claude\`, \`vscode\`, \`grok\`, or \`antigravity\` for \`<current-tool>\`.
+This command previews the locally redacted bundle in a noninteractive harness.
+Show the person the bundle summary and ask for explicit consent in the chat.
+Only after they approve that bundle, repeat the command with \`--yes --no-open\` and give them the returned link.
+If the bundle changes, show it again and ask for fresh consent. Never assume consent or run \`--yes\` automatically.
+Keep secrets, tokens, raw logs, and local \`.env\` values out of the chat.
+The CLI creates the draft; the AI never calls the support API itself.
+Report content stays in the draft body. The Support link fragment carries only its id and token.
+If sign-in is unavailable, give the person the plain Support page link returned by the CLI.
+In the welcome reply, say: If anything fails, say "get help" or type \`eai support\`; I can prepare a report for you to approve.
+If the person asks for help with a silent failure, start with the same report preview.`;
+}
+
 function buildPublicEntrypointMarkdown(entry, stages, host) {
   if (entry.name === 'eai-update') {
     return buildEaiUpdateEntrypointMarkdown(host);
@@ -526,6 +546,8 @@ ${buildAuthAccessDecisionContract()}
 7. After any \`eai\` error, run \`eai errors explain <code-or-reason> --format json\` when available before guessing remediation.
 8. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local \`.env\` values into artifacts.
 
+${buildSupportReportContract()}
+
 ${buildVerifiedEaiCliCommandContract()}
 
 ${buildEaiPlatformDecisionSection()}
@@ -552,6 +574,8 @@ I’ll help you improve a process and turn it into a secure enterprise applicati
 The EAI Platform supports every step with secure data, identity, multi-tenancy, and AI models.
 
 I’ll walk you through the whole process and ask short questions as we go. Tell me what you want me to do, or ask **“What’s next?”**, **“What else can you help with?”**, or **“Show me the admin screen.”**
+
+If anything fails, say "get help" or type \`eai support\`; I can prepare a report for you to approve.
 
 **First question:** What process would you like to improve, or what would you like the application to help people do?
 \`\`\`
@@ -1916,6 +1940,8 @@ ${buildUserFacingResponseGateSection()}
 ${buildAlwaysEaiSection()}
 
 ${buildVerifiedEaiCliCommandContract()}
+
+${buildSupportReportContract()}
 
 ## EAI CLI Discovery And Recovery
 

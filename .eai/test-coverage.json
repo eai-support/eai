@@ -314,6 +314,40 @@
               "owner": "eai-cli"
             }
           ]
+        },
+        {
+          "id": "eai-cli-support-report",
+          "description": "Locally redacted consent-gated draft handoff from signed-in CLI and AI harness sessions, with plain Support link fallback.",
+          "owned_paths": [
+            "src/commands/support.ts",
+            "src/lib/support-report.ts",
+            "src/lib/support-context.ts",
+            "src/lib/support-redaction.ts",
+            "src/lib/profile.ts",
+            "src/lib/error-codes.ts",
+            "src/lib/output.ts",
+            "src/index.ts",
+            "src/commands/init.ts",
+            "src/lib/agent-guide.ts",
+            "resources/gofer/references/platform/eai-support.md",
+            "resources/gofer/instruction-templates/**"
+          ],
+          "required_repo_tests": [
+            "tests/integration/support.test.ts",
+            "tests/integration/support-context.test.ts",
+            "tests/unit/support-report.test.ts",
+            "tests/integration/init.test.ts",
+            "tests/integration/create.test.ts",
+            "tests/integration/gofer.test.ts",
+            "tests/integration/agent-guide.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": []
         }
       ]
     }

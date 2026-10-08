@@ -121,6 +121,7 @@ const TRACEABILITY_BASE = [
   ['eai publicapi delete', 'delete', 'live-optional', 'EAI_E2E_DOCS=1 deletes only submission-returned document IDs and verifies removal.'],
   ['eai errors list', 'read', 'live', 'Lists public-safe error guidance.'],
   ['eai errors explain', 'read', 'live', 'Explains a representative error code.'],
+  ['eai support', 'create-draft', 'covered-by-cli', 'Owned local fixture tests verify redaction, human consent, saved-session auth, plain-link fallback and fragment handoff; deployed smoke never sends a customer report.'],
   ['eai agent guide', 'read', 'live', 'Shows AI-agent operating guide in JSON.'],
 ];
 
@@ -479,6 +480,9 @@ const SMOKE_CALLS = {
   'eai errors explain': [
     'eai errors explain E101 --format json',
   ],
+  'eai support': [
+    'eai support --format json --source harness --tool codex --tool-version <version> --command "eai types validate" --exit-code 1 --error-code E001 --description "Unresolved CLI command failure" --no-open',
+  ],
   'eai agent guide': [
     'eai agent guide --format json',
   ],
@@ -495,6 +499,9 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai support': {
+    '--yes': 'Creates a draft only after explicit human approval; local fixture tests cover the consented POST and refusal, and deployed smoke never supplies consent.',
+  },
   'eai template check': {
     '--ai-plan': 'Read-only AI adoption-plan output is covered by template integration tests; release smoke avoids cloning the public template.',
     '--preserve-ui': 'Presentation preservation is asserted by template integration tests and remains enabled for AI plans.',
@@ -510,6 +517,7 @@ const OPTION_DECISIONS = {
     '--contract-version': 'Compatibility negotiation is covered by start integration tests: released Setup 0.3.19 receives default v1, while current Setup explicitly requests v2.',
   },
   'eai init': {
+    '--tool': 'All five AI tool instruction generators are verified by fresh local init integration fixtures; live smoke uses the default tool.',
     '--binding-receipt': 'Optional protected POSIX acknowledgement is covered by init-app-binding unit tests, init/API integration tests and native Installer receipt tests; default live smoke does not opt into private creation-ownership evidence.',
     '--binding-receipt-nonce': 'Paired canonical UUIDv4, fresh no-overwrite reservation, exact request actor/gateway and stale/race rejection are owned by init-app-binding and native Installer tests; mapped Installer qualification remains a separate authorized journey.',
     '--from': 'Template source override is exercised by existing init tests; release live smoke uses the default public template.',

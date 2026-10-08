@@ -506,6 +506,34 @@ prerequisite calls return `MISSING_TENANT` or "Tenant context required for app
 tokens"; retry workspace-scoped V4 platform routes before changing workspace members,
 role definitions, Entra configuration, databases, or cloud portals.
 
+## Support reports
+
+Run `eai support` after an unresolved CLI failure. It shows a locally redacted
+report and asks before sending. The report includes the last failing command,
+catalog error code and reason, CLI version, OS, and known workspace/app context.
+Credentials and unrelated environment settings are excluded.
+Saved failure context contains command and catalog metadata only. Raw error text
+is never saved for a later report; recognized errors use the catalog's title.
+
+For an AI harness, preview first:
+
+```bash
+eai support --source harness --tool codex --format json
+```
+
+Show the person the returned bundle. After they explicitly approve that report,
+rerun the same command with `--yes`. JSON runs without `--yes` never send a report.
+The returned link contains only a draft id and one-time token in its fragment.
+Open it to review and submit the report before the draft expires.
+
+A missing or expired `eai login` session, or a website 401, returns the plain
+Support link and creates no draft. `--no-open` prints the link without opening a
+browser. Reports never go in URL parameters.
+
+Existing projects can preview updated harness instructions with
+`eai gofer refresh --check`, then apply the supported refresh. `eai update`
+upgrades the CLI package; it does not rewrite project instructions.
+
 ## Machine-Readable Output
 
 Most data-returning commands that advertise `--format <format>` support
