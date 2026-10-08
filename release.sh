@@ -365,6 +365,19 @@ echo "  ✓ branch created: $RELEASE_BRANCH"
 
 section "Committing release prep"
 git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json docs-site/static/docs-search-index.json docs-site/static/docs-capabilities.json
+# Case-insensitive filesystems alias %2f and %2F on disk; stage both Git paths
+# from the same generated packument so the published registry cannot diverge.
+PACKUMENT_BLOB="$(git hash-object -w docs-site/static/registry/@enterpriseai/cli)"
+for packument_path in \
+  'docs-site/static/registry/%40enterpriseai%2Fcli' \
+  'docs-site/static/registry/@enterpriseai%2fcli' \
+  'docs-site/static/registry/@enterpriseai%2Fcli'; do
+  git update-index --add --cacheinfo "100644,$PACKUMENT_BLOB,$packument_path"
+  [[ "$(git rev-parse ":$packument_path")" == "$PACKUMENT_BLOB" ]] || {
+    echo "✗ Static registry alias is not staged from the canonical packument: $packument_path"
+    exit 1
+  }
+done
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git push -u origin "$RELEASE_BRANCH"
 PR_URL="$(create_release_pr "$RELEASE_BRANCH" "$NEW_VERSION" "$MESSAGE")"

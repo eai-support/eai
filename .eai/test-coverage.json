@@ -282,6 +282,38 @@
               "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"
             }
           ]
+        },
+        {
+          "id": "eai-cli-static-release-registry",
+          "description": "Release preparation stages every encoded packument alias from the canonical Git blob; the docs build emits the same bytes at each public fallback path without case-colliding during compilation.",
+          "owned_paths": [
+            "release.sh",
+            "docs-site/docusaurus.config.js",
+            "docs-site/package.json",
+            "docs-site/scripts/build-site.mjs",
+            "docs-site/scripts/build-site.test.mjs",
+            "docs-site/static/registry/**",
+            "tests/integration/release-metadata.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/integration/release-metadata.test.ts",
+            "docs-site/scripts/build-site.test.mjs"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests",
+            "Validate Docs"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": [],
+          "intentional_skipped_tests": [
+            {
+              "path": "tests/integration/release-metadata.test.ts",
+              "reason": "Only the Git-index static registry staging case requires a POSIX /bin/bash release host; the other release metadata cases remain cross-platform.",
+              "owner": "eai-cli"
+            }
+          ]
         }
       ]
     }
