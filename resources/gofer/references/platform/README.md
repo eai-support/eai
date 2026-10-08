@@ -14,4 +14,4 @@ Core files:
 
 These files are intentionally public-safe. Private repositories can replace or
 extend them with organization-specific references, but Gofer should always be
-able to fall back to this pack without exposing secrets or workspace-private data.
+able to fall back to this pack without exposing secrets or tenant-private data.

@@ -1,2 +1,0 @@
-description = "Brand Gofer templates and stakeholder documents for a company or consulting-firm look and feel."
-prompt = "{{include: ../../../.specify/commands/8_gofer_branding.md}}"

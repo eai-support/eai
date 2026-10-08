@@ -1,2 +1,0 @@
-description = "Generate a business-friendly summary of feature value and scope."
-prompt = "{{include: ../../../.specify/commands/gofer_spec_summary.md}}"

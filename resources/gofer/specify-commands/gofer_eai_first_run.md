@@ -18,12 +18,132 @@ aliases: [gofer:first-run, gofer:eai-setup]
 
 # EAI Gofer First Run
 
-Use this command when the user is starting their first EAI Platform app, when
-`/0_gofer_start` is unavailable in a new repository, or when an EAI app
-build reaches the Gofer pipeline before the local machine, workspace, or
-EAI app template is ready.
+## Auth Scope Before Setup
+
+**Authentication Access Decision**
+
+When adding or changing authentication, read `.specify/references/platform/eai-auth-access.md`. Ask: **"Who should be able to use this app: only members of its EAI workspace (recommended), or any authenticated EAI user?"** Default to `workspace-only`. Wait for the answer before changing auth code. An unanswered question must not widen access. Preserve stricter existing rules. Record the answer in the feature spec; do not repeat a confirmed question unless its scope changes.
+
+Confirm the sign-in method separately: EAI sign-in or client SSO through EAI. Verify platform support and CLI syntax; do not invent SSO commands. Enforce trusted server-side workspace membership and app permissions. A session, CIAM directory ID, or email domain alone is not workspace access. Platform-wide sign-in never grants access to another workspace's data. Test allowed and denied users, revoked membership, unavailable membership checks, and cross-workspace requests. These checks apply only when authentication is implemented or required, not to non-app work or an auth-free local MVP.
+
+## Continuation And Stop Contract
+<!-- gofer:continuation:start -->
+
+1. Preserve the requested scope and mode, including read-only, plan-only, research-only and MVP work. Keep the full applicable pipeline, stage functions, artifacts, reviews and validation; do not expand an MVP into an unapproved release.
+2. After a stage's required evidence is complete, read and follow the next internal file in .specify/commands/ in the same conversation. Do not require a numbered command or a host-specific skill dispatcher. Optional helpers remain optional; maintenance and control commands do not start delivery work.
+3. Treat the stated business goal as authority for ordinary planning, task ordering, design, diagnosis, repair, testing, and reversible repository changes within scope. Record material Gofer decisions with their reason and effect. Do not ask the user to choose implementation details that Gofer can safely decide.
+4. Ask only when the goal is unclear or changes, the action is irreversible or destructive, it changes security or access, it creates external cost or commitment, it changes production or public exposure, it requires missing authority or credentials, or it conflicts with an explicit user constraint. Record the exact reason before asking. missing or ambiguous approval is not approval when an approval boundary applies. Rejected, revoked, changed or unclear authority requires a pause.
+5. Pause for material scope, security, cost, deployment, destructive or protected files/boundary changes and any outstanding user gate. A business goal does not authorize publishing, spending, external changes, or bypassing host permissions. Complete safe authorized work without bypassing the blocked gate.
+6. A tool proposal is not execution. If host consent is required, wait for it. After the tool result or approved proposal returns, inspect the result and resume the next authorized action within approved scope; do not end with only a plan or a proposed tool call. A denied tool or unavailable capability must not be bypassed through another host or CLI.
+7. Use the current agent's available native tools. Optional Gofer/MCP tools are conveniences, not prerequisites. If the current agent lacks a required capability, report that limitation and the safe next action; do not pretend a handoff button transfers control automatically.
+8. Stop after research only when research-only work was requested, the user paused, or a real gate blocks progress. Otherwise continue to specification. At validation, report completion only when the requested scope's required evidence passes; failures remain unfinished work.
+9. Respect budget, context and retry limits from the existing loop contract. Repair safe within-scope failures only within those limits. Preserve a checkpoint before an orderly context stop; resume by reading its recorded stage and rechecking scope, approvals and evidence. Never claim an abrupt host termination was handled.
+10. Report concise Progress during work. At every controlled stop, report Progress, Stop reason and Next action, including the exact missing input or approval and unfinished work. Reasons are requested scope complete, user pause, approval required, material change, missing capability/access, validation blocked, or budget/context/retry limit. Stage completion alone is not pipeline completion.
+
+**Blocker Mediation**
+
+- Before repeating a failed action or asking for missing input, read .specify/references/blocker-mediation.md and inspect the private blocker register with gofer-blocker-control.mjs. Reuse the same state directory and goal, subject and condition keys across stages, restarts and surfaces. Different wording, models or tools do not create a new blocker.
+- Classify the cause first. Missing user decisions, access, external dependencies and unavailable capabilities require a recorded wait. Reserve an ask event before asking; ask once, explain the business impact and required change, then stop affected work. An unanswered question is not new evidence. Do not poll or rephrase it to keep running.
+- Technical ask events require a fresh verification file under .specify/references/priority-outcome-protection.md: actual diagnosis, self-cause check and why no authorized repair is available. Business choices need no failed command. For feature tasks, use gofer-priority-check.mjs and the saved direction before switching work; this does not start delivery during maintenance or conversation.
+- For AI-solvable or unknown causes, reserve each attempt before execution. Allow one investigation and one different recovery within existing tighter budgets. Record its result even when interrupted or unsuccessful. An unfinished reservation must not launch again. Do not reset the register, change keys or switch surfaces to obtain more attempts.
+- Resume only after a real user answer or changed external evidence has been recorded and checked. The helper allows one evidence-backed resumption; exhausted limits need human review. Never invent approval or evidence. Successful model output and a running server do not resolve a blocker without the relevant check.
+- Save the blocker, unfinished tasks and next action before stopping. Continue only approved tasks that do not depend on it. Keep the original goal; update specs, plans, tasks and validation for accepted direction changes, and reopen stale checks. Do not quietly drop requirements to make progress.
+- Use node .specify/scripts/node/gofer-blocker-control.mjs --state-dir <private-state-directory> --event <private-event.json> before controlled actions; inspect with --state-dir alone, or add --task T001 for an independent task. A denied action, invalid record or missing helper means stop and explain the limitation, not bypass it. Use the installed plugin script path if no repo scaffold exists. Conversation-only work uses a private session state directory and does not require app setup or feature files.
+- Strict loop validation checks every recorded feature blocker. Shared instructions guide native chats; this helper cannot intercept calls that a host sends directly. Do not claim native enforcement from package tests alone.
+
+
+## Verified Specialist Execution
+
+Use .specify/references/verified-agent-execution.md before specialist delegation in any app or non-app stage. The shared agent-catalog.json retains specialist responsibilities. Resolve roles with gofer-agent-catalog.mjs; obtain tools and models from the current host, never from another provider's examples. Keep internal roles out of the public command picker.
+
+Preserve every required review. Provider-specific Task/model examples describe intent, not portable commands or proof of support. Run independent work together only when dependencies, permission boundaries, scope and budgets allow it. Otherwise serialize supported work. A required independent review remains unverified if separate execution is unavailable; never relabel self-review as independent.
+
+The experimental gofer-verified-execution.mjs controller accepts trusted adapters, not worker-supplied commands. It checks current priority, bounds calls and attempts, records required checks, and rejects stale results. Its local process tests do not qualify native model execution. Do not activate an unqualified host adapter or bypass existing blocker, permission, outcome or release gates. Preserve normal safe Gofer work and explain the limitation.
+
+<!-- gofer:continuation:end -->
+## Token And Cost Policy
+<!-- gofer:token-cost-policy:start -->
+
+Before spawning agents, calling tools, or loading large files:
+
+1. Treat `.specify/memory/gofer-model-policy.yaml` as advisory capability, cost, and quality constraints. A fresh signed host receipt and independently verified benchmark evidence select the model. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the lowest-cost model that the live router qualifies for this task. Its signed host receipt and independent benchmark evidence must govern the exact model identity. Do not select a model from static provider examples, names, or price alone.
+3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
+4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
+5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
+6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
+<!-- gofer:token-cost-policy:end -->
+
+## Business-Friendly Progress Contract
+<!-- gofer:business-progress:start -->
+
+Default user-facing updates must be concise, business-level, and easy to scan.
+Keep the technical work rigorous in artifacts, tests, logs, and code, but do
+not lead with implementation jargon unless the user asks for it.
+
+Use ASD-STE100 Simplified Technical English as the target writing standard for
+all Gofer-authored chat, documents, commands, summaries, PR notes, error
+guidance, and validation artifacts. ASD-STE100 is copyright and a trademark of
+ASD; do not bundle the protected ASD dictionary and do not claim ASD
+certification.
+
+1. Explain progress as what is being connected, changed, checked, or fixed and
+   why it matters to the business outcome.
+2. Use the running build map: create or update
+   `.specify/specs/{feature}/build-map.md` from
+   `.specify/templates/build-map-template.md` for application delivery, and
+   refer to its plain-language areas in progress updates.
+3. When there is a problem, translate it into business impact, current status,
+   next action, and what input or approval is needed. Keep raw stack traces,
+   command logs, IDs, and acronyms out of chat unless asked.
+4. If the user asks for technical depth, provide it on request and point to the
+   durable artifact that contains the evidence.
+5. Prefer a compact update shape:
+   - `Working on`: the build-map area or stakeholder outcome
+   - `Why it matters`: user/business impact
+   - `Status`: done, checking, fixing, blocked, or needs decision
+6. Use one action per instruction.
+7. Keep instructions to 20 words or fewer where possible.
+8. Use active voice unless the actor is unknown or not important.
+9. Use simple verb forms: simple present, simple past, simple future,
+   infinitive, or imperative.
+10. Define acronyms on first use and use approved project terms.
+11. Avoid idioms, marketing adjectives, vague praise, and hedging.
+12. Use vertical lists for complex information and one topic per paragraph.
+13. For errors, state what happened, why it matters, what to do next, and the
+    exact safe command when one exists.
+14. Do not remove technical validation, security checks, EAI preflights, tests,
+   or loop evidence. This contract changes presentation, not engineering
+   standards.
+15. Before each user-facing reply, check that it leads with the business effect,
+    uses concise simple language, and includes only useful technical detail.
+16. If any check fails, rewrite the reply before sending it.
+<!-- gofer:business-progress:end -->
+
+Use this internal setup contract when the user is starting their first EAI
+Platform app, when `/gofer` or `/eai` is unavailable in a new repository,
+or when an EAI app build reaches the Gofer pipeline before the local machine,
+workspace, workspace or EAI app template is ready.
 
 This command is intentionally allowed to run before `.specify/` exists.
+
+## App Preview Runner Contract
+<!-- gofer:app-preview-runner:start -->
+
+For EAI app delivery, every UI preview must use the repo runner when it exists.
+
+1. Use `./run.sh dev 3001` on macOS, Linux, and GitHub Codespaces.
+2. Use `run.bat dev 3001` on Windows.
+3. Use a different port only when the feature notes record the reason.
+4. Restart only this app. Before stopping a process, verify its exact checkout, process ID, start time and command, then recheck immediately before stopping it. Never stop another app, an unknown process, or every process on a port. If ownership is uncertain, leave it running and ask the user. Inspect older runners before use; do not run one that kills by port alone.
+5. Do not use direct `npm run dev`, `next dev`, or package-manager preview commands when `run.sh`, `run.bat`, or `run.ps1` exists.
+6. After every UI-facing change, run:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --open auto --screenshot --change "<change summary>"`
+7. On Windows, use:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "run.bat dev 3001" --open auto --screenshot --change "<change summary>"`
+8. If the runner is missing in an EAI app template repo, refresh the template before preview work continues.
+9. Check the exact preview page and the current implemented user journey after each change. A running process, open browser, screenshot alone, error page or dry run is not proof that it works. Say ready to view only after those checks pass. Otherwise explain what is unchecked or failing; do not claim readiness. Record fresh browser and test evidence. Local MVP checks cover only implemented behaviour; do not add future auth or deployment gates. Keep showing clearly labelled drafts without adding approval stops.
+<!-- gofer:app-preview-runner:end -->
 
 ## Non-Negotiables
 
@@ -34,6 +154,8 @@ This command is intentionally allowed to run before `.specify/` exists.
 - Prefer existing tools over reinstalling. Keep working Git, Node.js, npm, and
   EAI CLI installations.
 - Do not scaffold over a non-empty repo silently.
+- Do not start app research, specification, planning, tasks, or source changes
+  until the EAI app-template readiness check passes.
 - Use the EAI Platform app template first, Azure second, and non-EAI stacks only
   by explicit exception.
 - In GitHub Codespaces, avoid `sudo` or host-level package installs unless the
@@ -43,8 +165,9 @@ This command is intentionally allowed to run before `.specify/` exists.
 
 Detect and report:
 
-- Host: Claude Code, Codex, GitHub Copilot, Gemini, VS Code, GitHub Codespaces,
-  or unknown.
+- Host: Claude Code, Codex, GitHub Copilot, Google Antigravity, Grok Build,
+  VS Code, or unknown.
+- Execution environment: local or GitHub Codespaces.
 - OS: macOS, Linux, Windows, or Codespaces Linux.
 - Shell: bash/zsh, PowerShell, cmd, or unknown.
 - Workspace root: current folder, opened editor workspace, Codespace checkout,
@@ -111,6 +234,8 @@ the user explicitly chooses a non-EAI path.
 
 ## Step 4: Discover EAI CLI Capabilities
 
+Do not invent, guess, or complete EAI CLI commands from memory.
+
 Run:
 
 ```bash
@@ -123,8 +248,25 @@ If advertised, also run:
 eai agent guide --format json
 ```
 
+For EAI app delivery that will publish Object Types, inspect the JSON guide and
+require `capabilities` to contain
+`app-manifest-name-slug-negotiation-v1`. `eai update --check` reporting
+`current` does not prove the deployed receiver accepts the new request shape.
+If the capability is absent, record `upgrade_required`, block Object Type
+seed/publish and deployed-readiness claims, and ask before updating the CLI.
+Local discovery and correct source authoring may continue, but do not hand-build
+an app-manifest request.
+
 Prefer commands and options advertised by the installed CLI over remembered
-syntax. Use JSON only where the CLI advertises it. Record a safe summary in the
+syntax. Before suggesting or running a specific `eai ...` command, verify its
+command path and flags with command-specific `--help` or the equivalent help
+path advertised by the CLI.
+
+If the installed CLI does not list a command, do not run it. Tell the user that
+this EAI CLI version does not expose the command, then choose a safe listed
+command or ask the user to update EAI CLI.
+
+Use JSON only where the CLI advertises it. Record a safe summary in the
 first-run report.
 
 When any later `eai` command fails, use the CLI's error guidance before
@@ -155,8 +297,34 @@ approves the role change:
 eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json
 ```
 
-Then verify the read-back and tell the affected app user to sign out and sign
-back in because Auth.js session or JWT role data may be cached.
+The value `tenant-admin` is the platform role ID. Describe it to users as
+workspace admin access. Then verify the read-back and tell the affected app
+user to sign out and sign back in because Auth.js session or JWT role data may
+be cached.
+
+If platform user lookup or membership prerequisite calls fail with
+`MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context
+required for app tokens", do not start by changing workspace members, role
+definitions, Entra configuration, databases, or cloud portals. Run:
+
+```bash
+eai errors explain app_token_tenant_context_required --format json
+eai whoami
+eai workspace list --format json
+```
+
+Then retry through workspace-scoped V4 platform routes:
+
+```text
+/v4/platform/tenants/<tenant-id>/users/by-email?email=<email>
+/v4/platform/tenants/<tenant-id>/users/<oid>/memberships
+/v4/platform/tenants/<tenant-id>/members
+/v4/platform/tenants/<tenant-id>/role-definitions
+```
+
+If those still fail, escalate with redacted route shape, HTTP status, server
+code, CLI version, active workspace slug, and deployed PublicAPI/AdminAPI versions
+if visible.
 
 Specifically note whether the installed CLI advertises the commands needed for:
 
@@ -187,16 +355,18 @@ If not logged in or the token is expired, ask before running:
 eai login
 ```
 
-After login, list workspaces again. If more than one workspace is available, help the
-user choose the correct one and run the advertised equivalent of:
+After login, list workspaces again. If more than one workspace is available, ask:
+**“Which EAI workspace should this app use?”** Then run the advertised equivalent of:
 
 ```bash
 eai workspace select <workspace-slug-or-id>
 ```
 
-Require at least one usable workspace membership before EAI app delivery. Prefer a
-workspace admin or operator access for app enrollment and provisioning. The platform role ID `tenant-admin` grants workspace admin access. If no workspace is available, tell the user they need an EAI
-Platform account and workspace access before Gofer can build an app.
+Require workspace access before EAI app delivery. Prefer a
+workspace admin or operator-capable role because app enrollment and provisioning
+are workspace actions. If no workspace is available, say: **“I cannot find an
+EAI workspace that you can access. Ask a workspace admin for access, then run
+`eai workspace list` again.”**
 
 ## Step 6: Confirm Project Folder And Name
 
@@ -216,18 +386,31 @@ Collect or confirm:
 
 ## Step 7: Initialize The EAI App Template
 
-Detect existing template markers before scaffolding:
+Use the deterministic app-template gate when it exists:
 
+```bash
+node .specify/scripts/node/eai-app-template-readiness.mjs --root . --json
+```
+
+The gate requires the `.eai-manifest.json` provenance written by `eai init`
+and the supported EAI app-template contract:
+
+- `.eai-manifest.json`
+- `eai.runtime.json`
 - `src/eai.config/object-types.ts`
 - `src/eai.config/register.ts`
 - `.env.example`
 - `.npmrc`
 - `package.json`
 
-If the repo already looks like an EAI app, run `eai verify` and continue with
-the existing project. If the installed CLI advertises them, also run:
+Do not treat copied marker files, a partial scaffold, or a custom template as
+proof that `eai init` completed. A missing checker or any status other than
+`ready` blocks app delivery.
+
+If the gate returns `ready`, run:
 
 ```bash
+eai verify
 eai template check --format json
 eai gofer refresh --check --format json
 ```
@@ -243,9 +426,23 @@ run the advertised equivalent of:
 eai init <project-name> --skip-prompts --company-workspace <active-workspace-id>
 ```
 
+For older CLI versions that do not advertise `--company-workspace`, use the
+`--company-tenant` compatibility alias.
+
 If the CLI requires additional safe answers, gather them first. If the repo is
 non-empty and not an EAI app, ask whether to initialize a new sibling EAI app
 directory or stop.
+
+After `eai init` succeeds, enter the created app folder and rerun:
+
+```bash
+node .specify/scripts/node/eai-app-template-readiness.mjs --root . --json
+eai verify
+eai template check --format json
+```
+
+Continue only when the readiness status is `ready`. Record the safe status in
+`eai-preflight.md`; do not copy manifest values into the artifact.
 
 ## Step 8: Recover Known Entra Redirect Mismatches
 
@@ -280,7 +477,7 @@ Record only the redacted route pattern and recovery status in Gofer artifacts.
 Keep the full callback URI in the terminal/session or user-approved local notes
 only.
 
-Ask before changing workspace-scoped identity configuration, then run the
+Ask before changing workspace identity configuration, then run the
 advertised equivalent of:
 
 ```bash
@@ -319,7 +516,21 @@ If the current host cannot run slash commands yet, use the installed plugin
 bundle or downloaded public bundle as the bootstrap source described by
 `/gofer:bootstrap-workspace`.
 
-## Step 9: Open Or Attach The Created Project
+## Step 9: Start The Created Project In An AI Workspace
+
+Prefer the provider-neutral EAI handoff:
+
+```bash
+eai start --check
+eai start
+```
+
+The detection command is read-only. The final start action is the user's
+approval for the selected AI provider to read the project and use the provider
+account. If no supported surface is installed, explain why one is needed and
+offer the official provider choices returned by `eai start --check`.
+
+If `eai start` is unavailable, use the host-specific fallback below.
 
 Make sure the active host is working in the initialized EAI app folder:
 
@@ -329,7 +540,7 @@ Make sure the active host is working in the initialized EAI app folder:
   the active Codex workspace if the host cannot switch automatically.
 - Claude Code: show the absolute folder path and ask the user to attach/open it
   if the host cannot switch automatically.
-- Gemini/Copilot in VS Code: ensure the VS Code workspace is the initialized app
+- Antigravity/Copilot in VS Code: ensure the VS Code workspace is the initialized app
   folder before starting Gofer.
 - GitHub Codespaces: keep the current Codespace workspace unless the project was
   created in a subfolder; then `cd` into it and report the path.
@@ -367,6 +578,7 @@ Each section should include:
 - EAI registry status
 - EAI CLI release status from `eai update --check`
 - EAI CLI capability source (`eai --describe` timestamp)
+- Object Type seed adapter capability from `eai agent guide --format json`
 - EAI capability inventory for init, workspace, app, resources, workflow,
   template, Gofer-refresh, and blocks commands
 - Login status without tokens
@@ -383,10 +595,27 @@ When the app folder, EAI CLI, login, workspace, EAI template, and Gofer scaffold
 ready, tell the user to start:
 
 ```text
-/0_gofer_start <what you want to build>
+/gofer <what you want to build>
 ```
 
-If `/0_gofer_start` is still unknown after the plugin is installed and the
-repo is bootstrapped, explain that the host has not loaded the Gofer plugin or
-repo commands yet. Give the host-specific install/update command from the Gofer
-README, then retry this command after the host reloads.
+Use `/eai` on Claude, Copilot, Antigravity, Grok, or VS Code, and `$eai` on
+Codex. If `/gofer`, `/eai`, or `$eai` is still unknown after the
+plugin is installed and the repo is bootstrapped, explain that the host has not
+loaded the Gofer plugin or repo commands yet. Give the host-specific
+install/update command from the Gofer README, then retry after the host reloads.
+
+## Local Settings Cleanup Contract
+<!-- gofer:local-settings-cleanup:start -->
+
+After any Gofer install, update, release refresh, or workspace bootstrap:
+
+1. Archive stale Gofer command and skill entries before continuing.
+2. Prefer the repo helper:
+   - `node .specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+3. If the repo helper is missing, use the stable plugin bundle helper:
+   - macOS/Linux: `node ~/plugins/eai-gofer/.specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+   - Windows: `node %USERPROFILE%\plugins\eai-gofer\.specify\scripts\node\gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+4. This cleanup covers old Claude, Codex, Copilot, Gemini, Grok, VS Code, desktop, and CLI command surfaces.
+5. Do not remove the current public `eai` entrypoint.
+6. Ask the user to refresh or restart the host command picker only after cleanup completes.
+<!-- gofer:local-settings-cleanup:end -->

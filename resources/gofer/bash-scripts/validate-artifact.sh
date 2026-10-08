@@ -319,12 +319,16 @@ else
     fi
   else
     echo "FAIL: $ARTIFACT_TYPE validation failed for $FILE_PATH"
-    for e in "${ERRORS[@]}"; do
-      echo "  ERROR: $e"
-    done
-    for w in "${WARNINGS[@]}"; do
-      echo "  WARNING: $w"
-    done
+    if [[ ${#ERRORS[@]} -gt 0 ]]; then
+      for e in "${ERRORS[@]}"; do
+        echo "  ERROR: $e"
+      done
+    fi
+    if [[ ${#WARNINGS[@]} -gt 0 ]]; then
+      for w in "${WARNINGS[@]}"; do
+        echo "  WARNING: $w"
+      done
+    fi
   fi
 fi
 

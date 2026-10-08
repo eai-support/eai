@@ -1,0 +1,2 @@
+description = "Install or update EAI Gofer for this AI coding app."
+prompt = "{{include: ./eai-update.md}}"

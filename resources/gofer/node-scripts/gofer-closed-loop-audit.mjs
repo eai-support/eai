@@ -2,6 +2,7 @@
 
 import { promises as fs } from 'fs';
 import path from 'path';
+import { reviewPriority } from './gofer-priority-check.mjs';
 
 const STAGE_ORDER = {
   '1_research': 1,
@@ -31,6 +32,7 @@ Options:
   --report <path>      Override markdown report path
   --json               Print JSON summary to stdout
   --strict             Exit non-zero on drift, missing evidence, or invalid artifacts
+  --completion         Require the current priority outcome receipt before completion
   --no-report          Do not write goal-rebaseline-report.md
 `;
 }
@@ -42,6 +44,7 @@ function parseArgs(argv) {
     reportPath: '',
     json: false,
     strict: false,
+    completion: false,
     writeReport: true,
   };
 
@@ -65,6 +68,9 @@ function parseArgs(argv) {
         break;
       case '--strict':
         args.strict = true;
+        break;
+      case '--completion':
+        args.completion = true;
         break;
       case '--no-report':
         args.writeReport = false;
@@ -370,7 +376,7 @@ function getSpecArtifactStatus(content) {
   return 'ready';
 }
 
-async function analyzeFeature({ featureDir, workspaceRoot }) {
+async function analyzeFeature({ featureDir, workspaceRoot, completion = false }) {
   const featureId = path.basename(featureDir);
   const specPath = path.join(featureDir, 'spec.md');
   const planPath = path.join(featureDir, 'plan.md');
@@ -673,7 +679,7 @@ async function analyzeFeature({ featureDir, workspaceRoot }) {
     latestMtimeMs(path.join(featureDir, 'contract-pack.md')),
     latestMtimeMs(path.join(featureDir, 'contracts')),
     latestMtimeMs(path.join(featureDir, 'ui-preview-brief.md')),
-    latestMtimeMs(path.join(featureDir, 'ui-approval.md')),
+    latestMtimeMs(path.join(featureDir, 'ui-show-and-tell.md')),
     latestMtimeMs(path.join(featureDir, 'service-fit-matrix.md')),
   ]);
 
@@ -776,6 +782,16 @@ async function analyzeFeature({ featureDir, workspaceRoot }) {
     }
   }
 
+  if (completion || await pathExists(path.join(featureDir, 'priority-plan.json'))) {
+    result.priorityReview = await reviewPriority(featureDir, { finish: completion });
+    if (result.priorityReview.status !== 'pass') {
+      result.status = 'fail';
+      for (const message of result.priorityReview.findings) addFinding(result.blockingFindings, {
+        stage: '6_validate', source: 'priority-plan.json', message,
+      });
+    }
+  }
+
   if (
     result.status === 'healthy' &&
     (result.warnings.length > 0 || result.deliveryStates.incomplete.length > 0)
@@ -863,6 +879,7 @@ async function writeReport(reportPath, content) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const result = await analyzeFeature({
+    completion: args.completion,
     featureDir: args.featureDir,
     workspaceRoot: args.workspace,
   });

@@ -21,40 +21,184 @@ description: Create feature specification informed by codebase research
 
 # Gofer Specify
 
-## EAI Platform Session Preflight
+## Continuation And Stop Contract
+<!-- gofer:continuation:start -->
 
-Before any Gofer stage/helper command does pipeline work:
+1. Preserve the requested scope and mode, including read-only, plan-only, research-only and MVP work. Keep the full applicable pipeline, stage functions, artifacts, reviews and validation; do not expand an MVP into an unapproved release.
+2. After a stage's required evidence is complete, read and follow the next internal file in .specify/commands/ in the same conversation. Do not require a numbered command or a host-specific skill dispatcher. Optional helpers remain optional; maintenance and control commands do not start delivery work.
+3. Treat the stated business goal as authority for ordinary planning, task ordering, design, diagnosis, repair, testing, and reversible repository changes within scope. Record material Gofer decisions with their reason and effect. Do not ask the user to choose implementation details that Gofer can safely decide.
+4. Ask only when the goal is unclear or changes, the action is irreversible or destructive, it changes security or access, it creates external cost or commitment, it changes production or public exposure, it requires missing authority or credentials, or it conflicts with an explicit user constraint. Record the exact reason before asking. missing or ambiguous approval is not approval when an approval boundary applies. Rejected, revoked, changed or unclear authority requires a pause.
+5. Pause for material scope, security, cost, deployment, destructive or protected files/boundary changes and any outstanding user gate. A business goal does not authorize publishing, spending, external changes, or bypassing host permissions. Complete safe authorized work without bypassing the blocked gate.
+6. A tool proposal is not execution. If host consent is required, wait for it. After the tool result or approved proposal returns, inspect the result and resume the next authorized action within approved scope; do not end with only a plan or a proposed tool call. A denied tool or unavailable capability must not be bypassed through another host or CLI.
+7. Use the current agent's available native tools. Optional Gofer/MCP tools are conveniences, not prerequisites. If the current agent lacks a required capability, report that limitation and the safe next action; do not pretend a handoff button transfers control automatically.
+8. Stop after research only when research-only work was requested, the user paused, or a real gate blocks progress. Otherwise continue to specification. At validation, report completion only when the requested scope's required evidence passes; failures remain unfinished work.
+9. Respect budget, context and retry limits from the existing loop contract. Repair safe within-scope failures only within those limits. Preserve a checkpoint before an orderly context stop; resume by reading its recorded stage and rechecking scope, approvals and evidence. Never claim an abrupt host termination was handled.
+10. Report concise Progress during work. At every controlled stop, report Progress, Stop reason and Next action, including the exact missing input or approval and unfinished work. Reasons are requested scope complete, user pause, approval required, material change, missing capability/access, validation blocked, or budget/context/retry limit. Stage completion alone is not pipeline completion.
 
-1. Treat durable delivery as EAI Platform delivery by default, with Azure second
-   and every other stack only by explicit exception.
-2. Run `eai whoami` and confirm the EAI CLI is installed, the user is logged in,
-   and an active workspace is visible.
-3. If `eai` is missing, `eai whoami` fails, the token is expired, or no active
-   workspace is available, stop and run `/gofer:eai-first-run` or ask the user to
-   approve login/setup before continuing.
-4. For EAI app delivery, do not continue into research, specification, planning,
-   tasks, implementation, or validation until
-   `.specify/specs/{feature}/eai-preflight.md` records login, workspace, template,
-   app-readiness, and next-action evidence.
-5. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into
-   Gofer artifacts; record only product-safe readiness status and evidence.
+**Blocker Mediation**
+
+- Before repeating a failed action or asking for missing input, read .specify/references/blocker-mediation.md and inspect the private blocker register with gofer-blocker-control.mjs. Reuse the same state directory and goal, subject and condition keys across stages, restarts and surfaces. Different wording, models or tools do not create a new blocker.
+- Classify the cause first. Missing user decisions, access, external dependencies and unavailable capabilities require a recorded wait. Reserve an ask event before asking; ask once, explain the business impact and required change, then stop affected work. An unanswered question is not new evidence. Do not poll or rephrase it to keep running.
+- Technical ask events require a fresh verification file under .specify/references/priority-outcome-protection.md: actual diagnosis, self-cause check and why no authorized repair is available. Business choices need no failed command. For feature tasks, use gofer-priority-check.mjs and the saved direction before switching work; this does not start delivery during maintenance or conversation.
+- For AI-solvable or unknown causes, reserve each attempt before execution. Allow one investigation and one different recovery within existing tighter budgets. Record its result even when interrupted or unsuccessful. An unfinished reservation must not launch again. Do not reset the register, change keys or switch surfaces to obtain more attempts.
+- Resume only after a real user answer or changed external evidence has been recorded and checked. The helper allows one evidence-backed resumption; exhausted limits need human review. Never invent approval or evidence. Successful model output and a running server do not resolve a blocker without the relevant check.
+- Save the blocker, unfinished tasks and next action before stopping. Continue only approved tasks that do not depend on it. Keep the original goal; update specs, plans, tasks and validation for accepted direction changes, and reopen stale checks. Do not quietly drop requirements to make progress.
+- Use node .specify/scripts/node/gofer-blocker-control.mjs --state-dir <private-state-directory> --event <private-event.json> before controlled actions; inspect with --state-dir alone, or add --task T001 for an independent task. A denied action, invalid record or missing helper means stop and explain the limitation, not bypass it. Use the installed plugin script path if no repo scaffold exists. Conversation-only work uses a private session state directory and does not require app setup or feature files.
+- Strict loop validation checks every recorded feature blocker. Shared instructions guide native chats; this helper cannot intercept calls that a host sends directly. Do not claim native enforcement from package tests alone.
+
+
+## Verified Specialist Execution
+
+Use .specify/references/verified-agent-execution.md before specialist delegation in any app or non-app stage. The shared agent-catalog.json retains specialist responsibilities. Resolve roles with gofer-agent-catalog.mjs; obtain tools and models from the current host, never from another provider's examples. Keep internal roles out of the public command picker.
+
+Preserve every required review. Provider-specific Task/model examples describe intent, not portable commands or proof of support. Run independent work together only when dependencies, permission boundaries, scope and budgets allow it. Otherwise serialize supported work. A required independent review remains unverified if separate execution is unavailable; never relabel self-review as independent.
+
+The experimental gofer-verified-execution.mjs controller accepts trusted adapters, not worker-supplied commands. It checks current priority, bounds calls and attempts, records required checks, and rejects stale results. Its local process tests do not qualify native model execution. Do not activate an unqualified host adapter or bypass existing blocker, permission, outcome or release gates. Preserve normal safe Gofer work and explain the limitation.
+
+<!-- gofer:continuation:end -->
+
+## MVP Capability-Based Validation
+
+Use `.specify/references/mvp-capability-validation.md` as the source of
+truth. Validate the work that the active feature specification requires now.
+Do not apply later delivery requirements to an early MVP.
+
+1. Create `.specify/specs/{feature}/` before app or operator-tool source work.
+2. Keep `spec.md`, `plan.md`, `tasks.md`, `traceability.md`, and the validation scope aligned.
+3. Mark each relevant capability as `not_applicable`, `planned`, `implemented`, `verified`, or `blocked`.
+4. Require evidence only for an implemented capability or a capability required by the current delivery decision.
+5. Treat `run.sh`, `run.bat`, and `run.ps1` as launch evidence only. They do not prove authentication, sessions, EAI access, or deployment readiness.
+6. For a user-facing change, store the local HTTP check, screenshot, and review outcome in the feature validation report.
+7. If browser validation is blocked, mark that user journey `unverified`. Do not call it complete.
+8. If the user changes scope, update the feature artifacts before continuing. Explain what changed, what remains valid, and what now needs evidence.
+9. Use truthful completion language. For example: `The server runs. Authentication is not in the current MVP scope.`
+10. When the feature claims a release or deployed outcome, create `release-capability-ledger.md` from `.specify/templates/release-capability-ledger-template.md`.
+11. Do not report a release complete or score 100% when a required capability is missing from traceability, remains on an open PR, is absent from the release branch, or lacks required deployed evidence.
+
+## Application Classification And EAI Preflight
+
+Before any EAI CLI, login, workspace, template, or app-enrollment action:
+
+1. Classify the request as **EAI app delivery** or **non-application work** using the application signals in `.specify/commands/0_gofer_start.md`.
+2. Create `.specify/specs/{feature}/` and record the active delivery scope before app or operator-tool source work.
+3. If the request is clearly non-app work, confirm once: **"This looks like non-app work, so I will skip EAI workspace/app setup and continue the Gofer research/docs path. Is that right?"**
+4. If the user confirms non-app, record the decision and mark app-only capabilities `not_applicable`. Do not run `eai whoami`, `eai workspace select`, `eai init`, or `/gofer:eai-first-run`.
+5. For local MVP app work, validate the implemented user journey, repo runner, and preview evidence. Do not require EAI setup, authentication, or deployment when the active specification does not require them.
+6. When the feature uses EAI Platform services, requires a workspace, or prepares deployment, run `eai whoami` and record the EAI readiness evidence in `eai-preflight.md`.
+7. When the feature creates, changes, or validates an EAI Platform app integration, run `node .specify/scripts/node/eai-app-template-readiness.mjs --root . --json`. A missing checker or status other than `ready` blocks that EAI capability. It does not block unrelated local MVP work.
+8. When authentication is implemented or required, validate provider, callback, sign-in, session, first protected API call, and safe denied access.
+9. When deployment is requested or claimed, require the relevant EAI template, security, configuration, and deployment evidence before completion.
+10. For durable app delivery, use EAI Platform first, Azure second, and every other stack only by explicit exception.
+11. If the user changes scope, update `spec.md`, `plan.md`, `tasks.md`, `traceability.md`, and validation scope before continuing. Explain the business effect and evidence change.
+12. Do not accept copied marker files, partial scaffolds, or custom templates as readiness evidence for an EAI capability.
+13. Do not write tokens, secrets, private workspace IDs, Entra/CIAM authority tenant IDs, or local `.env` values into Gofer artifacts; record only product-safe readiness status and evidence.
+
+**Authentication Access Decision**
+
+When adding or changing authentication, read `.specify/references/platform/eai-auth-access.md`. Ask: **"Who should be able to use this app: only members of its EAI workspace (recommended), or any authenticated EAI user?"** Default to `workspace-only`. Wait for the answer before changing auth code. An unanswered question must not widen access. Preserve stricter existing rules. Record the answer in the feature spec; do not repeat a confirmed question unless its scope changes.
+
+Confirm the sign-in method separately: EAI sign-in or client SSO through EAI. Verify platform support and CLI syntax; do not invent SSO commands. Enforce trusted server-side workspace membership and app permissions. A session, CIAM directory ID, or email domain alone is not workspace access. Platform-wide sign-in never grants access to another workspace's data. Test allowed and denied users, revoked membership, unavailable membership checks, and cross-workspace requests. These checks apply only when authentication is implemented or required, not to non-app work or an auth-free local MVP.
 
 ## Token And Cost Policy
 <!-- gofer:token-cost-policy:start -->
 
 Before spawning agents, calling tools, or loading large files:
 
-1. Treat `.specify/memory/gofer-model-policy.yaml` as the repo-owned source of truth for simple, medium, hard, and arbiter model routing. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
-2. Use the cheapest capable model first.
-   - Claude: Haiku for scouting/extraction; Sonnet for normal implementation, synthesis, validation, and security; Opus for high-risk arbitration or release-critical failures.
-   - Codex/OpenAI: GPT mini for simple coding; GPT nano only for locate/classify/summarize/mechanical work; GPT-5.3-Codex or flagship GPT for tool-heavy coding, architecture, and release-critical validation.
-   - Gemini: Flash-Lite for cheap large-context scan/summarize; Flash for default research synthesis; Pro for large-context architecture or high-risk arbitration.
-   - Copilot: prefer Auto for simple and default work; ask the user before choosing a paid/high-tier picker model for hard security, architecture, or release gates.
+1. Treat `.specify/memory/gofer-model-policy.yaml` as advisory capability, cost, and quality constraints. A fresh signed host receipt and independently verified benchmark evidence select the model. If it is missing, run `/gofer:bootstrap-workspace` before continuing.
+2. Use the lowest-cost model that the live router qualifies for this task. Its signed host receipt and independent benchmark evidence must govern the exact model identity. Do not select a model from static provider examples, names, or price alone.
 3. Keep raw tool output out of the main conversation context. Save stable findings to `.specify/specs/{feature}/context-bundle.md`, then work from summaries.
 4. Use provider prompt/context caching only for stable, non-secret prefixes: Gofer scaffold, AGENTS/CLAUDE/Copilot instructions, constitution, repo map, stage contracts, and validation rubric.
 5. Before continuing after large research, planning, implementation, or validation bursts, checkpoint the durable artifacts and compact/clear/resume context when the host supports it.
 6. Escalate model tier only when a cheaper pass is low-confidence, contradictory, security-sensitive, or blocking release quality.
 <!-- gofer:token-cost-policy:end -->
+
+## Business-Friendly Progress Contract
+<!-- gofer:business-progress:start -->
+
+Default user-facing updates must be concise, business-level, and easy to scan.
+Keep the technical work rigorous in artifacts, tests, logs, and code, but do
+not lead with implementation jargon unless the user asks for it.
+
+Use ASD-STE100 Simplified Technical English as the target writing standard for
+all Gofer-authored chat, documents, commands, summaries, PR notes, error
+guidance, and validation artifacts. ASD-STE100 is copyright and a trademark of
+ASD; do not bundle the protected ASD dictionary and do not claim ASD
+certification.
+
+1. Explain progress as what is being connected, changed, checked, or fixed and
+   why it matters to the business outcome.
+2. Use the running build map: create or update
+   `.specify/specs/{feature}/build-map.md` from
+   `.specify/templates/build-map-template.md` for application delivery, and
+   refer to its plain-language areas in progress updates.
+3. When there is a problem, translate it into business impact, current status,
+   next action, and what input or approval is needed. Keep raw stack traces,
+   command logs, IDs, and acronyms out of chat unless asked.
+4. If the user asks for technical depth, provide it on request and point to the
+   durable artifact that contains the evidence.
+5. Prefer a compact update shape:
+   - `Working on`: the build-map area or stakeholder outcome
+   - `Why it matters`: user/business impact
+   - `Status`: done, checking, fixing, blocked, or needs decision
+6. Use one action per instruction.
+7. Keep instructions to 20 words or fewer where possible.
+8. Use active voice unless the actor is unknown or not important.
+9. Use simple verb forms: simple present, simple past, simple future,
+   infinitive, or imperative.
+10. Define acronyms on first use and use approved project terms.
+11. Avoid idioms, marketing adjectives, vague praise, and hedging.
+12. Use vertical lists for complex information and one topic per paragraph.
+13. For errors, state what happened, why it matters, what to do next, and the
+    exact safe command when one exists.
+14. Do not remove technical validation, security checks, EAI preflights, tests,
+   or loop evidence. This contract changes presentation, not engineering
+   standards.
+15. Before each user-facing reply, check that it leads with the business effect,
+    uses concise simple language, and includes only useful technical detail.
+16. If any check fails, rewrite the reply before sending it.
+**Business Updates And Goal Checks**
+
+For every material code or contract change, keep `spec.md`, `plan.md`, `tasks.md`, `test-spec.md`, `change-manifest.json`, `blast-radius-report.md`, and `traceability.md` current before more implementation work. Keep executable feature tests in the owning repository. Add an `eai-testing-dev` contract only for a deployed canary, route/config contract, authentication smoke, workspace smoke, or release-evidence surface.
+
+Use `.specify/references/business-updates-and-goal-checks.md`. Before each reply, explain the result, business effect, and next action in plain language. For progress, use two or three short sentences. Run `node .specify/scripts/node/gofer-response-check.mjs --input <private-draft-file>` before sending a drafted progress update; rewrite failed drafts. Use `--kind answer` for answers and `--technical` only when technical detail was requested. Do not repeat unchanged progress. This helper cannot intercept messages that the host sends directly.
+
+Before each work batch, read the current goal, specification, tasks, and latest findings. Make ordinary design, sequencing, diagnosis, repair, and verification decisions that advance the goal. Record material decisions and update affected feature documents when new evidence changes the path. Never weaken acceptance criteria to match failing code. Do not invent approval where approval is required. Mark a task complete only after its linked checks pass; reopen affected tasks when evidence is stale. For app and non-app features with a spec and tasks, enable `requireDeliveryCheckpoint` in `loop-contract.json` and run `node .specify/scripts/node/gofer-delivery-check.mjs --feature-dir <feature-dir>` before advancing or claiming completion. Follow the reference to capture a reviewed checkpoint, not merely to clear a failure. Keep existing MVP exemptions, reviews, loops, and release gates. Conversation-only requests need no feature files.
+
+For status, blocker, low-confidence, and decision replies, use the Recommendation, Why, Next step, Owner, and User action labels in .specify/references/blocker-mediation.md, then add the --business-update option to the response checker. State only evidence-backed causes; probabilities show the closest alternative, not why Jev chose its answer.
+
+**Priority And Outcome Protection**
+
+Jev must judge goal alignment, specification currency, executable test coverage, and blast-radius completeness at every configured checkpoint. Missing evidence, a conflict, partial alignment, low confidence, or an unavailable verdict blocks the affected task. Update the records and rerun the checkpoint. Never ignore the result, edit the receipt, or complete work with an unresolved verdict.
+
+Follow `.specify/references/priority-outcome-protection.md`. Treat the stated goal as authority for ordinary delivery decisions. Record material user direction and Gofer decisions in decisions.md. Maintain priority-plan.json with ordered tasks, dependencies, allowedEditScope and the current outcome. Enable requirePriorityPlan for new feature contracts. Run `node .specify/scripts/node/gofer-priority-check.mjs --feature-dir <feature-dir> --task T001` before the action, and include --workspace <repo-root> plus --changed-file for each proposed or actual changed repo-relative path. Follow its nextTask; recorded independent work may run in parallel. Do not switch to unrelated work when blocked. Ask only when a decision changes the goal, needs missing authority or access, causes irreversible loss, creates external cost or commitment, changes production or public exposure, or conflicts with an explicit user constraint. On resume, state the agreed outcome and next task in plain language after reading the last recorded direction. Keep routine conversation free of feature paperwork.
+
+**Pre-Edit Chat Readiness**
+
+Before each source or test edit batch for a feature, run `node .specify/scripts/node/gofer-pre-edit-check.mjs --workspace <repo-root> --feature-dir <feature-dir> --task Tnnn --changed-file <repo-relative-path>`, repeating `--changed-file` for every intended path. This confirms that the goal ledger, specification, plan, and tasks are usable, and that the selected task and edit scope are current. Start no edit until it returns `ready`. If it blocks, create or update the missing feature records, resolve the finding, then rerun the gate. Reuse existing feature records; conversation-only work needs no feature files.
+
+Offer an optional Jev chat-readiness review when context could affect whether the work is set up for success. Run it only when the user explicitly selects it, for example: “Check whether this chat is set up for success with Jev.” Summarize only relevant chat context in a short feature-local `chat-readiness-context.md`; do not send the transcript, secrets, or unrelated personal information. Then add `--jev-chat-readiness --chat-context-file chat-readiness-context.md` to the pre-edit check. Jev assesses the selected goal, specification, plan, tasks, decisions, context, and proposed scope. No Jev request occurs by default. A blocked, low-confidence, unavailable, or non-ready result blocks the selected task until reconciled. Jev cannot approve scope changes or replace deterministic checks.
+
+Before technical escalation, attach fresh diagnosis through the blocker helper's ask event verification field. Check the exact command, route, environment, own mistake and existing authority. Do not invent a workspace, ask for login without checking it, require an unsafe alternative, or equate administrator access with permission. Business decisions need no failing command. At completion, run the priority checker with --finish; a missing or stale outcome receipt means unverified, regardless of test scores. Use --completion for the final gofer-closed-loop-audit.mjs run; a routine drift audit alone does not prove completion. When TypeSafe semantic review is enabled for the feature, run `node .specify/scripts/node/gofer-semantic-drift.mjs --workspace <repo-root> --feature-dir <feature-dir> --event <resume|before_task_batch|after_material_finding|before_validation>` at resume, before a material task batch, after a material finding, and before validation. A TypeSafe conflict or uncertain result requires Gofer reconciliation; it cannot edit artefacts, bypass scope controls, or complete work. Preserve detailed test results, early local MVP scope, non-app work, independent approved tasks and all release/security checks.
+
+<!-- gofer:business-progress:end -->
+
+## App Preview Runner Contract
+<!-- gofer:app-preview-runner:start -->
+
+For EAI app delivery, every UI preview must use the repo runner when it exists.
+
+1. Use `./run.sh dev 3001` on macOS, Linux, and GitHub Codespaces.
+2. Use `run.bat dev 3001` on Windows.
+3. Use a different port only when the feature notes record the reason.
+4. Restart only this app. Before stopping a process, verify its exact checkout, process ID, start time and command, then recheck immediately before stopping it. Never stop another app, an unknown process, or every process on a port. If ownership is uncertain, leave it running and ask the user. Inspect older runners before use; do not run one that kills by port alone.
+5. Do not use direct `npm run dev`, `next dev`, or package-manager preview commands when `run.sh`, `run.bat`, or `run.ps1` exists.
+6. After every UI-facing change, run:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "./run.sh dev 3001" --open auto --screenshot --change "<change summary>"`
+7. On Windows, use:
+   - `node .specify/scripts/node/gofer-ui-preview.mjs --feature-dir {FEATURE_DIR} --command "run.bat dev 3001" --open auto --screenshot --change "<change summary>"`
+8. If the runner is missing in an EAI app template repo, refresh the template before preview work continues.
+9. Check the exact preview page and the current implemented user journey after each change. A running process, open browser, screenshot alone, error page or dry run is not proof that it works. Say ready to view only after those checks pass. Otherwise explain what is unchecked or failing; do not claim readiness. Record fresh browser and test evidence. Local MVP checks cover only implemented behaviour; do not add future auth or deployment gates. Keep showing clearly labelled drafts without adding approval stops.
+<!-- gofer:app-preview-runner:end -->
 
 ## User Input
 
@@ -63,6 +207,13 @@ $ARGUMENTS
 ```
 
 You **MUST** consider the user input before proceeding (if not empty).
+
+## Delivery Lineage Contract
+
+Before completing this stage, read `.specify/references/delivery-lineage.md`
+and update `.specify/specs/{feature}/delivery-lineage.json` with the approved
+requirements and their research evidence. Preserve the customer-only trust
+plane and terminate EAI dependencies at published PublicAPI capability nodes.
 
 ## Execution Profile And Artifact Churn
 
@@ -98,6 +249,7 @@ This command expects:
 - `research.md` completed from `/1_gofer_research`
 - `goal-ledger.json` seeded from `/1_gofer_research`
 - `loop-contract.json` seeded from `/1_gofer_research`
+- `service-fit-matrix.md` when the feature is EAI app delivery
 - `proposal-review.md` if research created supporting review context
 
 If these don't exist, prompt user to run `/1_gofer_research` first.
@@ -118,6 +270,22 @@ do not continue to planning.
 Downstream stages use repo scripts that fail on missing, empty, or still-template
 specs. Treat that failure as a required return to `/2_gofer_specify`, not as a
 script problem to bypass.
+
+## EAI Platform Requirement Capture
+
+For EAI app delivery, the specification must carry the platform decision into
+testable requirements.
+
+1. Read `service-fit-matrix.md` and
+   `.specify/references/platform/eai-service-patterns.md`.
+2. State which user journeys need authentication, workspace access, data storage,
+   file handling, search, content understanding, workflows, goals, targets, and
+   platform AI services.
+3. Prefer EAI Platform services before Azure.
+4. Use non-EAI platforms only as explicit exceptions.
+5. Include acceptance criteria for login, workspace selection, storage behavior,
+   workflow readiness, AI-service behavior, and error recovery when relevant.
+6. Keep secrets, private workspace IDs, Entra/CIAM authority tenant IDs, and `.env` values out of `spec.md`.
 
 ## Outline
 
@@ -256,6 +424,7 @@ Read these files for full context:
 - {FEATURE_DIR}/journeys/base-journey.md — AI-augmented four-step application journey (read if exists, skip if not)
 - {FEATURE_DIR}/ui-preview-brief.md — UI-first preview brief for app delivery (read if exists, skip if not)
 - {FEATURE_DIR}/service-fit-matrix.md — approved or draft service-fit evidence (read if exists, skip if not)
+- {FEATURE_DIR}/build-map.md — plain-language build picture and status (read if exists, skip if not)
 - {FEATURE_DIR}/context-bundle.md — Compact EnterpriseAI context (read if exists, skip if not)
 - {FEATURE_DIR}/reuse-scan.md — Reuse-before-create evidence (read if exists, skip if not)
 
@@ -276,7 +445,7 @@ Generate the COMPLETE spec.md following this structure:
 12. Goal Ledger Alignment — Goal IDs, outcomes, metrics/targets, linked stories, linked requirements
 13. Loop Contract Alignment — loop objective, success criteria, required eval commands, max-iteration stop rules, and human escalation triggers
 14. AI-Augmented 4-Step Journey — required for app delivery, not applicable for explicit non-app work
-15. UI Preview And Approval Gate — required for app delivery, not applicable for explicit non-app work
+15. UI Preview And Show-And-Tell Loop — required for app delivery, not applicable for explicit non-app work
 16. EAI Platform/Azure App Stack Policy — required for app delivery, not applicable for explicit non-app work
 17. EnterpriseAI Service Fit — required for app delivery, not applicable for explicit non-app work
 18. EnterpriseAI Contract Pack Summary — actors, object types, workflows, permissions, APIs/events, runtime assumptions, acceptance tests
@@ -300,7 +469,7 @@ If journeys/base-journey.md exists and is classified as app delivery, use it to:
   editability, and accessibility at each AI-assisted step
 
 If ui-preview-brief.md exists, use it to:
-- Require the first MVP preview to stay inside the approved EAI App Template
+- Require the first MVP preview to stay inside the selected EAI App Template
   blocks before any create-new UI concept is proposed
 - Require the specification to preserve the selected external/internal/hybrid
   profile choice, package lane, coupling status, public-readiness target, and
@@ -308,7 +477,7 @@ If ui-preview-brief.md exists, use it to:
 - Require every proposed UI building block to cite an `eai blocks describe`
   result by stable ID; ambiguous display names are not acceptable
 - Require any unknown UI component to be recorded as a custom-block exception
-  with manifest shape, component owner, data/resource binding, and approval path
+  with manifest shape, component owner, data/resource binding, and review path
 - Require Storybook story IDs and theme override points for every reusable or
   ported block; if no story exists, make story creation or an approved exception
   part of the requirements
@@ -316,10 +485,20 @@ If ui-preview-brief.md exists, use it to:
   `eai resources schema`, an adapter, or an explicit restricted-source exception
 - Carry forward branding/logo requirements as explicit scope, not as implied
   polish
+- Require a fast preview runtime with a command or URL, local preview address,
+  and integrated-browser/external-browser fallback
+- Require `gofer-ui-preview.mjs` to run after every UI-facing change and record
+  the opened URL, screenshot/browser evidence, and self-review notes before the
+  agent reports the change as complete
+- Require `{FEATURE_DIR}/business-scenarios.json` to map every in-scope user
+  story and outcome to the ordered screens/states and executable browser tests;
+  require integrated-browser show-and-tell where supported plus a repeatable
+  Playwright/Cypress run and passing `business-scenario-report.json`
 - Require preview self-review evidence such as screenshot, local render proof,
-  or Playwright-style checks before stakeholder presentation
-- Require a versioned `ui-review-log.md` and explicit `ui-approval.md` before
-  downstream planning/tasks are treated as complete
+  opened-browser proof, or Playwright-style checks before stakeholder presentation
+- Require a versioned `ui-review-log.md` and `ui-show-and-tell.md` before
+  downstream planning/tasks are treated as complete. This is continuous
+  visibility, user feedback, and follow-up evidence, not release approval.
 
 If service-fit-matrix.md exists, use it to:
 - Separate desired platform capabilities into accessible now, purchasable but
@@ -344,7 +523,7 @@ Rules:
 - Prefer explicit user-approved directions in proposal-review.md when present; otherwise treat it as advisory context
 - Each functional requirement must include Validation and Integration references
 - Explicit non-app work MUST keep the shared numbered stages but MUST NOT be
-  forced to create app-only preview, approval, branding, or service-fit
+  forced to create app-only preview, show-and-tell, branding, or service-fit
   sections beyond marking them "Not applicable"
 
 Write the complete specification to {FEATURE_DIR}/spec.md.
@@ -673,9 +852,13 @@ Sequence Diagrams: {FEATURE_DIR}/sequence-diagrams/
 Selected Option: Option {N} - {Name}
 ```
 
-**AUTO-CHAIN (MANDATORY)**: You MUST immediately invoke the next pipeline stage
-by calling the Skill tool with skill="/3_gofer_plan". Do NOT ask the user for
-confirmation. Do NOT output "Ready for next stage". Just invoke the skill NOW.
+The stated business goal authorizes normal planning from this specification.
+Record material decisions and update the goal ledger when new evidence changes
+the delivery path. Do not ask the user to approve routine planning or design
+choices. Pause only when an approval boundary in the Continuation And Stop
+Contract applies. Otherwise read and follow
+`.specify/commands/3_gofer_plan.md` in the same conversation. Do not ask for a
+numbered command.
 
 ---
 
@@ -747,7 +930,7 @@ When `workflowProfile` is explicitly `enterpriseai`, generate
 | Actors | Business users, administrators, approvers, external systems, support roles |
 | Object Types | Reused, extended, and newly proposed EnterpriseAI object types with owners |
 | Workflows and Journeys | External user journeys and internal orchestration flows as separate views; app delivery must include the four-step-or-fewer AI-augmented journey |
-| UI Preview and Approval | For app delivery: preview brief, EAI App Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, approval gate rules; for non-app work: mark not applicable |
+| UI Preview and Show-and-Tell | For app delivery: preview brief, EAI App Template constraints, branding inputs, preview validation evidence expectations, review-log requirements, and fast user feedback rules; for non-app work: mark not applicable |
 | EAI App Delivery Preflight | For EAI app delivery: CLI version/install state, account/login state, workspace role, template initialization readiness, app enrollment readiness, block catalog readiness, and blocked/deferred decisions |
 | EAI Platform/Azure Stack Policy | For app delivery: EAI Platform as primary app substrate, Azure as preferred cloud/supporting substrate, custom code constrained to the EAI template, and non-EAI stacks only as approved exceptions |
 | AI Assistance Contract | Step goal, assistance mode, context used, generated output, user controls, confidence/evidence, audit trail, completion signal, and escalation for each app step |
@@ -793,7 +976,12 @@ After `spec.md` is stabilized and before stage completion logging:
    `.specify/templates/business-owner-summary-template.md` using
    `problem-brief.md`, `discovery.md`, `spec-summary.md`, assumptions, value
    stream, ROI, and business metrics when present.
-5. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask the
+5. For application delivery, update `{FEATURE_DIR}/build-map.md` so the scope,
+   user process, must-have app experience, EAI Platform areas, risks, and next
+   decision match the stabilized specification. If a requirement changes what
+   the user will see or how the platform is used, update the relevant build-map
+   status row.
+6. Update `{FEATURE_DIR}/stakeholder-review-index.md` and explicitly ask the
    Business Owner to approve, revise, or defer:
    - business scenario
    - process change
@@ -834,3 +1022,19 @@ Logs to: `.specify/logs/pipeline.jsonl`
   helper was not run.
 - These selectors are optional and do not change stage progress, routing, or
   pipeline state.
+
+## Local Settings Cleanup Contract
+<!-- gofer:local-settings-cleanup:start -->
+
+After any Gofer install, update, release refresh, or workspace bootstrap:
+
+1. Archive stale Gofer command and skill entries before continuing.
+2. Prefer the repo helper:
+   - `node .specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+3. If the repo helper is missing, use the stable plugin bundle helper:
+   - macOS/Linux: `node ~/plugins/eai-gofer/.specify/scripts/node/gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+   - Windows: `node %USERPROFILE%\plugins\eai-gofer\.specify\scripts\node\gofer-local-settings-cleanup.mjs --workspace . --apply --json`
+4. This cleanup covers old Claude, Codex, Copilot, Gemini, Grok, VS Code, desktop, and CLI command surfaces.
+5. Do not remove the current public `eai` entrypoint.
+6. Ask the user to refresh or restart the host command picker only after cleanup completes.
+<!-- gofer:local-settings-cleanup:end -->

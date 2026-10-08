@@ -48,43 +48,17 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
-const GOFER_BASE_COMMIT = "6059c0e61377f648a9470b3554ae689e6912ec24";
-const GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT =
-  "03f3c5d7c6a0aa1121f85b0da4a31cdfe1218b8d";
+const GOFER_RELEASE_COMMIT = "965833ad06c5bed1c76b2e493891036449e67561";
+const GOFER_RELEASE_TAG = "v3.14.3";
+const GOFER_RELEASE_SOURCE = `https://github.com/eai-support/eai-gofer.git@${GOFER_RELEASE_TAG}`;
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
   "bash-scripts/install-optional-tools.sh":
     "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
   "powershell-scripts/install-optional-tools.ps1":
     "a7fbfefad761074480f634504fb88d6739050ac95c501dd1d59380e258879811",
 } as const;
-const SOURCE_READINESS_COMMIT = "a2638c537cb2025bbcac2baed2f971875c00f3e3";
 const SOURCE_READINESS_SCRIPT_SHA256 =
   "6a33b8494944b0c91c54dcde27ce55b50ffd45fe0e1c3f685b6493441ff50903";
-const SOURCE_READINESS_BLOCK_SHA256: Readonly<Record<string, string>> = {
-  ".specify/commands/3_gofer_plan.md":
-    "66ca92d23b14b5bce9aa4b70bf966740f91dd7b6a4f5585b327c844cd7ceb513",
-  ".specify/commands/4_gofer_tasks.md":
-    "9b409c8ca4d8befe7d2dd66f22fb5cece373c56cf53a1511974405acc147d4f1",
-  ".specify/commands/5_gofer_implement.md":
-    "df8ddbeb9f8abaad12dc279cb5077ef6f4dfc5dbc274a0facaf952db5b2f24e7",
-  ".specify/commands/6_gofer_validate.md":
-    "59c9589ad0f139d547126f2849734a46d54358826084b9e3aa0ac3eae16e90cf",
-  ".specify/references/platform/eai-app-template.md":
-    "101cc7d3cdcb8f7a710fc0546c0b07ccd2902176c7dba19bc819987494d5dd3e",
-};
-
-interface SourceReadinessOverlayFile {
-  readonly target_path: string;
-  readonly source_path: string;
-  readonly operation: "copy_exact_script" | "insert_exact_added_block";
-  readonly base_sha256: string | null;
-  readonly result_sha256: string;
-  readonly source_block_sha256?: string;
-  readonly source_commit?: string;
-  readonly insertion_anchor?: string;
-  readonly insertion_side?: "before" | "after";
-  readonly block_bytes?: number;
-}
 
 interface ChildResult {
   readonly exitCode: number;
@@ -204,117 +178,53 @@ describe("eai gofer refresh", () => {
     await env.cleanup();
   });
 
-  test("installs the source-pinned document lifecycle guidance without changing the base Gofer pin", async () => {
+  test("installs the released document lifecycle guidance", async () => {
     const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
-    expect(metadata.commit).toBe(GOFER_BASE_COMMIT);
-    expect(metadata.document_lifecycle_overlay).toMatchObject({
-      commit: "b9cc180288efbf857b763cf1e2565ec093f15765",
-      source: "https://github.com/eai-support/eai-gofer",
-      section: "Document Lifecycle Rules",
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
       dirty: false,
     });
     const relativePath = "references/platform/eai-service-patterns.md";
-    const bundled = await readFile(
-      join(BUNDLED_GOFER_RESOURCES, relativePath),
-      "utf8",
-    );
-    const section =
-      "## Document Lifecycle Rules\n" +
-      bundled
-        .split("## Document Lifecycle Rules\n")[1]
-        .split("\n## Storage Backend Rules")[0]
-        .trimEnd() +
-      "\n";
-    expect(createHash("sha256").update(section).digest("hex")).toBe(
-      metadata.document_lifecycle_overlay.section_sha256,
-    );
+    const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath), "utf8");
     const installed = await readFile(
       join(env.dir, ".specify", relativePath),
       "utf8",
     );
-    expect(installed).toContain(section.trimEnd());
-    expect(installed).toContain("business-document-v1");
-    expect(installed).toContain("Preserve working DAISY/Assess");
-    expect(installed).toContain("never re-upload automatically");
+    expect(installed).toBe(bundled);
+    expect(installed).toContain("## Document Lifecycle Rules");
+    expect(installed).toContain("POST /v4/data/documents/upload");
+    expect(installed).toContain("Existing DAISY and Assess");
+    expect(installed).toContain("workspace retention policy");
   });
 
-  test("installs the exact managed-source overlay while reconstructing preserved base guidance", async () => {
-    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8")) as {
-      commit: string;
-      overlay_commit: string;
-      managed_source_readiness_overlay: {
-        commit: string;
-        source_base_commit: string;
-        dirty: boolean;
-        files: readonly SourceReadinessOverlayFile[];
-      };
-    };
-    expect(metadata.commit).toBe(GOFER_BASE_COMMIT);
-    expect(metadata.overlay_commit).toBe(
-      GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT,
-    );
-    const overlay = metadata.managed_source_readiness_overlay;
-    expect(overlay).toMatchObject({
-      commit: SOURCE_READINESS_COMMIT,
-      source_base_commit: "2b2a2eb5cabc34f480260a3c20fbf3042e23a1dd",
+  test("installs the released managed-source guidance and executable readiness check", async () => {
+    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
       dirty: false,
     });
-    expect(overlay.files).toHaveLength(30);
-    expect(new Set(overlay.files.map((file) => file.target_path)).size).toBe(
-      30,
-    );
-    for (const file of overlay.files) {
-      const bundled = await readFile(
-        join(BUNDLED_GOFER_RESOURCES, file.target_path),
-      );
-      expect(createHash("sha256").update(bundled).digest("hex")).toBe(
-        file.result_sha256,
-      );
-      if (file.operation === "copy_exact_script") {
-        expect(file.base_sha256).toBeNull();
-        expect(file.target_path).toBe(
-          "node-scripts/eai-app-template-readiness.mjs",
-        );
-        expect(file.result_sha256).toBe(SOURCE_READINESS_SCRIPT_SHA256);
-        expect(file.source_commit).toBe("529b69bf2d54ac6c1e66776f573983526a660dd4");
-        expect(file.source_path).toBe("extension/resources/node-scripts/eai-app-template-readiness.mjs");
-      } else {
-        const anchor = Buffer.from(file.insertion_anchor!);
-        const anchorIndex = bundled.indexOf(anchor);
-        expect(anchorIndex).toBeGreaterThanOrEqual(0);
-        expect(bundled.lastIndexOf(anchor)).toBe(anchorIndex);
-        const start =
-          file.insertion_side === "before"
-            ? anchorIndex - file.block_bytes!
-            : anchorIndex + anchor.length;
-        const block = bundled.subarray(start, start + file.block_bytes!);
-        expect(createHash("sha256").update(block).digest("hex")).toBe(
-          SOURCE_READINESS_BLOCK_SHA256[file.source_path],
-        );
-        const guidance = block.toString("utf8").replace(/\s+/g, " ");
-        expect(guidance).toContain("all customer-authored app files");
-        expect(guidance).toContain("custom runtime");
-        expect(guidance).toContain("workflow controls");
-        const reconstructed = Buffer.concat([
-          bundled.subarray(0, start),
-          bundled.subarray(start + file.block_bytes!),
-        ]);
-        expect(createHash("sha256").update(reconstructed).digest("hex")).toBe(
-          file.base_sha256,
-        );
-      }
+    for (const relativePath of [
+      "commands/3_gofer_plan.md",
+      "commands/4_gofer_tasks.md",
+      "commands/5_gofer_implement.md",
+      "commands/6_gofer_validate.md",
+      "references/platform/eai-app-template.md",
+      "node-scripts/eai-app-template-readiness.mjs",
+    ]) {
+      const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath));
       const mapping = GOFER_RESOURCE_MAPPINGS.find(({ sourceSubdirectory }) =>
-        file.target_path.startsWith(`${sourceSubdirectory}/`),
+        relativePath.startsWith(`${sourceSubdirectory}/`),
       );
-      if (mapping) {
-        const installed = join(
-          env.dir,
-          ...mapping.targetSegments,
-          file.target_path.slice(mapping.sourceSubdirectory.length + 1),
-        );
-        expect(await readFile(installed)).toEqual(bundled);
-      }
+      expect(mapping).toBeDefined();
+      const installed = join(env.dir, ...mapping!.targetSegments, relativePath.slice(mapping!.sourceSubdirectory.length + 1));
+      expect(await readFile(installed)).toEqual(bundled);
     }
+    const readiness = await readFile(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs"));
+    expect(createHash("sha256").update(readiness).digest("hex")).toBe(SOURCE_READINESS_SCRIPT_SHA256);
     const validate = await readFile(
       join(env.dir, ".specify/commands/6_gofer_validate.md"),
       "utf8",
@@ -322,6 +232,9 @@ describe("eai gofer refresh", () => {
     expect(validate.indexOf("## Managed-Source Readiness Gate")).toBeLessThan(
       validate.indexOf("## Step 1.5:"),
     );
+    expect(validate).toContain("all customer-authored app");
+    expect(validate).toContain("workflow controls");
+    expect(validate).toContain("Unsupported custom runtimes");
     const packageManifest = JSON.parse(
       await readFile(new URL("../../package.json", import.meta.url), "utf8"),
     );
@@ -532,7 +445,7 @@ describe("eai gofer refresh", () => {
     await expectFileContains(
       ctx,
       ".specify/commands/6_gofer_validate.md",
-      "Generated `linkTypes[].targetObjectType`",
+      "platform SDK route owner declared in `.specify/config/object-type-routing.json`",
     );
     await expectFileExists(
       ctx,
@@ -697,25 +610,19 @@ describe("bundled Gofer Object Type routing assets", () => {
 });
 
 describe("bundled optional AI tool installers", () => {
-  test("record clean composite provenance for the exact optional-installer overlay", async () => {
+  test("record the released Gofer source and exact optional installers", async () => {
     const metadata = JSON.parse(
       await readFile(GOFER_VERSION_FILE, "utf-8"),
     ) as {
       commit?: string;
-      source?: string;
-      dirty?: boolean;
-      overlay_source?: string;
-      overlay_commit?: string;
-      overlays?: string[];
+      describe?: string;
     };
 
     expect(metadata).toMatchObject({
-      commit: GOFER_BASE_COMMIT,
-      source: `https://github.com/eai-support/eai-gofer.git@${GOFER_BASE_COMMIT}`,
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
       dirty: false,
-      overlay_source: `https://github.com/eai-support/eai-gofer.git@${GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT}`,
-      overlay_commit: GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT,
-      overlays: Object.keys(GOFER_OPTIONAL_INSTALLER_SHA256),
     });
 
     for (const [relativePath, expectedSha256] of Object.entries(

@@ -463,8 +463,9 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
-      "my-app/.claude/commands/0_gofer_start.md",
+      "my-app/.claude/commands/eai.md",
     );
+    await expectFileContains(ctx, "my-app/.claude/commands/eai.md", ".specify/commands/*.md");
     await expectFileExists(
       ctx,
       "my-app/.claude/agents/codebase-analyzer.md",
@@ -480,32 +481,32 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/.eai-manifest.json");
     await expectFileExists(
       ctx,
-      "my-app/.system/skills/1_gofer_research/SKILL.md",
+      "my-app/.system/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/1_gofer_research/SKILL.md",
+      "my-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/0_gofer_start/SKILL.md",
+      "my-app/.specify/commands/0_gofer_start.md",
     );
     await expectFileExists(ctx, "my-app/.gemini/extension.json");
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/1_gofer_research.toml",
+      "my-app/.gemini/commands/gofer/eai.toml",
     );
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/0_gofer_start.toml",
+      "my-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/prompts/0_gofer_start.prompt.md",
+      "my-app/.github/prompts/eai.prompt.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/skills/0-gofer-start/SKILL.md",
+      "my-app/.github/skills/eai/SKILL.md",
     );
     await expectFileExists(ctx, "my-app/.github/copilot-instructions.md");
     await expectFileContains(ctx, "my-app/CLAUDE.md", "## Gofer Pipeline");
@@ -1214,7 +1215,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.claude/commands/0_gofer_start.md",
+      "quick-app/.claude/commands/eai.md",
     );
     await expectFileExists(
       ctx,
@@ -1230,15 +1231,15 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.agents/skills/1_gofer_research/SKILL.md",
+      "quick-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.gemini/commands/gofer/1_gofer_research.md",
+      "quick-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.github/skills/0-gofer-start/SKILL.md",
+      "quick-app/.github/skills/eai/SKILL.md",
     );
     const objectTypes = await readFile(
       join(env.dir, "quick-app", "src", "eai.config", "object-types.ts"),
@@ -1436,7 +1437,7 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.claude/commands/0_gofer_start.md",
+      "plain-app/.claude/commands/eai.md",
     );
     await expectFileNotExists(
       ctx,
@@ -1444,7 +1445,7 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.agents/skills/1_gofer_research/SKILL.md",
+      "plain-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
   });

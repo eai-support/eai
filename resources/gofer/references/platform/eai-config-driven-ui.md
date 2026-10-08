@@ -7,8 +7,8 @@ an app based on `https://github.com/eai-support/eai-app-template`.
 
 | File                        | Purpose                                                                         |
 | --------------------------- | ------------------------------------------------------------------------------- |
-| `src/eai.config/default.ts` | Default workspace config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`   | Workspace key to config registry.                                                  |
+| `src/eai.config/default.ts` | Default tenant config, store slices, API paths, storage keys, and layout slots. |
+| `src/eai.config/index.ts`   | Tenant key to config registry.                                                  |
 | `src/eai.blocks.tsx`        | Component registry and app-local block extension point.                         |
 | `src/app/providers.tsx`     | Auth/session providers and EAI config runtime.                                  |
 | `src/hooks/useResources.ts` | ResourceAPI-backed business data.                                               |
@@ -48,7 +48,7 @@ Rules:
 
 - `component` must match a registered component name.
 - Lower `priority` renders first.
-- `props` are static, workspace configurable values.
+- `props` are static, tenant-configurable values.
 - `storeBindings` support dot notation on both `prop` and `storePath`.
 - `showWhen` supports `equals`, `notEquals`, `exists`, and compound `and`/`or`.
 
@@ -95,7 +95,7 @@ store: {
 }
 ```
 
-Persist only workspace-safe UI or workflow state. Never place access tokens,
+Persist only tenant-safe UI or workflow state. Never place access tokens,
 platform credentials, database connection details, blob credentials, search
 credentials, or model provider credentials in config or store state.
 
@@ -130,7 +130,7 @@ The config-driven UI should pair with the service matrix:
 
 | UI Need                                               | Service Pattern                                            |
 | ----------------------------------------------------- | ---------------------------------------------------------- |
-| Workspace business records                               | `useResources('<ObjectType>')`                             |
+| Tenant business records                               | `useResources('<ObjectType>')`                             |
 | File upload, document classification, or RAG indexing | `useDocuments()`                                           |
 | AI chat or workflow interaction                       | `useChat(workflowId, stage)`                               |
 | Browser streaming                                     | `/api/eai/stream/...` through the app BFF                  |

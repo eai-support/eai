@@ -25,17 +25,17 @@ workflowProfile: enterpriseai
 | User journey           | {{journey}} | {{trigger}} | {{outcome}} |
 | Internal orchestration | {{flow}}    | {{trigger}} | {{outcome}} |
 
-## UI Preview And Approval
+## UI Preview And Show-and-Tell
 
-For app delivery, capture the preview-first gate here. For non-app work, mark
-this section "Not applicable" and link to the classification rationale in
-`discovery.md`.
+For app delivery, capture the preview-first show-and-tell evidence here. For
+non-app work, mark this section "Not applicable" and link to the classification
+rationale in `discovery.md`.
 
 | Artifact              | Purpose                        | Required For Completion |
 | --------------------- | ------------------------------ | ----------------------- |
 | `ui-preview-brief.md` | {{preview-brief-purpose}}      | {{yes-or-na}}           |
 | `ui-review-log.md`    | {{preview-iteration-evidence}} | {{yes-or-na}}           |
-| `ui-approval.md`      | {{explicit-approval-gate}}     | {{yes-or-na}}           |
+| `ui-show-and-tell.md` | {{show-and-tell-feedback}}     | {{yes-or-na}}           |
 
 ## AI-Readable Blocks Bridge Contract
 
@@ -46,7 +46,7 @@ this section "Not applicable" and link to the classification rationale in
 | Coupling status                            | {{source-platform-coupled-source-platform-decoupled-hybrid-adapter}} | {{source}} |
 | Storybook story IDs                        | {{story-ids-or-exceptions}}                                          | {{source}} |
 | Theme override points                      | {{tokens-slots-css-vars}}                                            | {{source}} |
-| Custom-block exceptions                    | {{none-or-approval-path}}                                            | {{source}} |
+| Custom-block exceptions                    | {{none-or-review-path}}                                              | {{source}} |
 | Public-readiness target                    | {{required-deferred-not-applicable}}                                 | {{source}} |
 | Block porting / source-platform decoupling | {{reuse-port-adapter-exception}}                                     | {{source}} |
 
@@ -65,8 +65,8 @@ classification rationale in `discovery.md`.
 
 ## EnterpriseAI Service Fit
 
-For app delivery, record how the approved UI maps to platform capabilities. For
-non-app work, mark this section "Not applicable".
+For app delivery, record how the visible UI direction maps to platform
+capabilities. For non-app work, mark this section "Not applicable".
 
 | Stack Layer        | Decision                                                          | Evidence            |
 | ------------------ | ----------------------------------------------------------------- | ------------------- |

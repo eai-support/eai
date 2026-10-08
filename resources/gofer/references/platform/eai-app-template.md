@@ -1,7 +1,7 @@
 # EAI App Template Reference
 
-Use `https://github.com/eai-support/eai-app-template` as the canonical public app
-template for EnterpriseAI app-delivery work.
+Use `https://github.com/eai-support/eai-app-template` as the canonical public
+app template for EnterpriseAI app-delivery work.
 
 ## Source Of Truth
 
@@ -19,10 +19,13 @@ template for EnterpriseAI app-delivery work.
 
 1. Browser code calls the local app BFF at `/api/eai/...`.
 2. Browser streaming uses `/api/eai/stream/...`.
-3. The BFF or server helpers attach auth, workspace, and correlation headers.
+3. For workspace-scoped PublicAPI calls, the BFF or server helpers forward the
+   `tenant` and `X-Tenant-Id` headers from server-validated workspace context,
+   and attach auth and correlation headers.
 4. The frontend never receives direct downstream database, blob, search, or
    PublicAPI credentials.
-5. Use PublicAPI V4 surfaces for direct platform calls.
+5. Use the published PublicAPI route family through the template SDK, named
+   `eai` commands, or an approved server-side helper.
 
 ## Implementation Contract
 
@@ -52,10 +55,9 @@ files, restore files automatically, or weaken protected EAI controls to pass.
 Local-only and customer-owned source retain their own validation paths.
 
 - Use Object Types as the data model contract.
-- Keep the PascalCase model `name` distinct from the exact lowercase
-  kebab-case stored `slug`. Emitted `linkTypes[].targetObjectType`, runtime
-  `target_type`, paths, resource commands, and governed v4 fields use exact
-  stored slugs. Never re-derive historical stored slugs.
+- Keep PascalCase model names separate from the exact stored `slug`. Use
+  lowercase kebab-case slugs in runtime paths and links; never re-derive or
+  rename a historical stored slug.
 - Use the template SDK and hooks for resources, documents, and chat.
 - Use config slots with `{ components: [...] }`, not stale array-only slot
   examples.
@@ -64,11 +66,11 @@ Local-only and customer-owned source retain their own validation paths.
 - Use the CLI for setup and verification:
   - `eai login`
   - `eai workspace select <workspace-slug>`
-  - `eai types validate`
-  - `eai types diff --tenant-key <key> --tenant-id <workspace-id>`
-  - `eai types seed --tenant-key <key> --tenant-id <workspace-id>`
-  - `eai resources schema --tenant-id <workspace-id>`
-  - `eai verify calls --tenant-id <workspace-id> --resource-type <object-type-slug>`
+  - `eai types validate --tenant-key <key> --tenant-id <tenant-id>`
+  - `eai types seed --tenant-key <key> --tenant-id <tenant-id>`
+  - `eai types diff --tenant-key <key> --tenant-id <tenant-id>`
+  - `eai resources schema --tenant-id <tenant-id>`
+  - `eai verify calls --tenant-id <tenant-id> --resource-type <type>`
 
 Do not describe retired templates as canonical scaffolds. The surviving public
 scaffold is the EAI App Template.
