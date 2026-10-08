@@ -48,8 +48,9 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
-const GOFER_RELEASE_COMMIT = "bdf9f6f748aca90c37499e71eed5c4f91d79c3d0";
-const GOFER_RELEASE_TAG = "v3.14.2";
+const GOFER_RELEASE_COMMIT = "965833ad06c5bed1c76b2e493891036449e67561";
+const GOFER_RELEASE_TAG = "v3.14.3";
+const GOFER_RELEASE_SOURCE = `https://github.com/eai-support/eai-gofer.git@${GOFER_RELEASE_TAG}`;
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
   "bash-scripts/install-optional-tools.sh":
     "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
@@ -179,7 +180,12 @@ describe("eai gofer refresh", () => {
 
   test("installs the released document lifecycle guidance", async () => {
     const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
-    expect(metadata).toEqual({ commit: GOFER_RELEASE_COMMIT, describe: GOFER_RELEASE_TAG });
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
+      dirty: false,
+    });
     const relativePath = "references/platform/eai-service-patterns.md";
     const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath), "utf8");
     const installed = await readFile(
@@ -195,7 +201,12 @@ describe("eai gofer refresh", () => {
 
   test("installs the released managed-source guidance and executable readiness check", async () => {
     const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
-    expect(metadata).toEqual({ commit: GOFER_RELEASE_COMMIT, describe: GOFER_RELEASE_TAG });
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
+      dirty: false,
+    });
     for (const relativePath of [
       "commands/3_gofer_plan.md",
       "commands/4_gofer_tasks.md",
@@ -607,7 +618,12 @@ describe("bundled optional AI tool installers", () => {
       describe?: string;
     };
 
-    expect(metadata).toEqual({ commit: GOFER_RELEASE_COMMIT, describe: GOFER_RELEASE_TAG });
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
+      dirty: false,
+    });
 
     for (const [relativePath, expectedSha256] of Object.entries(
       GOFER_OPTIONAL_INSTALLER_SHA256,

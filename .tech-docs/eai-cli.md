@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.0 |
-| Released | 2026-10-07 |
-| Last Material Change | Add managed app deployment and align installer dependencies |
-| Source Commit | `8ffb3deba2be8d633fcc867f1a0e28c0e181bf74` |
+| Version | 3.19.1 |
+| Released | 2026-10-08 |
+| Last Material Change | Bundle Gofer v3.14.3 with the verified managed deployment source |
+| Source Commit | `5c2d3b195d8489e2f0e7a1b0e035e33080ae0204` |
 
 
 ## Install

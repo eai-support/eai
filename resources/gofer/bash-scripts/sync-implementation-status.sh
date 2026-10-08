@@ -1,8 +1,8 @@
 #!/bin/bash
 # Sync implementation status across feature branches
 #
-# This script checks which tasks were actually implemented in git commits
-# and updates tasks.md to reflect the actual implementation state.
+# This script lists matching commits for manual task-evidence review.
+# It does not update tasks.md or certify task completion.
 #
 # Usage: sync-implementation-status.sh <feature-dir>
 # Example: sync-implementation-status.sh .specify/specs/025-ai-usage-tracking

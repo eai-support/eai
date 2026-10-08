@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "gofer": {
     "repo": "https://github.com/eai-support/eai-gofer.git",
-    "commit": "bdf9f6f748aca90c37499e71eed5c4f91d79c3d0",
-    "describe": "v3.14.2"
+    "commit": "965833ad06c5bed1c76b2e493891036449e67561",
+    "describe": "v3.14.3"
   },
   "appTemplate": {
     "repo": "https://github.com/eai-support/eai-app-template.git",

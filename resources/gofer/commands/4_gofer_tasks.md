@@ -299,14 +299,27 @@ Task generation dispatches agents — keep main context lightweight.
    .specify/scripts/bash/check-prerequisites.sh --json
    ```
 
-   Parse JSON for FEATURE_DIR, AVAILABLE_DOCS
+   Parse JSON for FEATURE_DIR, AVAILABLE_DOCS. Stop if the script rejects the
+   feature specification or the planning file.
+
+   Validate the completed plan before starting task generation:
+
+   ```bash
+   bash .specify/scripts/bash/validate-artifact.sh plan "{FEATURE_DIR}/plan.md" --strict
+   ```
+
+   Stop if the plan is missing or fails validation. The stage-three loop audit
+   below checks loop evidence; it does not validate `spec.md` or `plan.md`.
 
 2. **Scan available documents** (do NOT load full content — agents read
    directly):
    - Note feature name from FEATURE_DIR
    - Note which optional docs exist: data-model.md, contracts/, quickstart.md
-   - Note whether `loop-contract.json` exists. If missing, initialize it with
-     `node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 4_tasks --init --json`
+   - Note whether `loop-contract.json` exists. If missing, initialize it while
+     auditing the completed planning stage with
+     `node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir {FEATURE_DIR} --stage 3_plan --init --json --strict`.
+     Stop on a failed audit. Task-generation outputs and their reviewed delivery
+     checkpoint are checked after generation, before implementation.
    - Note the tasks template path: `.specify/templates/tasks-template.md`
 
 ---
@@ -715,6 +728,26 @@ created: [ISO date]
 
 After required reviews pass and either existing scope approval covers the
 tasks or the outstanding approval is received:
+
+Review the current priority plan and generated task/traceability files. Capture
+a new delivery checkpoint only when none exists. On a rerun, verify the existing
+checkpoint against the current artifacts before the strict stage-four audit:
+
+```bash
+set -e
+node .specify/scripts/node/gofer-priority-check.mjs --feature-dir "{FEATURE_DIR}"
+if [ -e "{FEATURE_DIR}/delivery-checkpoint.json" ] || [ -L "{FEATURE_DIR}/delivery-checkpoint.json" ]; then
+  node .specify/scripts/node/gofer-delivery-check.mjs --feature-dir "{FEATURE_DIR}"
+else
+  node .specify/scripts/node/gofer-delivery-check.mjs --feature-dir "{FEATURE_DIR}" --capture
+fi
+node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir "{FEATURE_DIR}" --stage 4_tasks --json --strict
+```
+
+Stop if any check fails. A stale checkpoint requires a new review of the
+affected artifacts. Preserve the prior checkpoint and its review evidence in an
+archive before an explicitly reviewed rebaseline. This continuation never
+overwrites an existing checkpoint to conceal stale task evidence.
 
 ```
 ✓ Tasks APPROVED: {FEATURE_DIR}/tasks.md
