@@ -485,6 +485,7 @@ export function consumeLastInitBinding(): InitTenantAppBinding | undefined {
   return binding;
 }
 
+/** Scaffolds an app and its managed guidance, with optional AI tool selection for generated instructions. */
 export const initCommand = new Command("init")
   .description("Scaffold a new application")
   .argument("[name]", "Name for the app (kebab-case)")
@@ -1253,6 +1254,7 @@ export function resolveCreateTenantContext(
   });
 }
 
+/** Builds init arguments from create's validated binding, onboarding answers, and selected AI tool. */
 export function buildForwardedInitArgs(
   nameArg: string | undefined,
   options: CreateCommandOptions,

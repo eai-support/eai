@@ -75,7 +75,7 @@ function boundedOption(value: string | undefined, limit: number, label: string):
   }
 }
 
-/** Collect and redact a bounded report locally, using only the supplied saved login session and project context. */
+/** Collect a bounded, redacted report from the saved session, current project and canonical error metadata. */
 export async function collectSupportBundle(options: SupportOptions, session: StoredTokens | null): Promise<SupportBundle> {
   if (options.format && !['text', 'json'].includes(options.format)) throw new Error('Use --format text or --format json.');
   const source = options.source ?? (options.tool ? 'harness' : 'eai-cli');
@@ -114,7 +114,7 @@ export async function collectSupportBundle(options: SupportOptions, session: Sto
     tenantId: safe(env.EAI_TENANT_ID ?? env.NEXT_PUBLIC_EAI_TENANT_ID ?? env.TENANT_DEFAULT_ID ?? session?.activeTenantId, 160),
     tenantName: safe(env.EAI_TENANT_NAME ?? session?.activeTenantName, 160),
     appId: safe(env.EAI_APP_KEY ?? env.NEXT_PUBLIC_EAI_APP_KEY, 160), appName: safe(env.NEXT_PUBLIC_APP_NAME, 160),
-    error: safe(context?.message, 4000), occurredAt: context?.recordedAt,
+    error: safe(guidance?.title, 4000), occurredAt: context?.recordedAt,
   }, sensitiveValues);
 }
 

@@ -512,6 +512,8 @@ Run `eai support` after an unresolved CLI failure. It shows a locally redacted
 report and asks before sending. The report includes the last failing command,
 catalog error code and reason, CLI version, OS, and known workspace/app context.
 Credentials and unrelated environment settings are excluded.
+Saved failure context contains command and catalog metadata only. Raw error text
+is never saved for a later report; recognized errors use the catalog's title.
 
 For an AI harness, preview first:
 

@@ -15,17 +15,15 @@ import type { GuidanceLookupInput } from './error-guidance/types.js';
 import { getActiveProfile } from './profile.js';
 import { isSupportSensitiveKey, redactSupportText } from './support-redaction.js';
 
-/** Profile-scoped failure metadata; command arguments are excluded and diagnostic text is redacted and bounded. */
+/** Profile-scoped failure metadata; command arguments and raw diagnostic text are never retained. */
 export interface SupportErrorContext {
   readonly command: string;
   readonly exitCode: number;
   readonly errorCode?: string;
   readonly reasonCode?: string;
-  readonly message?: string;
   readonly recordedAt: string;
 }
 
-const MAX_MESSAGE_LENGTH = 4096;
 const MAX_STDERR_LENGTH = 32768;
 const MAX_CONTEXT_BYTES = 16384;
 /** Shared escalation wording for text failures and the suggestion field of JSON errors. */
@@ -54,7 +52,7 @@ export function getSupportContextPath(profile = getActiveProfile()): string {
   return join(homedir(), '.eai', 'support', `last-error-${profileHash}.json`);
 }
 
-/** Updates pending failure metadata in memory; only recognized catalog identities and bounded, redacted text are retained. */
+/** Match transient diagnostics to the catalog; retain only recognized error codes and reasons. */
 export function recordSupportError(input: GuidanceLookupInput): void {
   const message = typeof input.message === 'string'
     ? redactSupportText(input.message, sensitiveEnvironmentValues()).trim()
@@ -77,7 +75,6 @@ export function recordSupportError(input: GuidanceLookupInput): void {
   latestError = {
     ...latestError,
     ...(guidance ? { errorCode: guidance.code, reasonCode: guidance.reasonCode } : {}),
-    ...(message ? { message: message.slice(-MAX_MESSAGE_LENGTH) } : {}),
   };
 }
 
@@ -147,7 +144,7 @@ export function installSupportErrorTracking(): void {
     const text = typeof chunk === 'string' ? chunk : chunk instanceof Uint8Array
       ? Buffer.from(chunk).toString('utf8') : undefined;
     if (text && !shouldKeepPreviousError()) {
-      // Keep writes together so a bearer split across chunks is redacted as one value.
+      // Fragmented diagnostics must remain together for catalog matching, but never enter the cache.
       stderrText = `${stderrText}${text}`.slice(-MAX_STDERR_LENGTH);
       recordSupportError({ message: stderrText });
       if (stderrText.trim().startsWith('{')) {
@@ -185,7 +182,8 @@ export function installSupportErrorTracking(): void {
 }
 
 /**
- * Returns validated, redacted context for the active profile, or null when no cache exists.
+ * Returns validated failure metadata for the active profile, or null when no cache exists.
+ * Legacy diagnostic text is ignored because its project credentials may no longer be available for redaction.
  * Invalid or unreadable caches throw; reading never changes the saved failure.
  */
 export function readSupportContext(): SupportErrorContext | null {
@@ -213,8 +211,6 @@ export function readSupportContext(): SupportErrorContext | null {
       exitCode: payload.exitCode,
       recordedAt: new Date(payload.recordedAt).toISOString(),
       ...(guidance ? { errorCode: guidance.code, reasonCode: guidance.reasonCode } : {}),
-      ...(typeof payload.message === 'string'
-        ? { message: redactSupportText(payload.message, sensitiveEnvironmentValues()).slice(-MAX_MESSAGE_LENGTH) } : {}),
     };
   } catch (error) {
     if (asRecord(error)?.code === 'ENOENT') return null;

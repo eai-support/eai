@@ -1378,6 +1378,10 @@ Support URL. Missing/expired sessions and website 401 responses create no draft.
 Website errors return safe messages and exit 1. Draft requests have a 10-second
 timeout and never retry automatically.
 
+Previous failure context stores only command, exit code, recognized catalog code
+and reason, and timestamp. Raw diagnostic text is excluded, including from older
+caches. The optional error summary comes from the recognized catalog title.
+
 The default website is `https://www.enterpriseaigroup.com`. Private CLI profiles
 can set `websiteUrl` in their existing local configuration; `EAI_WEBSITE_URL` is
 an explicit runtime override. The value must be an HTTPS origin. HTTP is allowed

@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, test } from 'vitest';
+import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { findGuidanceByCodeOrReason } from '../../src/lib/error-guidance/catalog.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import {
   runSupportCli,
@@ -24,6 +27,7 @@ interface SupportOutput {
 
 const contexts: TestEnvironment[] = [];
 const servers: DraftServer[] = [];
+const supportContextModule = new URL('../../dist/lib/support-context.js', import.meta.url).href;
 
 async function environment(): Promise<TestEnvironment> {
   const context = await createTestEnvironment();
@@ -82,7 +86,7 @@ describe('eai support draft handoff', () => {
     });
     expect(Object.keys(request.body).sort()).toEqual([
       'appId', 'appName', 'category', 'cli', 'cliVersion', 'description',
-      'environment', 'os', 'service', 'source', 'summary', 'tenantId', 'tenantName', 'tool',
+      'environment', 'error', 'os', 'service', 'source', 'summary', 'tenantId', 'tenantName', 'tool',
     ].sort());
     expect(Object.keys(request.body.cli as Record<string, unknown>).sort()).toEqual([
       'command', 'exitCode', 'errorCode', 'reasonCode',
@@ -92,6 +96,7 @@ describe('eai support draft handoff', () => {
     expect(String(request.body.summary).length).toBeLessThanOrEqual(180);
     expect(String(request.body.description).length).toBeLessThanOrEqual(6000);
     expect(request.body).toEqual(output.bundle);
+    expect(request.body.error).toBe(findGuidanceByCodeOrReason('not_logged_in')!.title);
     expect(output.url).toBe(`${server.origin}/support#draft=${SUPPORT_DRAFT_ID}.${SUPPORT_DRAFT_TOKEN}`);
     const link = new URL(output.url!);
     expect(link.pathname).toBe('/support');
@@ -345,13 +350,89 @@ describe('eai support draft handoff', () => {
       command: 'eai types validate', exitCode: 1, errorCode: 'E001', reasonCode: 'not_in_eai_project',
     });
     expect(output.bundle?.occurredAt).toEqual(expect.any(String));
-    expect(output.bundle?.error).toEqual(expect.any(String));
+    expect(output.bundle?.error).toBe(findGuidanceByCodeOrReason('E001')!.title);
     const supportDirectory = join(home.dir, '.eai', 'support');
     const { readdir } = await import('node:fs/promises');
     const savedFiles = await readdir(supportDirectory);
     expect(savedFiles).toHaveLength(1);
     const saved = JSON.parse(await readFile(join(supportDirectory, savedFiles[0]), 'utf8'));
     expect(saved.command).toBe('eai types validate');
+    expect(saved).not.toHaveProperty('message');
+  });
+
+  test.each([
+    { cache: 'captured', recognized: true },
+    { cache: 'captured', recognized: false },
+    { cache: 'legacy', recognized: true },
+    { cache: 'legacy', recognized: false },
+  ].flatMap(context => [
+    { ...context, mode: 'JSON preview', format: 'json', send: false },
+    { ...context, mode: 'text preview', format: 'text', send: false },
+    { ...context, mode: 'POST', format: 'json', send: true },
+  ]))('excludes project A diagnostics from project B $mode with $cache cache and recognized identity $recognized', async ({ cache, recognized, format, send }) => {
+    const home = await environment();
+    const projectA = join(home.dir, 'project-a');
+    const projectB = join(home.dir, 'project-b');
+    await mkdir(projectA);
+    await mkdir(projectB);
+    const secret = 'opaque-project-a-credential-fixture';
+    await writeFile(join(projectA, 'eai.config.ts'), 'export default {};\n');
+    await writeFile(join(projectA, '.env.local'), `DATABASE_PASSWORD=${secret}\n`);
+    await writeFile(join(projectB, 'eai.config.ts'), 'export default {};\n');
+    await writeSupportSession(home.dir);
+    const profileHash = createHash('sha256').update('default').digest('hex').slice(0, 16);
+    const cachePath = join(home.dir, '.eai', 'support', `last-error-${profileHash}.json`);
+    const diagnostic = `${recognized ? 'Error code: E101\nReason: not_logged_in\n' : ''}Provider returned ${secret} while connecting.`;
+    if (cache === 'captured') {
+      const script = `
+        import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(supportContextModule)};
+        installSupportErrorTracking(); setSupportCommand('eai verify');
+        process.stderr.write(${JSON.stringify(diagnostic)}); process.exit(2);
+      `;
+      const failure = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+        cwd: projectA, env: { ...process.env, HOME: home.dir, USERPROFILE: home.dir, EAI_PROFILE: 'default' },
+        encoding: 'utf8', timeout: 10_000,
+      });
+      expect(failure.status).toBe(2);
+    } else {
+      await mkdir(join(home.dir, '.eai', 'support'), { recursive: true });
+      await writeFile(cachePath, JSON.stringify({
+        command: 'eai verify', exitCode: 2, recordedAt: 'Oct 9 2026', message: diagnostic,
+        ...(recognized ? { errorCode: 'E101', reasonCode: 'not_logged_in' } : {}),
+      }), { mode: 0o600 });
+    }
+    const saved = JSON.parse(await readFile(cachePath, 'utf8')) as Record<string, unknown>;
+    const server = await fixture();
+    const result = await runSupportCli(projectB, [
+      'support', '--format', format, '--no-open', ...(send ? ['--yes'] : []),
+    ], { HOME: home.dir, USERPROFILE: home.dir, EAI_WEBSITE_URL: server.origin });
+    expect(result.code).toBe(0);
+    expect(result.stdout + result.stderr).not.toContain(secret);
+    expect(result.stdout).not.toContain('Provider returned');
+    expect(server.requests).toHaveLength(send ? 1 : 0);
+    const bundle = format === 'json'
+      ? (JSON.parse(result.stdout) as SupportOutput).bundle!
+      : JSON.parse(result.stdout.split('Redacted support report (review before sending):\n')[1]
+        .split('\nShow this bundle to the person and ask for consent.')[0]) as Record<string, unknown>;
+    expect(bundle.cli).toEqual({
+      command: 'eai verify', exitCode: 2,
+      ...(recognized ? { errorCode: 'E101', reasonCode: 'not_logged_in' } : {}),
+    });
+    expect(bundle.occurredAt).toBe(new Date(String(saved.recordedAt)).toISOString());
+    if (recognized) expect(bundle.error).toBe(findGuidanceByCodeOrReason('E101')!.title);
+    else expect(bundle.error).toBeUndefined();
+    if (format === 'json') expect(JSON.parse(result.stdout)).toMatchObject({
+      ok: true, status: send ? 'created' : 'consent_required',
+    });
+    if (send) {
+      expect(server.requests[0].authorization).toBe(`Bearer ${SUPPORT_SESSION_TOKEN}`);
+      expect(server.requests[0].body).toEqual(bundle);
+      expect(JSON.stringify(server.requests[0].body)).not.toContain(secret);
+    }
+    if (cache === 'captured') {
+      expect(saved).not.toHaveProperty('message');
+      expect(JSON.stringify(saved)).not.toContain(secret);
+    }
   });
 
   test('rejects a website origin supplied by the project environment rather than the active user settings', async () => {

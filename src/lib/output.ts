@@ -190,6 +190,7 @@ export function blank(): void {
   console.log('');
 }
 
+/** Emits redacted JSON on stdout and captures recognized failure metadata for a later support report. */
 export function json(data: unknown): void {
   recordSupportJsonError(data);
   process.stdout.write(`${JSON.stringify(data, redactingJsonReplacer, 2)}\n`);

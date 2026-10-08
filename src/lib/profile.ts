@@ -20,6 +20,7 @@ import type { Command, OptionValues } from 'commander';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
+/** Saved endpoints and login settings; websiteUrl optionally selects the local CLI's support website origin. */
 export interface ProfileConfig {
   readonly publicApiUrl: string;
   readonly websiteUrl?: string;

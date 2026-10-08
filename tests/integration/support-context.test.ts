@@ -112,7 +112,49 @@ describe('support context from failing commands', () => {
     expect(JSON.stringify(await readContext())).not.toContain('fixture-raw-secret');
   });
 
-  test('credentials split over stderr writes are redacted before persistence', async () => {
+  test.each([true, false])('persists metadata only when opaque project diagnostics have recognized catalog identity %j', async (recognized) => {
+    const secret = 'opaque-project-a-credential-fixture';
+    await writeFile(join(environment.dir, 'eai.config.ts'), 'export default {};\n');
+    await writeFile(join(environment.dir, '.env.local'), `DATABASE_PASSWORD=${secret}\n`);
+    const diagnostic = `${recognized ? 'Error code: E101\nReason: not_logged_in\n' : ''}Provider returned ${secret} while connecting.`;
+    const script = `
+      import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(contextModule)};
+      installSupportErrorTracking(); setSupportCommand('eai verify');
+      process.stderr.write(${JSON.stringify(diagnostic)}); process.exit(1);
+    `;
+    const result = run(['--input-type=module', '-e', script]);
+    expect(result.status).toBe(1);
+    const saved = await readContext();
+    expect(saved).toMatchObject({ command: 'eai verify', exitCode: 1, recordedAt: expect.any(String) });
+    expect(Number.isFinite(Date.parse(String(saved.recordedAt)))).toBe(true);
+    expect(saved).not.toHaveProperty('message');
+    expect(JSON.stringify(saved)).not.toContain(secret);
+    expect(Object.keys(saved).sort()).toEqual((recognized
+      ? ['command', 'exitCode', 'errorCode', 'reasonCode', 'recordedAt']
+      : ['command', 'exitCode', 'recordedAt']).sort());
+    if (recognized) expect(saved).toMatchObject({ errorCode: 'E101', reasonCode: 'not_logged_in' });
+  });
+
+  test('ignores legacy cached diagnostic text while preserving normalized failure metadata', async () => {
+    const secret = 'opaque-project-a-legacy-credential-fixture';
+    await mkdir(join(environment.dir, '.eai', 'support'), { recursive: true });
+    await writeFile(contextPath(), JSON.stringify({
+      command: 'eai verify', exitCode: 2, errorCode: 'E101', reasonCode: 'not_logged_in',
+      recordedAt: 'Oct 9 2026', message: `Provider returned ${secret} while connecting.`,
+    }), { mode: 0o600 });
+    const result = run(['--input-type=module', '-e', `
+      import { readSupportContext } from ${JSON.stringify(contextModule)};
+      console.log(JSON.stringify(readSupportContext()));
+    `]);
+    expect(result.status).toBe(0);
+    expect(JSON.parse(String(result.stdout))).toEqual({
+      command: 'eai verify', exitCode: 2, errorCode: 'E101', reasonCode: 'not_logged_in',
+      recordedAt: new Date('Oct 9 2026').toISOString(),
+    });
+    expect(String(result.stdout)).not.toContain(secret);
+  });
+
+  test('fragmented credential diagnostics are excluded from persisted metadata', async () => {
     const script = `
       import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(contextModule)};
       installSupportErrorTracking(); setSupportCommand('eai provision entra');
@@ -128,7 +170,9 @@ describe('support context from failing commands', () => {
     const saved = JSON.stringify(await readContext());
     expect(saved).not.toContain('fixture-split-bearer-value');
     expect(saved).not.toContain('password-value');
-    expect(saved).toContain('[redacted]');
+    const context = await readContext();
+    expect(context).not.toHaveProperty('message');
+    expect(Object.keys(context).sort()).toEqual(['command', 'exitCode', 'recordedAt']);
   });
 
   test('fragmented structured stderr errors keep one parseable document with the support offer', async () => {
@@ -252,6 +296,7 @@ describe('support context from failing commands', () => {
       command: 'eai types validate', recordedAt: new Date('Oct 9 2026').toISOString(),
       errorCode: 'E001', reasonCode: 'not_in_eai_project',
     });
+    expect(JSON.parse(String(result.stdout))).not.toHaveProperty('message');
     expect(String(result.stdout)).not.toContain('fixture-not-in-context');
     expect(String(result.stdout)).not.toContain('fixture-stored-bearer');
   });
