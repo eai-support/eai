@@ -7,7 +7,7 @@
     "eai": "dist/index.js"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "node scripts/clean-build-output.cjs && tsc",
     "dev": "tsc --watch",
     "start": "node dist/index.js",
     "lint": "eslint src/",
