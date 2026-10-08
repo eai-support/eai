@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.1 |
+| Version | 3.19.2 |
 | Released | 2026-10-08 |
-| Last Material Change | Bundle Gofer v3.14.3 with the verified managed deployment source |
-| Source Commit | `5c2d3b195d8489e2f0e7a1b0e035e33080ae0204` |
+| Last Material Change | Pin corrected App Template v1.0.10 evidence producer |
+| Source Commit | `c3f8e973214b512c831b9347bd34e7340df3b7e9` |
 
 
 ## Install

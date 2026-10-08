@@ -63,4 +63,6 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.19.1** (2026-10-08): Bundle Gofer v3.14.3 with the verified managed deployment source.
+The current CLI release is **v3.19.2** (2026-10-08): Pin corrected App Template v1.0.10 evidence producer.
+
+
