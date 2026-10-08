@@ -744,22 +744,22 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '3af817f688d374b6260dcffcecb53c4bb94675ef' },
+      candidate: { commit: '12d327dd59a3e1f6680abbf9b5139708d34197ef' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: '3af817f688d374b6260dcffcecb53c4bb94675ef',
+        templateCommitSha: '12d327dd59a3e1f6680abbf9b5139708d34197ef',
         workflowSha256: 'sha256:e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb',
       },
       releaseGate: {
         status: 'released',
-        tag: 'v1.0.7',
-        commit: '3af817f688d374b6260dcffcecb53c4bb94675ef',
+        tag: 'v1.0.9',
+        commit: '12d327dd59a3e1f6680abbf9b5139708d34197ef',
       },
     });
     const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
     expect(linkedSources.appTemplate).toMatchObject({
-      version: 'v1.0.7',
-      commit: '3af817f688d374b6260dcffcecb53c4bb94675ef',
+      version: 'v1.0.9',
+      commit: '12d327dd59a3e1f6680abbf9b5139708d34197ef',
       packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
     });
     expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
