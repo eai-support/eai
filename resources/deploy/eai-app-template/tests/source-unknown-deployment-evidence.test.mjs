@@ -35,6 +35,8 @@ const generatedDigest =
   '77d4951b3e6852ead73cef8b9e8901e3de774f9aca70f71cc0c932c13903ff32';
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const runtimeAppKeyPattern = /^[a-z][a-z0-9-]{1,62}$/;
+const runtimeSafePathSegmentPattern =
+  /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/;
 const controlledRoutingProofs = new WeakMap();
 const managedReviewPath =
   '/api/platform/generated-apps/managed-review/workflow';
@@ -653,7 +655,10 @@ function validateGeneratedWorkflow(
   );
   assert.ok(
     boundedString(operation.operationId) &&
-      /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(operation.tenantId),
+      runtimeSafePathSegmentPattern.test(operation.operationId) &&
+      boundedString(operation.tenantId) &&
+      runtimeSafePathSegmentPattern.test(operation.tenantId),
+    'Generated operation and tenant IDs must match collector safe path grammar.',
   );
   let workflow = workflowBytes.toString('utf8');
   const branchMatch = /^      - ("[^\r\n]*")$/m.exec(workflow);
@@ -5576,6 +5581,64 @@ test('template context requires byte-identical canonical workflow', (t) => {
   const context = resolveDeploymentWorkflowContext(contextFixture(t));
   assert.equal(context.context, 'template');
 });
+
+test('generated operation and tenant ID grammar matches the collector admission boundary', () => {
+  assert.ok(
+    regularBytes(evidenceScript).toString('utf8').includes(
+      `const SAFE_PATH_SEGMENT = ${runtimeSafePathSegmentPattern.toString()};`,
+    ),
+  );
+});
+
+for (const field of ['operationId', 'tenantId']) {
+  for (const value of ['a', 'source-123', 'source:operation_1.2', 'f6b8f71d-ef47-afc1-58e0-504f1ae99950', 'a'.repeat(256)])
+    test(`generated ${field} accepts safe collector ID ${JSON.stringify(value)}`, (t) => {
+      const fixture = exportedFixture(
+        field === 'tenantId' ? { TARGET_TENANT_ID: value } : {},
+      );
+      fixture.operation[field] = value;
+      assert.equal(
+        resolveDeploymentWorkflowContext(
+          contextFixture(t, fixture.manifest, fixture.workflow, fixture.operation),
+        ).context,
+        'admin-portal-generated',
+      );
+    });
+
+  for (const value of [
+    '',
+    '../other',
+    'source/other',
+    'source?other',
+    'source#other',
+    'source\\other',
+    'source other',
+    'source\nother',
+    'source\n',
+    'source\r\n',
+    'source\0',
+    '-source',
+    'source-',
+    'source.',
+    'source:',
+    'source_',
+    'a'.repeat(257),
+    123,
+  ])
+    test(`generated ${field} rejects unsafe collector ID ${JSON.stringify(value)}`, (t) => {
+      const fixture = exportedFixture(
+        field === 'tenantId' ? { TARGET_TENANT_ID: value } : {},
+      );
+      fixture.operation[field] = value;
+      assert.throws(
+        () =>
+          resolveDeploymentWorkflowContext(
+            contextFixture(t, fixture.manifest, fixture.workflow, fixture.operation),
+          ),
+        /must match collector safe path grammar/,
+      );
+    });
+}
 
 test('repository workflow is validated against its actual declared context', () => {
   assert.ok(
