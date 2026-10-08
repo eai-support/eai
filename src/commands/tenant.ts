@@ -33,6 +33,7 @@ import {
 } from "../lib/tenant-hierarchy.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { formatSupportErrorBody } from "../lib/support-context.js";
 
 export {
   filterTenantAdminEntries,
@@ -727,9 +728,9 @@ tenantCommand
       if (!res.ok) {
         const body = await res.text();
         if (spinner) {
-          spinner.fail(`${res.status}: ${body}`);
+          spinner.fail(`${res.status}: ${formatSupportErrorBody(body)}`);
         } else {
-          process.stderr.write(`${body || res.statusText}\n`);
+          process.stderr.write(`${formatSupportErrorBody(body || res.statusText)}\n`);
         }
         process.exit(1);
       }

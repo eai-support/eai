@@ -1,10 +1,14 @@
-# CLAUDE.md
+---
+name: eai
+description: "Start or continue EAI delivery, and prepare support reports with explicit human consent."
+---
 
-See @AGENTS.md for project conventions, commands, and code style. {{workflow}}
+# EAI
 
-## Gofer Pipeline
-
-{{goferCommands}}
+Use this public entry point to start or continue EAI delivery.
+Read `AGENTS.md` for project conventions. Keep numbered Gofer stages internal.
+For app delivery, read and follow `.specify/commands/0_gofer_start.md`.
+For an unresolved EAI error or a request to "get help", use the support flow below.
 
 ## Support after an unresolved EAI error
 

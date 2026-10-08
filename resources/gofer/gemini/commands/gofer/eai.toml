@@ -1,0 +1,2 @@
+description = "Start or continue EAI delivery and prepare support reports for approval."
+prompt = "{{include: ./eai.md}}"

@@ -87,6 +87,8 @@ Commands:
   publicapi                    Call authorized PublicAPI V4 routes directly
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
+  support [options]            Review a redacted error report and hand it to the
+                               Support page with consent
   agent                        Show AI-agent discovery and recovery guidance
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
@@ -255,6 +257,36 @@ Commands:
   explain [options] <code-or-reason>  Explain why an error happens and what eai
                                       commands can recover it
   help [command]                      display help for command
+```
+
+## eai support --help
+
+```text
+Usage: eai support [options]
+
+Review a redacted error report and hand it to the Support page with consent
+
+Options:
+  --format <format>              Output format (text|json); JSON previews until
+                                 consent is given (default: "text")
+  --source <source>              Report source (eai-cli|harness)
+  --tool <name>                  AI harness name; selects harness source unless
+                                 --source is set
+  --tool-version <version>       AI harness version, when known
+  --command <command>            Failing command, with credentials omitted
+  --exit-code <code>             Failing command exit code
+  --error-code <code-or-reason>  Error code or reason from eai errors list
+  --description <text>           Optional report description, redacted locally
+  --yes                          Send only when the person has already
+                                 explicitly consented to this report (default:
+                                 false)
+  --no-open                      Print the Support link without opening the
+                                 browser
+  -h, --help                     display help for command
+
+Without --yes, JSON and noninteractive runs only preview the report.
+After the person approves the preview, rerun the same command with --yes.
+Only the draft id and one-time token appear in the link fragment.
 ```
 
 ## eai errors explain --help
@@ -4145,6 +4177,39 @@ When a command is run with `--format json`, errors are emitted as:
   }
 }
 ```
+
+## Support
+
+### `eai support`
+
+Review a locally redacted report and, after consent, create a temporary draft
+using the existing `eai login` session. The Support page link carries only the
+draft id and one-time token in its fragment. The page submits the final report.
+
+| Option | Behavior |
+| --- | --- |
+| `--format text\|json` | Text shows the report and prompts in a terminal. JSON previews until `--yes`. |
+| `--source eai-cli\|harness` | Entry source. Defaults to `harness` when `--tool` is supplied, otherwise `eai-cli`. |
+| `--tool <name>` | Harness name. |
+| `--tool-version <version>` | Harness version when known. |
+| `--command <command>` | Failing command override, locally redacted. |
+| `--exit-code <code>` | Signed 32-bit exit code override. |
+| `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
+| `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--yes` | Send only after the person has explicitly consented to the displayed report. |
+| `--no-open` | Print the link without opening a browser. JSON always prints without opening. |
+
+JSON results carry `status` (`consent_required`, `declined`, `signed_out`,
+`created`, or `failed`) and the redacted `bundle` on successful preparation.
+Created drafts add `url` and `expiresAt`; signed-out results include the plain
+Support URL. Missing/expired sessions and website 401 responses create no draft.
+Website errors return safe messages and exit 1. Draft requests have a 10-second
+timeout and never retry automatically.
+
+The default website is `https://www.enterpriseaigroup.com`. Private CLI profiles
+can set `websiteUrl` in their existing local configuration; `EAI_WEBSITE_URL` is
+an explicit runtime override. The value must be an HTTPS origin. HTTP is allowed
+only for loopback fixtures. Project `.env.local` cannot change the destination.
 
 ## Machine-Readable Output
 

@@ -72,6 +72,18 @@ describe("eai create onboarding helpers", () => {
       "Manage suppliers",
       "--package-profile",
       "external",
+      "--tool",
+      "codex",
+    ]);
+  });
+
+  test("forwards the selected harness into scripted init", () => {
+    expect(buildForwardedInitArgs("my-app", {
+      ...baseOptions,
+      skipPrompts: true,
+      tool: "claude",
+    })).toEqual([
+      "my-app", "--skip-prompts", "--no-splash", "--package-profile", "external", "--tool", "claude",
     ]);
   });
 

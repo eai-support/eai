@@ -1350,6 +1350,39 @@ When a command is run with `--format json`, errors are emitted as:
 }
 ```
 
+## Support
+
+### `eai support`
+
+Review a locally redacted report and, after consent, create a temporary draft
+using the existing `eai login` session. The Support page link carries only the
+draft id and one-time token in its fragment. The page submits the final report.
+
+| Option | Behavior |
+| --- | --- |
+| `--format text\|json` | Text shows the report and prompts in a terminal. JSON previews until `--yes`. |
+| `--source eai-cli\|harness` | Entry source. Defaults to `harness` when `--tool` is supplied, otherwise `eai-cli`. |
+| `--tool <name>` | Harness name. |
+| `--tool-version <version>` | Harness version when known. |
+| `--command <command>` | Failing command override, locally redacted. |
+| `--exit-code <code>` | Signed 32-bit exit code override. |
+| `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
+| `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--yes` | Send only after the person has explicitly consented to the displayed report. |
+| `--no-open` | Print the link without opening a browser. JSON always prints without opening. |
+
+JSON results carry `status` (`consent_required`, `declined`, `signed_out`,
+`created`, or `failed`) and the redacted `bundle` on successful preparation.
+Created drafts add `url` and `expiresAt`; signed-out results include the plain
+Support URL. Missing/expired sessions and website 401 responses create no draft.
+Website errors return safe messages and exit 1. Draft requests have a 10-second
+timeout and never retry automatically.
+
+The default website is `https://www.enterpriseaigroup.com`. Private CLI profiles
+can set `websiteUrl` in their existing local configuration; `EAI_WEBSITE_URL` is
+an explicit runtime override. The value must be an HTTPS origin. HTTP is allowed
+only for loopback fixtures. Project `.env.local` cannot change the destination.
+
 ## Machine-Readable Output
 
 Most data-returning commands that advertise `--format <format>` support

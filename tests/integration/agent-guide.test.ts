@@ -77,6 +77,27 @@ describe('agent guide', () => {
     );
   });
 
+  test('routes unresolved errors to a report preview before a consent-gated support draft', () => {
+    const guide = getAgentGuide();
+    const support = guide.recoveryLoop.find(step => step.title === 'Prepare support with consent');
+    expect(support?.commands).toEqual([
+      expect.objectContaining({
+        command: 'eai support --source harness --tool <current-tool> --format json',
+        mutates: false,
+      }),
+      expect.objectContaining({
+        command: 'eai support --source harness --tool <current-tool> --format json --yes --no-open',
+        mutates: true,
+        when: expect.stringContaining('person approved this exact bundle'),
+      }),
+    ]);
+    expect(support?.instruction).toContain('only the draft id and one-time token');
+    expect(support?.instruction).toContain('plain Support link');
+    expect(guide.operatingRules.join('\n')).toContain('ask the person for explicit consent');
+    expect(guide.operatingRules.join('\n')).toContain('Ask for fresh consent if the bundle changes');
+    expect(guide.stopConditions.join('\n')).toContain('create no draft until the current bundle is approved');
+  });
+
   test('catalog tells agents how to choose document workflow versus resource files', () => {
     const guide = getAgentGuide();
 
@@ -132,5 +153,11 @@ describe('agent guide', () => {
       ]),
     );
     expect(payload.stopConditions.length).toBeGreaterThan(0);
+    expect(payload.recoveryLoop).toContainEqual(expect.objectContaining({
+      title: 'Prepare support with consent',
+      commands: expect.arrayContaining([expect.objectContaining({
+        command: 'eai support --source harness --tool <current-tool> --format json', mutates: false,
+      })]),
+    }));
   });
 });

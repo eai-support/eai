@@ -18,6 +18,7 @@ import type { Command, OptionValues } from 'commander';
 
 export interface ProfileConfig {
   readonly publicApiUrl: string;
+  readonly websiteUrl?: string;
   readonly authTenantName: string;
   readonly authTenantId: string;
   readonly authClientId: string;

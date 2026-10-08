@@ -3,6 +3,7 @@
  */
 
 import chalk from 'chalk';
+import { recordSupportJsonError } from './support-context.js';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
@@ -190,6 +191,7 @@ export function blank(): void {
 }
 
 export function json(data: unknown): void {
+  recordSupportJsonError(data);
   process.stdout.write(`${JSON.stringify(data, redactingJsonReplacer, 2)}\n`);
 }
 

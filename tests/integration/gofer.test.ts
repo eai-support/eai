@@ -256,6 +256,27 @@ describe("eai gofer refresh", () => {
     );
   });
 
+  test("refreshes support guidance for existing projects while preserving project instructions", async () => {
+    const supportReference = join(env.dir, ".specify/references/platform/eai-support.md");
+    await rm(supportReference);
+    const skillPath = join(env.dir, ".agents/skills/0_gofer_start/SKILL.md");
+    const skill = await readFile(skillPath, "utf8");
+    await writeFile(skillPath, skill.replace(
+      /### Support after an unresolved EAI error\n[\s\S]*?(?=### EAI Preflight Checks)/,
+      "",
+    ));
+    await writeFile(join(env.dir, "CLAUDE.md"), "# Project notes\nKeep this custom instruction.\n");
+    await writeFile(join(env.dir, "AGENTS.md"), "# Agent notes\nKeep this custom instruction.\n");
+
+    const result = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(result);
+    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after they approve that bundle");
+    await expectFileContains(ctx, ".agents/skills/0_gofer_start/SKILL.md", "--yes --no-open");
+    await expectFileContains(ctx, ".grok/skills/eai/SKILL.md", 'say "get help"');
+    expect(await readFile(join(env.dir, "CLAUDE.md"), "utf8")).toBe("# Project notes\nKeep this custom instruction.\n");
+    expect(await readFile(join(env.dir, "AGENTS.md"), "utf8")).toBe("# Agent notes\nKeep this custom instruction.\n");
+  });
+
   test("detects local edits as conflicts and only overwrites them when forced", async () => {
     const seedResult = await runCommand(ctx, "eai gofer refresh");
     expectCommandSucceeded(seedResult);

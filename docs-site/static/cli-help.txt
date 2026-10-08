@@ -65,6 +65,8 @@ Commands:
   publicapi                    Call authorized PublicAPI V4 routes directly
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
+  support [options]            Review a redacted error report and hand it to the
+                               Support page with consent
   agent                        Show AI-agent discovery and recovery guidance
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
@@ -236,6 +238,37 @@ Commands:
   explain [options] <code-or-reason>  Explain why an error happens and what eai
                                       commands can recover it
   help [command]                      display help for command
+
+---
+
+eai support --help
+==================
+
+Usage: eai support [options]
+
+Review a redacted error report and hand it to the Support page with consent
+
+Options:
+  --format <format>              Output format (text|json); JSON previews until
+                                 consent is given (default: "text")
+  --source <source>              Report source (eai-cli|harness)
+  --tool <name>                  AI harness name; selects harness source unless
+                                 --source is set
+  --tool-version <version>       AI harness version, when known
+  --command <command>            Failing command, with credentials omitted
+  --exit-code <code>             Failing command exit code
+  --error-code <code-or-reason>  Error code or reason from eai errors list
+  --description <text>           Optional report description, redacted locally
+  --yes                          Send only when the person has already
+                                 explicitly consented to this report (default:
+                                 false)
+  --no-open                      Print the Support link without opening the
+                                 browser
+  -h, --help                     display help for command
+
+Without --yes, JSON and noninteractive runs only preview the report.
+After the person approves the preview, rerun the same command with --yes.
+Only the draft id and one-time token appear in the link fragment.
 
 ---
 

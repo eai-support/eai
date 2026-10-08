@@ -184,6 +184,74 @@ describe("eai init", () => {
     expect(getNpmExecutable("linux")).toBe("npm");
   });
 
+  test.each(["claude", "codex", "vscode", "grok", "antigravity"])(
+    "fresh init --tool %s includes support review, consent, and welcome instructions",
+    async (tool) => {
+      workingDirectoryIs(ctx, env.dir);
+      const consoleCapture = captureConsole();
+      const tenantCtxSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+        publicApiUrl: TEST_PUBLIC_API_URL,
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "profile-test-tenant",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-support",
+          displayName: "Support Fixture",
+          slug: "support-fixture",
+          domain: "support.example.test",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [],
+      });
+      const getTenantSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(
+        new Response(JSON.stringify({ id: "tenant-support", ultimateParentId: "tenant-support" }), { status: 200 }),
+      );
+      const createTenantAppSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(
+        new Response(JSON.stringify({ childTenant: null }), { status: 201 }),
+      );
+      const promptSpy = vi.spyOn(inquirer, "prompt").mockRejectedValue(new Error("Unexpected prompt during --skip-prompts"));
+
+      try {
+        await initCommand.parseAsync([
+          `support-${tool}`, "--skip-prompts", "--company-tenant", "tenant-support",
+          "--tool", tool, "--from", templateRepo, "--trust-template-scripts", "--no-install", "--no-splash",
+        ], { from: "user" });
+        const project = join(env.dir, `support-${tool}`);
+        for (const relativePath of [
+          "CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md",
+          ".agents/skills/eai/SKILL.md", ".system/skills/eai/SKILL.md",
+          ".claude/commands/eai.md", ".github/skills/eai/SKILL.md", ".github/prompts/eai.prompt.md",
+          ".agents/skills/0_gofer_start/SKILL.md", ".system/skills/0_gofer_start/SKILL.md",
+          ".claude/commands/0_gofer_start.md", ".grok/skills/eai/SKILL.md",
+          ".gemini/commands/gofer/eai.md", ".gemini/commands/gofer/0_gofer_start.md", ".github/skills/0-gofer-start/SKILL.md",
+          ".specify/references/platform/eai-support.md",
+        ]) {
+          const content = await readFile(join(project, relativePath), "utf8");
+          expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");
+          expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --format json");
+          expect(content, relativePath).toContain("Only after they approve that bundle");
+          expect(content, relativePath).toContain("--yes --no-open");
+          expect(content, relativePath).toContain("Never assume consent");
+          expect(content, relativePath).toContain('say "get help" or type `eai support`');
+          expect(content, relativePath).toContain("fragment carries only its id and token");
+        }
+        expect(promptSpy).not.toHaveBeenCalled();
+      } finally {
+        consoleCapture.restore();
+        tenantCtxSpy.mockRestore();
+        getTenantSpy.mockRestore();
+        createTenantAppSpy.mockRestore();
+        promptSpy.mockRestore();
+      }
+    },
+    30_000,
+  );
+
   test("uses cmd.exe for the Windows npm launcher", () => {
     expect(getNpmExecOptions("win32")).toEqual({ shell: true });
     expect(getNpmExecOptions("darwin")).toEqual({ shell: false });

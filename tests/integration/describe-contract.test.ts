@@ -59,6 +59,7 @@ const TOP_LEVEL_COMMANDS = [
   "errors",
   "agent",
   "start",
+  "support",
 ] as const;
 
 const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -396,7 +397,7 @@ describe("built CLI discovery and error contracts", () => {
       error: {
         code: "E305",
         message: expect.stringMatching(/unknown block|invalid input/i),
-        suggestion: expect.stringMatching(/check your input/i),
+        suggestion: expect.stringMatching(/check your input[\s\S]*Run eai support/i),
         exitCode: 1,
       },
     });
