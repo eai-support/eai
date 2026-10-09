@@ -1593,6 +1593,15 @@ async function provisionEntraInline(
       return false;
     }
 
+    // OAuth scope tokens cannot contain controls, whitespace, double quotes or backslashes.
+    if (result.scopes.length > 64 || result.scopes.join(" ").length > 16 * 1024
+      || result.scopes.some((scope) => scope.length > 2048 || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
+      throw new Error("Platform returned invalid sign-in scope metadata.");
+    }
+    const scopeEnv: Record<string, string> = result.scopes.length > 0
+      ? { ENTRA_SCOPES: JSON.stringify(result.scopes.join(" ")) }
+      : {};
+
     if (result.clientSecret) {
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
@@ -1600,6 +1609,7 @@ async function provisionEntraInline(
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
+        ...scopeEnv,
       });
       spinner.succeed(
         `Entra app registration ${result.existing ? "confirmed" : "created"}: ${chalk.dim(result.clientId)}`,
@@ -1616,6 +1626,7 @@ async function provisionEntraInline(
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
+        ...scopeEnv,
       });
       const hydratedSecret = await hydrateCloudSecret(targetDir, appName);
       spinner.succeed(

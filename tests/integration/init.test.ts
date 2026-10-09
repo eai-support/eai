@@ -10,6 +10,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import inquirer from "inquirer";
+import { parse as parseDotenv } from "dotenv";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
 import {
   describeAppCreationFailure,
@@ -26,6 +27,7 @@ import {
 } from "../../src/commands/init.js";
 import * as profile from "../../src/lib/profile.js";
 import * as auth from "../../src/lib/auth.js";
+import * as cloudEnv from "../../src/lib/cloud-env.js";
 import {
   getNpmExecOptions,
   getNpmExecutable,
@@ -177,6 +179,65 @@ describe("eai init", () => {
       delete process.env.BASE_URL_PUBLIC_API;
     } else {
       process.env.BASE_URL_PUBLIC_API = originalPublicApiUrl;
+    }
+  });
+
+  test.each([
+    { existing: false, malformed: false, scopes: ["openid", "profile", "email", "offline_access", "api://fixture-public/access_token"] },
+    { existing: true, malformed: false, scopes: ["openid", "profile", "email", "offline_access", "api://fixture-public/access_token"] },
+    { existing: false, malformed: false, scopes: [] },
+    { existing: true, malformed: false, scopes: [] },
+    { existing: false, malformed: false, scopes: ["openid", "fixture_scope#literal"] },
+    { existing: false, malformed: true, scopes: Array.from({ length: 65 }, () => "openid") },
+    { existing: true, malformed: true, scopes: Array.from({ length: 64 }, () => "x".repeat(300)) },
+    ...[false, true].flatMap(existing => ["openid\nAUTH_TRUST_HOST=false", "openid\rINJECTED_SCOPE=true", "openid profile", "openid\u0000", 'invalid"scope', "invalid\\scope", "x".repeat(2049)]
+      .map(scope => ({ existing, malformed: true, scopes: [scope] }))),
+  ])("inline Entra scopes preserve platform metadata and legacy scaffold %j", async ({ existing, malformed, scopes }) => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const consoleCapture = captureConsole();
+    const promptSpy = vi.spyOn(inquirer, "prompt")
+      .mockResolvedValueOnce({ name: "scope-app", displayName: "Scope App", description: "Scope fixture" })
+      .mockResolvedValueOnce({ useCurrentDirectory: false })
+      .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
+      .mockResolvedValueOnce({ includeChat: false })
+      .mockResolvedValueOnce({ includeDocs: false })
+      .mockResolvedValueOnce({ authProvider: "ciam" })
+      .mockResolvedValueOnce({ provision: true });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "fixture-access", expiresAt: Date.now() + 60_000, tenantId: "ciam-guid", tenantName: "profile-test", clientId: "fixture-cli" },
+      activeTenant: { id: "scope-tenant", displayName: "Scope Tenant", slug: "scope-tenant", domain: "scope.test", isActive: true, roles: ["tenant-admin"] },
+      memberships: [],
+    });
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(true);
+    const tokenSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({ accessToken: "fixture-access", expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid", tenantName: "profile-test", clientId: "fixture-cli" });
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const tenantGetSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({ id: "scope-tenant", ultimateParentId: "scope-tenant" })));
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({ childTenant: null }), { status: 201 }));
+    const provisionSpy = vi.spyOn(PlatformAPIClient.prototype, "provisionEntraApp").mockResolvedValue({
+      clientId: "fixture-app-client", clientSecret: existing ? undefined : "fixture-new-secret", appName: "scope-app", tenantId: "scope-tenant", existing,
+      scopes, redirectUris: [], environment: "dev", tenantAuthorization: { added: true, alreadyAuthorized: false, warning: null }, signinCompleteness: null,
+    });
+    const cloudSpy = vi.spyOn(cloudEnv, "pullCloudEnvValues").mockResolvedValue({ store: "fixture-store", patches: { ENTRA_CLIENT_SECRET: "fixture-preserved-credential" }, secretRefs: [] });
+    try {
+      await initCommand.parseAsync(["scope-app", "--from", templateRepo, "--trust-template-scripts", "--no-install", "--no-splash", "--tool", "claude"], { from: "user" });
+      expect(provisionSpy).toHaveBeenCalledOnce();
+      expect(provisionSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "scope-tenant", appName: "scope-app", idempotent: true }));
+      const local = parseDotenv(await readFile(join(env.dir, "scope-app", ".env.local"), "utf8"));
+      expect(local.ENTRA_SCOPES).toBe(!malformed && scopes.length > 0 ? scopes.join(" ") : "email offline_access openid profile");
+      expect(local.ENTRA_CLIENT_ID).toBe(malformed ? "" : "fixture-app-client");
+      expect(local.ENTRA_CLIENT_SECRET).toBe(malformed ? "" : existing ? "fixture-preserved-credential" : "fixture-new-secret");
+      expect(local).not.toHaveProperty("INJECTED_SCOPE");
+      expect(local.AUTH_TRUST_HOST).toBe("true");
+      if (malformed) expect(cloudSpy).not.toHaveBeenCalled();
+      expect(local.AUTH_URL).toBe("http://localhost:3000/scope-app/api/auth");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      consoleCapture.restore();
+      for (const spy of [promptSpy, tenantSpy, authSpy, tokenSpy, capabilitySpy, tenantGetSpy, createSpy, provisionSpy, cloudSpy]) spy.mockRestore();
     }
   });
 
