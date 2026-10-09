@@ -12,6 +12,20 @@ TENANT_NAME="e2e-local-${TIMESTAMP}-${RANDOM_SUFFIX}"
 TENANT_SLUG="$TENANT_NAME"
 TENANT_KEY="local-e2e"
 TENANT_ID=""
+PARENT_TENANT_ID="${EAI_E2E_PARENT_TENANT_ID:-}"
+if [[ -z "$PARENT_TENANT_ID" ]]; then
+  echo "EAI_E2E_PARENT_TENANT_ID is required; the local smoke never chooses an existing workspace implicitly." >&2
+  exit 1
+fi
+# This harness contains local Docker storage cleanup. Never run it against a
+# deployed environment; use the isolated full lifecycle harness for DEV/TEST.
+node - "$PUBLIC_API_URL" <<'NODE'
+const url = new URL(process.argv[2]);
+if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+  console.error('Local dedicated-tenant lifecycle requires an HTTP loopback PublicAPI.');
+  process.exit(1);
+}
+NODE
 PROJECT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/eai-local-e2e.XXXXXX")"
 PG_ID=""
 DOCDB_ID=""
@@ -114,26 +128,6 @@ asyncio.run(main())
 PY
 }
 
-cleanup_prior_test_tenants() {
-  local tenants_json
-  tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-  node -e '
-    const data = JSON.parse(process.argv[1]);
-    const parentId = process.argv[2];
-    const ids = (data.tenants || [])
-      .filter((tenant) => tenant.id !== parentId)
-      .map((tenant) => tenant.id);
-    process.stdout.write(ids.join("\n"));
-  ' "$tenants_json" "$PARENT_TENANT_ID" | while IFS= read -r tenant_id; do
-    [[ -z "$tenant_id" ]] && continue
-    node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$tenant_id" --force --format json >/dev/null 2>&1 || true
-    local tenant_compact="${tenant_id//-/}"
-    docker exec eai-postgres psql -U postgres -d resources -c "DELETE FROM tenant_connections WHERE tenant_id = '${tenant_id}';" >/dev/null 2>&1 || true
-    docker exec eai-postgres psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS tenant_${tenant_compact};" >/dev/null 2>&1 || true
-    docker exec eai-mongodb mongosh --quiet --eval "db.getSiblingDB('tenant-${tenant_compact}').dropDatabase();" >/dev/null 2>&1 || true
-  done
-}
-
 cleanup() {
   set +e
 
@@ -141,16 +135,16 @@ cleanup() {
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
 
     if [[ -n "$PG_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
     fi
     if [[ -n "$DOCDB_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
     fi
     if [[ -n "$BLOB_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
     fi
     if [[ -n "$SEARCH_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
     fi
 
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
@@ -181,7 +175,7 @@ retry_search() {
   local attempt=1
   while [[ $attempt -le 10 ]]; do
     local output
-    output="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources search "$query" --tenant-id "$TENANT_ID" --types TenantSearchNote --mode fulltext --format json)"
+    output="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources search "$query" --tenant-id "$TENANT_ID" --types tenant-search-note --mode fulltext --format json)"
     if node -e "const data = JSON.parse(process.argv[1]); process.exit((data.results || []).length > 0 ? 0 : 1);" "$output"; then
       printf '%s' "$output"
       return 0
@@ -294,48 +288,14 @@ create_test_tenant() {
       const afterData = JSON.parse(process.argv[2]);
       const slug = process.argv[3];
       const beforeIds = new Set((beforeData.tenants || []).map((tenant) => tenant.id));
-      const created =
-        (afterData.tenants || []).find((tenant) => tenant.slug === slug)
-        || (afterData.tenants || []).find((tenant) => !beforeIds.has(tenant.id));
+      const matches = (afterData.tenants || []).filter((tenant) => tenant.slug === slug && !beforeIds.has(tenant.id));
+      const created = matches.length === 1 ? matches[0] : undefined;
       if (!created) process.exit(1);
       process.stdout.write(JSON.stringify({ tenant: created }));
     ' "$before_tenants_json" "$after_tenants_json" "$TENANT_SLUG")"
     if [[ -n "$create_json" ]]; then
       printf '%s' "$create_json"
       return 0
-    fi
-  fi
-
-  if grep -Eq 'TENANT_QUOTA_EXCEEDED|CHILD_TENANT_LIMIT|quota|child-tenant limit' "$TENANT_CREATE_STDERR"; then
-    cleanup_prior_test_tenants
-    before_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-    set +e
-    node "$CLI_ROOT/dist/index.js" \
-      --profile "$PROFILE" \
-      tenant create \
-      --name "$TENANT_NAME" \
-      --slug "$TENANT_SLUG" \
-      --parent "$PARENT_TENANT_ID" \
-      --format text > /dev/null 2>>"$TENANT_CREATE_STDERR"
-    create_exit=$?
-    set -e
-    if [[ $create_exit -eq 0 ]]; then
-      after_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-      create_json="$(node -e '
-        const beforeData = JSON.parse(process.argv[1]);
-        const afterData = JSON.parse(process.argv[2]);
-        const slug = process.argv[3];
-        const beforeIds = new Set((beforeData.tenants || []).map((tenant) => tenant.id));
-        const created =
-          (afterData.tenants || []).find((tenant) => tenant.slug === slug)
-          || (afterData.tenants || []).find((tenant) => !beforeIds.has(tenant.id));
-        if (!created) process.exit(1);
-        process.stdout.write(JSON.stringify({ tenant: created }));
-      ' "$before_tenants_json" "$after_tenants_json" "$TENANT_SLUG")"
-      if [[ -n "$create_json" ]]; then
-        printf '%s' "$create_json"
-        return 0
-      fi
     fi
   fi
 
@@ -350,21 +310,22 @@ create_test_tenant() {
 
 cd "$CLI_ROOT"
 npm run build >/dev/null
+node --input-type=module - "$CLI_ROOT" "$PROFILE" "$PUBLIC_API_URL" <<'NODE'
+import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+const [root, name, expectedUrl] = process.argv.slice(2);
+const { captureProfileConfig } = await import(pathToFileURL(join(root, 'dist/lib/profile.js')).href);
+const config = captureProfileConfig(name);
+if (!config || config.publicApiUrl?.replace(/\/+$/, '') !== expectedUrl.replace(/\/+$/, '')) {
+  console.error('The selected local profile must match EAI_E2E_PUBLIC_API_URL before any Docker or tenant mutation.');
+  process.exit(1);
+}
+NODE
 ensure_local_search_key_loaded
-
-PARENT_TENANT_ID="${EAI_E2E_PARENT_TENANT_ID:-}"
-if [[ -z "$PARENT_TENANT_ID" ]]; then
-  TENANT_LIST_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-  PARENT_TENANT_ID="$(json_field "$TENANT_LIST_JSON" "data.tenants.find((tenant) => tenant.active)?.id ?? data.tenants[0]?.id")"
-fi
-
-if [[ -z "$PARENT_TENANT_ID" ]]; then
-  echo "Could not resolve a parent tenant for profile '$PROFILE'." >&2
-  exit 1
-fi
 
 mkdir -p "$PROJECT_DIR/src/eai.config"
 cat > "$PROJECT_DIR/.env.local" <<EOF
+EAI_PROFILE=$PROFILE
 BASE_URL_PUBLIC_API=$PUBLIC_API_URL
 NEXT_PUBLIC_APP_NAME=local-e2e
 EOF
@@ -374,6 +335,7 @@ export const objectTypes = {
   'local-e2e': [
     {
       name: 'TenantPgNote',
+      slug: 'tenant-pg-note',
       displayName: 'TenantPgNote',
       description: 'Local E2E PostgreSQL note',
       status: 'published',
@@ -397,6 +359,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantDocumentNote',
+      slug: 'tenant-document-note',
       displayName: 'TenantDocumentNote',
       description: 'Local E2E DocumentDB note',
       status: 'published',
@@ -420,6 +383,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantBlobNote',
+      slug: 'tenant-blob-note',
       displayName: 'TenantBlobNote',
       description: 'Local E2E Blob note',
       status: 'published',
@@ -442,6 +406,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantSearchNote',
+      slug: 'tenant-search-note',
       displayName: 'TenantSearchNote',
       description: 'Local E2E Search note',
       status: 'published',
@@ -494,43 +459,43 @@ for TYPE_NAME in TenantPgNote TenantDocumentNote TenantBlobNote TenantSearchNote
   assert_json "$SCHEMA_JSON" "(data.objectTypes || []).some((type) => type.name === '$TYPE_NAME')" "Missing published schema for $TYPE_NAME"
 done
 
-PG_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantPgNote --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note","status":"draft"}')"
+PG_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-pg-note --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note","status":"draft"}')"
 PG_ID="$(json_field "$PG_CREATE_JSON" "data.id")"
-PG_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --format json)"
+PG_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$PG_GET_JSON" "data.data.title === 'pg note'" "PostgreSQL read returned unexpected payload"
-PG_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note updated","status":"ready"}')"
+PG_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note updated","status":"ready"}')"
 assert_json "$PG_UPDATE_JSON" "data.data.title === 'pg note updated'" "PostgreSQL update returned unexpected payload"
 
-DOC_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantDocumentNote --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note","status":"draft"}')"
+DOC_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-document-note --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note","status":"draft"}')"
 DOCDB_ID="$(json_field "$DOC_CREATE_JSON" "data.id")"
-DOC_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json)"
+DOC_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$DOC_GET_JSON" "data.data.title === 'doc note'" "DocumentDB read returned unexpected payload"
-DOC_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note updated","status":"ready"}')"
+DOC_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note updated","status":"ready"}')"
 assert_json "$DOC_UPDATE_JSON" "data.data.title === 'doc note updated'" "DocumentDB update returned unexpected payload"
 
-BLOB_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantBlobNote --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note","status":"draft"}')"
+BLOB_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-blob-note --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note","status":"draft"}')"
 BLOB_ID="$(json_field "$BLOB_CREATE_JSON" "data.id")"
-BLOB_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --format json)"
+BLOB_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$BLOB_GET_JSON" "data.data.title === 'blob note'" "Blob read returned unexpected payload"
-BLOB_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note updated","status":"ready"}')"
+BLOB_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note updated","status":"ready"}')"
 assert_json "$BLOB_UPDATE_JSON" "data.data.title === 'blob note updated'" "Blob update returned unexpected payload"
 
-SEARCH_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantSearchNote --tenant-id "$TENANT_ID" --format json --data '{"title":"search note","status":"draft"}')"
+SEARCH_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-search-note --tenant-id "$TENANT_ID" --format json --data '{"title":"search note","status":"draft"}')"
 SEARCH_ID="$(json_field "$SEARCH_CREATE_JSON" "data.id")"
-SEARCH_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json)"
+SEARCH_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$SEARCH_GET_JSON" "data.data.title === 'search note'" "Search read returned unexpected payload"
 SEARCH_QUERY_JSON="$(retry_search "search note")"
 assert_json "$SEARCH_QUERY_JSON" "(data.results || []).some((result) => result.id === '$SEARCH_ID')" "Search query did not return the created document"
-SEARCH_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"search note updated","status":"ready"}')"
+SEARCH_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"search note updated","status":"ready"}')"
 assert_json "$SEARCH_UPDATE_JSON" "data.data.title === 'search note updated'" "Search update returned unexpected payload"
 
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
 PG_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
 DOCDB_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
 BLOB_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
 SEARCH_ID=""
 
 echo "Local dedicated tenant lifecycle E2E passed for tenant $TENANT_ID"
