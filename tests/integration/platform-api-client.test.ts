@@ -1516,6 +1516,27 @@ describe('PlatformAPIClient', () => {
     expect(result.existing).toBe(true)
   })
 
+  test.each([null, 'openid', {}, ['openid', 7], ['openid', ''], ['openid', '  ']])(
+    'rejects malformed present Entra scopes without dropping entries: %j', async scopes => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+        client_id: 'client-1', client_secret: '<fixture-client-secret>', scopes,
+      }), { status: 200 }))
+      const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+      await expect(client.provisionEntraApp({ tenantId: 'tenant-parent', appName: 'my-app', redirectUris: [] }))
+        .rejects.toMatchObject({ statusText: 'Invalid provisioning response' })
+      expect(fetchMock).toHaveBeenCalledOnce()
+    },
+  )
+
+  test.each([{}, { scopes: [] }, { scopes: ['openid', 'fixture_scope#literal'] }, { scopes: [' openid '] }])(
+    'preserves complete Entra scope arrays and absent legacy metadata: %j', async metadata => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ client_id: 'client-1', ...metadata }), { status: 200 }))
+      const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+      const result = await client.provisionEntraApp({ tenantId: 'tenant-parent', appName: 'my-app', redirectUris: [] })
+      expect(result.scopes).toEqual('scopes' in metadata ? metadata.scopes : [])
+    },
+  )
+
   test('deprovisions Entra app registrations through the public provision router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

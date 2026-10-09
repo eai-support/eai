@@ -6,7 +6,7 @@ import { Command } from 'commander';
 import chalk from 'chalk';
 import { chmod, lstat, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
+import { entraScopeEnvPatch, findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
 import {
   PlatformAPIClient,
@@ -549,10 +549,7 @@ Diagnostics:
     // requiring manual portal clicks. Older PublicAPI versions return empty
     // arrays; in that case we leave the keys untouched rather than writing
     // empty strings.
-    const optionalEnv: Record<string, string> = {};
-    if (result.scopes.length > 0) {
-      optionalEnv.ENTRA_SCOPES = result.scopes.join(' ');
-    }
+    const optionalEnv = entraScopeEnvPatch(result.scopes);
     optionalEnv.ENTRA_REDIRECT_URIS = redirectUris.join(' ');
     optionalEnv.AUTH_URL = authRuntime.authUrl;
     optionalEnv.NEXTAUTH_URL = authRuntime.siteUrl;
