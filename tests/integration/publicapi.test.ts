@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { Command } from 'commander';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
@@ -178,12 +178,19 @@ describe('eai publicapi', () => {
     },
   );
 
-  test('omitting explicit tenant context keeps the existing interactive tenant-admin resolver', async () => {
+  test.each(['direct', 'linked'])('omitting explicit tenant context keeps the interactive resolver for a %s project path', async mode => {
+    let projectPath = env.dir;
+    if (mode === 'linked') {
+      projectPath = join(env.dir, 'workspace-link');
+      await symlink(env.dir, projectPath, process.platform === 'win32' ? 'junction' : 'dir');
+      expect(projectPath).not.toBe(await realpath(projectPath));
+      process.chdir(projectPath);
+    }
     const resolver = vi.spyOn(tenantContext, 'resolveActiveTenantContext');
     vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
     await publicApiCommand.parseAsync(['get', '/v4/identity/me', '--format', 'json'], { from: 'user' });
-    expect(resolver).toHaveBeenCalledExactlyOnceWith({ projectRoot: env.dir, publicApiUrl: API_BASE, interactive: true });
+    expect(resolver).toHaveBeenCalledExactlyOnceWith({ projectRoot: await realpath(projectPath), publicApiUrl: API_BASE, interactive: true });
     expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ 'X-Tenant-Id': TENANT_ID });
   });
 
