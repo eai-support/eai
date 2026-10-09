@@ -1053,6 +1053,127 @@ describe('child workspace creation admission', () => {
 });
 
 describe('tenant delete hard purge contract', () => {
+  beforeEach(() => {
+    const command = tenantCommand.commands.find(item => item.name() === 'delete')!;
+    command.setOptionValue('parent', undefined);
+    command.setOptionValue('force', false);
+    command.setOptionValue('forceHardPurge', false);
+    command.setOptionValue('json', false);
+    command.setOptionValue('format', 'text');
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant', displayName: 'Parent Tenant', slug: 'parent-tenant',
+        isActive: true, roles: ['tenant-admin'],
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+  });
+
+  test('a parent tenant admin deletes only the requested leaf and receives its exact parent receipt', async () => {
+    const receipt = { id: 'tenant-1', parentTenantId: 'parent-tenant', status: 'hard_purged' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(tenantContext.resolveActiveTenantContext).toHaveBeenCalledWith({
+      projectRoot: undefined, publicApiUrl: 'https://api.example.test', interactive: true,
+      tenantId: 'parent-tenant',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children/tenant-1/delete');
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('X-Tenant-Id')).toBe('parent-tenant');
+    expect(JSON.parse(String(init.body))).toEqual({
+      forceHardPurge: true, confirmationTenantId: 'tenant-1', reason: 'eai tenant delete --force-hard-purge',
+    });
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: true, hardPurged: true, response: receipt }]);
+  });
+
+  test.each([
+    { status: 403, error: 'CHILD_RELATION_INVALID' },
+    { status: 409, error: 'CHILD_TENANTS_EXIST' },
+  ])('propagates a parent-authorized backend $status without reporting deletion', async ({ status, error }) => {
+    const body = JSON.stringify({ error });
+    const fetchMock = vi.fn(async () => new Response(body, { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: false, status, error: body }]);
+  });
+
+  test.each([
+    { id: 'another-child', parentTenantId: 'parent-tenant', status: 'hard_purged' },
+    { id: 'tenant-1', parentTenantId: 'another-parent', status: 'hard_purged' },
+    { id: 'tenant-1', status: 'hard_purged' },
+    { id: 'tenant-1', parentTenantId: 'parent-tenant', status: 'deleted' },
+  ])('rejects a parent delete receipt that does not prove the exact requested operation: %j', async receipt => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 })));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(parseJsonOutput(outputSpy)).toEqual([expect.objectContaining({
+      id: 'tenant-1', deleted: false, hardPurged: false, requestedHardPurge: true, response: receipt,
+    })]);
+  });
+
+  test.each([
+    ['delete', 'tenant-1', '--parent', 'tenant-1', '--force-hard-purge', '--format', 'json'],
+    ['delete', 'tenant-1', '--parent', 'parent-tenant', '--format', 'json'],
+  ])('rejects invalid parent flags before confirmation, membership lookup, or API calls: %j', async (...args) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const prompt = vi.spyOn(inquirer, 'prompt');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync(args, { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(parseJsonOutput(errorSpy)).toEqual([expect.objectContaining({ error: expect.objectContaining({ code: 'E305' }) })]);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(config.findProjectRoot).not.toHaveBeenCalled();
+    expect(tenantContext.resolvePublicApiUrl).not.toHaveBeenCalled();
+    expect(tenantContext.resolveActiveTenantContext).not.toHaveBeenCalled();
+    expect(auth.getAccessToken).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('preserves the existing no-parent system-admin hard purge route and receipt', async () => {
+    const receipt = { id: 'tenant-1', status: 'hard_purged' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.test/v4/platform/tenants/tenant-1/delete');
+    expect(JSON.parse(String(init.body))).toEqual({
+      forceHardPurge: true, confirmationTenantId: 'tenant-1', reason: 'eai tenant delete --force-hard-purge',
+    });
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: true, hardPurged: true, response: receipt }]);
+  });
+
   test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
     vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
     vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({

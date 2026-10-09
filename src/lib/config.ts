@@ -71,7 +71,7 @@ export interface ObjectTypeAction {
 
 export interface StorageIndexDefinition {
   name?: string;
-  fields: string[] | Array<Record<string, unknown>> | Record<string, unknown>;
+  fields: string[];
   unique?: boolean;
 }
 
@@ -105,7 +105,7 @@ export interface SearchStorageBinding {
   searchServiceAlias: string;
   indexName: string;
   sourceObjectTypes?: string[];
-  fieldMappings?: Record<string, unknown> | Array<Record<string, unknown>>;
+  fieldMappings?: Record<string, string>;
 }
 
 export interface StorageBindingDefinition {

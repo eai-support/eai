@@ -194,7 +194,7 @@ describe('eai deploy app --target eai', () => {
     original = { ...process.env };
     env = await createTestEnvironment();
     projectRoot = join(env.dir, 'project');
-    await mkdir(projectRoot);
+    await mkdir(projectRoot, { mode: 0o700 });
     setActiveProfile('default');
     process.chdir(projectRoot);
     process.env.HOME = env.dir;
@@ -299,10 +299,10 @@ describe('eai deploy app --target eai', () => {
     } else {
       await rm(authorityPath);
     }
-    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
-    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
-    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
-    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true, mode: 0o700 });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }', { mode: 0o644 });
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}', { mode: 0o644 });
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }), { mode: 0o644 });
     await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
     await exec('git', ['add', '.'], { cwd: projectRoot });
     await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
@@ -441,15 +441,17 @@ describe('eai deploy app --target eai', () => {
   test.each([
     ['--resume', false], ['--retry', false], ['--retry', true],
   ] as const)("%s observes or retries publication using the original upload authority (expired=%s)", async (recoveryFlag, ticketExpired) => {
-    await mkdir(join(projectRoot, "src/app"), { recursive: true });
-    await writeFile(join(projectRoot, "eai.runtime.json"), "{}");
+    await mkdir(join(projectRoot, "src/app"), { recursive: true, mode: 0o700 });
+    await writeFile(join(projectRoot, "eai.runtime.json"), "{}", { mode: 0o644 });
     await writeFile(
       join(projectRoot, "src/app/page.tsx"),
       'export default function Page() { return "retry"; }',
+      { mode: 0o644 },
     );
     await writeFile(
       join(projectRoot, ".eai-manifest.json"),
       JSON.stringify({ template: { commit: "a".repeat(40) } }),
+      { mode: 0o644 },
     );
     await exec("git", ["init", "-b", "main"], { cwd: projectRoot });
     await exec("git", ["add", "."], { cwd: projectRoot });
@@ -856,9 +858,9 @@ describe('eai deploy app --target eai', () => {
 
   test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'uncertain-dispatch', 'lost-response'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
     const targetTenantId = bootstrap === 'cross-tenant' ? 'runtime-child' : TENANT_ID;
-    await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true });
-    await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
-    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true, mode: 0o700 });
+    await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n', { mode: 0o644 });
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n', { mode: 0o644 });
     if (bootstrap !== 'install-commit-retry') await installCanonicalManagedDeployFiles(projectRoot);
     await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
     await exec('git', ['config', 'user.name', 'EAI Test'], { cwd: projectRoot });
@@ -892,7 +894,7 @@ describe('eai deploy app --target eai', () => {
 
     const binDir = join(env.dir, 'bin');
     const ghLog = join(env.dir, 'gh.log');
-    await mkdir(binDir);
+    await mkdir(binDir, { mode: 0o700 });
     const ghPath = join(binDir, 'gh');
     await writeFile(ghPath, `#!/bin/sh
 printf '%s\\n' "$*" >> "$FAKE_GH_LOG"
@@ -1479,10 +1481,10 @@ fi
     const authorityPath = managedDeployStatePath(operationId);
     const originalAuthority = await readFile(authorityPath, 'utf8');
     if (authorityState === 'missing') await rm(authorityPath);
-    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
-    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }');
-    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
-    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true, mode: 0o700 });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "local source"; }', { mode: 0o644 });
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}', { mode: 0o644 });
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }), { mode: 0o644 });
     await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
     await exec('git', ['add', '.'], { cwd: projectRoot });
     await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
@@ -2021,8 +2023,8 @@ fi
           { name: 'readiness', method: 'GET', path: '/api/eai/readiness', expectedStatus: 200, category: 'app_code_runtime_error', headers: { authorization: 'Bearer ${EAI_READINESS_PROBE_TOKEN}' }, requiresSecret: 'EAI_READINESS_PROBE_TOKEN' },
         ],
       },
-    }, null, 2));
-    await writeFile(join(projectRoot, '.env.example'), 'TENANT_KEYS=template\nTENANT_TEMPLATE_ID=<tenant-id>\nWORKFLOW_TEMPLATE_ID=<workflow-id>\n');
+    }, null, 2), { mode: 0o644 });
+    await writeFile(join(projectRoot, '.env.example'), 'TENANT_KEYS=template\nTENANT_TEMPLATE_ID=<tenant-id>\nWORKFLOW_TEMPLATE_ID=<workflow-id>\n', { mode: 0o644 });
     process.env.EAI_READINESS_PROBE_TOKEN = 'doctor-secret-value';
     let replacementRoot = '';
     let displacedRoot = '';
@@ -2093,7 +2095,7 @@ fi
 
     replacementRoot = join(env.dir, 'replacement-project');
     displacedRoot = join(env.dir, 'project-original');
-    await mkdir(replacementRoot);
+    await mkdir(replacementRoot, { mode: 0o700 });
     replaceRootOnProbe = true;
     output.mockClear(); fetchMock.mockClear();
     await deployCommand.parseAsync([

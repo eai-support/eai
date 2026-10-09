@@ -14,6 +14,8 @@ import {
 import { requireManagedPublicApiUrl } from './managed-public-api.js';
 import { captureProfileConfig, getActiveProfile, getProfileCaptureGeneration } from './profile.js';
 import { toObjectTypeSlug } from './utils.js';
+import { isCanonicalObjectTypeSlug } from './object-type-identifiers.js';
+import { safePlatformDiagnostics, type SafeRotationFailure } from './platform-diagnostics.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 /** Sanitized authority from the exact bearer and gateway used by an opted-in init request. */
@@ -76,6 +78,24 @@ export function probePublicApiReachability(baseUrl: string, timeoutMs: number): 
     signal: AbortSignal.timeout(timeoutMs),
     ...(authorized ? { redirect: 'error' as const } : {}),
   });
+}
+
+/** Stable public error code for index apply, rejected before authentication or network dispatch. */
+export const RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE = 'RESOURCE_INDEX_APPLY_UNSUPPORTED';
+/** Product guidance for unsupported index application and the available read-only planning command. */
+export const RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE =
+  'Resource index apply is unavailable through PublicAPI. Use eai resources indexes-plan --object-type <slug...> to preview changes. Applying changes requires a supported platform operator workflow.';
+
+/** Require a bounded exact published selection; never derive or rename stored slugs. */
+export function validateResourceIndexObjectTypes(objectTypes: unknown): string[] {
+  if (!Array.isArray(objectTypes) || objectTypes.length < 1 || objectTypes.length > 1000) {
+    throw new Error('Index planning requires 1 to 1,000 explicit published Object Type slugs (--object-type <slug...>).');
+  }
+  if (objectTypes.some(item => typeof item !== 'string' || item.length > 255
+    || item !== item.trim() || !isCanonicalObjectTypeSlug(item))) {
+    throw new Error('Index planning accepts only exact non-reserved lowercase kebab-case Object Type slugs of 1 to 255 characters.');
+  }
+  return [...objectTypes] as string[];
 }
 
 const PUBLIC_API_V4_PATH_PREFIXES = [
@@ -484,6 +504,8 @@ export interface DeprovisionEntraAppResult {
   tenantDeauthorization: TenantDeauthorizationSummary;
   appRegistrationFound: boolean;
   appRegistrationDeleted: boolean;
+  appRegistrationAlreadyAbsent: boolean;
+  appRegistrationAbsenceVerified: boolean;
 }
 
 /** Safe API error summary; validation and known child-create errors omit raw response bodies. */
@@ -646,6 +668,8 @@ export interface PlatformAPIRequestErrorOptions {
   serverCode?: string;
   requestId?: string;
   rawBody?: string;
+  supportReference?: string;
+  rotationFailure?: SafeRotationFailure;
 }
 
 function formatApiRequestErrorMessage(options: PlatformAPIRequestErrorOptions): string {
@@ -660,6 +684,8 @@ export class PlatformAPIRequestError extends Error {
   readonly serverCode?: string;
   readonly requestId?: string;
   readonly rawBody?: string;
+  readonly supportReference?: string;
+  readonly rotationFailure?: SafeRotationFailure;
 
   constructor(options: PlatformAPIRequestErrorOptions) {
     super(formatApiRequestErrorMessage(options));
@@ -671,6 +697,8 @@ export class PlatformAPIRequestError extends Error {
     this.serverCode = options.serverCode;
     this.requestId = options.requestId;
     this.rawBody = options.rawBody;
+    this.supportReference = options.supportReference;
+    this.rotationFailure = options.rotationFailure;
   }
 }
 
@@ -921,6 +949,14 @@ function readStringField(body: Record<string, unknown>, camelKey: string, snakeK
   return typeof value === 'string' && value.trim() ? value : null;
 }
 
+function readEntraReceiptField(body: Record<string, unknown>, camelKey: string, snakeKey: string): unknown {
+  const camel = body[camelKey];
+  const snake = body[snakeKey];
+  // An ambiguous successful response cannot authorize local credential cleanup.
+  if (camel !== undefined && snake !== undefined && camel !== snake) return undefined;
+  return camel ?? snake;
+}
+
 function readWorkflowStatus(value: unknown): RuntimeWorkflowStatus {
   if (value === 'upgrade-required' || value === 'paid-upgrade-required') {
     return 'paid_upgrade_required';
@@ -1067,12 +1103,13 @@ export class PlatformAPIClient {
     params?: Record<string, unknown>,
     initAuthority?: InitRequestAuthorityObserver,
     initRequestCeilingMs?: number,
+    requestTimeoutMs?: number,
   ): Promise<Response> {
     const signal = initAuthority
       ? (initRequestCeilingMs === undefined
         ? this.managedRequestSignal()
         : this.boundedManagedRequestSignal(initRequestCeilingMs))
-      : undefined;
+      : requestTimeoutMs === undefined ? undefined : this.managedRequestSignal(requestTimeoutMs);
     const headers = signal ? await awaitManagedRequestDeadline(signal, this.initReceiptHeaders(initAuthority, signal))
       : await this.headers();
     signal?.throwIfAborted();
@@ -1331,6 +1368,8 @@ export class PlatformAPIClient {
     name?: string;
     limit?: number;
     sort?: string;
+    page?: number;
+    timeoutMs?: number;
   }): Promise<Response> {
     const filters: Record<string, string> = {
       tenant: this.tenantId,
@@ -1346,7 +1385,11 @@ export class PlatformAPIClient {
       buildPayloadEqualsParams(filters, {
         limit: Math.min(options?.limit ?? 100, 100),
         sort: options?.sort ?? 'name',
+        ...(options?.page === undefined ? {} : { page: options.page }),
       }),
+      undefined,
+      undefined,
+      options?.timeoutMs,
     );
   }
 
@@ -1455,16 +1498,15 @@ export class PlatformAPIClient {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
       'POST',
-      { objectTypes, apply: false, dryRun: true },
+      { objectTypes: validateResourceIndexObjectTypes(objectTypes) },
     );
   }
 
-  async applyResourceIndexes(objectTypes?: string[]): Promise<Response> {
-    return this.publicRequest(
-      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/resourceapi/index-plan`,
-      'POST',
-      { objectTypes, apply: true, dryRun: false },
-    );
+  /** PublicAPI exposes dry-run planning only; do not turn apply into a successful plan. */
+  async applyResourceIndexes(_objectTypes?: string[]): Promise<Response> {
+    throw Object.assign(new Error(RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE), {
+      code: RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
+    });
   }
 
   async refreshResourceCache(objectTypes: string[] | undefined, reason: string): Promise<Response> {
@@ -1852,10 +1894,28 @@ export class PlatformAPIClient {
     );
   }
 
-  async createAppProvisioningJob(verticalKey: string): Promise<Response> {
+  async createAppProvisioningJob(verticalKey: string, targetTenantId?: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
       'POST',
+      targetTenantId ? { targetTenantId } : undefined,
+      undefined, undefined, undefined, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+    );
+  }
+
+  /** Read the exact persisted job while retaining its company and runtime binding. */
+  async getAppProvisioningJob(
+    verticalKey: string,
+    jobId: string,
+    targetTenantId?: string,
+    timeoutMs = MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs/${encodeURIComponent(jobId)}`,
+      'GET',
+      undefined,
+      targetTenantId ? { targetTenantId } : undefined,
+      undefined, undefined, timeoutMs,
     );
   }
 
@@ -2053,8 +2113,20 @@ export class PlatformAPIClient {
 
   async deleteTenant(
     tenantId: string,
-    options: { forceHardPurge?: boolean; reason?: string } = {},
+    options: { forceHardPurge?: boolean; reason?: string; parentTenantId?: string } = {},
   ): Promise<Response> {
+    const parentTenantId = options.parentTenantId;
+    if (parentTenantId !== undefined) {
+      if (!parentTenantId || parentTenantId.trim() !== parentTenantId || parentTenantId === tenantId) {
+        throw new Error('Parent-authorized deletion requires a distinct, nonempty parent workspace ID.');
+      }
+      if (!options.forceHardPurge) {
+        throw new Error('Parent-authorized deletion requires forceHardPurge.');
+      }
+      if (parentTenantId === 'system' || this.tenantId !== parentTenantId) {
+        throw new Error('Parent-authorized deletion requires the API client workspace context to match the parent.');
+      }
+    }
     const body = options.forceHardPurge
       ? {
           forceHardPurge: true,
@@ -2063,7 +2135,9 @@ export class PlatformAPIClient {
         }
       : undefined;
     return this.publicRequest(
-      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`,
+      parentTenantId === undefined
+        ? `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/delete`
+        : `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(parentTenantId)}/children/${encodeURIComponent(tenantId)}/delete`,
       'POST',
       body,
     );
@@ -2344,26 +2418,36 @@ export class PlatformAPIClient {
 
     if (!response.ok) {
       const context = await extractServerErrorContext(response);
+      let payload: unknown;
+      try { payload = JSON.parse(context.rawBody) as unknown; } catch { payload = undefined; }
+      const diagnostics = safePlatformDiagnostics(response.status, payload, response.headers);
       throw new PlatformAPIRequestError({
         operation: 'Entra app secret rotation',
         status: response.status,
         statusText: response.statusText,
         ...context,
+        serverCode: diagnostics.code,
+        requestId: diagnostics.requestId,
+        supportReference: diagnostics.supportReference,
+        rotationFailure: diagnostics.rotationFailure,
       });
     }
 
-    const data = await response.json() as Record<string, unknown>;
+    const invalidRotation = (): PlatformAPIRequestError => new PlatformAPIRequestError({
+      operation: 'Entra app secret rotation', status: response.status, statusText: 'Invalid secret rotation response',
+      serverCode: 'ENTRA_ROTATION_FAILED', rotationFailure: { reason: 'outcome_unknown', outcome: 'unknown', retryable: false },
+    });
+    let rawData: unknown;
+    try { rawData = await response.json(); } catch { throw invalidRotation(); }
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) throw invalidRotation();
+    const data = rawData as Record<string, unknown>;
     const clientId = readStringField(data, 'clientId', 'client_id');
     const clientSecret = readStringField(data, 'clientSecret', 'client_secret');
     const tenantId = readStringField(data, 'tenantId', 'tenant_id');
     const appName = readStringField(data, 'appName', 'app_name');
     if (!clientId || !clientSecret || clientId !== request.clientId || tenantId !== request.tenantId
       || (request.appName !== undefined && appName !== request.appName)) {
-      throw new PlatformAPIRequestError({
-        operation: 'Entra app secret rotation',
-        status: response.status,
-        statusText: 'Invalid secret rotation response',
-      });
+      throw invalidRotation();
     }
 
     return {
@@ -2402,30 +2486,46 @@ export class PlatformAPIClient {
       });
     }
 
-    const data = await response.json() as Record<string, unknown>;
-    const clientId = readStringField(data, 'clientId', 'client_id');
-    const tenantId = readStringField(data, 'tenantId', 'tenant_id');
-    if (!clientId || !tenantId) {
-      throw new PlatformAPIRequestError({
-        operation: 'Entra app deprovisioning',
-        status: response.status,
-        statusText: 'Invalid deprovision response',
-      });
+    const invalidResponse = (): PlatformAPIRequestError => new PlatformAPIRequestError({
+      operation: 'Entra app deprovisioning',
+      status: response.status,
+      statusText: 'Invalid deprovision response',
+    });
+    let rawData: unknown;
+    try { rawData = await response.json(); } catch { throw invalidResponse(); }
+    if (!rawData || typeof rawData !== 'object' || Array.isArray(rawData)) throw invalidResponse();
+    const data = rawData as Record<string, unknown>;
+    const clientId = readEntraReceiptField(data, 'clientId', 'client_id');
+    const tenantId = readEntraReceiptField(data, 'tenantId', 'tenant_id');
+    const authorization = readEntraReceiptField(data, 'tenantDeauthorization', 'tenant_deauthorization');
+    if (!authorization || typeof authorization !== 'object' || Array.isArray(authorization)) throw invalidResponse();
+    const summary = authorization as Record<string, unknown>;
+    const removed = summary.removed;
+    const alreadyAbsent = readEntraReceiptField(summary, 'alreadyAbsent', 'already_absent');
+    const appRegistrationFound = readEntraReceiptField(data, 'appRegistrationFound', 'app_registration_found');
+    const appRegistrationDeleted = readEntraReceiptField(data, 'appRegistrationDeleted', 'app_registration_deleted');
+    const appRegistrationAlreadyAbsent = readEntraReceiptField(data, 'appRegistrationAlreadyAbsent', 'app_registration_already_absent');
+    const appRegistrationAbsenceVerified = readEntraReceiptField(data, 'appRegistrationAbsenceVerified', 'app_registration_absence_verified');
+    const deleteRegistration = request.deleteRegistration ?? true;
+    if (clientId !== request.clientId || tenantId !== request.tenantId
+      || typeof removed !== 'boolean' || typeof alreadyAbsent !== 'boolean' || removed === alreadyAbsent
+      || typeof appRegistrationFound !== 'boolean' || typeof appRegistrationDeleted !== 'boolean'
+      || typeof appRegistrationAlreadyAbsent !== 'boolean' || typeof appRegistrationAbsenceVerified !== 'boolean'
+      || (deleteRegistration
+        ? !appRegistrationAbsenceVerified || appRegistrationDeleted === appRegistrationAlreadyAbsent
+          || (appRegistrationDeleted && !appRegistrationFound)
+        : appRegistrationDeleted || appRegistrationAlreadyAbsent || appRegistrationAbsenceVerified)) {
+      throw invalidResponse();
     }
-
-    const tenantDeauthorizationRaw = (
-      data.tenantDeauthorization ?? data.tenant_deauthorization
-    ) as Record<string, unknown> | undefined;
 
     return {
       clientId,
       tenantId,
-      tenantDeauthorization: {
-        removed: Boolean(tenantDeauthorizationRaw?.removed),
-        alreadyAbsent: Boolean(tenantDeauthorizationRaw?.alreadyAbsent ?? tenantDeauthorizationRaw?.already_absent),
-      },
-      appRegistrationFound: Boolean(data.appRegistrationFound ?? data.app_registration_found),
-      appRegistrationDeleted: Boolean(data.appRegistrationDeleted ?? data.app_registration_deleted),
+      tenantDeauthorization: { removed, alreadyAbsent },
+      appRegistrationFound,
+      appRegistrationDeleted,
+      appRegistrationAlreadyAbsent,
+      appRegistrationAbsenceVerified,
     };
   }
 }

@@ -5,7 +5,12 @@
 import { Command } from 'commander';
 import type { Ora } from 'ora';
 import chalk from 'chalk';
-import { PlatformAPIClient } from '../lib/api.js';
+import {
+  PlatformAPIClient,
+  RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
+  RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE,
+  validateResourceIndexObjectTypes,
+} from '../lib/api.js';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
@@ -1227,7 +1232,8 @@ resourcesCommand
           ...payload,
           rawSqlAllowed: false,
           tenantAdminOperations: ['read_status', 'plan_index_change'],
-          systemAdminOperations: ['apply_index_change', 'force_cache_refresh'],
+          systemAdminOperations: ['force_cache_refresh'],
+          unsupportedOperations: ['apply_index_change'],
         });
         return;
       }
@@ -1235,7 +1241,8 @@ resourcesCommand
       const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
       succeedCommand(spinner, `Resource schema ${state} — ${count} Object Types visible`);
       out.info('Workspace admin access (role ID tenant-admin): read status and request an index plan.');
-      out.info('Platform-admin only: apply index changes and force cache refresh.');
+      out.info('Platform-admin only: force cache refresh.');
+      out.info('Index apply: unavailable through PublicAPI.');
       out.info('Raw SQL: disabled.');
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -1247,11 +1254,16 @@ resourcesCommand
   .command('indexes-plan')
   .description('Plan validated resource storage/index changes without applying them')
   .option('--tenant-id <id>', 'Run against a specific workspace')
-  .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
+  .requiredOption('--object-type <slug...>', 'Exact published Object Type slugs to plan (1–1,000)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     options.format = normalizeFormat(options);
+    try {
+      options.objectType = validateResourceIndexObjectTypes(options.objectType);
+    } catch (err) {
+      exitWithError(ErrorCode.E305, { details: err instanceof Error ? err.message : String(err) }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const spinner = makeSpinner(options.format, 'Planning resource indexes...');
     const response = await ctx.client.planResourceIndexes(options.objectType);
     if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
@@ -1262,23 +1274,26 @@ resourcesCommand
 
 resourcesCommand
   .command('indexes-apply')
-  .description('Apply validated resource storage/index changes')
+  .description('Unavailable: resource index apply is not exposed by PublicAPI')
   .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--confirm', 'Confirm the workspace apply', false)
   .action(async (options) => {
     options.format = normalizeFormat(options);
-    if (!options.confirm) {
-      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    if (options.format === 'json') {
+      console.error(JSON.stringify({
+        status: 'unsupported',
+        error: {
+          code: RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
+          message: RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE,
+          exitCode: 1,
+        },
+      }, null, 2));
+    } else {
+      out.error(RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE);
     }
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const spinner = makeSpinner(options.format, 'Applying resource indexes...');
-    const response = await ctx.client.applyResourceIndexes(options.objectType);
-    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
-    const payload = await response.json();
-    if (options.format === 'json') { out.json(payload); return; }
-    succeedCommand(spinner, 'Resource index apply completed.');
+    process.exit(1);
   });
 
 resourcesCommand
@@ -1331,15 +1346,27 @@ resourcesCommand
         results: Array<{ objectType: string; backend: string; status: string; actions?: string[] }>;
       };
 
+      if (!Array.isArray(payload.results) || payload.results.some(result =>
+        !result || typeof result.objectType !== 'string' || typeof result.backend !== 'string'
+        || typeof result.status !== 'string')) {
+        throw new Error('Storage schema sync returned an invalid results contract.');
+      }
+      const failedResults = payload.results.filter(result => result.status === 'failed');
+
       if (options.format === 'json') {
         out.json(payload);
       } else {
-        succeedCommand(spinner, `${payload.results.length} storage binding${payload.results.length === 1 ? '' : 's'} processed`);
+        if (failedResults.length > 0) {
+          failCommand(spinner, `${failedResults.length} storage binding${failedResults.length === 1 ? '' : 's'} failed to sync`);
+        } else {
+          succeedCommand(spinner, `${payload.results.length} storage binding${payload.results.length === 1 ? '' : 's'} processed`);
+        }
         for (const result of payload.results) {
           const actions = result.actions?.length ? chalk.dim(` — ${result.actions.join(', ')}`) : '';
           out.info(`${chalk.cyan(result.objectType)} [${result.backend}] ${result.status}${actions}`);
         }
       }
+      if (failedResults.length > 0) process.exit(1);
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);

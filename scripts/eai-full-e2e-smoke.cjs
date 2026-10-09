@@ -23,7 +23,7 @@ const TRACEABILITY_BASE = [
   ['eai types validate', 'read', 'live', 'Validates local Object Types before publishing.'],
   ['eai types diff', 'read', 'live', 'Compares local and remote Object Types after seed.'],
   ['eai types pull', 'read', 'live', 'Downloads remote Object Types into the disposable workspace.'],
-  ['eai types define', 'create', 'help', 'Interactive builder is coming soon; help/contract only until it has a non-interactive path.'],
+  ['eai types define', 'create', 'unsupported', 'Explicit unsupported error is covered by owning CLI tests; it exits nonzero before authentication or network access.'],
   ['eai workspace storage list', 'read', 'live', 'Lists published storage bindings for the test workspace.'],
   ['eai workspace storage verify', 'read', 'live', 'Verifies workspace storage readiness after sync.'],
   ['eai workspace list', 'read', 'live', 'Resolves the dedicated parent test workspace.'],
@@ -169,6 +169,7 @@ const SMOKE_CALLS = {
   ],
   'eai types define': [
     'eai types define --help',
+    'eai types define --format json',
   ],
   'eai workspace storage list': [
     'eai workspace storage list --format json',
@@ -192,7 +193,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
   ],
   'eai workspace delete': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --force --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --parent <workspace-id> --force-hard-purge --force --format json',
   ],
   'eai user invite': [
     'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --workspace <workspace-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
@@ -572,7 +573,7 @@ const OPTION_DECISIONS = {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
   'eai workspace delete': {
-    '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
+    '--force-hard-purge': 'The parent-bound example purges one owned leaf child; without --parent, permanent subtree purge is covered by command/API contract tests and excluded from release smoke cleanup.',
   },
   'eai user invite': {
     '--workspace,': 'Preferred workspace selector; invite behavior is covered by user integration tests and optional dedicated-workspace smoke.',

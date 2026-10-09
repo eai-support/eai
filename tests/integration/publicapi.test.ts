@@ -1,11 +1,19 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { Command } from 'commander';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 import { publicApiCommand } from '../../src/commands/publicapi.js';
 import type { PlatformMethod } from '../../src/lib/api.js';
+import * as tenantContext from '../../src/lib/tenant-context.js';
+import * as output from '../../src/lib/output.js';
 import {
+  activateCommandProfile,
+  getActiveProfile,
+  getProfileTokensFile,
+  saveProfileConfig,
+  setActiveProfile,
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_TENANT_ID,
   DEFAULT_PROD_AUTH_TENANT_NAME,
@@ -13,6 +21,8 @@ import {
 
 const API_BASE = 'https://test-api.example.com';
 const TENANT_ID = 'tenant-publicapi';
+const EXPLICIT_TENANT_ID = '00000000-0000-4000-8000-000000000031';
+const PROFILE_API = 'https://dev-api.au.myenterprise.ai/public';
 
 function setTestHome(dir: string): void {
   process.env.HOME = dir;
@@ -50,12 +60,15 @@ describe('eai publicapi', () => {
   let originalHome: string | undefined;
   let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
+  let originalProfile: string;
 
   beforeEach(async () => {
     originalCwd = process.cwd();
     originalHome = process.env.HOME;
     originalUserProfile = process.env.USERPROFILE;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
+    originalProfile = getActiveProfile();
+    setActiveProfile('default');
 
     env = await createTestEnvironment();
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
@@ -69,6 +82,9 @@ describe('eai publicapi', () => {
     vi.unstubAllGlobals();
     process.chdir(originalCwd);
     await clearTokens();
+    setActiveProfile('default');
+    await clearTokens();
+    setActiveProfile(originalProfile);
     if (originalHome === undefined) {
       delete process.env.HOME;
     } else {
@@ -85,6 +101,97 @@ describe('eai publicapi', () => {
       process.env.EAI_ACCESS_TOKEN = originalAccessToken;
     }
     await env.cleanup();
+  });
+
+  test.each(['builder', 'viewer'])('explicit tenant context sends the named %s profile directly without admin discovery or selection writes', async role => {
+    delete process.env.EAI_ACCESS_TOKEN;
+    const profile = `qa-${role}`;
+    await chmod(join(env.dir, '.eai'), 0o700);
+    await saveProfileConfig(profile, { publicApiUrl: PROFILE_API, authTenantName: 'fixture-directory',
+      authTenantId: 'fixture-directory-id', authClientId: 'fixture-client' });
+    setActiveProfile(profile);
+    await storeTokens({ accessToken: `<fixture-${role}-token>`, expiresAt: Date.now() + 3_600_000,
+      upn: `${role}@example.invalid`, oid: `fixture-${role}-oid`, tenantId: 'fixture-directory-id',
+      tenantName: 'fixture-directory', clientId: 'fixture-client' });
+    await writeFile(join(env.dir, '.env.local'), `BASE_URL_PUBLIC_API=${PROFILE_API}\n`);
+    const tokenPath = getProfileTokensFile(profile), defaultTokenPath = getProfileTokensFile('default');
+    const tokenBefore = await readFile(tokenPath), defaultBefore = await readFile(defaultTokenPath);
+    const configBefore = await readFile(join(env.dir, '.eai', 'config.json'));
+    const projectBefore = await readFile(join(env.dir, '.env.local'));
+    setActiveProfile('default');
+    const resolver = vi.spyOn(tenantContext, 'resolveActiveTenantContext')
+      .mockRejectedValue(new Error('Explicit context must not ask for local tenant-admin membership.'));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      oid: `fixture-${role}-oid`, email: `${role}@example.invalid`,
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    const selection = new Command('publicapi').option('--profile <name>');
+    selection.setOptionValue('profile', profile);
+    await activateCommandProfile(selection, undefined, env.dir);
+    await publicApiCommand.parseAsync(['get', '/v4/identity/me',
+      '--tenant-id', EXPLICIT_TENANT_ID, '--format', 'json'], { from: 'user' });
+
+    expect(resolver).not.toHaveBeenCalled(); expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0];
+    expect(String(url)).toBe(`${PROFILE_API}/v4/identity/me`);
+    expect(init?.headers).toMatchObject({ Authorization: `Bearer <fixture-${role}-token>`, 'X-Tenant-Id': EXPLICIT_TENANT_ID });
+    const receipt = JSON.parse(outputSpy.mock.calls.flat().join(''));
+    expect(receipt).toMatchObject({ ok: true, status: 200,
+      request: { method: 'GET', path: '/v4/identity/me', publicApiUrl: PROFILE_API, tenantId: EXPLICIT_TENANT_ID },
+      body: { oid: `fixture-${role}-oid` } });
+    expect(await readFile(tokenPath)).toEqual(tokenBefore); expect(await readFile(defaultTokenPath)).toEqual(defaultBefore);
+    expect(await readFile(join(env.dir, '.eai', 'config.json'))).toEqual(configBefore);
+    expect(await readFile(join(env.dir, '.env.local'))).toEqual(projectBefore);
+  });
+
+  test.each([401, 403, 404, 503])('explicit sibling context preserves backend HTTP %s and fails without local authority substitution', async status => {
+    const path = `/v4/data/resources/${EXPLICIT_TENANT_ID}/cli-qa-row/00000000-0000-4000-8000-000000000099`;
+    const resolver = vi.spyOn(tenantContext, 'resolveActiveTenantContext')
+      .mockRejectedValue(new Error('No sibling admin membership is required locally.'));
+    const jsonSpy = vi.spyOn(output, 'json').mockImplementation(() => {});
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'FORBIDDEN' }), { status }));
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+
+    await expect(publicApiCommand.parseAsync(['get', path, '--tenant-id', EXPLICIT_TENANT_ID,
+      '--format', 'json'], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    expect(resolver).not.toHaveBeenCalled(); expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe(`${API_BASE}${path}`);
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ 'X-Tenant-Id': EXPLICIT_TENANT_ID });
+    expect(jsonSpy.mock.calls[0][0]).toMatchObject({ ok: false, status,
+      request: { method: 'GET', path, publicApiUrl: API_BASE, tenantId: EXPLICIT_TENANT_ID } });
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  test.each(['', 'tenant-slug', 'system', '../workspace', '00000000-0000-4000-8000-00000000003',
+    '00000000-0000-4000-8000-00000000003g', ` ${EXPLICIT_TENANT_ID}`, `${EXPLICIT_TENANT_ID}\n`])(
+    'rejects non-exact tenant UUID %j before gateway discovery, token access or HTTP calls', async tenantId => {
+      const resolver = vi.spyOn(tenantContext, 'resolveActiveTenantContext');
+      const gateway = vi.spyOn(tenantContext, 'resolvePublicApiUrl');
+      const fetchMock = vi.spyOn(globalThis, 'fetch');
+      const jsonSpy = vi.spyOn(output, 'json').mockImplementation(() => {});
+      vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+      await expect(publicApiCommand.parseAsync(['get', '/v4/identity/me', '--tenant-id', tenantId,
+        '--format', 'json'], { from: 'user' })).rejects.toThrow('process.exit called');
+      expect(resolver).not.toHaveBeenCalled(); expect(gateway).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+      expect(jsonSpy.mock.calls[0][0]).toMatchObject({ ok: false, error: { message: '--tenant-id must be an exact workspace UUID.' } });
+    },
+  );
+
+  test.each(['direct', 'linked'])('omitting explicit tenant context keeps the interactive resolver for a %s project path', async mode => {
+    let projectPath = env.dir;
+    if (mode === 'linked') {
+      projectPath = join(env.dir, 'workspace-link');
+      await symlink(env.dir, projectPath, process.platform === 'win32' ? 'junction' : 'dir');
+      expect(projectPath).not.toBe(await realpath(projectPath));
+      process.chdir(projectPath);
+    }
+    const resolver = vi.spyOn(tenantContext, 'resolveActiveTenantContext');
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }));
+    await publicApiCommand.parseAsync(['get', '/v4/identity/me', '--format', 'json'], { from: 'user' });
+    expect(resolver).toHaveBeenCalledExactlyOnceWith({ projectRoot: await realpath(projectPath), publicApiUrl: API_BASE, interactive: true });
+    expect(fetchMock.mock.calls[0][1]?.headers).toMatchObject({ 'X-Tenant-Id': TENANT_ID });
   });
 
   test.each<{
@@ -147,6 +254,26 @@ describe('eai publicapi', () => {
     const output = outputSpy.mock.calls.flat().join('');
     expect(output).toContain('"ok": true');
     expect(output).toContain(`"method": "${method}"`);
+  });
+
+  test('generic Entra DELETE exposes the validated boolean cleanup receipt while masking upstream credentials', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      client_id: 'owned-client', tenant_id: TENANT_ID,
+      tenant_deauthorization: { removed: false, already_absent: true, secret: '<fixture-private-receipt-secret>' },
+      app_registration_found: false, app_registration_deleted: false,
+      app_registration_already_absent: true, app_registration_absence_verified: true,
+      client_secret: '<fixture-private-receipt-secret>',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await publicApiCommand.parseAsync(['delete', '/v4/platform/provisioning/entra-apps/owned-client',
+      '--data', JSON.stringify({ tenant_id: TENANT_ID, delete_registration: true }), '--format', 'json'], { from: 'user' });
+    const output = outputSpy.mock.calls.flat().join('');
+    const receipt = JSON.parse(output);
+    expect(receipt.request.tenantId).toBe(TENANT_ID);
+    expect(receipt.body.tenant_deauthorization).toEqual({ removed: false, already_absent: true });
+    expect(receipt.body.app_registration_absence_verified).toBe(true);
+    expect(receipt.body.client_secret).toBe('[redacted]');
+    expect(output).not.toContain('<fixture-private-receipt-secret>');
   });
 
   test.each([

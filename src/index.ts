@@ -55,7 +55,8 @@ import {
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { resolveCommandProfile, setActiveProfile } from './lib/profile.js';
+import { activateCommandProfile, setActiveProfile } from './lib/profile.js';
+import { ErrorCode, exitWithError } from './lib/error-codes.js';
 import { describeProgram } from './lib/schema-builder.js';
 import { installSupportErrorTracking, setSupportCommand } from './lib/support-context.js';
 
@@ -79,9 +80,9 @@ program
   .option('--color', 'Force colored output')
   .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
-  .hook('preAction', async (thisCommand, actionCommand) => {
+  .hook('preAction', async (_thisCommand, actionCommand) => {
     setSupportCommand(supportCommandPath(actionCommand));
-    const opts = thisCommand.optsWithGlobals();
+    const opts = actionCommand.optsWithGlobals();
 
     // Handle --simple flag
     if (opts.simple) {
@@ -98,9 +99,15 @@ program
       process.env.FORCE_COLOR = '1';
     }
 
-    // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
-    // intentionally stays on the public production default profile.
-    setActiveProfile(resolveCommandProfile(thisCommand));
+    const capability = `${actionCommand.parent?.name()}:${actionCommand.name()}`;
+    if (capability === 'types:define' || capability === 'resources:indexes-apply') return;
+
+    try {
+      await activateCommandProfile(actionCommand);
+    } catch (error) {
+      exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+        opts.format === 'json' || opts.json ? 'json' : 'text');
+    }
   });
 
 // Register all commands
@@ -316,7 +323,9 @@ if (cliArgs.includes('--describe')) {
   const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||
-    isMachineReadableInvocation(cliArgs);
+    isMachineReadableInvocation(cliArgs) ||
+    (topLevelCommandName === 'types' && cliArgs.includes('define')) ||
+    (topLevelCommandName === 'resources' && cliArgs.includes('indexes-apply'));
 
   if (shouldForegroundCheckForUpdate) {
     await notifyIfUpdateAvailableForDiscovery(pkg.version);

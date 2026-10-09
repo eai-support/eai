@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
-import { createSupportDraft, type SupportBundle } from '../../src/lib/support-report.js';
+import { createSupportDraft, SUPPORT_TIMEOUT_MS, type SupportBundle } from '../../src/lib/support-report.js';
 import { setActiveProfile } from '../../src/lib/profile.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import {
@@ -170,7 +170,32 @@ describe('support consent and request limits', () => {
     expect(server.requests).toHaveLength(0);
   });
 
-  test('cancels a stalled draft create at the deadline without an automatic retry', async () => {
+  test.each([
+    { label: 'default', timeoutMs: undefined, expectedDeadline: SUPPORT_TIMEOUT_MS },
+    { label: 'custom', timeoutMs: 100, expectedDeadline: 100 },
+  ])('cancels a stalled draft response at the $label deadline without an automatic retry', async ({ timeoutMs, expectedDeadline }) => {
+    const deadline = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    let firstChunkRead!: () => void;
+    const readingPartialBody = new Promise<void>(resolve => { firstChunkRead = resolve; });
+    const nativeFetch = globalThis.fetch;
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const response = await nativeFetch(input, init);
+      if (response.body) {
+        const getReader = response.body.getReader.bind(response.body);
+        vi.spyOn(response.body, 'getReader').mockImplementation(() => {
+          const reader = getReader();
+          const read = reader.read.bind(reader);
+          vi.spyOn(reader, 'read').mockImplementation(async () => {
+            const chunk = await read();
+            if (!chunk.done) firstChunkRead();
+            return chunk;
+          });
+          return reader;
+        });
+      }
+      return response;
+    });
     const server = await startDraftServer(response => {
       response.writeHead(201, { 'content-type': 'application/json' });
       response.flushHeaders();
@@ -182,10 +207,47 @@ describe('support consent and request limits', () => {
       cliVersion: 'fixture', service: 'eai-cli', category: 'technical',
       summary: 'Help with EAI CLI', description: 'The command failed after setup.', os: 'unknown', environment: 'local',
     };
-    await expect(createSupportDraft(server.origin, bundle, SUPPORT_SESSION_TOKEN, 100)).rejects.toMatchObject({
+    const pending = createSupportDraft(server.origin, bundle, SUPPORT_SESSION_TOKEN, timeoutMs);
+    const failure = expect(pending).rejects.toMatchObject({
       code: 'request_failed',
       message: expect.stringContaining('No retry was sent'),
     });
+    // Control the deadline after real dispatch and partial response consumption,
+    // so slow CI scheduling cannot expire it before the server observes the POST.
+    await readingPartialBody;
+    expect(timeoutSpy).toHaveBeenCalledExactlyOnceWith(expectedDeadline);
+    expect(fetchSpy.mock.calls[0][1]?.signal).toBe(deadline.signal);
     expect(server.requests).toHaveLength(1);
+    expect(server.requests[0]).toMatchObject({ method: 'POST', url: '/api/support/drafts',
+      authorization: `Bearer ${SUPPORT_SESSION_TOKEN}`, body: bundle });
+    deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await failure;
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(server.requests).toHaveLength(1);
+  });
+
+  test('a deadline before transport dispatch fails safely without retrying or claiming a server create', async () => {
+    const server = await startDraftServer();
+    servers.push(server);
+    const deadline = new AbortController();
+    const timeoutSpy = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) =>
+      new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason), { once: true });
+      }));
+    const bundle: SupportBundle = {
+      source: 'eai-cli', tool: { name: 'eai-cli', version: 'fixture' }, cli: {},
+      cliVersion: 'fixture', service: 'eai-cli', category: 'technical',
+      summary: 'Help with EAI CLI', description: 'The command failed after setup.', os: 'unknown', environment: 'local',
+    };
+    const pending = createSupportDraft(server.origin, bundle, SUPPORT_SESSION_TOKEN, 100);
+    const failure = expect(pending).rejects.toMatchObject({ code: 'request_failed',
+      message: expect.stringContaining('No retry was sent; a draft may have been created.') });
+    expect(timeoutSpy).toHaveBeenCalledExactlyOnceWith(100);
+    expect(fetchSpy.mock.calls[0][1]?.signal).toBe(deadline.signal);
+    deadline.abort(new DOMException('The operation was aborted due to timeout', 'TimeoutError'));
+    await failure;
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(server.requests).toHaveLength(0);
   });
 });

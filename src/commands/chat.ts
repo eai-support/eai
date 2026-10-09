@@ -7,6 +7,105 @@ import { randomUUID } from 'node:crypto';
 import chalk from 'chalk';
 import { resolveCommandContext } from '../lib/context.js';
 import * as out from '../lib/output.js';
+import { safePlatformDiagnostics, formatSafePlatformFailure } from '../lib/platform-diagnostics.js';
+
+class ChatStreamError extends Error {}
+
+async function printChatStream(body: ReadableStream<Uint8Array>): Promise<void> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let dataLines: string[] = [];
+  let eventType = '';
+
+  const dispatchEvent = (): boolean => {
+    if (dataLines.length === 0) {
+      eventType = '';
+      return false;
+    }
+    const data = dataLines.join('\n');
+    dataLines = [];
+    const declaredType = eventType;
+    eventType = '';
+    if (data === '[DONE]') {
+      if (declaredType === 'error') throw new ChatStreamError('Chat stream failed. Retry the request or contact support.');
+      return true;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data);
+    } catch {
+      // Preserve legacy streams that send plain text data frames.
+      if (declaredType === 'error') throw new ChatStreamError('Chat stream failed. Retry the request or contact support.');
+      process.stdout.write(data);
+      return false;
+    }
+    if (declaredType === 'error' && (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))) {
+      throw new ChatStreamError('Chat stream failed. Retry the request or contact support.');
+    }
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return false;
+    const event = parsed as Record<string, unknown>;
+    const kind = event.type ?? event.event ?? declaredType;
+    if (declaredType === 'error' || event.type === 'error' || event.event === 'error') {
+      throw new ChatStreamError(formatSafePlatformFailure('Chat stream', safePlatformDiagnostics(502, {
+        ...event, details: event.data,
+      })));
+    }
+    if (kind === 'done') return true;
+    if (kind === 'token') {
+      if (typeof event.data !== 'string') throw new ChatStreamError('Chat stream returned an invalid token');
+      process.stdout.write(event.data);
+    } else if (typeof event.content === 'string') {
+      process.stdout.write(event.content);
+    } else if (typeof event.text === 'string') {
+      process.stdout.write(event.text);
+    }
+    return false;
+  };
+
+  try {
+    let complete = false;
+    while (!complete) {
+      const { done, value } = await reader.read();
+      buffer += done ? decoder.decode() : decoder.decode(value, { stream: true });
+
+      while (true) {
+        const lineEnd = buffer.search(/[\r\n]/);
+        if (lineEnd < 0) break;
+        // A CR may be the first half of a CRLF split across network chunks.
+        if (buffer[lineEnd] === '\r' && lineEnd === buffer.length - 1 && !done) break;
+        const line = buffer.slice(0, lineEnd);
+        const delimiterLength = buffer[lineEnd] === '\r' && buffer[lineEnd + 1] === '\n' ? 2 : 1;
+        buffer = buffer.slice(lineEnd + delimiterLength);
+        if (line === '') {
+          complete = dispatchEvent();
+          if (complete) break;
+        } else {
+          const colon = line.indexOf(':');
+          const field = colon < 0 ? line : line.slice(0, colon);
+          const rawValue = colon < 0 ? '' : line.slice(colon + 1);
+          const fieldValue = rawValue.startsWith(' ') ? rawValue.slice(1) : rawValue;
+          if (field === 'data') dataLines.push(fieldValue);
+          else if (field === 'event') eventType = fieldValue;
+        }
+      }
+      if (done && !complete) throw new ChatStreamError('Chat stream ended before completion');
+    }
+  } catch (error) {
+    if (error instanceof ChatStreamError) throw error;
+    throw new ChatStreamError('Chat stream could not be completed. Retry the request or contact support.');
+  } finally {
+    // Stop the HTTP body even when a terminal frame arrives before EOF.
+    try {
+      await reader.cancel();
+    } catch {
+      // Keep the original stream/provider failure if the body is already errored.
+    } finally {
+      reader.releaseLock();
+    }
+  }
+}
 
 export const chatCommand = new Command('chat')
   .description('Chat with AI workflows');
@@ -84,43 +183,9 @@ chatCommand
         process.exit(1);
       }
 
-      // Read SSE stream
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-
-      let buffer = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6);
-            if (data === '[DONE]') {
-              out.blank();
-              out.success('Stream complete');
-              return;
-            }
-            try {
-              const parsed = JSON.parse(data);
-              if (parsed.content) {
-                process.stdout.write(parsed.content);
-              } else if (parsed.text) {
-                process.stdout.write(parsed.text);
-              }
-            } catch {
-              // Non-JSON data event, print raw
-              process.stdout.write(data);
-            }
-          }
-        }
-      }
-
+      await printChatStream(res.body);
       out.blank();
+      out.success('Stream complete');
     } catch (err) {
       out.error(err instanceof Error ? err.message : String(err));
       process.exit(1);

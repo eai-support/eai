@@ -799,7 +799,8 @@ Use --no-gofer only when you need a bare app scaffold.
     const envSpinner = startEaiStep("Generating .env.local...");
     try {
       const envContent = generateEnvFile(initOptions);
-      await writeFile(join(targetDir, ".env.local"), envContent, "utf-8");
+      await writeFile(join(targetDir, ".env.local"), envContent, { encoding: "utf-8", mode: 0o600 });
+      await chmod(join(targetDir, ".env.local"), 0o600);
       await hydrateEnvFromLoginContext(
         targetDir,
         initOptions.name,
@@ -808,9 +809,12 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.tenantHomeRegion,
         initOptions.appKey,
       );
+      await ensureLocalEnvIgnored(targetDir);
       envSpinner.succeed("Generated .env.local");
-    } catch (_err) {
+    } catch (err) {
       envSpinner.fail("Failed to generate .env.local");
+      out.error(errMsg(err));
+      process.exit(1);
     }
 
     // Step 4: Generate Object Types scaffold
@@ -2149,6 +2153,9 @@ async function hydrateEnvFromLoginContext(
 
   const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
   const profileName = getActiveProfile();
+  // Persist only the selector. Private profile auth/API settings and CLI tokens
+  // remain in the user's local CLI configuration, outside the app repository.
+  patches.EAI_PROFILE = profileName;
   const profileConfig = await loadProfileConfig(profileName);
   if (profileConfig?.publicApiUrl) {
     patches.BASE_URL_PUBLIC_API = profileConfig.publicApiUrl;
@@ -2203,6 +2210,17 @@ async function hydrateEnvFromLoginContext(
   if (Object.keys(patches).length > 0) {
     await patchEnvFile(targetDir, patches);
   }
+}
+
+async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {
+  const ignorePath = join(targetDir, ".gitignore");
+  let content = "";
+  try { content = await readFile(ignorePath, "utf-8"); } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  // Last-match precedence also protects custom templates which unignore env files.
+  const separator = content && !content.endsWith("\n") ? "\n" : "";
+  await writeFile(ignorePath, `${content}${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n`, "utf-8");
 }
 
 function toDisplayName(name: string): string {

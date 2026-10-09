@@ -24,12 +24,14 @@ const config = (url = gateway, authorized: string | null = url) => ({
 });
 async function profiles(value: Record<string, unknown>): Promise<void> {
   await writeFile(join(fixture.home, '.eai/config.json'), JSON.stringify({ profiles: value }), { mode: 0o600 });
+  await chmod(join(fixture.home, '.eai/config.json'), 0o600);
 }
 
 describe('explicit private managed gateway authority', () => {
   beforeEach(async () => {
     fixture.home = await mkdtemp(join(tmpdir(), 'eai-profile-policy-'));
     await mkdir(join(fixture.home, '.eai'), { mode: 0o700 });
+    await chmod(join(fixture.home, '.eai'), 0o700);
     setActiveProfile('default');
     vi.mocked(openSync).mockClear(); vi.mocked(readSync).mockClear(); fixture.token.mockClear();
   });
