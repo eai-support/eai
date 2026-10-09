@@ -52,4 +52,17 @@ describe('focused CLI evidence ownership', () => {
     expect(focusedJob).toContain('test-results/eai-cli-registry-results.xml');
     expect(focusedJob).toContain('test-results/eai-cli-evidence.json');
   });
+
+  test('stacked pull requests receive the required check with read-only repository permissions', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const lines = workflow.split('\n');
+    const eventIndex = lines.indexOf('  pull_request:');
+    expect(eventIndex).toBeGreaterThan(-1);
+    const following = lines.slice(eventIndex + 1);
+    const nextBlock = following.findIndex(line => /^(?:\S|  \S)/.test(line));
+    const eventOptions = following.slice(0, nextBlock === -1 ? undefined : nextBlock).join('\n');
+    expect(eventOptions).not.toMatch(/^    (?:branches|branches-ignore|paths|paths-ignore):/m);
+    expect(workflow).toMatch(/^permissions:\n  contents: read\n/m);
+    expect(workflow).toMatch(/^  push:\n    branches: \[main\]\n/m);
+  });
 });

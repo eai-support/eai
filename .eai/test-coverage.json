@@ -360,6 +360,56 @@
             "eai-cli"
           ],
           "required_deployed_contracts": []
+        },
+        {
+          "id": "eai-cli-owned-qualification",
+          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending.",
+          "owned_paths": [
+            ".github/workflows/ci.yml",
+            "tests/unit/cli-test-coverage.test.ts",
+            "scripts/cli-qa-foundation.cjs",
+            "scripts/qualify-cli-permanent.cjs",
+            "scripts/audit-cli-backend.cjs",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "scripts/test-local-dedicated-tenant-lifecycle.sh",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/cli-qa-foundation.test.ts",
+            "tests/integration/cli-permanent-cycles.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            ".tech-docs/cli-backend-lifecycle-smoke.md",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            ".tech-docs/cli-permanent-qualification.md",
+            "package.json",
+            "scripts/cli-qa-authorization.cjs",
+            "tests/integration/cli-qa-authorization.test.ts",
+            "scripts/cli-qa-build-receipt.cjs",
+            "tests/integration/cli-qa-build-receipt.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/cli-test-coverage.test.ts",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/cli-qa-foundation.test.ts",
+            "tests/integration/cli-permanent-cycles.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/cli-qa-authorization.test.ts",
+            "tests/integration/cli-qa-build-receipt.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            }
+          ]
         }
       ]
     }
