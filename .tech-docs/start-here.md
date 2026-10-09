@@ -63,6 +63,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.19.2** (2026-10-08): Pin corrected App Template v1.0.10 evidence producer.
-
-
+The current CLI release is **v3.19.3** (2026-10-09): Preserve platform Entra sign-in scopes during app initialization.

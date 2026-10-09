@@ -2,12 +2,14 @@
 import { awaitManagedRequestDeadline, type PlatformAPIClient } from './api.js';
 import { isRecord } from './utils.js';
 
+/** Export bounds: pages per scan, aggregate response bytes and elapsed milliseconds shared by both scans. */
 export interface ObjectTypeExportLimits {
   readonly maxPages: number;
   readonly maxBytes: number;
   readonly timeoutMs: number;
 }
 
+/** Frozen maximum export budgets; callers may reduce each bound but cannot raise it. */
 export const OBJECT_TYPE_EXPORT_LIMITS: Readonly<ObjectTypeExportLimits> = Object.freeze({
   maxPages: 1_000,
   maxBytes: 64 * 1024 * 1024,

@@ -2763,6 +2763,7 @@ typesCommand
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
+/** Emit a review/merge module preserving complete read DTOs via JSON and the producer-relative type import. */
 export function generatePulledTypesTypeScript(
   types: ReadonlyArray<Record<string, unknown>>,
   tenantKey: string,

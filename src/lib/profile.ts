@@ -44,6 +44,7 @@ let _activeProfileName = 'default';
 const capturedProfiles = new Map<string, ProfileConfig>();
 let captureGeneration = 0;
 
+/** Validate and activate a local profile selector, invalidating captured configuration bindings. */
 export function setActiveProfile(name: string): void {
   assertProfileName(name);
   capturedProfiles.clear();

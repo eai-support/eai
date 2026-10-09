@@ -53,7 +53,7 @@ import {
   type CapabilityDecision,
   type ParsedApiError,
 } from "../lib/api.js";
-import { findProjectRoot, patchEnvFile } from "../lib/config.js";
+import { entraScopeEnvPatch, findProjectRoot, patchEnvFile } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
@@ -1597,6 +1597,8 @@ async function provisionEntraInline(
       return false;
     }
 
+    const scopeEnv = entraScopeEnvPatch(result.scopes);
+
     if (result.clientSecret) {
       await patchEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
@@ -1604,6 +1606,7 @@ async function provisionEntraInline(
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
+        ...scopeEnv,
       });
       spinner.succeed(
         `Entra app registration ${result.existing ? "confirmed" : "created"}: ${chalk.dim(result.clientId)}`,
@@ -1620,6 +1623,7 @@ async function provisionEntraInline(
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
         AUTH_TRUST_HOST: "true",
+        ...scopeEnv,
       });
       const hydratedSecret = await hydrateCloudSecret(targetDir, appName);
       spinner.succeed(

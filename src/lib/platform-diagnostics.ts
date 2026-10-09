@@ -10,12 +10,14 @@ const ERROR_CODES = new Set([
 const ROTATION_REASONS = new Set(['concurrency_conflict', 'throttled', 'registration_not_found',
   'provider_rejected', 'provider_unavailable', 'deadline_exceeded', 'outcome_unknown']);
 
+/** Allowlisted rotation outcome; unknown issuance is never eligible for automatic retry. */
 export interface SafeRotationFailure {
   readonly reason: string;
   readonly outcome: 'not_issued' | 'unknown';
   readonly retryable: boolean;
 }
 
+/** Safe HTTP/error/support metadata for product messages, excluding upstream text and credential values. */
 export interface SafePlatformDiagnostics {
   readonly status: number;
   readonly code?: string;
