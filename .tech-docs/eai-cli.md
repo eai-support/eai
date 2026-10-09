@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.2 |
-| Released | 2026-10-08 |
-| Last Material Change | Pin corrected App Template v1.0.10 evidence producer |
-| Source Commit | `c3f8e973214b512c831b9347bd34e7340df3b7e9` |
+| Version | 3.19.3 |
+| Released | 2026-10-09 |
+| Last Material Change | Preserve platform Entra sign-in scopes during app initialization |
+| Source Commit | `ebb746c17cd15883309ca20f0d0d3c7203e9da9b` |
 
 
 ## Install

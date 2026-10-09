@@ -9,6 +9,11 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { mkdir, writeFile, readFile, stat, link } from 'node:fs/promises';
 import { join } from 'node:path';
+import { execFile } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { promisify } from 'node:util';
+import { parse as parseDotenv } from 'dotenv';
+import { loadEnvFile } from '../../src/lib/config.js';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { storeTokens, clearTokens } from '../../src/lib/auth.js';
@@ -16,6 +21,9 @@ import { provisionCommand } from '../../src/commands/provision.js';
 import { getActiveProfile, setActiveProfile } from '../../src/lib/profile.js';
 import { DEFAULT_PUBLIC_API_URL } from '../../src/lib/tenant-context.js';
 import * as cloudEnv from '../../src/lib/cloud-env.js';
+
+const exec = promisify(execFile);
+const require = createRequire(import.meta.url);
 
 const API_BASE = 'https://test-api.example.com';
 const EU_API_BASE = 'https://api.eu.myenterprise.ai/public';
@@ -181,6 +189,105 @@ describe('eai provision entra', () => {
 
   const scopedArgs = ['entra', '--company-tenant', 'company', '--app-key', 'my-app'];
 
+  const invalidReturnedScopes = [
+    { label: 'newline injection', scopes: ['openid\nINJECTED_SCOPE=true'] },
+    { label: 'carriage return', scopes: ['openid\rINJECTED_SCOPE=true'] },
+    { label: 'embedded space', scopes: ['openid profile'] },
+    { label: 'control character', scopes: ['openid\u0000'] },
+    { label: 'quote', scopes: ['invalid"scope'] },
+    { label: 'backslash', scopes: ['invalid\\scope'] },
+    { label: 'dotenv expansion', scopes: ['api://fixture/price$unit'] },
+    { label: 'dotenv braced expansion', scopes: ['api://fixture/price${unit}'] },
+    { label: 'dotenv double dollar', scopes: ['api://fixture/price$$unit'] },
+    { label: 'long token', scopes: ['x'.repeat(2049)] },
+    { label: 'too many tokens', scopes: Array.from({ length: 65 }, () => 'openid') },
+    { label: 'aggregate bound', scopes: Array.from({ length: 64 }, () => 'x'.repeat(300)) },
+    { label: 'present null', scopes: null },
+    { label: 'non-array', scopes: 'openid' },
+    { label: 'numeric member', scopes: ['openid', 7] },
+    { label: 'empty member', scopes: ['openid', ''] },
+    { label: 'whitespace member', scopes: ['openid', '  '] },
+  ];
+
+  test.each(['new', 'existing-recovery', 'existing-issuance'].flatMap(branch =>
+    invalidReturnedScopes.map(value => ({ branch, ...value }))))
+  ('provision scope metadata refuses $label before credential writes ($branch)', async ({ branch, scopes }) => {
+    await setupScopedProject('ENTRA_SCOPES="openid legacy_scope"\nAUTH_SECRET=fixture-auth-secret\n');
+    await writeFile(join(env.dir, '.env'), 'UNRELATED=fixture-preserved\n');
+    mockScopedAccess();
+    const before = await readFile(join(env.dir, '.env.local'), 'utf8');
+    const beforeBase = await readFile(join(env.dir, '.env'), 'utf8');
+    const cloud = vi.spyOn(cloudEnv, 'pullCloudEnvValues').mockResolvedValue({
+      store: 'fixture-store', patches: { ENTRA_CLIENT_ID: 'app-client', ENTRA_CLIENT_SECRET: '<fixture-recovered-secret>' }, secretRefs: [],
+    });
+    let calls = 0;
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+        calls++;
+        expect(await request.json()).toMatchObject({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true });
+        return HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client',
+          existing: branch !== 'new', client_secret: branch === 'new' ? '<fixture-new-secret>' : null,
+          scopes, ...TENANT_AUTH_ADDED, ...SIGNIN_READY });
+      }),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => {
+        issued++;
+        return HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', client_secret: '<fixture-issued-secret>' });
+      }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const command = provisionCommand.commands.find(value => value.name() === 'entra')!;
+    const saved = { ...command.opts() };
+    try {
+      await expect(provisionCommand.parseAsync([...scopedArgs,
+        ...(branch === 'existing-issuance' ? ['--create-local-secret'] : [])], { from: 'user' })).rejects.toThrow();
+      expect(calls).toBe(1);
+      expect(issued).toBe(0);
+      expect(cloud).not.toHaveBeenCalled();
+      expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(before);
+      expect(await readFile(join(env.dir, '.env'), 'utf8')).toBe(beforeBase);
+    } finally {
+      for (const key of Object.keys(command.opts())) command.setOptionValue(key, saved[key]);
+    }
+  });
+
+  test.each([false, true].flatMap(existing => [
+    { label: 'complete scopes', scopes: ['openid', 'profile', 'email', 'offline_access', 'api://fixture-public/access_token'] },
+    { label: 'literal hash', scopes: ['openid', 'fixture_scope#literal'] },
+    { label: 'empty legacy', scopes: [] },
+    { label: 'absent legacy', scopes: undefined },
+  ].map(value => ({ existing, ...value }))))
+  ('provision scope metadata retains literal loader equality for $label (existing $existing)', async ({ existing, scopes }) => {
+    await setupScopedProject(`ENTRA_SCOPES="openid legacy_scope"\nAUTH_SECRET=fixture-auth-secret\n${existing
+      ? 'ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-original-secret>\n' : ''}`);
+    mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+      HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client',
+        existing, client_secret: existing ? null : '<fixture-new-secret>', scopes, ...TENANT_AUTH_ADDED, ...SIGNIN_READY })));
+    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+    const text = await readFile(join(env.dir, '.env.local'), 'utf8');
+    const parsed = parseDotenv(text);
+    const expected = scopes?.length ? scopes.join(' ') : 'openid legacy_scope';
+    const loaded = await exec(process.execPath, ['-e', `
+      const loaded = require(process.argv[1]).loadEnvConfig(process.argv[2], true, {
+        info() {}, error() { throw new Error('Fixture environment load failed'); }
+      });
+      console.log(JSON.stringify(loaded.combinedEnv.ENTRA_SCOPES));
+    `, require.resolve('@next/env'), env.dir], {
+      timeout: 5_000,
+      env: { NODE_ENV: 'development', ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+    });
+    expect(JSON.parse(loaded.stdout)).toBe(expected);
+    expect(parsed.ENTRA_SCOPES).toBe(expected);
+    expect((await loadEnvFile(env.dir)).ENTRA_SCOPES).toBe(expected);
+    expect(parsed.ENTRA_CLIENT_ID).toBe('app-client');
+    expect(parsed.ENTRA_CLIENT_SECRET).toBe(existing ? '<fixture-original-secret>' : '<fixture-new-secret>');
+    expect(parsed.AUTH_SECRET).toBe('fixture-auth-secret');
+    expect(parsed).not.toHaveProperty('INJECTED_SCOPE');
+  });
+
   test('explicit scoped local setup issues one credential for a fresh existing-app folder without Azure access', async () => {
     await setupScopedProject();
     mockScopedAccess();
@@ -188,7 +295,8 @@ describe('eai provision entra', () => {
     let issued = 0;
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
+        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true,
+          scopes: ['openid', 'fixture_scope#literal'], ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async ({ request }) => {
         issued++;
         expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app' });
@@ -203,6 +311,8 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=app-client');
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-private-local-secret>');
     expect(content).toContain('EAI_TENANT_ID=runtime');
+    expect(parseDotenv(content).ENTRA_SCOPES).toBe('openid fixture_scope#literal');
+    expect((await loadEnvFile(env.dir)).ENTRA_SCOPES).toBe('openid fixture_scope#literal');
     if (process.platform !== 'win32') expect((await stat(join(env.dir, '.env.local'))).mode & 0o777).toBe(0o600);
     await provisionCommand.parseAsync(args, { from: 'user' });
     expect(issued).toBe(1);

@@ -80,7 +80,9 @@ export function probePublicApiReachability(baseUrl: string, timeoutMs: number): 
   });
 }
 
+/** Stable public error code for index apply, rejected before authentication or network dispatch. */
 export const RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE = 'RESOURCE_INDEX_APPLY_UNSUPPORTED';
+/** Product guidance for unsupported index application and the available read-only planning command. */
 export const RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE =
   'Resource index apply is unavailable through PublicAPI. Use eai resources indexes-plan --object-type <slug...> to preview changes. Applying changes requires a supported platform operator workflow.';
 
@@ -2374,12 +2376,22 @@ export class PlatformAPIClient {
     const toStringArray = (value: unknown): string[] =>
       Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim() !== '') : [];
 
+    // Reject malformed scope metadata instead of silently persisting a filtered subset.
+    const scopes = data.scopes;
+    if ('scopes' in data && (!Array.isArray(scopes) || scopes.some(value => typeof value !== 'string' || value.trim() === ''))) {
+      throw new PlatformAPIRequestError({
+        operation: 'Entra app provisioning',
+        status: res.status,
+        statusText: 'Invalid provisioning response',
+      });
+    }
+
     return {
       appName: readStringField(data as Record<string, unknown>, 'appName', 'app_name'),
       clientId,
       clientSecret: data.clientSecret ?? data.client_secret ?? null,
       existing: Boolean(data.existing),
-      scopes: toStringArray(data.scopes),
+      scopes: (scopes as string[] | undefined) ?? [],
       redirectUris: toStringArray(data.redirectUris ?? data.redirect_uris),
       environment: typeof data.environment === 'string' ? data.environment : null,
       tenantId: typeof (data.tenantId ?? data.tenant_id) === 'string'

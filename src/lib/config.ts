@@ -391,6 +391,15 @@ function restoreTemporaryEnv(restore: TemporaryEnvRestore): void {
   }
 }
 
+/** SECURITY: Refuse dotenv expansion and unsafe tokens before writing credentials or recovering secrets. */
+export function entraScopeEnvPatch(scopes: readonly string[]): Record<string, string> {
+  if (scopes.length > 64 || scopes.join(" ").length > 16 * 1024
+    || scopes.some((scope) => scope.length > 2048 || scope.includes("$") || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
+    throw new Error("Platform returned invalid sign-in scope metadata.");
+  }
+  return scopes.length > 0 ? { ENTRA_SCOPES: JSON.stringify(scopes.join(" ")) } : {};
+}
+
 /**
  * Load environment variables from the project's .env.local file.
  */
