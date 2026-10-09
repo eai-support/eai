@@ -193,7 +193,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
   ],
   'eai workspace delete': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --parent <workspace-id> --force --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --parent <workspace-id> --force-hard-purge --force --format json',
   ],
   'eai user invite': [
     'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --workspace <workspace-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
@@ -573,7 +573,7 @@ const OPTION_DECISIONS = {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
   'eai workspace delete': {
-    '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
+    '--force-hard-purge': 'The parent-bound example purges one owned leaf child; without --parent, permanent subtree purge is covered by command/API contract tests and excluded from release smoke cleanup.',
   },
   'eai user invite': {
     '--workspace,': 'Preferred workspace selector; invite behavior is covered by user integration tests and optional dedicated-workspace smoke.',
