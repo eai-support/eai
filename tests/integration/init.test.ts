@@ -193,7 +193,11 @@ describe("eai init", () => {
     { existing: true, malformed: true, scopes: Array.from({ length: 64 }, () => "x".repeat(300)) },
     ...[false, true].flatMap(existing => ["openid\nAUTH_TRUST_HOST=false", "openid\rINJECTED_SCOPE=true", "openid profile", "openid\u0000", 'invalid"scope', "invalid\\scope", "x".repeat(2049), "api://fixture/price$unit", "api://fixture/price${unit}", "api://fixture/price$$unit"]
       .map(scope => ({ existing, malformed: true, scopes: [scope] }))),
-  ])("inline Entra scopes preserve platform metadata and legacy scaffold %j", async ({ existing, malformed, scopes }) => {
+    ...[false, true].flatMap(existing => [null, "openid", {}, ["openid", 7], ["openid", ""], ["openid", "  "]]
+      .map(rawScopes => ({ existing, malformed: true, scopes: [] as string[], raw: true, rawScopes }))),
+    ...[false, true].map(existing => ({ existing, malformed: false, scopes: [] as string[], raw: true, rawScopes: undefined })),
+  ].map(value => ({ raw: false, rawScopes: undefined as unknown, ...value })))
+  ("inline Entra scopes preserve platform metadata and legacy scaffold %j", async ({ existing, malformed, scopes, raw, rawScopes }) => {
     workingDirectoryIs(ctx, env.dir);
     const savedOptions = { ...initCommand.opts() };
     const consoleCapture = captureConsole();
@@ -218,15 +222,24 @@ describe("eai init", () => {
     const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
     const tenantGetSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({ id: "scope-tenant", ultimateParentId: "scope-tenant" })));
     const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({ childTenant: null }), { status: 201 }));
-    const provisionSpy = vi.spyOn(PlatformAPIClient.prototype, "provisionEntraApp").mockResolvedValue({
+    const provisionSpy = vi.spyOn(PlatformAPIClient.prototype, "provisionEntraApp");
+    if (!raw) provisionSpy.mockResolvedValue({
       clientId: "fixture-app-client", clientSecret: existing ? null : "fixture-new-secret", appName: "scope-app", tenantId: "scope-tenant", existing,
       scopes, redirectUris: [], environment: "dev", tenantAuthorization: { added: true, alreadyAuthorized: false, warning: null }, signinCompleteness: null,
     });
+    const accessTokenSpy = raw ? vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-access") : null;
+    const fetchSpy = raw ? vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      client_id: "fixture-app-client", client_secret: existing ? null : "fixture-new-secret", existing, scopes: rawScopes,
+    }), { status: 200 })) : null;
     const cloudSpy = vi.spyOn(cloudEnv, "pullCloudEnvValues").mockResolvedValue({ store: "fixture-store", patches: { ENTRA_CLIENT_SECRET: "fixture-preserved-credential" }, secretRefs: [] });
     try {
       await initCommand.parseAsync(["scope-app", "--from", templateRepo, "--trust-template-scripts", "--no-install", "--no-splash", "--tool", "claude"], { from: "user" });
       expect(provisionSpy).toHaveBeenCalledOnce();
       expect(provisionSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "scope-tenant", appName: "scope-app", idempotent: true }));
+      if (raw) {
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        expect(fetchSpy?.mock.calls[0][0]).toBe(`${TEST_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`);
+      }
       const local = parseDotenv(await readFile(join(env.dir, "scope-app", ".env.local"), "utf8"));
       expect(local.ENTRA_SCOPES).toBe(!malformed && scopes.length > 0 ? scopes.join(" ") : "email offline_access openid profile");
       const nextLoader = await exec(process.execPath, ["-e", `
@@ -253,6 +266,8 @@ describe("eai init", () => {
       for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
       consoleCapture.restore();
       for (const spy of [promptSpy, tenantSpy, authSpy, tokenSpy, capabilitySpy, tenantGetSpy, createSpy, provisionSpy, cloudSpy]) spy.mockRestore();
+      accessTokenSpy?.mockRestore();
+      fetchSpy?.mockRestore();
     }
   });
 
