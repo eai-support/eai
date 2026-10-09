@@ -53,7 +53,7 @@ import {
   type CapabilityDecision,
   type ParsedApiError,
 } from "../lib/api.js";
-import { findProjectRoot, patchEnvFile } from "../lib/config.js";
+import { entraScopeEnvPatch, findProjectRoot, patchEnvFile } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
@@ -1593,14 +1593,7 @@ async function provisionEntraInline(
       return false;
     }
 
-    // Refuse dotenv expansion syntax so Next and plain dotenv retain identical scopes.
-    if (result.scopes.length > 64 || result.scopes.join(" ").length > 16 * 1024
-      || result.scopes.some((scope) => scope.length > 2048 || scope.includes("$") || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
-      throw new Error("Platform returned invalid sign-in scope metadata.");
-    }
-    const scopeEnv: Record<string, string> = result.scopes.length > 0
-      ? { ENTRA_SCOPES: JSON.stringify(result.scopes.join(" ")) }
-      : {};
+    const scopeEnv = entraScopeEnvPatch(result.scopes);
 
     if (result.clientSecret) {
       await patchEnvFile(targetDir, {
