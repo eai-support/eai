@@ -261,7 +261,7 @@ describe('chat command conversations and streaming', () => {
       ': keep-alive',
       'id: event-1',
       'data: {"type":"token",',
-      'data: "data":"Hello 🌍 café"}',
+      'data: "data":"Hello \u{1F30D} café"}',
       '',
       'data: {"type":"done","data":{}}',
       '',
@@ -274,7 +274,7 @@ describe('chat command conversations and streaming', () => {
 
     await runChatStream();
 
-    expect(stdoutWrite.mock.calls.map(([value]) => value).join('')).toBe('Hello 🌍 café');
+    expect(stdoutWrite.mock.calls.map(([value]) => value).join('')).toBe('Hello \u{1F30D} café');
     expect(consoleLog.mock.calls.flat().join('\n')).toContain('Stream complete');
     expect(stream.body.locked).toBe(false);
   });
