@@ -218,7 +218,7 @@ describe("eai init", () => {
     const tenantGetSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({ id: "scope-tenant", ultimateParentId: "scope-tenant" })));
     const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({ childTenant: null }), { status: 201 }));
     const provisionSpy = vi.spyOn(PlatformAPIClient.prototype, "provisionEntraApp").mockResolvedValue({
-      clientId: "fixture-app-client", clientSecret: existing ? undefined : "fixture-new-secret", appName: "scope-app", tenantId: "scope-tenant", existing,
+      clientId: "fixture-app-client", clientSecret: existing ? null : "fixture-new-secret", appName: "scope-app", tenantId: "scope-tenant", existing,
       scopes, redirectUris: [], environment: "dev", tenantAuthorization: { added: true, alreadyAuthorized: false, warning: null }, signinCompleteness: null,
     });
     const cloudSpy = vi.spyOn(cloudEnv, "pullCloudEnvValues").mockResolvedValue({ store: "fixture-store", patches: { ENTRA_CLIENT_SECRET: "fixture-preserved-credential" }, secretRefs: [] });
