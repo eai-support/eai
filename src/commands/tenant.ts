@@ -998,16 +998,31 @@ tenantCommand
   .description("Delete a workspace")
   .option("--force", "Skip confirmation", false)
   .option("--force-hard-purge", "Permanently purge the workspace and all child workspaces", false)
+  .option("--parent <id>", "Authorize a leaf child hard purge using its immediate parent workspace")
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
     if (options.json) options.format = "json";
+    if (options.parent !== undefined) {
+      const details = !options.parent || options.parent.trim() !== options.parent
+        ? '--parent must be a nonempty workspace ID without surrounding whitespace'
+        : options.parent === id
+          ? '--parent must identify a different workspace from the child being deleted'
+          : !options.forceHardPurge
+            ? '--parent requires --force-hard-purge'
+            : undefined;
+      if (details) {
+        exitWithError(ErrorCode.E305, { details }, options.format);
+      }
+    }
 
     if (!options.force) {
       const { default: inquirer } = await import("inquirer");
-      const promptMessage = options.forceHardPurge
-        ? `Permanently hard purge workspace ${id} and all child workspaces? This cannot be undone.`
-        : `Delete workspace ${id}?`;
+      const promptMessage = options.parent
+        ? `Permanently hard purge leaf workspace ${id} under parent ${options.parent}? This cannot be undone.`
+        : options.forceHardPurge
+          ? `Permanently hard purge workspace ${id} and all child workspaces? This cannot be undone.`
+          : `Delete workspace ${id}?`;
       const { confirm } = await inquirer.prompt([
         {
           type: "confirm",
@@ -1032,6 +1047,7 @@ tenantCommand
       projectRoot: root || undefined,
       publicApiUrl,
       interactive: true,
+      ...(options.parent === undefined ? {} : { tenantId: options.parent }),
     });
     const client = new PlatformAPIClient(publicApiUrl, context.activeTenant.id);
     const spinner =
@@ -1042,6 +1058,7 @@ tenantCommand
     try {
       const res = await client.deleteTenant(id, {
         forceHardPurge: Boolean(options.forceHardPurge),
+        ...(options.parent === undefined ? {} : { parentTenantId: options.parent }),
       });
       if (!res.ok) {
         const body = await res.text();
@@ -1063,6 +1080,25 @@ tenantCommand
         responseBody && typeof responseBody === 'object' && 'status' in responseBody
           ? String((responseBody as { status?: unknown }).status || '')
           : '';
+      if (options.parent !== undefined && (backendStatus !== 'hard_purged'
+        || responseBody?.id !== id
+        || responseBody?.parentTenantId !== options.parent)) {
+        const message =
+          'The backend did not confirm a hard purge for the requested child and parent workspace. Verify their current state before retrying.';
+        if (options.format === 'json') {
+          out.json({
+            id,
+            deleted: false,
+            hardPurged: false,
+            requestedHardPurge: true,
+            error: message,
+            response: responseBody,
+          });
+        } else if (spinner) {
+          spinner.fail(message);
+        }
+        process.exit(1);
+      }
       if (options.forceHardPurge && backendStatus !== 'hard_purged') {
         const message =
           'Tenant delete completed but the backend did not confirm a hard purge. Stale tenant-owned data may remain.';

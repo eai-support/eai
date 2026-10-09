@@ -18,7 +18,7 @@ import {
   cleanupTestTokens,
 } from '../helpers/setup-dsl.js';
 import { runCommand } from '../helpers/action-dsl.js';
-import { expectCommandSucceeded, expectDisplayedMessage } from '../helpers/assert-dsl.js';
+import { expectCommandFailed, expectCommandSucceeded, expectDisplayedMessage } from '../helpers/assert-dsl.js';
 
 async function writeJson(res: ServerResponse, status: number, body: unknown): Promise<void> {
   res.writeHead(status, { 'Content-Type': 'application/json' });
@@ -186,6 +186,7 @@ describe('eai verify', () => {
     const result = await runCommand(ctx, 'eai verify');
 
     // Should show connectivity checks (even if they fail)
+    expectCommandFailed(result);
     expectDisplayedMessage(result, 'Connectivity Checks');
   });
 

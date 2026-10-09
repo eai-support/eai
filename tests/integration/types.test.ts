@@ -2,9 +2,11 @@
  * Tenant resolution tests for eai types.
  */
 
-import { mkdir, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { describe, expect, test } from 'vitest';
+import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import ts from 'typescript';
+import { afterEach, describe, expect, test, vi } from 'vitest';
+import * as commandContext from '../../src/lib/context.js';
 import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
 import {
   canonicalizeObjectTypeRelationshipTargets,
@@ -26,6 +28,9 @@ import {
   resolveDefaultTenantKey,
   resolveTenantIdForKey,
   resolveTypesPullOutputPath,
+  pullObjectTypesToFile,
+  generatePulledTypesTypeScript,
+  typesCommand,
   shouldFailTypeSeedRun,
   summarizeAppObjectTypePublish,
   summarizeResourceApiSchemaSync,
@@ -105,6 +110,192 @@ describe('resolveTypesPullOutputPath', () => {
     await expect(resolveTypesPullOutputPath('/project', 'src/eai.config/object-types.generated.ts')).resolves.toBe(
       join('/project', 'src/eai.config/object-types.generated.ts'),
     );
+  });
+});
+
+function pullPage(docs: unknown[]): Record<string, unknown> {
+  return { docs, totalDocs: docs.length, limit: 100, totalPages: 1, page: 1, pagingCounter: 1,
+    hasPrevPage: false, hasNextPage: false, prevPage: null, nextPage: null };
+}
+
+describe('Object Type pull source and response contract', () => {
+  const tenantId = 'owned-runtime';
+  const secret = '<fixture-private-pull-content>';
+  const modelSource = `export interface ObjectTypeDefinition {
+  name: string; slug: string; displayName: string;
+  description?: string; authorization?: { privacyClass: 'owner_private' | 'shared_private' };
+  properties: { name: string; type: string; required: boolean }[];
+  linkTypes: unknown[]; actions: unknown[];
+  storageBackend: 'postgresql' | 'documentdb' | 'blob' | 'search';
+  storageBinding?: { sql?: { databaseAlias: 'tenant-postgres'; tenantSchemaStrategy: 'per-tenant-schema'; tableName: string } };
+  status: 'draft' | 'published' | 'deprecated';
+}
+`;
+  const documents = [{
+    id: 'stored-definition', name: 'ObservabilityAISummary', slug: 'observability-aisummary', displayName: 'Historical Summary',
+    createdAt: '2026-10-08T00:00:00Z', publishedAt: '2026-10-08T01:00:00Z', status: 'published', storageBackend: 'documentdb',
+    authorization: { privacyClass: 'shared_private', organizationWideDefault: 'private', permissionMap: { read: 'view' } },
+    properties: [{ name: 'title', type: 'text', required: true, indexed: true, serverOnly: false, id: 'stored-property' }],
+    linkTypes: [{ name: 'measure', targetObjectType: 'opa-measure', cardinality: 'many-to-one', id: 'stored-link' }],
+    actions: [], storageBinding: { documentdb: { databaseAlias: 'tenant-documentdb', collectionName: 'authoritative_collection', indexes: [] } },
+    platformMetadata: { retained: true, nested: ['exact', 42, null] },
+  }];
+  function decodedSource(source: string): Record<string, unknown[]> {
+    const file = ts.createSourceFile('generated.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    const declaration = file.statements.filter(ts.isVariableStatement).flatMap(statement => [...statement.declarationList.declarations])
+      .find(value => ts.isIdentifier(value.name) && value.name.text === 'pulledTypes');
+    const initializer = declaration?.initializer;
+    if (!initializer || !ts.isCallExpression(initializer) || initializer.expression.getText(file) !== 'JSON.parse'
+      || initializer.arguments.length !== 1 || !ts.isStringLiteral(initializer.arguments[0])) throw new Error('Expected serialized JSON source.');
+    return JSON.parse(initializer.arguments[0].text);
+  }
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  test.each(['src/eai.config/object-types.generated.ts', 'src/types/generated.ts', 'custom folder/deeper/generated.ts'])
+    ('writes compiler-compatible source with an exact model import for %s and preserves all remote data', async output => {
+      const env = await createTestEnvironment();
+      try {
+        const model = join(env.dir, 'src', 'eai.config', 'object-types.ts'); await mkdir(dirname(model), { recursive: true }); await writeFile(model, modelSource);
+        const client = { getPublishedObjectTypes: vi.fn(async () => new Response(JSON.stringify(pullPage(documents)), { status: 200 })) };
+        const result = await pullObjectTypesToFile(client, tenantId, env.dir, output);
+        expect(client.getPublishedObjectTypes).toHaveBeenCalledTimes(2);
+        expect(client.getPublishedObjectTypes).toHaveBeenCalledWith({ limit: 100, sort: 'id', page: 1, timeoutMs: expect.any(Number) });
+        expect(result).toEqual({ count: 1, outputPath: join(env.dir, output) });
+        const source = await readFile(result.outputPath, 'utf8'); expect(decodedSource(source)).toEqual({ [tenantId]: documents });
+        const program = ts.createProgram([result.outputPath], { noEmit: true, strict: true, skipLibCheck: true, types: [],
+          target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler });
+        expect(ts.getPreEmitDiagnostics(program).map(diagnostic => ts.flattenDiagnosticMessageText(diagnostic.messageText, '\n'))).toEqual([]);
+        expect(await readFile(model, 'utf8')).toBe(modelSource);
+      } finally { await env.cleanup(); }
+    });
+
+  test('serialized tenant keys and data cannot become executable source syntax', () => {
+    const key = "owned' }; throw new Error('unsafe'); //";
+    const payload = [{ ...documents[0], description: "quote'\"` ${literal} \\ line\nseparator\u2028exact" }];
+    const source = generatePulledTypesTypeScript(payload, key, '../eai.config/object-types');
+    expect(decodedSource(source)).toEqual({ [key]: payload });
+    expect(ts.createSourceFile('generated.ts', source, ts.ScriptTarget.Latest, true).parseDiagnostics).toEqual([]);
+  });
+
+  test('an explicitly empty successful docs list writes a valid empty tenant group', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const result = await pullObjectTypesToFile({ getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage([])), { status: 200 }) }, tenantId, env.dir, 'src/types/generated.ts');
+      expect(result.count).toBe(0); expect(decodedSource(await readFile(result.outputPath, 'utf8'))).toEqual({ [tenantId]: [] });
+    } finally { await env.cleanup(); }
+  });
+
+  test.each([
+    ['partial-page', new Response(JSON.stringify({ docs: documents, hasNextPage: true }), { status: 200 })],
+    ['malformed-page-flag', new Response(JSON.stringify({ docs: documents, hasNextPage: 'false' }), { status: 200 })],
+    ['null-page-flag', new Response(JSON.stringify({ docs: documents, hasNextPage: null }), { status: 200 })],
+    ['HTTP403', new Response(JSON.stringify({ docs: documents, debug: secret }), { status: 403 })],
+    ['HTTP503', new Response(JSON.stringify({ docs: documents, debug: secret }), { status: 503 })],
+    ['malformed-json', new Response('{invalid ' + secret, { status: 200 })],
+    ['null', new Response('null', { status: 200 })],
+    ['missing-docs', new Response(JSON.stringify({ error: secret }), { status: 200 })],
+    ['null-docs', new Response('{"docs":null}', { status: 200 })],
+    ['object-docs', new Response('{"docs":{}}', { status: 200 })],
+    ['string-document', new Response(JSON.stringify(pullPage([secret])), { status: 200 })],
+    ['missing-slug', new Response(JSON.stringify(pullPage([{ ...documents[0], slug: undefined }])), { status: 200 })],
+    ['missing-name', new Response(JSON.stringify(pullPage([{ ...documents[0], name: undefined }])), { status: 200 })],
+    ['invalid-properties', new Response(JSON.stringify(pullPage([{ ...documents[0], properties: {} }])), { status: 200 })],
+    ['invalid-links', new Response(JSON.stringify(pullPage([{ ...documents[0], linkTypes: false }])), { status: 200 })],
+    ['invalid-actions', new Response(JSON.stringify(pullPage([{ ...documents[0], actions: false }])), { status: 200 })],
+  ])('rejects %s before overwriting existing output and without exposing upstream content', async (_label, response) => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'existing-generated.ts'); const original = Buffer.from('Existing source\r\n'); await writeFile(output, original);
+      let error: unknown;
+      try { await pullObjectTypesToFile({ getPublishedObjectTypes: async () => response }, tenantId, env.dir, output); }
+      catch (caught) { error = caught; }
+      expect(error).toBeInstanceOf(Error); expect(String(error)).not.toContain(secret); expect(error).not.toHaveProperty('cause');
+      expect((await readFile(output)).equals(original)).toBe(true);
+    } finally { await env.cleanup(); }
+  });
+
+  test('network failures preserve output bytes and omit raw request error content', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'generated.ts'); const original = Buffer.from('Existing source\n'); await writeFile(output, original);
+      await expect(pullObjectTypesToFile({ getPublishedObjectTypes: async () => { throw new Error(secret); } }, tenantId, env.dir, output))
+        .rejects.toThrow('Object Type pull request failed.');
+      expect((await readFile(output)).equals(original)).toBe(true);
+    } finally { await env.cleanup(); }
+  });
+
+  test('refuses to overwrite the producer model module', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'src', 'eai.config', 'object-types.ts'); await mkdir(dirname(output), { recursive: true }); await writeFile(output, modelSource);
+      await expect(pullObjectTypesToFile({ getPublishedObjectTypes: async () => new Response(JSON.stringify({ docs: documents }), { status: 200 }) }, tenantId, env.dir, output))
+        .rejects.toThrow('preserve src/eai.config/object-types.ts');
+      expect(await readFile(output, 'utf8')).toBe(modelSource);
+    } finally { await env.cleanup(); }
+  });
+
+  test('refuses a symbolic-link alias to the producer before making any request', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const model = join(env.dir, 'src', 'eai.config', 'object-types.ts');
+      await mkdir(dirname(model), { recursive: true }); await writeFile(model, modelSource);
+      const alias = join(env.dir, 'model-alias.ts'); await symlink(model, alias);
+      const client = { getPublishedObjectTypes: vi.fn() };
+      await expect(pullObjectTypesToFile(client, tenantId, env.dir, alias)).rejects.toThrow('preserve src/eai.config/object-types.ts');
+      expect(client.getPublishedObjectTypes).not.toHaveBeenCalled(); expect(await readFile(model, 'utf8')).toBe(modelSource);
+    } finally { await env.cleanup(); }
+  });
+
+  test('preserves existing output on a later-page HTTP failure', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'generated.ts'); const original = Buffer.from('Retain existing generated bytes\r\n');
+      await writeFile(output, original);
+      const docs = Array.from({ length: 100 }, (_, index) => ({ ...documents[0], id: `id-${index}` }));
+      const client = { getPublishedObjectTypes: async (options?: { page?: number }) => options?.page === 2
+        ? new Response(JSON.stringify({ secret }), { status: 503 })
+        : new Response(JSON.stringify({ docs, totalDocs: 150, totalPages: 2, limit: 100, page: 1, pagingCounter: 1,
+          hasPrevPage: false, hasNextPage: true, prevPage: null, nextPage: 2 }), { status: 200 }) };
+      await expect(pullObjectTypesToFile(client, tenantId, env.dir, output)).rejects.toThrow('HTTP 503');
+      expect((await readFile(output)).equals(original)).toBe(true);
+      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-types-pull-'))).toBe(false);
+    } finally { await env.cleanup(); }
+  });
+
+  test('failed atomic replacement removes its temporary file and preserves the destination', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'occupied'); await mkdir(output); await writeFile(join(output, 'keep.txt'), 'Keep this directory');
+      const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage(documents)), { status: 200 }) };
+      await expect(pullObjectTypesToFile(client, tenantId, env.dir, output)).rejects.toThrow('could not replace');
+      expect(await readFile(join(output, 'keep.txt'), 'utf8')).toBe('Keep this directory');
+      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-types-pull-'))).toBe(false);
+    } finally { await env.cleanup(); }
+  });
+
+  test.each(['text', 'json'])('types define is explicitly unsupported in %s without context or network calls', async format => {
+    const context = vi.spyOn(commandContext, 'resolveCommandContext');
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled CLI exit'); }) as never);
+    await expect(typesCommand.parseAsync(['define', '--format', format], { from: 'user' })).rejects.toThrow('Controlled CLI exit');
+    expect(exit).toHaveBeenCalledWith(1); expect(context).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+    if (format === 'json') expect(JSON.parse(String(log.mock.calls[0][0])).error.code).toBe('TYPES_DEFINE_UNSUPPORTED');
+  });
+
+  test.each(['http-failure', 'invalid-list'])('the pull command fails on %s and preserves the selected output', async kind => {
+    const env = await createTestEnvironment();
+    try {
+      const output = join(env.dir, 'generated.ts'); const original = Buffer.from('Keep current generated file\n'); await writeFile(output, original);
+      const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(kind === 'http-failure' ? { docs: documents, debug: secret } : { error: secret }), { status: kind === 'http-failure' ? 503 : 200 }) };
+      vi.spyOn(commandContext, 'resolveCommandContext').mockResolvedValue({ root: env.dir, tenantId, client } as unknown as commandContext.CommandContext);
+      const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled CLI exit'); }) as never);
+      const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+      await expect(typesCommand.parseAsync(['pull', '--tenant-id', tenantId, '--output', output], { from: 'user' })).rejects.toThrow('Controlled CLI exit');
+      expect(exit).toHaveBeenCalledWith(1); expect((await readFile(output)).equals(original)).toBe(true);
+      expect(errors.mock.calls.flat().join(' ')).not.toContain(secret);
+    } finally { await env.cleanup(); }
   });
 });
 
@@ -1685,6 +1876,95 @@ describe('validateObjectTypeStorageMetadata', () => {
       'DocumentDB storageBinding is incomplete. Missing: partitionKey',
     ]);
   });
+
+  test('preserves canonical manifest index fields and Search mappings without changing the binding', () => {
+    const type: ObjectTypeDefinition = {
+      ...buildObjectType([]),
+      status: 'published',
+      storageBackend: 'postgresql',
+      storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: {
+          databaseAlias: 'tenant-postgres', tenantSchemaStrategy: 'per-tenant-schema',
+          tableName: 'e8f0fae6c3d7_template_workflows',
+          indexes: [{ name: 'title_idx', fields: ['title'], unique: false }],
+        },
+        documentdb: {
+          databaseAlias: 'tenant-documentdb', databaseName: 'fixture', collectionName: 'records',
+          partitionKey: 'tenantId', indexes: [{ fields: ['tenantId', 'title'], unique: true }],
+        },
+        search: {
+          searchServiceAlias: 'tenant-search', indexName: 'fixture',
+          fieldMappings: { title: 'title', body: 'content' },
+        },
+      },
+    };
+    const original = structuredClone(type.storageBinding);
+    expect(validateObjectTypeStorageMetadata(type)).toEqual([]);
+    expect(toAppManifestObjectTypes([type])[0].storageBinding).toEqual(original);
+    expect(type.storageBinding).toEqual(original);
+  });
+
+  test.each([
+    ['sql', [{ name: 'title' }]],
+    ['sql', { name: 'title' }],
+    ['documentdb', [{ name: 'title' }]],
+    ['documentdb', { name: 'title' }],
+    ['sql', ['title', { path: 'body' }]],
+    ['documentdb', ['tenantId', 42]],
+  ])('rejects receiver-incompatible %s index fields without flattening %j', (scope, fields) => {
+    const binding = { [String(scope)]: { indexes: [{ name: 'fixture_idx', fields }] } };
+    const original = structuredClone(binding);
+    const type = {
+      ...buildObjectType([]), status: 'draft', storageMetadataStatus: 'draft', storageBinding: binding,
+    } as unknown as ObjectTypeDefinition;
+    expect(validateObjectTypeStorageMetadata(type)).toEqual([
+      `storageBinding.${scope}.indexes[0].fields must be an array of strings for app manifests; field objects and dictionaries are unsupported`,
+    ]);
+    expect(type.storageBinding).toEqual(original);
+  });
+
+  test.each([
+    { fieldMappings: [{ sourceFieldName: 'title', targetFieldName: 'content' }] },
+    { fieldMappings: { title: { targetFieldName: 'content' } } },
+    { fieldMappings: { title: 42 } },
+    { fieldMappings: { title: null } },
+  ])('rejects receiver-incompatible Search mapping %j before it reaches seed publication', ({ fieldMappings }) => {
+    const binding = { search: { searchServiceAlias: 'tenant-search', fieldMappings } };
+    const original = structuredClone(binding);
+    const type = {
+      ...buildObjectType([]), status: 'draft', storageMetadataStatus: 'draft', storageBinding: binding,
+    } as unknown as ObjectTypeDefinition;
+    expect(collectTypeStorageValidationIssues({ template: [type] })).toEqual([{
+      tenantKey: 'template', typeName: type.name,
+      issue: 'storageBinding.search.fieldMappings must be an object containing only string values for app manifests; mapping arrays are unsupported',
+    }]);
+    expect(type.storageBinding).toEqual(original);
+  });
+
+  test('checks inactive binding shapes for ready types because the receiver validates the whole manifest', () => {
+    const type = {
+      ...buildObjectType([]), status: 'published', storageBackend: 'postgresql', storageMetadataStatus: 'ready',
+      storageBinding: {
+        sql: { databaseAlias: 'tenant-postgres', tenantSchemaStrategy: 'per-tenant-schema', tableName: 'fixture' },
+        documentdb: { indexes: [{ fields: [{ name: 'title' }] }] },
+        search: { fieldMappings: [{ sourceFieldName: 'title', targetFieldName: 'content' }] },
+      },
+    } as unknown as ObjectTypeDefinition;
+    expect(validateObjectTypeStorageMetadata(type)).toEqual([
+      'storageBinding.documentdb.indexes[0].fields must be an array of strings for app manifests; field objects and dictionaries are unsupported',
+      'storageBinding.search.fieldMappings must be an object containing only string values for app manifests; mapping arrays are unsupported',
+    ]);
+  });
+
+  test('accepts omitted or null optional manifest index and mapping fields', () => {
+    const type = {
+      ...buildObjectType([]), status: 'draft', storageMetadataStatus: 'draft',
+      storageBinding: { sql: { indexes: null }, documentdb: {}, search: { fieldMappings: null } },
+    } as unknown as ObjectTypeDefinition;
+    expect(validateObjectTypeStorageMetadata(type)).toEqual([]);
+  });
+
 });
 
 describe('collectTypeStorageValidationIssues', () => {

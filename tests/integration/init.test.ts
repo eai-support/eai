@@ -5,7 +5,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
@@ -40,6 +40,7 @@ import {
 import { createMockServer, PublicAPIMock } from "../helpers/mock-server.js";
 import type { TestContext } from "../helpers/setup-dsl.js";
 import {
+  cleanupTestTokens,
   workingDirectoryIs,
   gitIsInstalled,
   networkIsAvailable,
@@ -144,19 +145,25 @@ describe("eai init", () => {
   let ctx: TestContext;
   let templateRepo: string;
   let originalPublicApiUrl: string | undefined;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
 
   beforeEach(async () => {
     originalPublicApiUrl = process.env.BASE_URL_PUBLIC_API;
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
     process.env.BASE_URL_PUBLIC_API = TEST_PUBLIC_API_URL;
 
     env = await createTestEnvironment();
+    process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
     mockServer = createMockServer();
     mockServer.start();
 
     ctx = {
       workingDir: env.dir,
       mockAPI: new PublicAPIMock("https://test-api.example.com", mockServer),
-      env: {},
+      env: { HOME: env.dir, USERPROFILE: env.dir },
       prompts: [],
     };
 
@@ -172,7 +179,12 @@ describe("eai init", () => {
 
   afterEach(async () => {
     mockServer.stop();
+    await cleanupTestTokens(ctx);
     await env.cleanup();
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     if (originalPublicApiUrl === undefined) {
       delete process.env.BASE_URL_PUBLIC_API;
     } else {
@@ -1601,6 +1613,7 @@ void contractType;
         [
           "prefilled-app",
           "--skip-prompts",
+          "--no-install",
           "--child-tenant",
           "Prefilled App",
           "--from",
@@ -1613,6 +1626,10 @@ void contractType;
         join(env.dir, "prefilled-app", ".env.local"),
         "utf-8",
       );
+      expect(envContent).toContain(`EAI_PROFILE=${profileName}`);
+      if (process.platform !== "win32") {
+        expect((await stat(join(env.dir, "prefilled-app", ".env.local"))).mode & 0o077).toBe(0);
+      }
       expect(envContent).toContain(
         `BASE_URL_PUBLIC_API=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
       );
@@ -1628,6 +1645,10 @@ void contractType;
       expect(envContent).toContain(
         "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
       );
+      const { stdout: ignoredEnv } = await exec("git", ["check-ignore", ".env.local"], { cwd: join(env.dir, "prefilled-app") });
+      expect(ignoredEnv.trim()).toBe(".env.local");
+      const { stdout: trackedEnv } = await exec("git", ["ls-files", ".env.local"], { cwd: join(env.dir, "prefilled-app") });
+      expect(trackedEnv).toBe("");
     } finally {
       configSpy.mockRestore(); loadProfileSpy.mockRestore(); profile.setActiveProfile("default");
       authSpy.mockRestore();

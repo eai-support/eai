@@ -428,6 +428,15 @@ export async function runContractAudit(
       });
     }
   } else if (!context.tenantId || !client) {
+    addCheck(checks, {
+      id: "workspace",
+      label: "Active workspace",
+      method: "LOCAL",
+      endpoint: "workspace selection",
+      status: "failed",
+      details:
+        "No active workspace could be resolved. Run `eai workspace select` or provide --tenant-id.",
+    });
     const skippedDueToTenant = [
       [
         "current-user",
@@ -1131,6 +1140,13 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
       failed++;
     }
 
+    if (authenticated && !tenantId) {
+      out.error(
+        "No active workspace could be resolved — run `eai workspace select` or provide --tenant-id.",
+      );
+      failed++;
+    }
+
     // Check 3: Platform service connectivity
     if (authenticated && tenantId) {
       const cfgSpinner = ora("Platform service").start();
@@ -1231,6 +1247,7 @@ Use 'eai verify calls' when you need to inspect the exact API contracts the CLI 
       out.success(`All ${passed} checks passed`);
     } else {
       out.warn(`${passed} passed, ${failed} failed`);
+      process.exitCode = 1;
     }
   });
 
@@ -1251,53 +1268,72 @@ verifyCommand
       process.exit(1);
     }
 
-    const client = new PlatformAPIClient(
-      context.publicApiUrl,
-      context.tenantId || "unknown",
-    );
     const checks: Array<{
       id: string;
-      status: "passed" | "failed";
+      status: "passed" | "failed" | "skipped";
       details: string;
       payload?: unknown;
     }> = [];
 
-    const statusResponse = await client.getResourceStorageStatus();
-    if (statusResponse.ok) {
-      const payload = (await statusResponse.json()) as {
-        objectTypes?: unknown[];
-      };
+    const authenticated = await isAuthenticated();
+    if (!authenticated || !context.tenantId) {
+      const details = !authenticated
+        ? "Not authenticated. Run `eai login` or set EAI_ACCESS_TOKEN."
+        : "No active workspace could be resolved. Run `eai workspace select` or provide --tenant-id.";
       checks.push({
-        id: "storage-status",
-        status: "passed",
-        details: `${payload.objectTypes?.length || 0} object type route(s) returned`,
-        payload,
-      });
-    } else {
-      checks.push({
-        id: "storage-status",
+        id: !authenticated ? "auth" : "workspace",
         status: "failed",
-        details: `${statusResponse.status} ${statusResponse.statusText}`,
+        details,
       });
-    }
+      for (const id of ["storage-status", "storage-doctor"]) {
+        checks.push({ id, status: "skipped", details: `Skipped: ${details}` });
+      }
+    } else {
+      const client = new PlatformAPIClient(context.publicApiUrl, context.tenantId);
+      try {
+        const statusResponse = await client.getResourceStorageStatus();
+        if (!statusResponse.ok) {
+          throw new Error(`${statusResponse.status} ${statusResponse.statusText}`);
+        }
+        const payload = (await statusResponse.json()) as {
+          objectTypes?: unknown[];
+        };
+        checks.push({
+          id: "storage-status",
+          status: "passed",
+          details: `${payload.objectTypes?.length || 0} object type route(s) returned`,
+          payload,
+        });
+      } catch (err) {
+        checks.push({
+          id: "storage-status",
+          status: "failed",
+          details: err instanceof Error ? err.message : String(err),
+        });
+      }
 
-    const doctorResponse = await client.getResourceStorageDoctor();
-    if (doctorResponse.ok) {
-      const payload = (await doctorResponse.json()) as { healthy?: boolean };
-      checks.push({
-        id: "storage-doctor",
-        status: payload.healthy ? "passed" : "failed",
-        details: payload.healthy
-          ? "Storage doctor healthy"
-          : "Storage doctor reported issues",
-        payload,
-      });
-    } else {
-      checks.push({
-        id: "storage-doctor",
-        status: "failed",
-        details: `${doctorResponse.status} ${doctorResponse.statusText}`,
-      });
+      try {
+        const doctorResponse = await client.getResourceStorageDoctor();
+        if (!doctorResponse.ok) {
+          throw new Error(`${doctorResponse.status} ${doctorResponse.statusText}`);
+        }
+        const payload = (await doctorResponse.json()) as { healthy?: boolean };
+        const healthy = payload.healthy === true;
+        checks.push({
+          id: "storage-doctor",
+          status: healthy ? "passed" : "failed",
+          details: healthy
+            ? "Storage doctor healthy"
+            : "Storage doctor reported issues or no valid healthy result",
+          payload,
+        });
+      } catch (err) {
+        checks.push({
+          id: "storage-doctor",
+          status: "failed",
+          details: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
 
     const failed = checks.filter((check) => check.status === "failed").length;
@@ -1306,25 +1342,30 @@ verifyCommand
       publicApiUrl: context.publicApiUrl,
       tenantId: context.tenantId,
       checks,
-      summary: { passed: checks.length - failed, failed, skipped: 0 },
+      summary: {
+        passed: checks.filter((check) => check.status === "passed").length,
+        failed,
+        skipped: checks.filter((check) => check.status === "skipped").length,
+      },
     };
 
     if (options.json || options.format === "json") {
       out.json(report);
-      return;
-    }
-
-    out.heading("Storage Verification");
-    for (const check of checks) {
-      if (check.status === "passed") {
-        out.success(`${check.id}: ${check.details}`);
-      } else {
-        out.error(`${check.id}: ${check.details}`);
+    } else {
+      out.heading("Storage Verification");
+      for (const check of checks) {
+        if (check.status === "passed") {
+          out.success(`${check.id}: ${check.details}`);
+        } else if (check.status === "skipped") {
+          out.warn(`${check.id}: ${check.details}`);
+        } else {
+          out.error(`${check.id}: ${check.details}`);
+        }
       }
     }
 
     if (failed > 0) {
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 
@@ -1394,12 +1435,12 @@ verifyCommand
 
     if (options.format === "json") {
       out.json(report);
-      return;
+    } else {
+      renderContractAudit(report);
     }
 
-    renderContractAudit(report);
     if (report.summary.failed > 0) {
-      process.exit(1);
+      process.exitCode = 1;
     }
   });
 

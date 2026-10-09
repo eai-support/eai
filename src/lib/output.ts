@@ -51,6 +51,20 @@ export function redactSensitiveText(msg: string): string {
     .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1[redacted]');
 }
 
+function safeTenantDeauthorization(key: string, value: unknown): Record<string, boolean> | undefined {
+  if (!['tenant_deauthorization', 'tenantDeauthorization'].includes(key)
+    || !value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const summary = value as Record<string, unknown>;
+  const camel = summary.alreadyAbsent;
+  const snake = summary.already_absent;
+  if (camel !== undefined && snake !== undefined && camel !== snake) return undefined;
+  const alreadyAbsent = camel ?? snake;
+  if (typeof summary.removed !== 'boolean' || typeof alreadyAbsent !== 'boolean'
+    || summary.removed === alreadyAbsent) return undefined;
+  // Preserve only these non-secret receipt booleans; arbitrary extra fields stay omitted.
+  return { removed: summary.removed, [camel !== undefined ? 'alreadyAbsent' : 'already_absent']: alreadyAbsent };
+}
+
 /**
  * Recursively redact secrets from an arbitrary JSON-like value: string leaves
  * pass through redactSensitiveText, and values under sensitive keys are masked.
@@ -66,7 +80,8 @@ export function redactSensitiveDeep<T>(value: T): T {
   if (value && typeof value === 'object') {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
-      out[key] = SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactSensitiveDeep(item);
+      out[key] = safeTenantDeauthorization(key, item)
+        ?? (SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactSensitiveDeep(item));
     }
     return out as unknown as T;
   }
@@ -74,6 +89,8 @@ export function redactSensitiveDeep<T>(value: T): T {
 }
 
 function redactingJsonReplacer(key: string, value: unknown): unknown {
+  const summary = safeTenantDeauthorization(key, value);
+  if (summary) return summary;
   if (key && SENSITIVE_KEY_PATTERN.test(key)) {
     return '[redacted]';
   }

@@ -11,6 +11,8 @@ export interface CommandSchema {
   description: string;
   aliases: string[];
   options: OptionSchema[];
+  /** An executable parent command, in addition to its subcommands. */
+  hasAction?: boolean;
   subcommands?: CommandSchema[];
 }
 
@@ -80,6 +82,11 @@ export function buildCommandSchema(command: Command): CommandSchema {
   // Recursively process subcommands
   const subcommands = command.commands;
   if (subcommands && subcommands.length > 0) {
+    // Commander does not expose an action-handler getter. Keep this introspection
+    // bounded, and never invoke handlers while describing the command tree.
+    if (typeof (command as Command & { _actionHandler?: unknown })._actionHandler === 'function') {
+      schema.hasAction = true;
+    }
     schema.subcommands = subcommands
       .filter(cmd => !cmd.name().includes('help'))  // Exclude help commands
       .map(cmd => buildCommandSchema(cmd));

@@ -205,6 +205,29 @@ describe("eai gofer refresh", () => {
       expect(welcome, host).toContain('If anything fails, say "get help" or type `eai support`');
       expect(updateHasSupport, host).toBe(false);
     }
+    });
+
+  test("JSON refresh checks report file metadata without serializing managed contents", async () => {
+    const relativePath = ".specify/commands/3_gofer_plan.md";
+    const target = join(env.dir, relativePath);
+    const contents = await readFile(target);
+    await rm(target);
+    ctx.env.EAI_GOFER_REFRESH_SOURCE = "bundled";
+
+    const result = await runCommand(ctx, "eai gofer refresh --check --format json");
+    expectCommandSucceeded(result);
+    const payload = JSON.parse(result.stdout) as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(payload.items.find((item) => item.relativePath === relativePath)).toMatchObject({
+      action: "add",
+      source: "bundled",
+      desiredHash: createHash("sha256").update(contents).digest("hex"),
+      executable: false,
+    });
+    expect(payload.items.every((item) => !("contents" in item))).toBe(true);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThan(131_072);
+    expect(existsSync(target)).toBe(false);
   });
 
   test("installs the released document lifecycle guidance", async () => {

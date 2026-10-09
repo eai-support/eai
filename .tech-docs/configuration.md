@@ -126,6 +126,27 @@ Rules:
    endpoint URLs.
 3. Use your deployment provider's secret management for deployed applications.
 
+`eai init` records the local CLI profile selector as `EAI_PROFILE` in this
+ignored file so a reopened app workspace keeps its CLI authentication context.
+The selection order is an explicit `--profile`, your shell's `EAI_PROFILE`, the
+app-root `.env.local` selector, then the public default. Named selectors require
+an existing local CLI profile; a missing profile fails before platform requests.
+`eai env push` excludes this selector, and `eai env pull` preserves its local
+value. Profile credentials and CLI tokens remain outside the app repository.
+
+`eai env pull` and `eai env push` use Azure CLI authorization independently of
+your platform workspace role. For an App Configuration identity with data-plane
+permissions, use Azure CLI's login mode for the command:
+
+```bash
+AZURE_DEFAULTS_APPCONFIG_AUTH_MODE=login eai env push --label <app-name> --key <key>
+AZURE_DEFAULTS_APPCONFIG_AUTH_MODE=login eai env pull --label <app-name>
+```
+
+Configure `EAI_APP_CONFIG_STORE` for the intended store. Azure CLI defaults to
+access-key authorization when no auth mode is configured; that mode also requires
+permission to retrieve the store's access keys.
+
 ### `eai.config.ts`
 
 **File**: `eai.config.ts` in the project root

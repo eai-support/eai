@@ -13,6 +13,24 @@ describe('PlatformAPIClient', () => {
     vi.restoreAllMocks()
   })
 
+  test('preserves exact tenant filter, stable sorting and bounded deadlines on every type export page', async () => {
+    const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
+    const client = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'owned-tenant')
+    for (const page of [1, 2, 3]) await client.getPublishedObjectTypes({ page, limit: 100, sort: 'id', timeoutMs: 500 })
+    expect(fetch).toHaveBeenCalledTimes(3)
+    for (const [index, [input, options]] of fetch.mock.calls.entries()) {
+      const url = new URL(String(input))
+      expect(url.pathname).toBe('/public/v4/data/resources/object-types')
+      expect(url.searchParams.get('where[tenant][equals]')).toBe('owned-tenant')
+      expect(url.searchParams.get('page')).toBe(String(index + 1))
+      expect(url.searchParams.get('sort')).toBe('id')
+      expect(url.searchParams.get('limit')).toBe('100')
+      expect(url.searchParams.has('where[status][equals]')).toBe(false)
+      expect(options?.headers).toMatchObject({ 'X-Tenant-Id': 'owned-tenant', Authorization: 'Bearer <fixture-access-token>' })
+      expect(options?.signal).toBeInstanceOf(AbortSignal)
+    }
+  })
+
   test('caps managed requests and preserves a tighter client or per-read budget', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout')
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
@@ -452,23 +470,62 @@ describe('PlatformAPIClient', () => {
     })
   })
 
-  test('plans and applies indexes through the tenant-scoped AdminAPI route', async () => {
-    const fetchMock = vi
-      .spyOn(globalThis, 'fetch')
-      .mockResolvedValue(new Response('{}', { status: 200 }))
+  test('plans only explicit exact slugs through the strict PublicAPI index-plan receiver', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      expect(String(input)).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/index-plan')
+      expect(init?.method).toBe('POST')
+      const body = JSON.parse(String(init?.body))
+      // PublicAPI ResourceAPIIndexPlanRequest forbids client apply/dryRun fields.
+      expect(Object.keys(body)).toEqual(['objectTypes'])
+      expect(body.objectTypes).toEqual(['opameasure', 'observability-aisummary'])
+      return new Response(JSON.stringify({ tenantId: 'tenant-123', objectTypeCount: 2 }))
+    })
 
     const client = new PlatformAPIClient('https://example.test', 'tenant-123')
-    await client.planResourceIndexes(['fact-batch-load'])
-    await client.applyResourceIndexes(['fact-batch-load'])
+    const response = await client.planResourceIndexes(['opameasure', 'observability-aisummary'])
 
-    expect(fetchMock).toHaveBeenCalledTimes(2)
-    expect(String(fetchMock.mock.calls[0][0])).toBe('https://example.test/v4/platform/tenants/tenant-123/resourceapi/index-plan')
-    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
-      objectTypes: ['fact-batch-load'], apply: false, dryRun: true,
+    expect(response.ok).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test.each([
+    undefined, null, 'project', [], [''], ['Project'], ['project_name'], ['project '],
+    ['project\n'], ['project/other'], ['storage'], [42], ['a'.repeat(256)], Array(1001).fill('project'),
+  ])('rejects invalid or unbounded index scope %# before auth or fetch', async objectTypes => {
+    const token = vi.mocked(getAccessToken)
+    token.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+
+    await expect(client.planResourceIndexes(objectTypes as string[])).rejects.toThrow('Index planning')
+
+    expect(token).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('accepts the exact public selection limits without rewriting the slugs', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const objectTypes = Array(1000).fill('a'.repeat(255))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+
+    await client.planResourceIndexes(objectTypes)
+
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({ objectTypes })
+  })
+
+  test.each([undefined, ['fact-batch-load']])('rejects index apply without turning it into a dry run %#', async objectTypes => {
+    const token = vi.mocked(getAccessToken)
+    token.mockClear()
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const client = new PlatformAPIClient('https://example.test', 'tenant-123')
+
+    await expect(client.applyResourceIndexes(objectTypes)).rejects.toMatchObject({
+      code: 'RESOURCE_INDEX_APPLY_UNSUPPORTED',
+      message: expect.stringContaining('unavailable through PublicAPI'),
     })
-    expect(JSON.parse(String(fetchMock.mock.calls[1][1]?.body))).toEqual({
-      objectTypes: ['fact-batch-load'], apply: true, dryRun: false,
-    })
+
+    expect(token).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('refreshes cache through the system-admin AdminAPI route with an audit reason', async () => {
@@ -609,6 +666,47 @@ describe('PlatformAPIClient', () => {
       confirmationTenantId: 'tenant-child',
       reason: 'eai tenant delete --force-hard-purge',
     })
+  })
+
+  test('hard purges one immediate child through the exact parent-authorized route and header', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      id: 'tenant-child', parentTenantId: 'tenant-parent', status: 'hard_purged',
+    }), { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+
+    await client.deleteTenant('tenant-child', {
+      parentTenantId: 'tenant-parent',
+      forceHardPurge: true,
+      reason: 'Disposable QA child cleanup',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children/tenant-child/delete')
+    expect(init?.method).toBe('POST')
+    expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe('tenant-parent')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      forceHardPurge: true,
+      confirmationTenantId: 'tenant-child',
+      reason: 'Disposable QA child cleanup',
+    })
+  })
+
+  test.each([
+    { parentTenantId: 'tenant-child', forceHardPurge: true, scope: 'tenant-child' },
+    { parentTenantId: 'tenant-parent', forceHardPurge: false, scope: 'tenant-parent' },
+    { parentTenantId: 'tenant-parent', forceHardPurge: true, scope: 'another-tenant' },
+    { parentTenantId: 'system', forceHardPurge: true, scope: 'system' },
+    { parentTenantId: '', forceHardPurge: true, scope: '' },
+  ])('rejects unsafe parent delete arguments before credentials or fetch: %j', async options => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    const token = vi.mocked(getAccessToken)
+    token.mockClear()
+    const client = new PlatformAPIClient('https://example.test', options.scope)
+
+    await expect(client.deleteTenant('tenant-child', options)).rejects.toThrow(/Parent-authorized deletion/)
+    expect(token).not.toHaveBeenCalled()
+    expect(fetchMock).not.toHaveBeenCalled()
   })
 
   test('routes child tenant admin bootstrap through the public platform router', async () => {
@@ -1276,6 +1374,43 @@ describe('PlatformAPIClient', () => {
     )
     expect(init?.method).toBe('POST')
     expect(init?.body).toBeUndefined()
+    expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe('tenant-parent')
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  test('reads the exact app provisioning job with company authority, encoded identifiers and runtime query', async () => {
+    const timeout = vi.spyOn(AbortSignal, 'timeout')
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const client = new PlatformAPIClient('https://example.test', 'tenant/parent')
+    await client.getAppProvisioningJob('planning/portal', 'app-prov/exact', 'runtime/child', 1250)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant%2Fparent/apps/planning%2Fportal/provisioning-jobs/app-prov%2Fexact?targetTenantId=runtime%2Fchild')
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+    expect(init?.signal).toBeInstanceOf(AbortSignal)
+    expect(init?.redirect).toBe('error')
+    expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe('tenant/parent')
+    expect(timeout).toHaveBeenCalledWith(1250)
+  })
+
+  test('keeps the app provisioning read deadline active through a hung response body', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init?.signal
+      if (!signal) throw new Error('Provisioning reads require a deadline')
+      const body = new ReadableStream<Uint8Array>({ start(controller) {
+        const alive = setInterval(() => {}, 1000)
+        signal.addEventListener('abort', () => { clearInterval(alive); controller.error(signal.reason) }, { once: true })
+      } })
+      return new Response(body)
+    })
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const response = await client.getAppProvisioningJob('planning-portal', 'app-prov-owned', 'runtime-child', 25)
+    let error: unknown
+    try { await readManagedPublicResponseText(response) } catch (caught) { error = caught }
+    expect(isManagedPublicRequestTimeout(error)).toBe(true)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls[0][1]?.signal?.aborted).toBe(true)
   })
 
   test('posts capability evaluation requests to the public capability router', async () => {
@@ -1528,6 +1663,8 @@ describe('PlatformAPIClient', () => {
         },
         app_registration_found: true,
         app_registration_deleted: true,
+        app_registration_already_absent: false,
+        app_registration_absence_verified: true,
       }), { status: 200 }))
 
     const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
@@ -1546,5 +1683,92 @@ describe('PlatformAPIClient', () => {
     })
     expect(result.tenantDeauthorization.removed).toBe(true)
     expect(result.appRegistrationDeleted).toBe(true)
+    expect(result.appRegistrationAlreadyAbsent).toBe(false)
+    expect(result.appRegistrationAbsenceVerified).toBe(true)
+  })
+
+  test.each(['snake', 'camel'])('accepts exact verified idempotent Entra deletion with %s receipt fields', async style => {
+    const receipt = style === 'snake' ? {
+      client_id: 'client-1', tenant_id: 'tenant-parent',
+      tenant_deauthorization: { removed: false, already_absent: true },
+      app_registration_found: false, app_registration_deleted: false,
+      app_registration_already_absent: true, app_registration_absence_verified: true,
+    } : {
+      clientId: 'client-1', tenantId: 'tenant-parent',
+      tenantDeauthorization: { removed: false, alreadyAbsent: true },
+      appRegistrationFound: false, appRegistrationDeleted: false,
+      appRegistrationAlreadyAbsent: true, appRegistrationAbsenceVerified: true,
+    }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(receipt), { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await expect(client.deprovisionEntraApp({ tenantId: 'tenant-parent', clientId: 'client-1' })).resolves.toEqual({
+      clientId: 'client-1', tenantId: 'tenant-parent',
+      tenantDeauthorization: { removed: false, alreadyAbsent: true },
+      appRegistrationFound: false, appRegistrationDeleted: false,
+      appRegistrationAlreadyAbsent: true, appRegistrationAbsenceVerified: true,
+    })
+  })
+
+  test('kept registration is explicitly unverified while runtime deauthorization is proven', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      client_id: 'client-1', tenant_id: 'tenant-parent',
+      tenant_deauthorization: { removed: true, already_absent: false },
+      app_registration_found: true, app_registration_deleted: false,
+      app_registration_already_absent: false, app_registration_absence_verified: false,
+    }), { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    const result = await client.deprovisionEntraApp({ tenantId: 'tenant-parent', clientId: 'client-1', deleteRegistration: false })
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body)).delete_registration).toBe(false)
+    expect(result.tenantDeauthorization.removed).toBe(true)
+    expect(result.appRegistrationAbsenceVerified).toBe(false)
+  })
+
+  test.each([
+    { label: 'wrong-client', change: { client_id: 'foreign-client' } },
+    { label: 'wrong-tenant', change: { tenant_id: 'foreign-tenant' } },
+    { label: 'conflicting-client-alias', change: { clientId: 'foreign-client' } },
+    { label: 'conflicting-tenant-alias', change: { tenantId: 'foreign-tenant' } },
+    { label: 'missing-deauthorization', change: { tenant_deauthorization: undefined } },
+    { label: 'redacted-deauthorization', change: { tenant_deauthorization: '[redacted]' } },
+    { label: 'serialized-deauthorization', change: { tenant_deauthorization: '{"removed":true,"already_absent":false}' } },
+    { label: 'truthy-removed', change: { tenant_deauthorization: { removed: 'true', already_absent: false } } },
+    { label: 'missing-already-absent', change: { tenant_deauthorization: { removed: true } } },
+    { label: 'neither-deauthorized', change: { tenant_deauthorization: { removed: false, already_absent: false } } },
+    { label: 'contradictory-deauthorization', change: { tenant_deauthorization: { removed: true, already_absent: true } } },
+    { label: 'conflicting-deauthorization-alias', change: { tenant_deauthorization: { removed: true, already_absent: false, alreadyAbsent: true } } },
+    { label: 'conflicting-authorization-summary', change: { tenantDeauthorization: { removed: false, alreadyAbsent: true } } },
+    { label: 'missing-registration-found', change: { app_registration_found: undefined } },
+    { label: 'truthy-registration-deleted', change: { app_registration_deleted: 'true' } },
+    { label: 'unverified-registration', change: { app_registration_absence_verified: false } },
+    { label: 'missing-verification', change: { app_registration_absence_verified: undefined } },
+    { label: 'truthy-verification', change: { app_registration_absence_verified: 'true' } },
+    { label: 'conflicting-verification-alias', change: { appRegistrationAbsenceVerified: false } },
+    { label: 'contradictory-registration', change: { app_registration_already_absent: true } },
+    { label: 'no-registration-action', change: { app_registration_deleted: false } },
+    { label: 'deleted-but-not-found', change: { app_registration_found: false } },
+  ])('rejects $label deletion receipts without leaking upstream content', async ({ change }) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      client_id: 'client-1', tenant_id: 'tenant-parent',
+      tenant_deauthorization: { removed: true, already_absent: false },
+      app_registration_found: true, app_registration_deleted: true,
+      app_registration_already_absent: false, app_registration_absence_verified: true,
+      client_secret: '<fixture-private-deletion-content>', ...change,
+    }), { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    let caught: unknown
+    try { await client.deprovisionEntraApp({ tenantId: 'tenant-parent', clientId: 'client-1' }) }
+    catch (error) { caught = error }
+    expect(caught).toBeInstanceOf(Error)
+    expect(caught).toMatchObject({ operation: 'Entra app deprovisioning', status: 200, statusText: 'Invalid deprovision response' })
+    expect(String(caught)).not.toContain('<fixture-private-deletion-content>')
+    expect(caught).not.toHaveProperty('cause')
+  })
+
+  test.each(['null', '[]', '"<fixture-private-deletion-content>"', '{bad <fixture-private-deletion-content>'])('rejects malformed successful deletion bodies %s safely', async body => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await expect(client.deprovisionEntraApp({ tenantId: 'tenant-parent', clientId: 'client-1' })).rejects.toMatchObject({
+      operation: 'Entra app deprovisioning', status: 200, statusText: 'Invalid deprovision response', rawBody: undefined,
+    })
   })
 })

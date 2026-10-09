@@ -26,6 +26,7 @@ import { deriveObjectTypeSlugV1 } from "../lib/object-type-identifiers.js";
 import { isRecord, toObjectTypeSlug } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { readConsistentObjectTypes } from "../lib/object-type-export.js";
 
 export interface TenantResolution {
   tenantId?: string;
@@ -426,10 +427,39 @@ function formatStorageFieldIssue(label: string, missing: string[]): string {
   return `${label} is incomplete. Missing: ${missing.join(", ")}`;
 }
 
+/** Validate the app manifest's index and Search mapping wire shapes before publication. */
+function validateStorageBindingManifestShape(binding: unknown): string[] {
+  if (!isRecord(binding)) return [];
+  const issues: string[] = [];
+
+  for (const scopeKey of ["sql", "documentdb"] as const) {
+    const scope = getStorageBindingScope(binding, scopeKey);
+    const indexes = scope?.indexes;
+    if (indexes === undefined || indexes === null) continue;
+    if (!Array.isArray(indexes)) {
+      issues.push(`storageBinding.${scopeKey}.indexes must be an array of objects for app manifests`);
+      continue;
+    }
+    indexes.forEach((index, position) => {
+      const fields = isRecord(index) ? index.fields : undefined;
+      if (!Array.isArray(fields) || fields.some(field => typeof field !== "string")) {
+        issues.push(`storageBinding.${scopeKey}.indexes[${position}].fields must be an array of strings for app manifests; field objects and dictionaries are unsupported`);
+      }
+    });
+  }
+
+  const mappings = getStorageBindingScope(binding, "search")?.fieldMappings;
+  if (mappings !== undefined && mappings !== null
+    && (!isRecord(mappings) || Object.values(mappings).some(value => typeof value !== "string"))) {
+    issues.push("storageBinding.search.fieldMappings must be an object containing only string values for app manifests; mapping arrays are unsupported");
+  }
+  return issues;
+}
+
 export function validateObjectTypeStorageMetadata(
   type: ObjectTypeDefinition,
 ): string[] {
-  const issues: string[] = [];
+  const issues = validateStorageBindingManifestShape(type.storageBinding);
   const backend = type.storageBackend || "postgresql";
   const storageMetadataStatus = type.storageMetadataStatus || "draft";
 
@@ -907,6 +937,56 @@ export async function resolveTypesPullOutputPath(
 ): Promise<string> {
   const { isAbsolute, join: pathJoin } = await import("node:path");
   return isAbsolute(output) ? output : pathJoin(root, output);
+}
+
+/** Pull authoritative schema DTOs without rewriting files on a failed response. */
+export async function pullObjectTypesToFile(
+  client: Pick<PlatformAPIClient, "getPublishedObjectTypes">,
+  tenantId: string,
+  root: string,
+  output: string,
+): Promise<{ count: number; outputPath: string }> {
+  const { dirname, join: pathJoin, relative, resolve } = await import("node:path");
+  const { mkdir: makeDirectory, writeFile: write, rename, rm, realpath } = await import("node:fs/promises");
+  const { randomUUID } = await import("node:crypto");
+  const outputPath = await resolveTypesPullOutputPath(root, output);
+  const modelPath = pathJoin(root, "src", "eai.config", "object-types");
+  const canonicalPath = async (path: string): Promise<string> => {
+    try { return await realpath(path); }
+    catch (error) {
+      if (!isRecord(error) || error.code !== 'ENOENT') throw error;
+      const { basename } = await import("node:path");
+      const parent = dirname(path);
+      return parent === path ? resolve(path) : pathJoin(await canonicalPath(parent), basename(path));
+    }
+  };
+  const assertGeneratedOutput = async (): Promise<void> => {
+    if (await canonicalPath(resolve(outputPath)) === await canonicalPath(resolve(modelPath + ".ts"))) {
+      throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
+    }
+  };
+  if (resolve(outputPath) === resolve(modelPath + ".ts")) {
+    throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
+  }
+  await assertGeneratedOutput();
+  const docs = await readConsistentObjectTypes(client, tenantId);
+  const modelRelative = relative(dirname(outputPath), modelPath).replace(/\\/g, "/");
+  const modelImport = modelRelative.startsWith(".") ? modelRelative : "./" + modelRelative;
+  const source = generatePulledTypesTypeScript(docs, tenantId, modelImport);
+  const temporaryPath = pathJoin(dirname(outputPath), `.eai-types-pull-${randomUUID()}.tmp`);
+  try {
+    await makeDirectory(dirname(outputPath), { recursive: true });
+    await write(temporaryPath, source, { encoding: "utf-8", flag: "wx" });
+    await assertGeneratedOutput();
+    await rename(temporaryPath, outputPath);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Choose a generated output')) throw error;
+    // eslint-disable-next-line preserve-caught-error -- local I/O errors can reveal private paths; keep the public error static.
+    throw new Error('Object Type pull could not replace the generated output. Existing output is preserved.');
+  } finally {
+    await rm(temporaryPath, { force: true }).catch(() => {});
+  }
+  return { count: docs.length, outputPath };
 }
 
 export async function describeFailedPlatformResponse(
@@ -2656,17 +2736,8 @@ Examples:
 
     try {
       const { client, tenantId, root } = ctx;
-      const res = await client.getPublishedObjectTypes({ limit: 100 });
-
-      const data = (await res.json()) as { docs?: ObjectTypeDefinition[] };
-      const types = data?.docs || [];
-      spinner.succeed(`Found ${types.length} remote types`);
-
-      // Generate TypeScript
-      const ts = generateTypeScript(types, tenantId);
-      const { writeFile: write } = await import("node:fs/promises");
-      const outputPath = await resolveTypesPullOutputPath(root, options.output);
-      await write(outputPath, ts, "utf-8");
+      const pulled = await pullObjectTypesToFile(client, tenantId, root, options.output);
+      spinner.succeed(`Found ${pulled.count} remote types`);
 
       out.success(`Written to ${chalk.bold(options.output)}`);
       out.info("Review the generated file and merge into object-types.ts");
@@ -2681,18 +2752,21 @@ Examples:
 
 typesCommand
   .command("define")
-  .description("Interactive Object Type builder (coming soon)")
-  .action(async () => {
-    out.info("Interactive Object Type builder is planned for Phase 3.");
-    out.info("For now, edit src/eai.config/object-types.ts directly.");
-    out.info("See the Object Types Guide in CLAUDE.md for the schema format.");
+  .description("Interactive Object Type builder (unsupported)")
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const message = 'Interactive Object Type definition is unavailable. Edit src/eai.config/object-types.ts and use eai types validate and eai types seed.';
+    if (options.format === 'json') console.log(JSON.stringify({ error: { code: 'TYPES_DEFINE_UNSUPPORTED', message } }));
+    else out.error(`TYPES_DEFINE_UNSUPPORTED: ${message}`);
+    process.exit(1);
   });
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function generateTypeScript(
-  types: ObjectTypeDefinition[],
+export function generatePulledTypesTypeScript(
+  types: ReadonlyArray<Record<string, unknown>>,
   tenantKey: string,
+  modelImport: string,
 ): string {
   const lines: string[] = [
     "/**",
@@ -2702,14 +2776,10 @@ function generateTypeScript(
     " * Review and merge into object-types.ts.",
     " */",
     "",
-    "import type { ObjectTypeDefinition } from './object-types';",
+    `import type { ObjectTypeDefinition } from ${JSON.stringify(modelImport)};`,
     "",
-    `export const pulledTypes: Record<string, ObjectTypeDefinition[]> = {`,
-    `  '${tenantKey}': ${JSON.stringify(types, null, 4)
-      .split("\n")
-      .map((l, i) => (i === 0 ? l : "  " + l))
-      .join("\n")},`,
-    "};",
+    "// Retain authoritative remote identifiers and metadata through the JSON data boundary.",
+    `export const pulledTypes: Record<string, ObjectTypeDefinition[]> = JSON.parse(${JSON.stringify(JSON.stringify({ [tenantKey]: types }))});`,
     "",
   ];
   return lines.join("\n");

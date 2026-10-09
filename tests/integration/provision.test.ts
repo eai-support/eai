@@ -127,6 +127,7 @@ describe('eai provision entra', () => {
     mockServer.start();
 
     process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
+    await mkdir(join(env.dir, '.eai'), { mode: 0o700 });
     await storeTestTokens(env.dir);
     await setupProject(env.dir);
     process.chdir(env.dir);
@@ -1261,6 +1262,7 @@ describe('eai provision entra', () => {
         rotateBody = await request.json();
         return HttpResponse.json({
           client_id: 'client-1',
+          app_name: 'my-app',
           client_secret: '<fixture-rotated-credential>',
           tenant_id: 'test-tenant-id',
           expires_at: '2026-12-31T00:00:00Z',
@@ -1274,12 +1276,34 @@ describe('eai provision entra', () => {
 
     await provisionCommand.parseAsync(['entra', '--rotate-secret'], { from: 'user' });
 
-    expect(rotateBody).toEqual({ tenant_id: 'test-tenant-id' });
+    expect(rotateBody).toEqual({ tenant_id: 'test-tenant-id', app_name: 'my-app' });
     expect(createEndpointHit).toBe(false);
 
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=client-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-rotated-credential>');
+  });
+
+  test.each(['unknown', 'not_issued'])('rotation %s preserves local bytes, dispatches once and exposes only safe diagnostics', async outcome => {
+    const original = Buffer.from(`BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=client-1\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\r\n`);
+    const envPath = join(env.dir, '.env.local'); await writeFile(envPath, original);
+    let calls = 0;
+    const supportReference = '9285486c-d8fd-44d9-98ed-c59511c0db38';
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1/rotate-secret`, async ({ request }) => {
+      calls += 1; expect(await request.json()).toEqual({ tenant_id: 'test-tenant-id', app_name: 'my-app' });
+      return HttpResponse.json({ error: 'ENTRA_ROTATION_FAILED', message: 'PRIVATE-SECRET /internal/path AdminAPI',
+        details: { reason: outcome === 'unknown' ? 'outcome_unknown' : 'throttled', retryable: outcome !== 'unknown', outcome, supportReference } },
+      { status: 503, headers: { 'x-request-id': 'd681b292-2bfd-4c50-a8ce-392f642b1816' } });
+    }));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled rotation exit'); }) as never);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(['entra', '--rotate-secret', '--debug'], { from: 'user' })).rejects.toThrow('Controlled rotation exit');
+    expect(exit).toHaveBeenCalledWith(1); expect(calls).toBe(1); expect((await readFile(envPath)).equals(original)).toBe(true);
+    const output = joinedConsoleOutput(errors, log);
+    expect(output).toContain(supportReference); expect(output).toContain('d681b292-2bfd-4c50-a8ce-392f642b1816'); expect(output).toContain('HTTP status: 503');
+    expect(output).not.toContain('PRIVATE-SECRET'); expect(output).not.toContain('/internal/path'); expect(output).not.toContain('AdminAPI');
+    expect(output).toContain(outcome === 'unknown' ? 'outcome is unknown' : 'confirmed that no credential was issued');
   });
 
   test('deauthorize refuses to clean up without explicit force', { timeout: 10000 }, async () => {
@@ -1332,6 +1356,8 @@ describe('eai provision entra', () => {
           },
           app_registration_found: true,
           app_registration_deleted: true,
+          app_registration_already_absent: false,
+          app_registration_absence_verified: true,
         });
       }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
@@ -1378,6 +1404,8 @@ describe('eai provision entra', () => {
         },
         app_registration_found: true,
         app_registration_deleted: true,
+        app_registration_already_absent: false,
+        app_registration_absence_verified: true,
       })),
     );
 
@@ -1389,9 +1417,34 @@ describe('eai provision entra', () => {
     expect(joinedConsoleOutput(warnSpy)).toContain('leaving .env.local unchanged');
   });
 
+  test.each(['wrong-client', 'wrong-tenant', 'unverified-absence', 'unproved-deauthorization'])('deauthorize preserves local credential bytes on a %s successful HTTP receipt', { timeout: 10000 }, async kind => {
+    const envPath = join(env.dir, '.env.local');
+    const original = Buffer.from(`BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=client-1\nENTRA_CLIENT_SECRET=<fixture-existing-credential>\nEXISTING_KEY=keep-me\n`);
+    await writeFile(envPath, original);
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockServer.server.use(http.delete(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1`, () => HttpResponse.json({
+      client_id: kind === 'wrong-client' ? 'foreign-client' : 'client-1',
+      tenant_id: kind === 'wrong-tenant' ? 'foreign-tenant' : 'test-tenant-id',
+      tenant_deauthorization: { removed: kind !== 'unproved-deauthorization', already_absent: false },
+      app_registration_found: true, app_registration_deleted: true,
+      app_registration_already_absent: false, app_registration_absence_verified: kind !== 'unverified-absence',
+      client_secret: '<fixture-private-upstream-content>',
+    })));
+
+    await expect(provisionCommand.parseAsync(['entra', '--deauthorize', '--force'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect((await readFile(envPath)).equals(original)).toBe(true);
+    const output = joinedConsoleOutput(errSpy, logSpy);
+    expect(output).not.toContain('Entra app cleanup complete');
+    expect(output).not.toContain('<fixture-private-upstream-content>');
+    expect(output).not.toContain('<fixture-existing-credential>');
+  });
+
   test('named profile API URL overrides local env when provisioning', { timeout: 10000 }, async () => {
     setActiveProfile('test');
-    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await mkdir(join(env.dir, '.eai'), { recursive: true, mode: 0o700 });
     await writeFile(
       join(env.dir, '.eai', 'config.json'),
       JSON.stringify({
@@ -1404,6 +1457,7 @@ describe('eai provision entra', () => {
           },
         },
       }, null, 2),
+      { mode: 0o600 },
     );
     await storeTestTokens(env.dir, {
       tenantName: 'profile-test-tenant',
@@ -1437,7 +1491,7 @@ describe('eai provision entra', () => {
 
   test('dev profile provisions through the dev PublicAPI and ignores local env API URL', { timeout: 10000 }, async () => {
     setActiveProfile('dev');
-    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await mkdir(join(env.dir, '.eai'), { recursive: true, mode: 0o700 });
     await writeFile(
       join(env.dir, '.eai', 'config.json'),
       JSON.stringify({
@@ -1450,6 +1504,7 @@ describe('eai provision entra', () => {
           },
         },
       }, null, 2),
+      { mode: 0o600 },
     );
     await storeTestTokens(env.dir, {
       tenantName: 'profile-dev-tenant',

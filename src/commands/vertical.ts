@@ -13,6 +13,9 @@ import { join } from 'node:path';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import {
   PlatformAPIClient,
+  MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+  isManagedPublicRequestTimeout,
+  readManagedPublicResponseText,
   type SourceUnknownAppRegistrationRequest,
   type SourceUnknownDeploymentRequest,
   type SourceUnknownSchemaProvenance,
@@ -35,6 +38,7 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { safePlatformDiagnostics, formatSafePlatformFailure } from '../lib/platform-diagnostics.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 import {
@@ -52,6 +56,8 @@ const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publica
 const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
 const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
+const APP_PROVISIONING_WAIT_MS = 900_000;
+const APP_PROVISIONING_POLL_MS = 2_000;
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
 
@@ -263,6 +269,83 @@ function normalizeGenericAppProvisioningPayload(payload: unknown, appKey: string
   });
 
   return { ...payload, steps };
+}
+
+/** A successful HTTP response is only an acknowledgement until the exact job is ready. */
+function validateAppProvisioningJob(
+  payload: unknown,
+  companyTenantId: string,
+  runtimeTenantId: string,
+  appKey: string,
+  expectedJobId?: string,
+): Record<string, unknown> {
+  if (!isRecord(payload)
+    || payload.tenantId !== companyTenantId
+    || payload.appKey !== appKey
+    || (payload.verticalKey !== undefined && payload.verticalKey !== appKey)
+    || typeof payload.jobId !== 'string' || !payload.jobId.trim() || payload.jobId.trim() !== payload.jobId
+    || (expectedJobId !== undefined && payload.jobId !== expectedJobId)
+    || typeof payload.status !== 'string'
+    || !isRecord(payload.enrollment)) {
+    throw new Error('Provisioning returned a mismatched or invalid app job; local configuration was not changed.');
+  }
+  const enrollment = payload.enrollment;
+  if ((enrollment.childTenantId !== undefined && enrollment.childTenantId !== null
+      && enrollment.childTenantId !== runtimeTenantId)
+    || (runtimeTenantId !== companyTenantId && enrollment.childTenantId !== runtimeTenantId)
+    || (enrollment.tenantId !== undefined && enrollment.tenantId !== companyTenantId)
+    || (enrollment.verticalKey !== undefined && enrollment.verticalKey !== appKey)
+    || (payload.targetTenantId !== undefined && payload.targetTenantId !== runtimeTenantId)) {
+    throw new Error('Provisioning returned a different app runtime workspace; local configuration was not changed.');
+  }
+  return payload;
+}
+
+async function waitForAppProvisioningReady(
+  client: PlatformAPIClient,
+  initialPayload: unknown,
+  companyTenantId: string,
+  runtimeTenantId: string,
+  appKey: string,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + APP_PROVISIONING_WAIT_MS;
+  let payload = validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey);
+  const jobId = payload.jobId as string;
+  const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running.`);
+
+  for (;;) {
+    if (payload.status === 'ready') return payload;
+    if (payload.status !== 'running') {
+      const failedSteps = Array.isArray(payload.steps)
+        ? payload.steps.filter(isRecord).filter(step => step.status === 'failed')
+          .map(step => step.key).filter((key): key is string => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(key))
+        : [];
+      const status = /^[a-zA-Z0-9_-]{1,64}$/.test(String(payload.status)) ? payload.status : 'unknown';
+      throw new Error(`App provisioning job ${jobId} is ${status}${failedSteps.length ? ` (failed steps: ${failedSteps.join(', ')})` : ''}; local configuration was not changed.`);
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw timedOut();
+    await new Promise<void>(resolve => setTimeout(resolve, Math.min(APP_PROVISIONING_POLL_MS, remaining)));
+    const requestBudget = deadline - Date.now();
+    if (requestBudget <= 0) throw timedOut();
+    let response: Response;
+    let responsePayload: unknown;
+    try {
+      response = await client.getAppProvisioningJob(appKey, jobId, runtimeTenantId,
+        Math.min(requestBudget, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS));
+      responsePayload = await readResponsePayload(response);
+    } catch (err) {
+      if (isManagedPublicRequestTimeout(err)) {
+        throw new Error(`Reading app provisioning job ${jobId} timed out; local configuration was not changed.`, { cause: err });
+      }
+      throw err;
+    }
+    if (Date.now() >= deadline) throw timedOut();
+    if (!response.ok) {
+      throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed.`);
+    }
+    payload = validateAppProvisioningJob(responsePayload, companyTenantId, runtimeTenantId, appKey, jobId);
+  }
 }
 
 function buildStorageBindingContract(
@@ -682,8 +765,24 @@ function extractDocs(payload: unknown): Array<{ id?: string; data?: Record<strin
   }));
 }
 
+/** Verify an authoritative first page before displaying an empty or partial app inventory. */
+function isValidAppInventory(payload: unknown): boolean {
+  if (!isRecord(payload) || !Array.isArray(payload.docs) || !payload.docs.every(doc => isRecord(doc)
+    && typeof doc.id === 'string' && doc.id.length > 0 && isRecord(doc.data))) return false;
+  const count = payload.totalDocs;
+  const limit = payload.limit;
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0
+    || typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1
+    || payload.page !== 1 || payload.pagingCounter !== 1) return false;
+  const pages = count === 0 ? payload.totalPages : Math.ceil(count / limit);
+  return (count > 0 ? payload.totalPages === pages : payload.totalPages === 0 || payload.totalPages === 1)
+    && payload.docs.length === Math.min(count, limit) && payload.hasPrevPage === false && payload.prevPage === null
+    && payload.hasNextPage === (typeof pages === 'number' && pages > 1)
+    && payload.nextPage === (typeof pages === 'number' && pages > 1 ? 2 : null);
+}
+
 async function readResponsePayload(res: Response): Promise<unknown> {
-  const text = await res.text();
+  const text = await readManagedPublicResponseText(res);
   if (!text) return {};
   try {
     return JSON.parse(text);
@@ -753,7 +852,7 @@ function createAppManagementClient(
 async function validateVerticalEnrollment(
   verticalKey: string,
   client: Pick<PlatformAPIClient, 'listResources'>,
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
     limit: 1,
     where: { verticalKey },
@@ -765,6 +864,7 @@ async function validateVerticalEnrollment(
   if (docs.length === 0) {
     fail(`No app found for ${verticalKey}. Create it with \`eai app create\` first, or pass --skip-validate if the app is still being prepared.`);
   }
+  return docs[0];
 }
 
 export const appCommand = new Command('app')
@@ -795,7 +895,12 @@ verticalCommand
 
     if (!res.ok) {
       spinner?.fail('Failed to list apps');
-      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+      fail(formatSafePlatformFailure('App inventory', safePlatformDiagnostics(res.status, payload, res.headers)));
+    }
+
+    if (!isValidAppInventory(payload)) {
+      spinner?.fail('Failed to list apps');
+      fail('App inventory returned an invalid response. Existing workspace state has not changed.');
     }
 
     const docs = extractDocs(payload);
@@ -1667,25 +1772,32 @@ verticalCommand
       fail('App key is required.');
     }
 
-    if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx.client);
-    }
-
     const spinner = makeSpinner(
       format,
       options.dryRun
         ? `Planning app storage readiness for ${verticalKey}...`
         : `Provisioning app ${verticalKey}...`,
     );
+    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, ctx.client);
+    const enrollmentData = isRecord(enrollment?.data) ? enrollment.data : enrollment;
+    const declaredRuntime = enrollmentData?.childTenantId;
+    if (declaredRuntime !== undefined && declaredRuntime !== null
+      && (typeof declaredRuntime !== 'string' || !declaredRuntime.trim() || declaredRuntime.trim() !== declaredRuntime)) {
+      fail('The app enrollment has an invalid runtime workspace binding.');
+    }
+    // --tenant-id is the company control-plane scope. Storage and local runtime
+    // settings must retain the exact runtime bound by that company's enrollment.
+    const runtimeTenantId = typeof declaredRuntime === 'string' ? declaredRuntime : ctx.tenantId;
+    const runtimeClient = runtimeTenantId === ctx.tenantId
+      ? ctx.client : new PlatformAPIClient(ctx.publicApiUrl, runtimeTenantId);
     const res = options.dryRun
-      ? await ctx.client.provisionStorage({
+      ? await runtimeClient.provisionStorage({
         backend: options.backend,
         dryRun: true,
         rebuildSearch: Boolean(options.rebuildSearch),
       })
-      : await ctx.client.createAppProvisioningJob(verticalKey);
+      : await ctx.client.createAppProvisioningJob(verticalKey, runtimeTenantId === ctx.tenantId ? undefined : runtimeTenantId);
     const responsePayload = await readResponsePayload(res);
-    const payload = normalizeGenericAppProvisioningPayload(responsePayload, verticalKey);
 
     if (!res.ok) {
       spinner?.fail('Failed to prepare app storage');
@@ -1694,22 +1806,34 @@ verticalCommand
         : `${res.status} ${res.statusText}`);
     }
 
+    let completedPayload: unknown = responsePayload;
+    if (!options.dryRun) {
+      try {
+        completedPayload = await waitForAppProvisioningReady(ctx.client, responsePayload,
+          ctx.tenantId, runtimeTenantId, verticalKey);
+      } catch (err) {
+        spinner?.fail('App provisioning did not complete');
+        fail(errMsg(err));
+      }
+    }
+    const payload = normalizeGenericAppProvisioningPayload(completedPayload, verticalKey);
+
     const storageContract = options.dryRun
       ? null
-      : buildStorageBindingContract(ctx.tenantId, verticalKey, payload);
+      : buildStorageBindingContract(runtimeTenantId, verticalKey, payload);
     if (storageContract) {
       await writeStorageBindingContract(ctx.root, storageContract);
     }
 
-    if (options.select || storageContract) {
+    if (!options.dryRun && (options.select || storageContract)) {
       const storagePrefixes = isRecord(storageContract?.storageNamePrefixes)
         ? storageContract.storageNamePrefixes
         : {};
       const envPatches: Record<string, string> = {
         [APP_KEY_ENV]: verticalKey,
         [LEGACY_VERTICAL_KEY_ENV]: verticalKey,
-        EAI_TENANT_ID: ctx.tenantId,
-        NEXT_PUBLIC_EAI_TENANT_ID: ctx.tenantId,
+        EAI_TENANT_ID: runtimeTenantId,
+        NEXT_PUBLIC_EAI_TENANT_ID: runtimeTenantId,
         NEXT_PUBLIC_EAI_APP_KEY: verticalKey,
       };
       if (typeof storagePrefixes.sql === 'string') {
@@ -1730,9 +1854,10 @@ verticalCommand
     if (format === 'json') {
       out.json({
         tenantId: ctx.tenantId,
+        targetTenantId: runtimeTenantId,
         appKey: verticalKey,
         verticalKey,
-        selected: Boolean(options.select),
+        selected: Boolean(options.select) && !options.dryRun,
         storageBindingsPath: storageContract ? STORAGE_BINDINGS_PATH : undefined,
         ...(options.dryRun ? { dryRun: true, storagePlan: payload } : { provisioning: payload }),
       });

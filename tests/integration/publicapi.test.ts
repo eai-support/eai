@@ -149,6 +149,26 @@ describe('eai publicapi', () => {
     expect(output).toContain(`"method": "${method}"`);
   });
 
+  test('generic Entra DELETE exposes the validated boolean cleanup receipt while masking upstream credentials', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      client_id: 'owned-client', tenant_id: TENANT_ID,
+      tenant_deauthorization: { removed: false, already_absent: true, secret: '<fixture-private-receipt-secret>' },
+      app_registration_found: false, app_registration_deleted: false,
+      app_registration_already_absent: true, app_registration_absence_verified: true,
+      client_secret: '<fixture-private-receipt-secret>',
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    await publicApiCommand.parseAsync(['delete', '/v4/platform/provisioning/entra-apps/owned-client',
+      '--data', JSON.stringify({ tenant_id: TENANT_ID, delete_registration: true }), '--format', 'json'], { from: 'user' });
+    const output = outputSpy.mock.calls.flat().join('');
+    const receipt = JSON.parse(output);
+    expect(receipt.request.tenantId).toBe(TENANT_ID);
+    expect(receipt.body.tenant_deauthorization).toEqual({ removed: false, already_absent: true });
+    expect(receipt.body.app_registration_absence_verified).toBe(true);
+    expect(receipt.body.client_secret).toBe('[redacted]');
+    expect(output).not.toContain('<fixture-private-receipt-secret>');
+  });
+
   test.each([
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', action: 'Choose a different portal slug' },
     { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', action: '--home-region au|ca|eu' },

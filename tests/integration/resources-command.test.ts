@@ -91,6 +91,144 @@ describe('eai resources command guidance', () => {
     await env.cleanup();
   });
 
+  test('requires an explicit Object Type selection for an index plan', () => {
+    const command = resourcesCommand.commands.find(item => item.name() === 'indexes-plan');
+    expect(command?.options.find(option => option.long === '--object-type')?.mandatory).toBe(true);
+  });
+
+  test('index planning sends only exact slugs accepted by the strict public receiver', async () => {
+    const received: unknown[] = [];
+    const payload = { tenantId: 'test-tenant-id', objectTypeCount: 2, schemaVersion: '42' };
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/tenants/test-tenant-id/resourceapi/index-plan`, async ({ request }) => {
+      const body = await request.json() as Record<string, unknown>;
+      received.push(body);
+      if (Object.keys(body).length !== 1 || !Array.isArray(body.objectTypes) || body.objectTypes.length === 0) {
+        return HttpResponse.json({ detail: 'Strict index-plan request rejected' }, { status: 422 });
+      }
+      return HttpResponse.json(payload);
+    }));
+    const exit = vi.spyOn(process, 'exit');
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await resourcesCommand.parseAsync([
+      'indexes-plan', '--object-type',
+      'opameasure', 'observability-aisummary', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(exit).not.toHaveBeenCalled();
+    expect(received).toEqual([{ objectTypes: ['opameasure', 'observability-aisummary'] }]);
+    expect(log).toHaveBeenCalledWith(JSON.stringify(payload, null, 2) + '\n');
+  });
+
+  test.each(['Project', 'project_name', 'project ', 'project\n', 'storage'])('rejects index-plan slug %j before auth or HTTP', async slug => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(resourcesCommand.parseAsync([
+      'indexes-plan', '--object-type', slug, '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit called');
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(JSON.parse(String(error.mock.calls[0][0])).error).toMatchObject({
+      code: 'E305', message: expect.stringContaining('exact non-reserved lowercase kebab-case'),
+    });
+  });
+
+  test.each(['json', 'text'])('reports index apply as unsupported in %s before auth or HTTP', async format => {
+    await clearTokens();
+    delete process.env.EAI_ACCESS_TOKEN;
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const args = ['indexes-apply', '--object-type', 'project', '--format', format];
+    if (format === 'json') args.push('--confirm');
+
+    await expect(resourcesCommand.parseAsync(args, { from: 'user' })).rejects.toThrow('process.exit called');
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(log).not.toHaveBeenCalled();
+    const output = joinedConsoleOutput(error);
+    expect(output).toContain('unavailable through PublicAPI');
+    expect(output).not.toContain('apply completed');
+    if (format === 'json') expect(JSON.parse(String(error.mock.calls[0][0]))).toMatchObject({
+      status: 'unsupported', error: { code: 'RESOURCE_INDEX_APPLY_UNSUPPORTED', exitCode: 1 },
+    });
+  });
+
+  test('performance status does not advertise unsupported index apply as a usable operation', async () => {
+    mockServer.server.use(http.get(`${API_BASE}/v4/data/resources/test-tenant-id/storage/schema-status`, () =>
+      HttpResponse.json({ tenantId: 'test-tenant-id', state: 'ready', objectTypeCount: 2 })));
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await resourcesCommand.parseAsync(['performance-status', '--format', 'json'], { from: 'user' });
+
+    const payload = JSON.parse(String(log.mock.calls[0][0]));
+    expect(payload.tenantAdminOperations).toContain('plan_index_change');
+    expect(payload.systemAdminOperations).not.toContain('apply_index_change');
+    expect(payload.unsupportedOperations).toEqual(['apply_index_change']);
+  });
+
+  test('sync-schema preserves partial JSON evidence and exits nonzero when a binding failed', async () => {
+    const payload = { tenantId: 'test-tenant-id', dryRun: false, results: [
+      { objectType: 'project', backend: 'documentdb', status: 'provisioned' },
+      { objectType: 'file', backend: 'blob', status: 'failed', actions: ['provider unavailable'] },
+    ] };
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/storage/sync-schema`, () =>
+      HttpResponse.json(payload)));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(resourcesCommand.parseAsync(['sync-schema', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('process.exit called');
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(log).toHaveBeenCalledWith(JSON.stringify(payload, null, 2) + '\n');
+  });
+
+  test('sync-schema rejects a malformed HTTP 200 result instead of qualifying it', async () => {
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/storage/sync-schema`, () =>
+      HttpResponse.json({ tenantId: 'test-tenant-id', dryRun: true, results: [{ backend: 'blob', status: 'planned' }] })));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => {
+      throw new Error('process.exit called');
+    }) as never);
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(resourcesCommand.parseAsync(['sync-schema', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('process.exit called');
+
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(log).not.toHaveBeenCalled();
+    expect(joinedConsoleOutput(error)).toContain('invalid results contract');
+  });
+
+  test('sync-schema accepts successful plans while preserving backend status details', async () => {
+    const payload = { tenantId: 'test-tenant-id', dryRun: true, results: [
+      { objectType: 'project', backend: 'documentdb', status: 'planned' },
+      { objectType: 'geo', backend: 'postgresql', status: 'skipped' },
+    ] };
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/storage/sync-schema`, () =>
+      HttpResponse.json(payload)));
+    const exit = vi.spyOn(process, 'exit');
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+
+    await resourcesCommand.parseAsync(['sync-schema', '--dry-run', '--format', 'json'], { from: 'user' });
+
+    expect(exit).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledWith(JSON.stringify(payload, null, 2) + '\n');
+  });
+
   test('prints semantic search recovery guidance when hybrid search lacks embeddings', async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/data/resources/test-tenant-id/search`, () =>
