@@ -186,7 +186,7 @@ const SMOKE_CALLS = {
     'eai workspace info <workspace-id> --format json',
   ],
   'eai workspace create': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --home-region <region> --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --format json',
   ],
   'eai workspace bootstrap-admin': [
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
@@ -570,6 +570,7 @@ const OPTION_DECISIONS = {
   },
   'eai workspace create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
+    '--home-region': 'Root workspace region for --allow-root backfills only; the child smoke omits it because a child inherits its parent region.',
   },
   'eai workspace delete': {
     '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
@@ -1531,7 +1532,6 @@ function runLiveSmoke(cliPath) {
   if (process.env.EAI_E2E_CREATE_CHILD_TENANT === '1') {
     const childName = `EAI E2E Smoke ${runId}`;
     const childSlug = `eai-e2e-smoke-${runId}`.toLowerCase();
-    const childRegion = process.env.EAI_E2E_CHILD_HOME_REGION || process.env.EAI_E2E_HOME_REGION || 'au';
     const childCreate = parseJson(eai([
       'tenant',
       'create',
@@ -1549,8 +1549,6 @@ function runLiveSmoke(cliPath) {
       'test',
       '--starter-template',
       'eai-app-template',
-      '--home-region',
-      childRegion,
       '--format',
       'json',
     ], { cwd: ROOT }).stdout, {});

@@ -947,7 +947,7 @@ describe('child workspace creation admission', () => {
 
   test.each([
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
-    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
   ])('emits a structured immediate $status rejection without creating or bootstrapping a workspace', async ({ status, code, field, message }) => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({
       error: code, message: 'Rejected value: tax-file-secret', details: { field, input: 'tax-file-secret' },
@@ -1029,6 +1029,96 @@ describe('child workspace creation admission', () => {
       '409: TENANT_SLUG_CONFLICT: This portal slug is already in use. Choose a different portal slug. (field: portalSlug)',
     );
     expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('never prompts for or sends a child home region, so the child inherits its parent region', async () => {
+    const originalStdinTty = process.stdin.isTTY;
+    const originalStdoutTty = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    const promptSpy = vi.spyOn(inquirer, 'prompt');
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(
+      JSON.stringify({ id: 'child-tenant', slug: 'child-workspace', homeRegion: 'au' }),
+      { status: 201 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'child-tenant', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: false,
+    } });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      await tenantCommand.parseAsync([
+        'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant',
+      ], { from: 'user' });
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinTty, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutTty, configurable: true });
+    }
+
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty('homeRegion');
+  });
+
+  test('refuses --home-region for a child workspace before sending any request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant',
+      '--home-region', 'eu', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(errorSpy.mock.calls.flat().join('')).toContain(
+      "--home-region is only for root workspaces (--allow-root). A child workspace inherits its parent's home region.",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('still requires --home-region for a root workspace', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(errorSpy.mock.calls.flat().join('')).toContain('--home-region au|ca|eu is required with --allow-root');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('sends the selected home region for a root workspace', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(
+      JSON.stringify({ id: 'root-tenant', slug: 'root-workspace', homeRegion: 'eu' }),
+      { status: 201 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'root-tenant', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: false,
+    } });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--home-region', 'eu',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({ homeRegion: 'eu' });
   });
 
   test('accepts synchronous existing-child reuse without opting in to an operation', async () => {

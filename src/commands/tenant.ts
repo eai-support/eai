@@ -5,7 +5,6 @@
 import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
-import inquirer from "inquirer";
 import { findProjectRoot } from "../lib/config.js";
 import {
   PlatformAPIClient,
@@ -61,12 +60,6 @@ export interface TenantCreateOutcome {
   usability: TenantUsabilityStatus;
 }
 
-const HOME_REGION_CHOICES: Array<{ name: string; value: TenantHomeRegion }> = [
-  { name: "Australia / New Zealand (au)", value: "au" },
-  { name: "Canada / Americas (ca)", value: "ca" },
-  { name: "Europe / UK (eu)", value: "eu" },
-];
-
 interface TenantBootstrapAdminCommandOptions {
   parent: string;
   child: string;
@@ -97,29 +90,6 @@ function normalizeTenantCreateHomeRegion(
     throw new Error("home-region must be one of au, ca, or eu.");
   }
   return region;
-}
-
-async function resolveChildTenantHomeRegion(options: {
-  requested?: unknown;
-  parentHomeRegion?: string | null;
-  interactive: boolean;
-}): Promise<TenantHomeRegion | undefined> {
-  const requested = normalizeTenantCreateHomeRegion(options.requested);
-  if (requested) return requested;
-
-  const parentRegion = normalizeHomeRegion(options.parentHomeRegion);
-  if (!options.interactive) return parentRegion || undefined;
-
-  const answer = await inquirer.prompt([
-    {
-      type: "select",
-      name: "homeRegion",
-      message: "Child workspace home region:",
-      default: parentRegion || undefined,
-      choices: HOME_REGION_CHOICES,
-    },
-  ]);
-  return normalizeTenantCreateHomeRegion(answer.homeRegion);
 }
 
 export function buildTenantListZeroState(tokens: {
@@ -639,7 +609,10 @@ tenantCommand
     "Starter application template key",
     "eai-app-template",
   )
-  .option("--home-region <region>", "Workspace home region: au|ca|eu")
+  .option(
+    "--home-region <region>",
+    "Root workspace home region: au|ca|eu (with --allow-root; a child inherits its parent's)",
+  )
   .option(
     "--allow-root",
     "Allow root workspace creation for administrative backfills",
@@ -652,6 +625,12 @@ tenantCommand
     if (!options.parent && !options.allowRoot) {
       out.error(
         "Root workspace creation is guarded. Complete onboarding for the main company workspace, then use `eai init --parent-tenant <id>` or pass --parent for child workspaces.",
+      );
+      process.exit(1);
+    }
+    if (options.parent && options.homeRegion !== undefined) {
+      out.error(
+        "--home-region is only for root workspaces (--allow-root). A child workspace inherits its parent's home region.",
       );
       process.exit(1);
     }
@@ -687,16 +666,6 @@ tenantCommand
         publicApiUrl,
         context.activeTenant.id,
       );
-      const tenantHomeRegion = options.parent
-        ? await resolveChildTenantHomeRegion({
-            requested: options.homeRegion,
-            parentHomeRegion: context.activeTenant.homeRegion,
-            interactive:
-              options.format !== "json" &&
-              Boolean(process.stdin.isTTY && process.stdout.isTTY),
-          })
-        : rootHomeRegion;
-
       spinner =
         options.format === "json"
           ? null
@@ -721,7 +690,7 @@ tenantCommand
         usecase: options.usecase,
         industry: options.industry,
         starterTemplate: options.starterTemplate,
-        homeRegion: tenantHomeRegion,
+        homeRegion: rootHomeRegion,
       });
 
       if (!res.ok) {

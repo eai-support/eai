@@ -495,6 +495,10 @@ export interface ParsedApiError {
   bodyText?: string;
 }
 
+// A child workspace always inherits its parent's home region, so region errors point at the parent.
+const PARENT_HOME_REGION_REPAIR_GUIDANCE =
+  'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.';
+
 const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
   status: number;
   fields: readonly NonNullable<ParsedApiError['field']>[];
@@ -518,17 +522,22 @@ const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
   HOME_REGION_REQUIRED: {
     status: 422,
     fields: ['homeRegion'],
-    message: 'Pass --home-region au|ca|eu to select the child workspace home region.',
+    message: PARENT_HOME_REGION_REPAIR_GUIDANCE,
   },
   HOME_REGION_INVALID: {
     status: 422,
     fields: ['homeRegion'],
-    message: 'Pass --home-region au|ca|eu with a supported home region.',
+    message: 'The parent workspace home region is not supported for a child workspace. Ask a platform admin to repair the parent workspace home region.',
   },
   PARENT_HOME_REGION_REQUIRED: {
     status: 422,
     fields: ['homeRegion'],
-    message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.',
+    message: PARENT_HOME_REGION_REPAIR_GUIDANCE,
+  },
+  CHILD_TENANT_REGION_MUST_MATCH_PARENT: {
+    status: 409,
+    fields: ['homeRegion'],
+    message: "A child workspace inherits its parent workspace home region. Omit homeRegion, or send the parent's region.",
   },
 };
 
@@ -2023,6 +2032,7 @@ export class PlatformAPIClient {
     usecase?: TenantUsecase;
     industry?: string;
     starterTemplate?: string;
+    /** Root workspaces only; a child always inherits its parent's home region. */
     homeRegion?: TenantHomeRegion;
   }): Promise<Response> {
     if (data.parent) {
@@ -2033,7 +2043,6 @@ export class PlatformAPIClient {
           displayName: data.name,
           slug: data.slug,
           usecase: data.usecase || 'generic',
-          ...(data.homeRegion ? { homeRegion: data.homeRegion } : {}),
           ...(data.industry ? { industry: data.industry } : {}),
           ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),
         },
