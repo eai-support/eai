@@ -1593,9 +1593,9 @@ async function provisionEntraInline(
       return false;
     }
 
-    // OAuth scope tokens cannot contain controls, whitespace, double quotes or backslashes.
+    // Refuse dotenv expansion syntax so Next and plain dotenv retain identical scopes.
     if (result.scopes.length > 64 || result.scopes.join(" ").length > 16 * 1024
-      || result.scopes.some((scope) => scope.length > 2048 || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
+      || result.scopes.some((scope) => scope.length > 2048 || scope.includes("$") || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
       throw new Error("Platform returned invalid sign-in scope metadata.");
     }
     const scopeEnv: Record<string, string> = result.scopes.length > 0

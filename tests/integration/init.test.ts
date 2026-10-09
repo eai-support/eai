@@ -188,9 +188,10 @@ describe("eai init", () => {
     { existing: false, malformed: false, scopes: [] },
     { existing: true, malformed: false, scopes: [] },
     { existing: false, malformed: false, scopes: ["openid", "fixture_scope#literal"] },
+    { existing: true, malformed: false, scopes: ["openid", "fixture_scope#literal"] },
     { existing: false, malformed: true, scopes: Array.from({ length: 65 }, () => "openid") },
     { existing: true, malformed: true, scopes: Array.from({ length: 64 }, () => "x".repeat(300)) },
-    ...[false, true].flatMap(existing => ["openid\nAUTH_TRUST_HOST=false", "openid\rINJECTED_SCOPE=true", "openid profile", "openid\u0000", 'invalid"scope', "invalid\\scope", "x".repeat(2049)]
+    ...[false, true].flatMap(existing => ["openid\nAUTH_TRUST_HOST=false", "openid\rINJECTED_SCOPE=true", "openid profile", "openid\u0000", 'invalid"scope', "invalid\\scope", "x".repeat(2049), "api://fixture/price$unit", "api://fixture/price${unit}", "api://fixture/price$$unit"]
       .map(scope => ({ existing, malformed: true, scopes: [scope] }))),
   ])("inline Entra scopes preserve platform metadata and legacy scaffold %j", async ({ existing, malformed, scopes }) => {
     workingDirectoryIs(ctx, env.dir);
@@ -228,8 +229,22 @@ describe("eai init", () => {
       expect(provisionSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "scope-tenant", appName: "scope-app", idempotent: true }));
       const local = parseDotenv(await readFile(join(env.dir, "scope-app", ".env.local"), "utf8"));
       expect(local.ENTRA_SCOPES).toBe(!malformed && scopes.length > 0 ? scopes.join(" ") : "email offline_access openid profile");
+      const nextLoader = await exec(process.execPath, ["-e", `
+        delete process.env.ENTRA_SCOPES;
+        delete process.env.__NEXT_PROCESSED_ENV;
+        const nextEnv = require(process.argv[1]);
+        const loaded = nextEnv.loadEnvConfig(process.argv[2], true, {
+          info() {}, error() { throw new Error("Fixture environment load failed"); }
+        });
+        console.log(JSON.stringify(loaded.combinedEnv.ENTRA_SCOPES));
+      `, require.resolve("@next/env"), join(env.dir, "scope-app")], {
+        timeout: 5_000,
+        env: { NODE_ENV: "development", ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+      });
+      expect(JSON.parse(nextLoader.stdout)).toBe(local.ENTRA_SCOPES);
       expect(local.ENTRA_CLIENT_ID).toBe(malformed ? "" : "fixture-app-client");
       expect(local.ENTRA_CLIENT_SECRET).toBe(malformed ? "" : existing ? "fixture-preserved-credential" : "fixture-new-secret");
+      await expect(readFile(join(env.dir, "scope-app", ".env"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
       expect(local).not.toHaveProperty("INJECTED_SCOPE");
       expect(local.AUTH_TRUST_HOST).toBe("true");
       if (malformed) expect(cloudSpy).not.toHaveBeenCalled();
