@@ -3887,8 +3887,17 @@ advanced V4-only access layer for authorized users and operators when a route
 family does not yet have a polished command.
 
 #### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
-Call an authorized PublicAPI V4 path using the current login and active workspace
-context.
+Call an authorized PublicAPI V4 path using the current login and workspace
+context. An explicit `--tenant-id` must be an exact workspace UUID. It sends
+that tenant as request context using the selected login and PublicAPI gateway;
+PublicAPI decides whether the user can perform the requested operation. This
+also supports tenant builders and viewers without a local tenant-admin
+membership check. It does not change the saved active workspace.
+
+When `--tenant-id` is omitted, the existing interactive active-workspace
+resolver applies. For tenant-scoped routes, use the same tenant UUID in the
+path and `--tenant-id`. Authentication and authorization failures retain their
+actual HTTP status in JSON output and exit unsuccessfully.
 
 **Arguments**:
 - `<path>` — PublicAPI path. It must start with `/v4/`.
