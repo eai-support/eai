@@ -28,6 +28,7 @@ interface DecodedResponseBody {
 }
 
 const METHODS: PlatformMethod[] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'];
+const TENANT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const publicApiCommand = new Command('publicapi')
   .description('Call authorized PublicAPI V4 routes directly')
@@ -121,13 +122,24 @@ async function resolveClient(options: PublicApiCommandOptions): Promise<{
   publicApiUrl: string;
   tenantId: string;
 }> {
+  if (options.tenantId !== undefined && !TENANT_UUID.test(options.tenantId)) {
+    throw new Error('--tenant-id must be an exact workspace UUID.');
+  }
   const root = await findProjectRoot();
   const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  // An explicit target is request context, not a local tenant-admin admission.
+  // PublicAPI authorizes the selected profile for this exact tenant and route.
+  if (options.tenantId !== undefined) {
+    return {
+      client: new PlatformAPIClient(publicApiUrl, options.tenantId),
+      publicApiUrl,
+      tenantId: options.tenantId,
+    };
+  }
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
-    tenantId: options.tenantId,
-    interactive: !options.tenantId,
+    interactive: true,
   });
 
   return {
