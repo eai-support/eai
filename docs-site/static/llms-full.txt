@@ -690,7 +690,7 @@ and gofer asset refresh.
 | Version | 3.19.3 |
 | Released | 2026-10-09 |
 | Last Material Change | Preserve platform Entra sign-in scopes during app initialization |
-| Source Commit | `98805be6bf302fe703853d7c828d6d3576754f7d` |
+| Source Commit | `ebb746c17cd15883309ca20f0d0d3c7203e9da9b` |
 
 
 ## Install
