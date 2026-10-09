@@ -307,9 +307,10 @@ describe('PlatformAPIClient', () => {
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'This portal slug is already in use. Choose a different portal slug.' },
     { status: 422, code: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.' },
     { status: 422, code: 'TENANT_PORTAL_SLUG_INVALID', field: 'portalSlug', message: 'Use a lowercase kebab-case portal slug, beginning and ending with a letter or number.' },
-    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
-    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'Pass --home-region au|ca|eu with a supported home region.' },
-    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'The parent workspace home region is not supported for a child workspace. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 409, code: 'CHILD_TENANT_REGION_MUST_MATCH_PARENT', field: 'homeRegion', message: "A child workspace inherits its parent workspace home region. Omit homeRegion, or send the parent's region." },
   ])('keeps safe child-create guidance for $code/$field without rejected input', async ({ status, code, field, message }) => {
     for (const body of [
       { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' },
@@ -780,7 +781,7 @@ describe('PlatformAPIClient', () => {
     })
   })
 
-  test('sends child tenant homeRegion through the public platform router', async () => {
+  test('creates a child tenant without homeRegion so it inherits its parent region', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 201 }))
@@ -791,7 +792,6 @@ describe('PlatformAPIClient', () => {
       slug: 'elevate',
       parent: 'tenant-parent',
       usecase: 'generic',
-      homeRegion: 'eu',
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -799,6 +799,28 @@ describe('PlatformAPIClient', () => {
 
     expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children')
     expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      displayName: 'Elevate',
+      slug: 'elevate',
+      usecase: 'generic',
+    })
+  })
+
+  test('sends homeRegion only when creating a root tenant', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenant({
+      name: 'Elevate',
+      slug: 'elevate',
+      usecase: 'generic',
+      homeRegion: 'eu',
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants')
     expect(JSON.parse(String(init?.body))).toEqual({
       displayName: 'Elevate',
       slug: 'elevate',

@@ -314,11 +314,12 @@ describe('dedicated tenant lifecycle', () => {
         platformHeaders.push(Object.fromEntries(request.headers.entries()));
         const body = await request.json() as Record<string, unknown>;
         platformBodies.push(body);
+        // AdminAPI gives the child its parent's home region; the CLI never chooses one.
         return HttpResponse.json({
           id: CREATED_TENANT_ID,
           slug: CREATED_TENANT_SLUG,
           displayName: body.displayName,
-          homeRegion: body.homeRegion,
+          homeRegion: 'eu',
         }, { status: 201 });
       }),
     );
@@ -351,7 +352,6 @@ describe('dedicated tenant lifecycle', () => {
         displayName: 'Dedicated Tenant',
         slug: CREATED_TENANT_SLUG,
         usecase: 'generic',
-        homeRegion: 'eu',
         starterTemplate: 'eai-app-template',
       },
     ]);

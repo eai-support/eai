@@ -118,8 +118,8 @@ eai workspace select
 #    attempts first-admin bootstrap for the current login, and only marks
 #    the workspace usable after workspace-admin membership is confirmed
 #    (platform role ID `tenant-admin`).
-#    The child home region defaults to the parent region; pass
-#    `--home-region au|ca|eu` when the child must use another region.
+#    A child workspace always inherits its parent's home region;
+#    `--home-region` applies only to root workspaces (`--allow-root`).
 
 # 4. Sync project environment if your app needs local configuration
 eai env pull --include-secrets

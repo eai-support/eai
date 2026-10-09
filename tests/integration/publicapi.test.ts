@@ -151,7 +151,7 @@ describe('eai publicapi', () => {
 
   test.each([
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', action: 'Choose a different portal slug' },
-    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', action: '--home-region au|ca|eu' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', action: 'repair the parent workspace home region' },
   ])('forwards safe immediate child-create $status fields and guidance in JSON', async ({ status, code, field, action }) => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
