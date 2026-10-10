@@ -30,7 +30,7 @@ import { gunzipSync } from 'node:zlib';
 const canonicalWorkflowRelativePath = '.github/workflows/eai-app.yml';
 const fixtureDirectory = 'tests/fixtures/source-unknown';
 const canonicalDigest =
-  'e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb';
+  '87f85c702803238c320a0ef5564427728d57e1d52dc55360eb55e3b3f48c03db';
 const generatedDigest =
   '77d4951b3e6852ead73cef8b9e8901e3de774f9aca70f71cc0c932c13903ff32';
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -1742,6 +1742,48 @@ test('local CLI dispatch binds direct DEV tunnel, original template and numeric 
     assert.match(directInputs, /local_e2e_tunnel:/);
     assert.match(directInputs, /local_e2e_expires_at:/);
     assert.doesNotMatch(reusableInputs, /local_e2e_tunnel:|local_e2e_expires_at:/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('local customer-owned source uses its own exact direct-operation audience', () => {
+  const root = mkdtempSync(join(tmpdir(), 'eai-source-unknown-local-dispatch-'));
+  try {
+    writeFixtureApp(root);
+    execFileSync('git', ['init', '-q'], { cwd: root });
+    execFileSync('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.com',
+      'commit', '--allow-empty', '-m', 'fixture'], { cwd: root });
+    const commit = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
+    const expiry = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('Z', '+00:00');
+    const args = ['validate-dispatch', '--root', root, '--source-mode', 'source-unknown',
+      '--app-key', 'rates-review', '--tenant-id', 'tenant-parent',
+      '--target-tenant-id', 'hosting-tenant', '--operation-id', `source-unknown-${'a'.repeat(16)}`,
+      '--nonce', 'one-time-source-nonce', '--ref', 'refs/heads/main',
+      '--environment', 'dev', '--expected-config-hash', configHash(root),
+      '--commit', commit, '--workflow-sha', commit,
+      '--public-api-url', 'https://careful-8000.eai.devtunnels.ms',
+      '--local-e2e-tunnel', 'true', '--local-e2e-expires-at', expiry,
+      '--github-event-name', 'workflow_dispatch', '--reusable-call', 'false',
+      '--repository-id', '12345'];
+    runEvidenceScript(args);
+    const withoutTarget = [...args];
+    withoutTarget.splice(withoutTarget.indexOf('--target-tenant-id'), 2);
+    runEvidenceScript(withoutTarget);
+    for (const [key, value] of [
+      ['--public-api-url', 'https://attacker.example'],
+      ['--operation-id', `cli-managed-${'a'.repeat(32)}`],
+      ['--ref', 'refs/pull/1/merge'],
+      ['--environment', 'prod'],
+      ['--local-e2e-expires-at', '2000-01-01T00:00:00+00:00'],
+      ['--repository-id', '0'],
+      ['--reusable-call', 'true'],
+    ]) {
+      const mutated = [...args];
+      mutated[mutated.indexOf(key) + 1] = value;
+      const result = spawnSync(process.execPath, [evidenceScript, ...mutated], { encoding: 'utf8' });
+      assert.equal(result.status, 1, `${key}=${value} must fail`);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

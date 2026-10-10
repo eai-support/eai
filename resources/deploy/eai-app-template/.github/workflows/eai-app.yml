@@ -234,6 +234,7 @@ jobs:
             --target-tenant-id "$TARGET_TENANT_ID" \
             --operation-id "$OPERATION_ID" \
             --nonce "$NONCE" \
+            --ref "$GITHUB_REF" \
             --expected-config-hash "$CONFIG_HASH" \
             --environment "$DEPLOY_ENVIRONMENT" \
             --preferred-environment "$PREFERRED_DEPLOY_ENVIRONMENT" \
@@ -450,7 +451,7 @@ jobs:
         shell: bash
         run: |
           if [[ "$LOCAL_E2E_TUNNEL" == true ]]; then
-            [[ "$SOURCE_MODE" == eai-cli-generated && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
+            [[ ( "$SOURCE_MODE" == eai-cli-generated || "$SOURCE_MODE" == source-unknown ) && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
             [[ "$DEPLOY_ENVIRONMENT" == dev || "$DEPLOY_ENVIRONMENT" == preview ]]
             [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$ ]]
           else
@@ -795,14 +796,33 @@ jobs:
             const local = evidence.localE2e;
             const repositoryId = process.env.GITHUB_REPOSITORY_ID;
             const expiresAt = process.env.LOCAL_E2E_EXPIRES_AT;
-            if (!local || Object.keys(local).sort().join(',') !== 'audience,expiresAt,mode,origin,templateCommitSha' ||
-                local.mode !== 'local-tunnel-v1' || local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
+            const sourceUnknownLocal = process.env.SOURCE_MODE === 'source-unknown';
+            const expectedKeys = sourceUnknownLocal
+              ? 'audience,expiresAt,mode,nonceDigest,origin'
+              : 'audience,expiresAt,mode,origin,templateCommitSha';
+            if (!local || Object.keys(local).sort().join(',') !== expectedKeys ||
+                local.mode !== (sourceUnknownLocal ? 'source-unknown-local-v1' : 'local-tunnel-v1') ||
+                local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
                 local.expiresAt !== expiresAt || !/^[1-9][0-9]*$/.test(repositoryId) ||
-                !/^[a-f0-9]{40}$/.test(local.templateCommitSha) || Date.parse(expiresAt) <= Date.now()) {
+                Date.parse(expiresAt) <= Date.now()) {
               throw new Error('Build evidence local endpoint binding changed.');
             }
-            const tuple = ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repositoryId, local.templateCommitSha, expiresAt];
-            const audience = 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/' + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
+            if (sourceUnknownLocal && local.nonceDigest !== 'sha256:' + createHash('sha256').update(evidence.nonce).digest('hex')) {
+              throw new Error('Build evidence local nonce binding changed.');
+            }
+            if (!sourceUnknownLocal && !/^[a-f0-9]{40}$/.test(local.templateCommitSha)) {
+              throw new Error('Build evidence local template binding changed.');
+            }
+            const tuple = sourceUnknownLocal
+              ? ['eai.source-unknown-local-e2e-aud.v1', local.origin, process.env.TENANT_ID,
+                  process.env.TARGET_TENANT_ID, process.env.APP_KEY, evidence.operationId,
+                  repositoryId, evidence.workflowPath, evidence.ref, evidence.commitSha,
+                  evidence.configHash, local.nonceDigest, expiresAt]
+              : ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repositoryId, local.templateCommitSha, expiresAt];
+            const prefix = sourceUnknownLocal
+              ? 'api://enterprise-ai-publicapi/source-unknown/local-v1/'
+              : 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/';
+            const audience = prefix + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
             if (local.audience !== audience) throw new Error('Build evidence local OIDC audience changed.');
           } else if (evidence.localE2e !== undefined) {
             throw new Error('Unexpected local endpoint binding in build evidence.');
@@ -1016,7 +1036,7 @@ jobs:
           set -euo pipefail
           validate_endpoint_and_audience() {
             if [[ "$LOCAL_E2E_TUNNEL" == true ]]; then
-              [[ "$SOURCE_MODE" == eai-cli-generated && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
+              [[ ( "$SOURCE_MODE" == eai-cli-generated || "$SOURCE_MODE" == source-unknown ) && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
               [[ "$DEPLOY_ENVIRONMENT" == dev || "$DEPLOY_ENVIRONMENT" == preview ]]
               [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$ ]]
               node - <<'NODE'
@@ -1032,14 +1052,27 @@ jobs:
           const local = evidence.localE2e;
           const repoId = process.env.GITHUB_REPOSITORY_ID;
           const expiry = process.env.LOCAL_E2E_EXPIRES_AT;
-          if (!local || Object.keys(local).sort().join(',') !== 'audience,expiresAt,mode,origin,templateCommitSha' ||
-              local.mode !== 'local-tunnel-v1' || local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
+          const sourceUnknownLocal = process.env.SOURCE_MODE === 'source-unknown';
+          const expectedKeys = sourceUnknownLocal
+            ? 'audience,expiresAt,mode,nonceDigest,origin'
+            : 'audience,expiresAt,mode,origin,templateCommitSha';
+          if (!local || Object.keys(local).sort().join(',') !== expectedKeys ||
+              local.mode !== (sourceUnknownLocal ? 'source-unknown-local-v1' : 'local-tunnel-v1') ||
+              local.origin !== process.env.EAI_BOUND_PUBLIC_API_URL ||
               local.expiresAt !== expiry || !/^[1-9][0-9]*$/.test(repoId) ||
-              !/^cli-managed-[a-f0-9]{32}$/.test(evidence.operationId) ||
-              !/^[a-f0-9]{40}$/.test(local.templateCommitSha) ||
               !Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) <= Date.now()) process.exit(1);
-          const tuple = ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repoId, local.templateCommitSha, expiry];
-          const audience = 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/' + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
+          const tuple = sourceUnknownLocal
+            ? ['eai.source-unknown-local-e2e-aud.v1', local.origin, process.env.TENANT_ID,
+                evidence.targetTenantId, process.env.APP_KEY, evidence.operationId, repoId,
+                evidence.workflowPath, evidence.ref, evidence.commitSha, evidence.configHash,
+                local.nonceDigest, expiry]
+            : ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repoId, local.templateCommitSha, expiry];
+          if (sourceUnknownLocal ? local.nonceDigest !== 'sha256:' + createHash('sha256').update(evidence.nonce).digest('hex')
+              : !/^[a-f0-9]{40}$/.test(local.templateCommitSha)) process.exit(1);
+          const prefix = sourceUnknownLocal
+            ? 'api://enterprise-ai-publicapi/source-unknown/local-v1/'
+            : 'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/';
+          const audience = prefix + createHash('sha256').update(JSON.stringify(tuple)).digest('hex');
           if (local.audience !== audience) process.exit(1);
           process.stdout.write(audience);
           NODE
