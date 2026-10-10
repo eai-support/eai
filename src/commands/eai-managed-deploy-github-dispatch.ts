@@ -27,6 +27,16 @@ function managedWorkflowRunName(state: ManagedDeployState): string {
   return `EAI deploy ${state.appKey} (${state.operationId})`;
 }
 
+function requireFreshLocalDispatch(state: ManagedDeployState): void {
+  if (state.localE2eExpiresAt && Date.parse(state.localE2eExpiresAt) <= Date.now()) {
+    fail(
+      "LOCAL_SOURCE_UNKNOWN_EXPIRED",
+      "The local source callback binding expired before GitHub dispatch.",
+      "Start a fresh source operation; the original operation remains available for read-only inspection.",
+    );
+  }
+}
+
 async function findManagedWorkflowRun(
   state: ManagedDeployState,
   claimedAt: string,
@@ -146,6 +156,14 @@ export async function dispatchWorkflow(
   state.dispatchStartedAt ||= new Date().toISOString();
   state.publicApiUrl = trustedPublicApiUrl;
   await saveManagedDeployState(state);
+  // The access check and state write can cross the callback deadline. Existing
+  // one-use claims still reconcile, but a new claim needs fresh authority.
+  try {
+    await readManagedDeployDispatchClaim(state);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    requireFreshLocalDispatch(state);
+  }
   const acquired = await claimManagedDeployDispatch(state);
   const existingClaim = await readManagedDeployDispatchClaim(state);
   if (state.dispatchedAt || existingClaim.status === "accepted") {
@@ -178,6 +196,7 @@ export async function dispatchWorkflow(
   }
   // The exclusive claim already records `dispatching` before provider mutation.
   try {
+    requireFreshLocalDispatch(state);
     await run(
       "gh",
       [
