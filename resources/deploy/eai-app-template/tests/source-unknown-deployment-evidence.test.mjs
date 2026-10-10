@@ -25,12 +25,13 @@ import { tmpdir } from 'node:os';
 import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { gunzipSync } from 'node:zlib';
 
 const canonicalWorkflowRelativePath = '.github/workflows/eai-app.yml';
 const fixtureDirectory = 'tests/fixtures/source-unknown';
 const canonicalDigest =
-  '87f85c702803238c320a0ef5564427728d57e1d52dc55360eb55e3b3f48c03db';
+  'bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed';
 const generatedDigest =
   '77d4951b3e6852ead73cef8b9e8901e3de774f9aca70f71cc0c932c13903ff32';
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -1787,6 +1788,61 @@ test('local customer-owned source uses its own exact direct-operation audience',
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test('direct local workflow checks the same audience with explicit and omitted target tenants', () => {
+  const workflow = readFileSync(workflowPath, 'utf8');
+  const marker = 'const tuple = sourceUnknownLocal';
+  const first = workflow.indexOf(marker);
+  const second = workflow.indexOf(marker, first + marker.length);
+  assert.ok(first >= 0 && second > first);
+  const snippets = [first, second].map((start) => {
+    const end = workflow.indexOf('if (local.audience !== audience)', start);
+    assert.ok(end > start);
+    return `${workflow.slice(start, end)}\naudience;`;
+  });
+  const origin = 'https://careful-8000.eai.devtunnels.ms';
+  const tenantId = 'tenant-parent';
+  const nonce = 'one-time-source-nonce';
+  const nonceDigest = `sha256:${digest(nonce)}`;
+  const expiry = '2026-10-11T02:00:00+00:00';
+  const evidence = {
+    nonce,
+    operationId: `source-unknown-${'a'.repeat(16)}`,
+    workflowPath: canonicalWorkflowRelativePath,
+    ref: 'refs/heads/main',
+    commitSha: 'b'.repeat(40),
+    configHash: `sha256:${'c'.repeat(64)}`,
+  };
+  const audienceFor = (snippet, targetInput, evidenceTarget) =>
+    runInNewContext(snippet, {
+      createHash,
+      process: { env: {
+        TENANT_ID: tenantId,
+        TARGET_TENANT_ID: targetInput,
+        APP_KEY: 'rates-review',
+      }, exit: () => { throw new Error('Unexpected workflow rejection.'); } },
+      sourceUnknownLocal: true,
+      local: { origin, nonceDigest },
+      evidence: { ...evidence, ...(evidenceTarget ? { targetTenantId: evidenceTarget } : {}) },
+      repositoryId: '12345',
+      repoId: '12345',
+      expiresAt: expiry,
+      expiry,
+    });
+  for (const target of ['', 'hosting-tenant']) {
+    const expectedTarget = target || tenantId;
+    const tuple = ['eai.source-unknown-local-e2e-aud.v1', origin, tenantId,
+      expectedTarget, 'rates-review', evidence.operationId, '12345',
+      evidence.workflowPath, evidence.ref, evidence.commitSha, evidence.configHash,
+      nonceDigest, expiry];
+    const expected = `api://enterprise-ai-publicapi/source-unknown/local-v1/${digest(JSON.stringify(tuple))}`;
+    for (const snippet of snippets) {
+      assert.equal(audienceFor(snippet, target, target), expected);
+    }
+  }
+  assert.notEqual(audienceFor(snippets[1], 'hosting-tenant', 'other-tenant'),
+    audienceFor(snippets[0], 'hosting-tenant', 'other-tenant'));
 });
 
 test('source commit is resolved before checkout for direct and reusable calls', () => {
