@@ -383,6 +383,7 @@ describe('EAI managed deployment helpers', () => {
     expect((await readdir(directory)).filter(name => name.endsWith('.tmp'))).toEqual([]);
   });
 
+
   test('refuses a dispatch claim that is readable by another local user', async () => {
     const directory = await temporaryDirectory('eai-managed-dispatch-permissions-');
     const state = fixtureState();

@@ -110,6 +110,19 @@ export async function dispatchWorkflow(
       "Select the original EAI profile, then resume this exact operation.",
     );
   }
+  if (state.localE2eExpiresAt && Date.parse(state.localE2eExpiresAt) <= Date.now()) {
+    try {
+      // A prior one-use claim may still need reconciliation; expiry only forbids a new dispatch.
+      await readManagedDeployDispatchClaim(state);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      fail(
+        "LOCAL_SOURCE_UNKNOWN_EXPIRED",
+        "The local source callback binding expired before GitHub dispatch.",
+        "Start a fresh source operation; the original operation remains available for read-only inspection.",
+      );
+    }
+  }
   if (!state.githubUserId || !state.githubLogin) {
     fail(
       "GITHUB_ACTOR_BINDING_MISSING",
@@ -193,6 +206,9 @@ export async function dispatchWorkflow(
         `commit_sha=${state.commitSha}`,
         "-f",
         `public_api_url=${trustedPublicApiUrl}`,
+        "-f",
+        `local_e2e_tunnel=${state.localE2eOrigin ? "true" : "false"}`,
+        ...(state.localE2eOrigin ? ["-f", `local_e2e_expires_at=${state.localE2eExpiresAt}`] : []),
         "-f",
         `env=${state.environment}`,
       ],

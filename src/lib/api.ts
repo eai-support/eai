@@ -239,6 +239,7 @@ export interface SourceUnknownWorkflowSetupRequest {
   configHash?: string;
   targetTenantId?: string;
   deployOnSuccess?: boolean;
+  localE2eTunnel?: boolean;
   githubLinkSessionId?: string;
   handoverIntent?: 'no-code-to-cli';
 }

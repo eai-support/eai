@@ -100,6 +100,10 @@ export async function startCustomerSource(
   );
   const configHash = await buildManagedDeployConfigHash(context.root, rootBinding);
   const ref = `refs/heads/${source.branch}`;
+  const localE2eTunnel = /^https:\/\/[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$/.test(context.publicApiUrl);
+  if (localE2eTunnel && !["dev", "preview"].includes(options.environment)) {
+    fail("LOCAL_SOURCE_UNKNOWN_ENVIRONMENT_INVALID", "A local callback requires DEV or preview.", "Select an authorized DEV profile.");
+  }
 
   await rootBinding.assert();
   await requireApiSuccess(
@@ -138,6 +142,7 @@ export async function startCustomerSource(
       configHash,
       targetTenantId,
       deployOnSuccess: true,
+      localE2eTunnel,
       githubLinkSessionId: link.sessionId,
     }),
     "WORKFLOW_SETUP_FAILED",
@@ -178,6 +183,24 @@ export async function startCustomerSource(
     publicApiUrl: context.publicApiUrl,
     profileName: getActiveProfile(),
   };
+  const setupBinding = setup.setup && typeof setup.setup === "object" ? setup.setup as Record<string, unknown> : {};
+  const localBinding = setupBinding.localE2e && typeof setupBinding.localE2e === "object"
+    ? setupBinding.localE2e as Record<string, unknown> : null;
+  if (localE2eTunnel) {
+    if (!localBinding || localBinding.mode !== "source-unknown-local-v1"
+      || localBinding.origin !== context.publicApiUrl
+      || typeof localBinding.expiresAt !== "string"
+      || typeof localBinding.nonceDigest !== "string"
+      || typeof localBinding.audience !== "string") {
+      fail("LOCAL_SOURCE_UNKNOWN_SETUP_INVALID", "Server setup did not bind the exact local callback.", "Start a fresh source operation after the local DEV configuration is repaired.");
+    }
+    state.localE2eOrigin = localBinding.origin;
+    state.localE2eExpiresAt = localBinding.expiresAt;
+    state.localE2eNonceDigest = localBinding.nonceDigest;
+    state.localE2eAudience = localBinding.audience;
+  } else if (localBinding !== null) {
+    fail("LOCAL_SOURCE_UNKNOWN_SETUP_UNEXPECTED", "Regional setup unexpectedly contains a local callback.", "Do not dispatch this operation.");
+  }
   await saveManagedDeployState(state);
   const issuedOperation = await readExactOperation(
     client,

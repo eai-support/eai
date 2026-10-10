@@ -30,6 +30,10 @@ export interface ManagedDeployState {
   githubProofId?: string;
   publicApiUrl: string;
   profileName: string;
+  localE2eOrigin?: string;
+  localE2eExpiresAt?: string;
+  localE2eNonceDigest?: string;
+  localE2eAudience?: string;
   dispatchStartedAt?: string;
   dispatchedAt?: string;
   githubRunId?: number;
