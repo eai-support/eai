@@ -1366,18 +1366,31 @@ export class PlatformAPIClient {
   async saveAppObjectTypeManifest(
     verticalKey: string,
     objectTypes: Record<string, unknown>[],
+    targetTenantId?: string,
   ): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/object-types/manifest`,
       'PUT',
       { objectTypes },
+      targetTenantId ? { targetTenantId } : undefined,
     );
   }
 
-  async publishAppObjectTypes(verticalKey: string): Promise<Response> {
+  async publishAppObjectTypes(verticalKey: string, targetTenantId?: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/object-types/publish`,
       'POST',
+      undefined,
+      targetTenantId ? { targetTenantId } : undefined,
+    );
+  }
+
+  async getBoundAppProvisioningJobs(verticalKey: string, targetTenantId: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
+      'GET',
+      undefined,
+      { targetTenantId },
     );
   }
 

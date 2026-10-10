@@ -743,6 +743,13 @@ eai resources schema --tenant-id <workspace-id> --format json
 eai dev
 ```
 
+For an app enrolled under a parent workspace with a separate runtime child, use
+`eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json`.
+The CLI checks the exact parent/app/child enrollment before publishing through
+the parent app route and reads schema visibility from the child. This mode
+stops if the manifest route or binding is unavailable; it does not switch to
+direct Object Type writes.
+
 ## Check Source Before EAI Hosting
 
 After building an app, check its source before choosing EAI-managed publication:

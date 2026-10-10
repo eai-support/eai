@@ -13,6 +13,16 @@ describe('PlatformAPIClient', () => {
     vi.restoreAllMocks()
   })
 
+  test('reads the parent-owned enrollment for one exact runtime child', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    const client = new PlatformAPIClient('https://example.test', 'parent-1')
+    await client.getBoundAppProvisioningJobs('my-app', 'child-1')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://example.test/v4/platform/tenants/parent-1/apps/my-app/provisioning-jobs?targetTenantId=child-1',
+      expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ Authorization: 'Bearer <fixture-access-token>', 'X-Tenant-Id': 'parent-1' }) }),
+    )
+  })
+
   test('caps managed requests and preserves a tighter client or per-read budget', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout')
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
@@ -522,6 +532,18 @@ describe('PlatformAPIClient', () => {
         { name: 'SubmissionFile', status: 'published' },
       ],
     })
+  })
+
+  test('pins the exact runtime child on both parent-scoped manifest writes', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'parent-1')
+    await client.saveAppObjectTypeManifest('my-app', [{ name: 'Task' }], 'child-1')
+    await client.publishAppObjectTypes('my-app', 'child-1')
+    expect(fetchMock.mock.calls.map(([url, init]) => [String(url), init?.method])).toEqual([
+      ['https://example.test/v4/platform/tenants/parent-1/apps/my-app/object-types/manifest?targetTenantId=child-1', 'PUT'],
+      ['https://example.test/v4/platform/tenants/parent-1/apps/my-app/object-types/publish?targetTenantId=child-1', 'POST'],
+    ])
+    expect(fetchMock.mock.calls[1]?.[1]?.body).toBeUndefined()
   })
 
   test('publishes app object types through the public platform router', async () => {

@@ -557,6 +557,7 @@ const OPTION_DECISIONS = {
   },
   'eai types seed': {
     '--env': 'Compatibility label only; tenant-id and tenant-key are the authoritative V4 smoke selectors.',
+    '--app-tenant-id': 'Parent-owned app enrollment with a separate runtime child is covered by exact-bound integration controls; deployed seeding mutates Object Types and remains excluded until a disposable cleanup fixture exists.',
   },
   'eai types validate': {
     '--tenant-id': 'Optional tenant-aware storage binding validation is covered explicitly so app-owned table prefixes can be checked before publish.',
