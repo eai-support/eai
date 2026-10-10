@@ -934,6 +934,7 @@ function appOwnedStoragePublishGuidance(
   message: string,
   tenantKey: string,
   tenantId: string,
+  appTenantId: string = tenantId,
 ): string {
   if (
     !/databaseAlias|storageBinding|app-owned prefix|not authorized|tableName/i.test(
@@ -946,7 +947,7 @@ function appOwnedStoragePublishGuidance(
   return [
     "",
     "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
-    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
+    `Next steps: run eai app provision ${tenantKey} --tenant-id ${appTenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`}.`,
   ].join("\n");
 }
 
@@ -1153,18 +1154,40 @@ export async function trySeedViaAppManifestPublish(
   tenantKey: string,
   tenantId: string,
   types: ObjectTypeDefinition[],
+  runtimeTenantId: string = tenantId,
 ): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  const splitTenantScope = runtimeTenantId !== tenantId;
+  if (splitTenantScope) {
+    const bindingResponse = await client.getBoundAppProvisioningJobs(tenantKey, runtimeTenantId);
+    if (!bindingResponse.ok) {
+      throw new Error(`app enrollment binding preflight failed: ${await describeFailedPlatformResponse(bindingResponse)}`);
+    }
+    const binding: unknown = await bindingResponse.json();
+    const enrollment = isRecord(binding) && isRecord(binding.enrollment) ? binding.enrollment : null;
+    const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : null;
+    const childTenantIds = [enrollment?.childTenantId, metadata?.childTenantId]
+      .filter((value) => value !== undefined && value !== null);
+    if (!isRecord(binding) || binding.tenantId !== tenantId
+      || binding.appKey !== tenantKey || childTenantIds.length === 0
+      || childTenantIds.some((value) => value !== runtimeTenantId)) {
+      throw new Error('app enrollment binding preflight did not match the exact parent, app, and runtime tenant');
+    }
+  }
   let appManifestRequestShape: TypeSeedResult["appManifestRequestShape"] =
     "explicit-name-and-slug";
   let manifestResponse = await client.saveAppObjectTypeManifest(
     tenantKey,
     toAppManifestObjectTypes(types),
+    splitTenantScope ? runtimeTenantId : undefined,
   );
   const manifestFallbackReason = await appObjectTypePublishFallbackReason(
     manifestResponse,
     "save",
   );
   if (manifestFallbackReason) {
+    if (splitTenantScope) {
+      throw new Error(`app manifest save failed for bound runtime tenant: ${manifestFallbackReason}`);
+    }
     return { fallbackReason: manifestFallbackReason };
   }
 
@@ -1192,6 +1215,7 @@ export async function trySeedViaAppManifestPublish(
     const nameDerivedResponse = await client.saveAppObjectTypeManifest(
       tenantKey,
       toAppManifestObjectTypes(types, "name-derived-slug"),
+      splitTenantScope ? runtimeTenantId : undefined,
     );
     if (nameDerivedResponse.ok) {
       manifestResponse = nameDerivedResponse;
@@ -1214,34 +1238,68 @@ export async function trySeedViaAppManifestPublish(
   if (!manifestResponse.ok) {
     const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
-      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
+      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
     );
   }
 
-  const publishResponse = await client.publishAppObjectTypes(tenantKey);
+  const publishResponse = await client.publishAppObjectTypes(
+    tenantKey, splitTenantScope ? runtimeTenantId : undefined,
+  );
   const publishFallbackReason = await appObjectTypePublishFallbackReason(
     publishResponse,
     "publish",
   );
   if (publishFallbackReason) {
+    if (splitTenantScope) {
+      throw new Error(`app manifest publish failed for bound runtime tenant: ${publishFallbackReason}`);
+    }
     return { fallbackReason: publishFallbackReason };
   }
   if (!publishResponse.ok) {
     const detail = await describeFailedPlatformResponse(publishResponse);
     throw new Error(
-      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
+      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
     );
   }
 
+  const publishPayload: unknown = await publishResponse.json();
+  if (splitTenantScope && (!isRecord(publishPayload)
+    || publishPayload.tenantId !== tenantId
+    || !isRecord(publishPayload.verification)
+    || publishPayload.verification.tenantId !== runtimeTenantId)) {
+    throw new Error('app manifest publish did not verify the exact parent and runtime tenant');
+  }
   const result = summarizeAppObjectTypePublish(
     tenantKey,
-    tenantId,
+    runtimeTenantId,
     types,
-    await publishResponse.json(),
+    publishPayload,
     appManifestRequestShape,
   );
 
   return { result };
+}
+
+export async function publishAppObjectTypesForRuntime(
+  appClient: PlatformAPIClient,
+  runtimeClient: PlatformAPIClient,
+  tenantKey: string,
+  appTenantId: string,
+  runtimeTenantId: string,
+  types: ObjectTypeDefinition[],
+): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  const outcome = await trySeedViaAppManifestPublish(
+    appClient, tenantKey, appTenantId, types, runtimeTenantId,
+  );
+  if (outcome.result) {
+    outcome.result.resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(
+      runtimeClient,
+      runtimeTenantId,
+      types.map((type) => type.name),
+      outcome.result.resourceApiSchemaSync,
+    );
+  }
+  return outcome;
 }
 
 const RESOURCEAPI_SYNC_SUCCESS_STATUSES = new Set([
@@ -1650,6 +1708,10 @@ typesCommand
     "Override the resolved workspace ID (use with --tenant-key)",
   )
   .option(
+    "--app-tenant-id <id>",
+    "Parent tenant that owns this app enrollment; --tenant-id remains the runtime child",
+  )
+  .option(
     "--dry-run",
     "Show what would be seeded without making changes",
     false,
@@ -1664,6 +1726,7 @@ Examples:
   $ eai types seed --dry-run
   $ eai types seed --tenant-key trial-portal
   $ eai types seed --tenant-key template --tenant-id 00000000-0000-4000-8000-000000000000
+  $ eai types seed --tenant-key template --tenant-id <runtime-child-id> --app-tenant-id <parent-id>
   $ eai types seed --format json | jq
   `,
   )
@@ -1671,6 +1734,10 @@ Examples:
     // Backward compatibility: --json maps to --format json
     if (options.json) {
       options.format = "json";
+    }
+
+    if (options.appTenantId && (!options.tenantId || !options.tenantKey)) {
+      exitWithError(ErrorCode.E303, { field: "--app-tenant-id requires --tenant-id and --tenant-key" }, options.format);
     }
 
     const ctx = await resolveCommandContext({ tenantId: options.tenantId });
@@ -1849,6 +1916,9 @@ Examples:
       }
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
+      const appClient = options.appTenantId
+        ? new PlatformAPIClient(publicApiUrl, options.appTenantId)
+        : client;
       let created = 0,
         updated = 0,
         failed = 0;
@@ -1856,20 +1926,15 @@ Examples:
       let appManifestFallbackReason: string | undefined;
 
       try {
-        const appPublishOutcome = await trySeedViaAppManifestPublish(
+        const appPublishOutcome = await publishAppObjectTypesForRuntime(
+          appClient,
           client,
           tenantKey,
+          options.appTenantId ?? tenantId,
           tenantId,
           types,
         );
         if (appPublishOutcome.result) {
-          appPublishOutcome.result.resourceApiSchemaSync =
-            await waitForResourceApiSchemaVisibility(
-              client,
-              tenantId,
-              types.map((type) => type.name),
-              appPublishOutcome.result.resourceApiSchemaSync,
-            );
           if (options.format !== "json") {
             out.success("Published via app object-type manifest");
             out.info(

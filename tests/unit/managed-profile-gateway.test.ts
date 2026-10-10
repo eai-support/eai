@@ -1,5 +1,6 @@
 import { mkdtemp, mkdir, chmod, writeFile, readFile, readdir, stat, rm, symlink, link } from 'node:fs/promises';
 import { join } from 'node:path';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { describe, test, beforeEach, afterEach, expect, vi } from 'vitest';
 
@@ -13,6 +14,8 @@ vi.mock('../../src/lib/auth.js', async (original) => ({ ...await original<typeof
 import { openSync, readSync, renameSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs';
 import { setActiveProfile, captureProfileConfig, loadProfileConfig, saveProfileConfig } from '../../src/lib/profile.js';
 import { requireManagedPublicApiUrl } from '../../src/lib/managed-public-api.js';
+import { loadManagedDeployState, saveManagedDeployState } from '../../src/lib/eai-managed-deploy-state.js';
+import type { ManagedDeployState } from '../../src/lib/eai-managed-deploy-contract.js';
 import { PlatformAPIClient, probePublicApiReachability } from '../../src/lib/api.js';
 import { resolveAuthConfig } from '../../src/lib/auth.js';
 
@@ -43,6 +46,27 @@ describe('explicit private managed gateway authority', () => {
     expect(requireManagedPublicApiUrl(prod)).toBe(prod);
     expect(() => requireManagedPublicApiUrl(gateway)).toThrow('trusted EAI regional');
     expect(openSync).not.toHaveBeenCalled(); expect(readSync).not.toHaveBeenCalled();
+  });
+  test('expired exact local callback stays inspectable but rejects changed authority', async () => {
+    const local = 'https://bound-8000.eai.devtunnels.ms';
+    await profiles({ selected: config(local) }); setActiveProfile('selected');
+    const state: ManagedDeployState = {
+      schema: 'eai.managed-deploy-state.v1', tenantId: 'tenant-parent', targetTenantId: 'tenant-child',
+      appKey: 'rates-review', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce',
+      repo: 'customer/rates-review', branch: 'main', ref: 'refs/heads/main', commitSha: 'a'.repeat(40),
+      workflowPath: '.github/workflows/eai-app.yml', configHash: `sha256:${'b'.repeat(64)}`,
+      environment: 'dev', installationId: 123, actorId: 'actor-1', githubLinkSessionId: 'link-1',
+      githubUserId: 456, githubLogin: 'customer', githubProofId: 'proof-1',
+      publicApiUrl: local, profileName: 'selected', localE2eOrigin: local,
+      localE2eExpiresAt: '2020-01-01T00:00:00+00:00',
+      localE2eNonceDigest: `sha256:${createHash('sha256').update('one-time-nonce').digest('hex')}`,
+      localE2eAudience: `api://enterprise-ai-publicapi/source-unknown/local-v1/${'c'.repeat(64)}`,
+    };
+    const directory = join(fixture.home, '.eai', 'state');
+    await saveManagedDeployState(state, directory);
+    expect(await loadManagedDeployState(state.operationId, directory)).toEqual(state);
+    await expect(saveManagedDeployState({ ...state, localE2eOrigin: 'https://other-8000.eai.devtunnels.ms' }, directory))
+      .rejects.toThrow();
   });
   test('one bounded named snapshot pins cold and warm calls and is reused by auth', async () => {
     await profiles({ selected: config() }); setActiveProfile('selected');

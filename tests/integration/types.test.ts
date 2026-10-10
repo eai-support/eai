@@ -27,10 +27,12 @@ import {
   resolveTenantIdForKey,
   resolveTypesPullOutputPath,
   shouldFailTypeSeedRun,
+  publishAppObjectTypesForRuntime,
   summarizeAppObjectTypePublish,
   summarizeResourceApiSchemaSync,
   toAppManifestObjectTypes,
   trySeedViaAppManifestPublish,
+  typesCommand,
   validateObjectTypeAppOwnedStorageMetadata,
   validateObjectTypeStorageMetadata,
   verifyTypeSeedConvergence,
@@ -109,6 +111,12 @@ describe('resolveTypesPullOutputPath', () => {
 });
 
 describe('app object-type publish helpers', () => {
+  test('documents separate app-owner and runtime-child IDs without changing the old tenant option', () => {
+    const help = typesCommand.commands.find((command) => command.name() === 'seed')?.helpInformation();
+    expect(help).toContain('--tenant-id <id>');
+    expect(help).toContain('--app-tenant-id <id>');
+    expect(help).toContain('Parent tenant that owns this app enrollment');
+  });
   test('diffObjectTypesForTenant reports local, remote, changed, and unchanged groups', () => {
     const result = diffObjectTypesForTenant(
       'smoke-app',
@@ -557,6 +565,121 @@ describe('app object-type publish helpers', () => {
     expect(outcome.result?.resourceApiSchemaSync).toMatchObject({
       status: 'queued',
     });
+  });
+
+  test('publishes through the parent app only after an exact child enrollment read', async () => {
+    const calls: string[] = [];
+    const client = {
+      getBoundAppProvisioningJobs: async (key: string, child: string) => {
+        calls.push(`read:${key}:${child}`);
+        return new Response(JSON.stringify({
+          tenantId: 'parent-1', appKey: key,
+          enrollment: { childTenantId: child },
+        }), { status: 200 });
+      },
+      saveAppObjectTypeManifest: async (_key: string, _types: unknown[], child: string) => {
+        calls.push(`save:${child}`);
+        return new Response('{}', { status: 200 });
+      },
+      publishAppObjectTypes: async (_key: string, child: string) => {
+        calls.push(`publish:${child}`);
+        return new Response(JSON.stringify({
+          tenantId: 'parent-1',
+          results: [{ name: 'Task', status: 'updated' }],
+          verification: { tenantId: 'child-1', requestedTypes: ['Task'], matchedTypes: ['Task'], missingTypes: [], driftedTypes: [], converged: true },
+          resourceApiSchemaSync: { status: 'queued' },
+        }), { status: 200 });
+      },
+    } as unknown as PlatformAPIClient;
+    const type = { name: 'Task', slug: 'task', properties: [], linkTypes: [], actions: [] } as ObjectTypeDefinition;
+    const result = await trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [type], 'child-1');
+    expect(calls).toEqual(['read:my-app:child-1', 'save:child-1', 'publish:child-1']);
+    expect(result.result).toMatchObject({ tenantId: 'child-1', publishingMode: 'app-manifest', verification: { tenantId: 'child-1', converged: true } });
+  });
+
+  test('checks queued schema visibility on the child client after parent publication', async () => {
+    const calls: string[] = [];
+    const appClient = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => { calls.push('parent:save'); return new Response('{}', { status: 200 }); },
+      publishAppObjectTypes: async () => {
+        calls.push('parent:publish');
+        return new Response(JSON.stringify({
+          tenantId: 'parent-1',
+          results: [{ name: 'Task', status: 'updated' }],
+          verification: { tenantId: 'child-1', requestedTypes: ['Task'], matchedTypes: ['Task'], missingTypes: [], driftedTypes: [], converged: true },
+          resourceApiSchemaSync: { status: 'queued' },
+        }), { status: 200 });
+      },
+      getResourceStorageSchemaStatus: async () => { throw new Error('parent schema must not be read'); },
+    } as unknown as PlatformAPIClient;
+    const runtimeClient = {
+      getResourceStorageSchemaStatus: async () => {
+        calls.push('child:schema');
+        return new Response(JSON.stringify({ objectTypeSlugs: ['task'] }), { status: 200 });
+      },
+    } as unknown as PlatformAPIClient;
+    const type = { name: 'Task', slug: 'task', properties: [], linkTypes: [], actions: [] } as ObjectTypeDefinition;
+    const outcome = await publishAppObjectTypesForRuntime(appClient, runtimeClient, 'my-app', 'parent-1', 'child-1', [type]);
+    expect(calls).toEqual(['parent:save', 'parent:publish', 'child:schema']);
+    expect(outcome.result).toMatchObject({ tenantId: 'child-1', resourceApiSchemaSync: { status: 'synced', schemaVisibilitySource: 'storage.schema-status' } });
+  });
+
+  test('accepts an exact runtime child declared in enrollment metadata', async () => {
+    const calls: string[] = [];
+    const client = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { metadata: { childTenantId: 'child-1' } } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => { calls.push('save'); return new Response('{}', { status: 200 }); },
+      publishAppObjectTypes: async () => { calls.push('publish'); return new Response(JSON.stringify({ tenantId: 'parent-1', verification: { tenantId: 'child-1', converged: true } }), { status: 200 }); },
+    } as unknown as PlatformAPIClient;
+    await trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1');
+    expect(calls).toEqual(['save', 'publish']);
+  });
+
+  test.each([
+    ['missing enrollment', new Response('{}', { status: 404 })],
+    ['missing child', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: {} }), { status: 200 })],
+    ['parent-only child value', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { parentTenantId: 'child-1' } }), { status: 200 })],
+    ['metadata parent-only child value', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { metadata: { parentTenantId: 'child-1' } } }), { status: 200 })],
+    ['crossed child', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'other-child' } }), { status: 200 })],
+    ['conflicting child fields', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1', metadata: { childTenantId: 'other-child' } } }), { status: 200 })],
+    ['crossed parent', new Response(JSON.stringify({ tenantId: 'other-parent', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 })],
+  ])('denies split-scope %s before any manifest mutation', async (_name, bindingResponse) => {
+    let writes = 0;
+    const client = {
+      getBoundAppProvisioningJobs: async () => bindingResponse,
+      saveAppObjectTypeManifest: async () => { writes++; return new Response('{}'); },
+      publishAppObjectTypes: async () => { writes++; return new Response('{}'); },
+    } as unknown as PlatformAPIClient;
+    await expect(trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1')).rejects.toThrow(/binding preflight/);
+    expect(writes).toBe(0);
+  });
+
+  test('never falls back to direct writes after a split-scope manifest 404', async () => {
+    const client = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => new Response('App was not found for this company.', { status: 404 }),
+      publishAppObjectTypes: async () => { throw new Error('publish must not run'); },
+    } as unknown as PlatformAPIClient;
+    await expect(trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1')).rejects.toThrow(/bound runtime tenant/);
+  });
+
+  test('never falls back to direct writes after a split-scope publish 405', async () => {
+    const client = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => new Response('{}', { status: 200 }),
+      publishAppObjectTypes: async () => new Response('{}', { status: 405 }),
+    } as unknown as PlatformAPIClient;
+    await expect(trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1')).rejects.toThrow(/bound runtime tenant/);
+  });
+
+  test('rejects a successful split-scope publish whose verification names another child', async () => {
+    const client = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => new Response('{}', { status: 200 }),
+      publishAppObjectTypes: async () => new Response(JSON.stringify({ tenantId: 'parent-1', verification: { tenantId: 'other-child', converged: true } }), { status: 200 }),
+    } as unknown as PlatformAPIClient;
+    await expect(trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1')).rejects.toThrow(/exact parent and runtime tenant/);
   });
 });
 
