@@ -1165,10 +1165,11 @@ export async function trySeedViaAppManifestPublish(
     const binding: unknown = await bindingResponse.json();
     const enrollment = isRecord(binding) && isRecord(binding.enrollment) ? binding.enrollment : null;
     const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : null;
-    const boundTenantId = enrollment?.childTenantId ?? metadata?.childTenantId
-      ?? enrollment?.parentTenantId ?? metadata?.parentTenantId;
+    const childTenantIds = [enrollment?.childTenantId, metadata?.childTenantId]
+      .filter((value) => value !== undefined && value !== null);
     if (!isRecord(binding) || binding.tenantId !== tenantId
-      || binding.appKey !== tenantKey || boundTenantId !== runtimeTenantId) {
+      || binding.appKey !== tenantKey || childTenantIds.length === 0
+      || childTenantIds.some((value) => value !== runtimeTenantId)) {
       throw new Error('app enrollment binding preflight did not match the exact parent, app, and runtime tenant');
     }
   }

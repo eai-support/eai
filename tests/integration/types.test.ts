@@ -625,9 +625,24 @@ describe('app object-type publish helpers', () => {
     expect(outcome.result).toMatchObject({ tenantId: 'child-1', resourceApiSchemaSync: { status: 'synced', schemaVisibilitySource: 'storage.schema-status' } });
   });
 
+  test('accepts an exact runtime child declared in enrollment metadata', async () => {
+    const calls: string[] = [];
+    const client = {
+      getBoundAppProvisioningJobs: async () => new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { metadata: { childTenantId: 'child-1' } } }), { status: 200 }),
+      saveAppObjectTypeManifest: async () => { calls.push('save'); return new Response('{}', { status: 200 }); },
+      publishAppObjectTypes: async () => { calls.push('publish'); return new Response(JSON.stringify({ tenantId: 'parent-1', verification: { tenantId: 'child-1', converged: true } }), { status: 200 }); },
+    } as unknown as PlatformAPIClient;
+    await trySeedViaAppManifestPublish(client, 'my-app', 'parent-1', [], 'child-1');
+    expect(calls).toEqual(['save', 'publish']);
+  });
+
   test.each([
     ['missing enrollment', new Response('{}', { status: 404 })],
+    ['missing child', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: {} }), { status: 200 })],
+    ['parent-only child value', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { parentTenantId: 'child-1' } }), { status: 200 })],
+    ['metadata parent-only child value', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { metadata: { parentTenantId: 'child-1' } } }), { status: 200 })],
     ['crossed child', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'other-child' } }), { status: 200 })],
+    ['conflicting child fields', new Response(JSON.stringify({ tenantId: 'parent-1', appKey: 'my-app', enrollment: { childTenantId: 'child-1', metadata: { childTenantId: 'other-child' } } }), { status: 200 })],
     ['crossed parent', new Response(JSON.stringify({ tenantId: 'other-parent', appKey: 'my-app', enrollment: { childTenantId: 'child-1' } }), { status: 200 })],
   ])('denies split-scope %s before any manifest mutation', async (_name, bindingResponse) => {
     let writes = 0;
