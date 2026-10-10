@@ -815,7 +815,7 @@ jobs:
             }
             const tuple = sourceUnknownLocal
               ? ['eai.source-unknown-local-e2e-aud.v1', local.origin, process.env.TENANT_ID,
-                  process.env.TARGET_TENANT_ID, process.env.APP_KEY, evidence.operationId,
+                  process.env.TARGET_TENANT_ID || process.env.TENANT_ID, process.env.APP_KEY, evidence.operationId,
                   repositoryId, evidence.workflowPath, evidence.ref, evidence.commitSha,
                   evidence.configHash, local.nonceDigest, expiresAt]
               : ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repositoryId, local.templateCommitSha, expiresAt];
@@ -1063,7 +1063,7 @@ jobs:
               !Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) <= Date.now()) process.exit(1);
           const tuple = sourceUnknownLocal
             ? ['eai.source-unknown-local-e2e-aud.v1', local.origin, process.env.TENANT_ID,
-                evidence.targetTenantId, process.env.APP_KEY, evidence.operationId, repoId,
+                evidence.targetTenantId || process.env.TENANT_ID, process.env.APP_KEY, evidence.operationId, repoId,
                 evidence.workflowPath, evidence.ref, evidence.commitSha, evidence.configHash,
                 local.nonceDigest, expiry]
             : ['eai.cli-managed-local-e2e-aud.v1', local.origin, evidence.operationId, repoId, local.templateCommitSha, expiry];
