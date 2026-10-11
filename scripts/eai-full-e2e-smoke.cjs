@@ -602,6 +602,8 @@ const OPTION_DECISIONS = {
     '--object-type': 'Optional Object Type scope; system-admin refresh is reasoned and disabled in default release smoke.',
   },
   'eai app provision': {
+    '--app-tenant-id': 'Parent-owned app enrollment and runtime-child binding are covered by exact-job integration controls; live smoke uses a dedicated same-tenant fixture.',
+    '--job-id': 'Exact-job resume is covered by integration controls; the live smoke starts its own disposable provisioning job.',
     '--rebuild-search': 'Potentially expensive search rebuild; left as explicit opt-in outside release smoke.',
     '--skip-validate': 'Negative validation bypass; not used in release smoke because the smoke should prove normal validation works.',
   },

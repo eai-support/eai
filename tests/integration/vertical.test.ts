@@ -717,6 +717,225 @@ describe('eai app', () => {
     );
   });
 
+  test('provisions the parent-owned app for its runtime child only after the exact job is ready', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const childTenantId = 'child-tenant';
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({ tenants: [
+          { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] },
+          { id: childTenantId, displayName: 'App Runtime', slug: 'app-runtime', isActive: true, roles: ['tenant-admin'] },
+        ] });
+      }
+      if (url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`) && method === 'GET') {
+        return jsonResponse({ docs: [{ id: 'app-1', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'planning-portal' }, version: 1 }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs` && method === 'POST') {
+        expect(JSON.parse(String(init?.body))).toEqual({ targetTenantId: childTenantId });
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-1', status: 'running' });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-child-1?targetTenantId=${childTenantId}` && method === 'GET') {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-1', status: 'ready',
+          enrollment: { childTenantId, metadata: { appProvisioning: { storageBindingAllowList: { postgresql: { aliases: ['tenant-postgres'] } } } } },
+        });
+      }
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childTenantId,
+      '--app-tenant-id', COMPANY_TENANT_ID, '--select', '--format', 'json'], { from: 'user' });
+
+    const storageContract = JSON.parse(await readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8'));
+    expect(storageContract).toMatchObject({ tenantId: childTenantId, appKey: 'planning-portal', source: { provisioningJobId: 'job-child-1' } });
+    expect(storageContract.storageNamePrefixes.sql).toContain('childtenant_planning_portal_');
+    const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(envFile).toContain(`EAI_TENANT_ID=${childTenantId}`);
+    expect(envFile).toContain(`NEXT_PUBLIC_EAI_TENANT_ID=${childTenantId}`);
+    expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining(`/v4/platform/tenants/${childTenantId}/apps/planning-portal/provisioning-jobs`), expect.anything());
+  });
+
+  test('resumes the exact parent-owned job without posting another provisioning job', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const childTenantId = 'child-tenant';
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [
+          { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
+          { id: childTenantId, displayName: 'App Runtime', isActive: true, roles: ['tenant-admin'] },
+        ] });
+      }
+      if (url.startsWith(`${API_BASE}/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)) {
+        return jsonResponse({ docs: [{ id: 'app-1', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'planning-portal' }, version: 1 }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-child-1?targetTenantId=${childTenantId}`
+        && requestMethod(init) === 'GET') {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-1', status: 'ready',
+          enrollment: { metadata: { childTenantId, appProvisioning: { storageBindingAllowList: { postgresql: { aliases: ['tenant-postgres'] } } } } },
+        });
+      }
+      return jsonResponse({ message: `Unexpected ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childTenantId,
+      '--app-tenant-id', COMPANY_TENANT_ID, '--job-id', 'job-child-1', '--select', '--format', 'json'], { from: 'user' });
+
+    expect(fetchMock.mock.calls.some(([url, init]) =>
+      requestUrl(url).includes('/provisioning-jobs') && requestMethod(init) === 'POST')).toBe(false);
+    expect(JSON.parse(await readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8')))
+      .toMatchObject({ tenantId: childTenantId, source: { provisioningJobId: 'job-child-1' } });
+  });
+
+  test('keeps polling the same bound job beyond three minutes before writing local bindings', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const childTenantId = 'child-tenant';
+    let jobStartedAt = 0;
+    let signalJobStarted!: () => void;
+    const jobStarted = new Promise<void>((resolve) => { signalJobStarted = resolve; });
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [
+          { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
+          { id: childTenantId, displayName: 'App Runtime', isActive: true, roles: ['tenant-admin'] },
+        ] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs`
+        && requestMethod(init) === 'POST') {
+        jobStartedAt = Date.now();
+        signalJobStarted();
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-slow-1', status: 'running' });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-slow-1?targetTenantId=${childTenantId}`
+        && requestMethod(init) === 'GET') {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-slow-1',
+          status: Date.now() - jobStartedAt > 180_000 ? 'ready' : 'running',
+          enrollment: { childTenantId },
+        });
+      }
+      return jsonResponse({ message: `Unexpected ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    try {
+      const provision = appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childTenantId,
+        '--app-tenant-id', COMPANY_TENANT_ID, '--skip-validate', '--format', 'json'], { from: 'user' });
+      await jobStarted;
+      await vi.advanceTimersByTimeAsync(182_000);
+      await provision;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(fetchMock.mock.calls.filter(([url, init]) =>
+      requestUrl(url).includes('/provisioning-jobs') && requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(JSON.parse(await readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8')))
+      .toMatchObject({ tenantId: childTenantId, source: { provisioningJobId: 'job-slow-1' } });
+  }, 15_000);
+
+  test.each([
+    { binding: 'another runtime child', enrollment: { childTenantId: 'another-child' } },
+    { binding: 'conflicting nested child', enrollment: { childTenantId: 'child-tenant', metadata: { childTenantId: 'another-child' } } },
+  ])('rejects a ready parent job bound to $binding without local writes', async ({ enrollment }) => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const childTenantId = 'child-tenant';
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [
+          { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
+          { id: childTenantId, displayName: 'App Runtime', isActive: true, roles: ['tenant-admin'] },
+        ] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-child-1?targetTenantId=${childTenantId}`) {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-1', status: 'ready',
+          enrollment,
+        });
+      }
+      return jsonResponse({ message: `Unexpected ${url}` }, 500);
+    }));
+
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childTenantId,
+      '--app-tenant-id', COMPANY_TENANT_ID, '--job-id', 'job-child-1', '--select', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+    await expect(readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).not.toContain('EAI_APP_KEY=');
+  });
+
+  test('does not write child bindings or selection when the exact provisioning job fails', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const childTenantId = 'child-tenant';
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      const method = requestMethod(init);
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+        return jsonResponse({ tenants: [
+          { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace', isActive: true, roles: ['tenant-admin'] },
+          { id: childTenantId, displayName: 'App Runtime', slug: 'app-runtime', isActive: true, roles: ['tenant-admin'] },
+        ] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs` && method === 'POST') {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-2', status: 'running' });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-child-2?targetTenantId=${childTenantId}` && method === 'GET') {
+        return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-2', status: 'failed' });
+      }
+      return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childTenantId,
+      '--app-tenant-id', COMPANY_TENANT_ID, '--skip-validate', '--select', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+    await expect(readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    expect(envFile).not.toContain('EAI_APP_KEY=');
+    expect(envFile).not.toContain('EAI_TENANT_ID=');
+  });
+
+  test('keeps local selection untouched when the parent app job returns the original 404', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) {
+        return jsonResponse({ tenants: [{ id: 'child-tenant', displayName: 'App Runtime', slug: 'app-runtime', isActive: true, roles: ['tenant-admin'] }] });
+      }
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs` && requestMethod(init) === 'POST') {
+        return jsonResponse({ message: 'App enrollment not found' }, 404);
+      }
+      return jsonResponse({ message: `Unexpected ${url}` }, 500);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', 'child-tenant',
+      '--app-tenant-id', COMPANY_TENANT_ID, '--skip-validate', '--select', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+    await expect(readFile(join(env.dir, '.eai', 'storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).not.toContain('EAI_APP_KEY=');
+  });
+
+  test('rejects a backend-specific actual job instead of silently ignoring the requested backend', async () => {
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', 'child-tenant',
+      '--backend', 'postgresql', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('HP005 plans app storage readiness without running the provisioning job during dry-run', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);

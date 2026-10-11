@@ -947,7 +947,7 @@ function appOwnedStoragePublishGuidance(
   return [
     "",
     "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
-    `Next steps: run eai app provision ${tenantKey} --tenant-id ${appTenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`}.`,
+    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`}.`,
   ].join("\n");
 }
 
