@@ -1866,11 +1866,25 @@ export class PlatformAPIClient {
     );
   }
 
-  async createAppProvisioningJob(verticalKey: string): Promise<Response> {
+  async createAppProvisioningJob(verticalKey: string, targetTenantId?: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
       'POST',
+      targetTenantId ? { targetTenantId } : undefined,
     );
+  }
+
+  async getAppProvisioningJob(verticalKey: string, jobId: string, targetTenantId: string): Promise<Response> {
+    const path = `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs/${encodeURIComponent(jobId)}`;
+    const headers = await this.headers();
+    return this.fetchPublic(`${this.baseUrl}${appendParams(path, { targetTenantId })}`, {
+      method: 'GET',
+      headers,
+      signal: AbortSignal.timeout(30_000),
+      ...(this.requestOptions.publicRequestRedirect
+        ? { redirect: this.requestOptions.publicRequestRedirect }
+        : {}),
+    });
   }
 
   async registerSourceUnknownApp(

@@ -54,6 +54,8 @@ const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
+const APP_PROVISIONING_POLL_MS = 2_000;
+const APP_PROVISIONING_TIMEOUT_MS = 600_000;
 
 /** Scoped cleanup must retain the exact plan targets; legacy plans carry no target authority. */
 function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string): value is string[] {
@@ -263,6 +265,51 @@ function normalizeGenericAppProvisioningPayload(payload: unknown, appKey: string
   });
 
   return { ...payload, steps };
+}
+
+async function awaitExactAppProvisioningJob(
+  client: PlatformAPIClient,
+  appKey: string,
+  appTenantId: string,
+  runtimeTenantId: string,
+  initialPayload: unknown,
+): Promise<unknown> {
+  if (!isRecord(initialPayload) || typeof initialPayload.jobId !== 'string' || !initialPayload.jobId) {
+    fail('App provisioning did not return an exact job ID. No local storage binding was written.');
+  }
+  const jobId = initialPayload.jobId;
+  const deadline = performance.now() + APP_PROVISIONING_TIMEOUT_MS;
+  let payload: unknown = initialPayload;
+  while (true) {
+    if (!isRecord(payload) || payload.jobId !== jobId
+      || payload.tenantId !== appTenantId || payload.appKey !== appKey) {
+      fail('App provisioning response changed scope or job ID. No local storage binding was written.');
+    }
+    if (payload.status === 'ready' && appTenantId !== runtimeTenantId) {
+      const enrollment = isRecord(payload.enrollment) ? payload.enrollment : {};
+      const metadata = isRecord(enrollment.metadata) ? enrollment.metadata : {};
+      const boundChildTenantId = enrollment.childTenantId || metadata.childTenantId;
+      if (boundChildTenantId !== runtimeTenantId) {
+        fail('App provisioning response is not bound to the requested runtime child. No local storage binding was written.');
+      }
+    }
+    if (payload.status === 'ready') return payload;
+    if (payload.status !== 'running') {
+      fail(`App provisioning ended with ${String(payload.status || 'unknown')}. No local storage binding was written.`);
+    }
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) {
+      fail(`App provisioning job ${jobId} timed out before ready. No local storage binding was written. Rerun with --job-id ${jobId} to resume this exact job.`);
+    }
+    const response = await client.getAppProvisioningJob(appKey, jobId, runtimeTenantId);
+    payload = await readResponsePayload(response);
+    if (!response.ok) {
+      fail(`Could not read the exact app provisioning job: ${response.status} ${response.statusText}`);
+    }
+    if (isRecord(payload) && payload.status === 'running') {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(APP_PROVISIONING_POLL_MS, remaining)));
+    }
+  }
 }
 
 function buildStorageBindingContract(
@@ -1650,7 +1697,9 @@ verticalCommand
 verticalCommand
   .command('provision <key>')
   .description('Run the platform app provisioning job')
-  .option('--tenant-id <id>', 'Run against a specific company workspace')
+  .option('--tenant-id <id>', 'Runtime tenant receiving app storage bindings')
+  .option('--app-tenant-id <id>', 'Parent tenant that owns the app enrollment; --tenant-id remains the runtime child')
+  .option('--job-id <id>', 'Resume an exact provisioning job without starting another')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
@@ -1659,16 +1708,39 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options) => {
+    if (options.appTenantId !== undefined &&
+      (typeof options.appTenantId !== 'string' || !options.appTenantId.trim()
+        || options.appTenantId.trim() !== options.appTenantId)) {
+      fail('--app-tenant-id must be a non-empty exact parent tenant ID.');
+    }
+    if (options.appTenantId && !options.tenantId) {
+      fail('--app-tenant-id requires an explicit runtime --tenant-id.');
+    }
+    if (options.jobId !== undefined &&
+      (typeof options.jobId !== 'string' || !options.jobId.trim()
+        || options.jobId.trim() !== options.jobId)) {
+      fail('--job-id must be a non-empty exact provisioning job ID.');
+    }
+    if (options.jobId && (!options.tenantId || options.dryRun)) {
+      fail('--job-id requires --tenant-id and cannot be combined with --dry-run.');
+    }
+    if (!options.dryRun && (options.backend !== 'all' || options.rebuildSearch)) {
+      fail('--backend and --rebuild-search apply only to --dry-run; the app provisioning job selects its own storage actions.');
+    }
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const format = normalizeFormat(options);
     const verticalKey = key.trim();
+    const appTenantId = options.appTenantId || ctx.tenantId;
+    const appClient = appTenantId === ctx.tenantId
+      ? ctx.client
+      : new PlatformAPIClient(ctx.publicApiUrl, appTenantId);
 
     if (!verticalKey) {
       fail('App key is required.');
     }
 
     if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx.client);
+      await validateVerticalEnrollment(verticalKey, appClient);
     }
 
     const spinner = makeSpinner(
@@ -1683,9 +1755,13 @@ verticalCommand
         dryRun: true,
         rebuildSearch: Boolean(options.rebuildSearch),
       })
-      : await ctx.client.createAppProvisioningJob(verticalKey);
+      : options.jobId
+        ? await appClient.getAppProvisioningJob(verticalKey, options.jobId, ctx.tenantId)
+        : await appClient.createAppProvisioningJob(
+          verticalKey,
+          appTenantId === ctx.tenantId ? undefined : ctx.tenantId,
+        );
     const responsePayload = await readResponsePayload(res);
-    const payload = normalizeGenericAppProvisioningPayload(responsePayload, verticalKey);
 
     if (!res.ok) {
       spinner?.fail('Failed to prepare app storage');
@@ -1693,6 +1769,11 @@ verticalCommand
         ? responsePayload.message
         : `${res.status} ${res.statusText}`);
     }
+
+    const completedPayload = options.dryRun
+      ? responsePayload
+      : await awaitExactAppProvisioningJob(appClient, verticalKey, appTenantId, ctx.tenantId, responsePayload);
+    const payload = normalizeGenericAppProvisioningPayload(completedPayload, verticalKey);
 
     const storageContract = options.dryRun
       ? null
@@ -1730,6 +1811,7 @@ verticalCommand
     if (format === 'json') {
       out.json({
         tenantId: ctx.tenantId,
+        ...(appTenantId === ctx.tenantId ? {} : { appTenantId }),
         appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select),
