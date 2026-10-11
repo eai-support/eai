@@ -1234,7 +1234,7 @@ describe('eai app', () => {
     const envPath = join(env.dir, '.env.local');
     const originalEnv = await readFile(envPath, 'utf-8');
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [{ id: childTenantId, roles: ['tenant-admin'] }] });
@@ -1261,7 +1261,7 @@ describe('eai app', () => {
     await seedProjectRoot(env.dir);
     const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
-    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+    const fetchMock = vi.fn<typeof fetch>(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: 'child-tenant', roles: ['tenant-admin'] }] });
       if (url.includes(`/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)) {
