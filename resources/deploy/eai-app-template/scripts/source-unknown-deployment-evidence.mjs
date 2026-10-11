@@ -181,7 +181,7 @@ function localE2eBinding(options, mode, environment, root) {
   const operationId = option(options, 'operationId');
   const repositoryId = option(options, 'repositoryId');
   if (
-    mode !== 'eai-cli-generated' ||
+    !['eai-cli-generated', 'source-unknown'].includes(mode) ||
     !['preview', 'dev'].includes(environment) ||
     option(options, 'githubEventName') !== 'workflow_dispatch' ||
     option(options, 'reusableCall') === 'true' ||
@@ -189,13 +189,40 @@ function localE2eBinding(options, mode, environment, root) {
     !/^[1-9][0-9]*$/.test(repositoryId) ||
     !Number.isSafeInteger(Number(repositoryId)) ||
     String(Number(repositoryId)) !== repositoryId ||
-    !/^cli-managed-[a-f0-9]{32}$/.test(operationId) ||
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?\+00:00$/.test(expiresAt) ||
     !Number.isFinite(Date.parse(expiresAt)) ||
     Date.parse(expiresAt) <= Date.now() ||
     Date.parse(expiresAt) > Date.now() + 2 * 60 * 60 * 1000
   ) {
     throw new Error('Local deployment requires an exact direct DEV/preview tunnel binding.');
+  }
+  if (mode === 'source-unknown') {
+    const nonce = option(options, 'nonce');
+    const tenantId = option(options, 'tenantId');
+    const targetTenant = option(options, 'targetTenantId') || tenantId;
+    const appKey = option(options, 'appKey');
+    const workflowPath = option(options, 'workflow', '.github/workflows/eai-app.yml');
+    const ref = option(options, 'ref', process.env.GITHUB_REF || '');
+    const commitSha = option(options, 'commit', process.env.GITHUB_SHA || '');
+    const configHash = option(options, 'expectedConfigHash');
+    if (!/^source-unknown-[a-f0-9]{16}$/.test(operationId)
+      || !tenantId || !targetTenant || !appKey || !nonce
+      || workflowPath !== CANONICAL_WORKFLOW_PATH
+      || !/^refs\/heads\//.test(ref)
+      || !/^[a-f0-9]{40}$/.test(commitSha)
+      || !SHA256_DIGEST.test(configHash)) {
+      throw new Error('Local source-unknown operation binding is incomplete.');
+    }
+    const nonceDigest = `sha256:${createHash('sha256').update(nonce).digest('hex')}`;
+    const fields = ['eai.source-unknown-local-e2e-aud.v1', origin, tenantId,
+      targetTenant, appKey, operationId, repositoryId, workflowPath, ref,
+      commitSha, configHash, nonceDigest, expiresAt];
+    return { mode: 'source-unknown-local-v1', origin, expiresAt, nonceDigest,
+      audience: 'api://enterprise-ai-publicapi/source-unknown/local-v1/'
+        + createHash('sha256').update(JSON.stringify(fields)).digest('hex') };
+  }
+  if (!/^cli-managed-[a-f0-9]{32}$/.test(operationId)) {
+    throw new Error('Local CLI operation binding is invalid.');
   }
   const binding = JSON.parse(readRegularFileNoFollow(root, '.eai/cli-managed-source-operation.json').toString('utf8'));
   if (

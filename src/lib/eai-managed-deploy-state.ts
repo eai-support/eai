@@ -63,6 +63,17 @@ function validateManagedDeployState(state: ManagedDeployState): void {
     throw new Error('Managed deployment retry state is missing its original PublicAPI URL; start a new deployment.');
   }
   requireManagedPublicApiUrl(state.publicApiUrl);
+  const localValues = [state.localE2eOrigin, state.localE2eExpiresAt, state.localE2eNonceDigest, state.localE2eAudience];
+  if (localValues.some(value => value !== undefined)) {
+    if (localValues.some(value => typeof value !== 'string')
+      || !/^https:\/\/[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$/.test(state.localE2eOrigin!)
+      || state.localE2eOrigin !== state.publicApiUrl
+      || !Number.isFinite(Date.parse(state.localE2eExpiresAt!))
+      || state.localE2eNonceDigest !== managedDeployNonceSha256(state.nonce)
+      || !/^api:\/\/enterprise-ai-publicapi\/source-unknown\/local-v1\/[a-f0-9]{64}$/.test(state.localE2eAudience!)) {
+      throw new Error('Managed deployment local callback authority is incomplete or expired.');
+    }
+  }
 }
 
 /** Reject shared writable ancestors before creating or securing recovery authority. */
@@ -111,7 +122,8 @@ export async function saveManagedDeployState(state: ManagedDeployState, baseDir?
   validateManagedDeployState(state);
   const fields = ['schema', 'tenantId', 'targetTenantId', 'appKey', 'operationId', 'nonce', 'repo', 'branch',
     'ref', 'commitSha', 'workflowPath', 'configHash', 'environment', 'installationId', 'actorId',
-    'githubLinkSessionId', 'githubUserId', 'githubLogin', 'githubProofId', 'publicApiUrl', 'profileName'] as const;
+    'githubLinkSessionId', 'githubUserId', 'githubLogin', 'githubProofId', 'publicApiUrl', 'profileName',
+    ...(state.localE2eOrigin ? ['localE2eOrigin', 'localE2eExpiresAt', 'localE2eNonceDigest', 'localE2eAudience'] as const : [])] as const;
   if (state.schema !== 'eai.managed-deploy-state.v1' || fields.some(field => !Object.hasOwn(state, field))) {
     throw new Error('Managed deployment state is missing its original operation authority.');
   }
@@ -153,6 +165,8 @@ function managedDispatchBindingSha256(state: ManagedDeployState): string {
     state.environment, state.installationId, state.actorId, state.githubLinkSessionId,
     requireManagedPublicApiUrl(state.publicApiUrl), state.profileName,
     state.githubUserId, state.githubLogin, state.githubProofId,
+    ...(state.localE2eOrigin ? [state.localE2eOrigin, state.localE2eExpiresAt,
+      state.localE2eNonceDigest, state.localE2eAudience] : []),
   ])).digest('hex')}`;
 }
 

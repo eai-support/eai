@@ -220,4 +220,17 @@ export function assertManagedDeployStateMatchesOperation(
   ];
   const mismatch = expected.find(([, serverValue, localValue]) => serverValue !== localValue);
   if (mismatch) throw new Error(`Retry state does not match the server setup field ${mismatch[0]}.`);
+  const local = record(binding.localE2e);
+  if (state.localE2eOrigin !== undefined) {
+    if (!local || local.mode !== 'source-unknown-local-v1'
+      || local.origin !== state.localE2eOrigin
+      || local.expiresAt !== state.localE2eExpiresAt
+      || local.nonceDigest !== state.localE2eNonceDigest
+      || local.audience !== state.localE2eAudience
+      || local.nonceDigest !== managedDeployNonceSha256(state.nonce)) {
+      throw new Error('Retry state does not match the server local callback binding.');
+    }
+  } else if (local) {
+    throw new Error('Regional retry state cannot dispatch a local callback.');
+  }
 }

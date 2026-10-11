@@ -290,9 +290,11 @@ function validateAppProvisioningJob(
     throw new Error('Provisioning returned a mismatched or invalid app job; local configuration was not changed.');
   }
   const enrollment = payload.enrollment;
-  if ((enrollment.childTenantId !== undefined && enrollment.childTenantId !== null
-      && enrollment.childTenantId !== runtimeTenantId)
-    || (runtimeTenantId !== companyTenantId && enrollment.childTenantId !== runtimeTenantId)
+  const metadata = isRecord(enrollment.metadata) ? enrollment.metadata : {};
+  const boundChildren = [enrollment.childTenantId, metadata.childTenantId]
+    .filter(value => value !== undefined && value !== null);
+  if (boundChildren.some(value => value !== runtimeTenantId)
+    || (runtimeTenantId !== companyTenantId && boundChildren.length === 0)
     || (enrollment.tenantId !== undefined && enrollment.tenantId !== companyTenantId)
     || (enrollment.verticalKey !== undefined && enrollment.verticalKey !== appKey)
     || (payload.targetTenantId !== undefined && payload.targetTenantId !== runtimeTenantId)) {
@@ -307,11 +309,12 @@ async function waitForAppProvisioningReady(
   companyTenantId: string,
   runtimeTenantId: string,
   appKey: string,
+  expectedJobId?: string,
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + APP_PROVISIONING_WAIT_MS;
-  let payload = validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey);
+  let payload = validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey, expectedJobId);
   const jobId = payload.jobId as string;
-  const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running.`);
+  const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
 
   for (;;) {
     if (payload.status === 'ready') return payload;
@@ -1755,7 +1758,9 @@ verticalCommand
 verticalCommand
   .command('provision <key>')
   .description('Run the platform app provisioning job')
-  .option('--tenant-id <id>', 'Run against a specific company workspace')
+  .option('--tenant-id <id>', 'Runtime tenant receiving app storage bindings')
+  .option('--app-tenant-id <id>', 'Parent tenant that owns the app enrollment; --tenant-id remains the runtime child')
+  .option('--job-id <id>', 'Resume an exact provisioning job without starting another')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
@@ -1764,9 +1769,32 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options) => {
+    if (options.appTenantId !== undefined &&
+      (typeof options.appTenantId !== 'string' || !options.appTenantId.trim()
+        || options.appTenantId.trim() !== options.appTenantId)) {
+      fail('--app-tenant-id must be a non-empty exact parent tenant ID.');
+    }
+    if (options.appTenantId && !options.tenantId) {
+      fail('--app-tenant-id requires an explicit runtime --tenant-id.');
+    }
+    if (options.jobId !== undefined &&
+      (typeof options.jobId !== 'string' || !options.jobId.trim()
+        || options.jobId.trim() !== options.jobId)) {
+      fail('--job-id must be a non-empty exact provisioning job ID.');
+    }
+    if (options.jobId && (!options.tenantId || options.dryRun)) {
+      fail('--job-id requires --tenant-id and cannot be combined with --dry-run.');
+    }
+    if (!options.dryRun && (options.backend !== 'all' || options.rebuildSearch)) {
+      fail('--backend and --rebuild-search apply only to --dry-run; the app provisioning job selects its own storage actions.');
+    }
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const format = normalizeFormat(options);
     const verticalKey = key.trim();
+    const appTenantId = options.appTenantId || ctx.tenantId;
+    const appClient = appTenantId === ctx.tenantId
+      ? ctx.client
+      : new PlatformAPIClient(ctx.publicApiUrl, appTenantId);
 
     if (!verticalKey) {
       fail('App key is required.');
@@ -1778,16 +1806,23 @@ verticalCommand
         ? `Planning app storage readiness for ${verticalKey}...`
         : `Provisioning app ${verticalKey}...`,
     );
-    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, ctx.client);
+    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, appClient);
     const enrollmentData = isRecord(enrollment?.data) ? enrollment.data : enrollment;
-    const declaredRuntime = enrollmentData?.childTenantId;
-    if (declaredRuntime !== undefined && declaredRuntime !== null
-      && (typeof declaredRuntime !== 'string' || !declaredRuntime.trim() || declaredRuntime.trim() !== declaredRuntime)) {
+    const enrollmentMetadata = isRecord(enrollmentData?.metadata) ? enrollmentData.metadata : {};
+    const declaredRuntimes = [enrollmentData?.childTenantId, enrollmentMetadata.childTenantId]
+      .filter(value => value !== undefined && value !== null);
+    if (declaredRuntimes.some(value => typeof value !== 'string' || !value.trim() || value.trim() !== value)
+      || new Set(declaredRuntimes).size > 1) {
       fail('The app enrollment has an invalid runtime workspace binding.');
     }
-    // --tenant-id is the company control-plane scope. Storage and local runtime
-    // settings must retain the exact runtime bound by that company's enrollment.
-    const runtimeTenantId = typeof declaredRuntime === 'string' ? declaredRuntime : ctx.tenantId;
+    const declaredRuntime = declaredRuntimes[0];
+    if (options.appTenantId && declaredRuntime !== undefined && declaredRuntime !== ctx.tenantId) {
+      fail('The app enrollment is bound to a different runtime workspace.');
+    }
+    // An explicit parent/runtime pair pins the requested child. Existing company
+    // commands continue to retain their enrollment's exact child binding.
+    const runtimeTenantId = options.appTenantId ? ctx.tenantId
+      : typeof declaredRuntime === 'string' ? declaredRuntime : ctx.tenantId;
     const runtimeClient = runtimeTenantId === ctx.tenantId
       ? ctx.client : new PlatformAPIClient(ctx.publicApiUrl, runtimeTenantId);
     const res = options.dryRun
@@ -1796,7 +1831,9 @@ verticalCommand
         dryRun: true,
         rebuildSearch: Boolean(options.rebuildSearch),
       })
-      : await ctx.client.createAppProvisioningJob(verticalKey, runtimeTenantId === ctx.tenantId ? undefined : runtimeTenantId);
+      : options.jobId
+        ? await appClient.getAppProvisioningJob(verticalKey, options.jobId, runtimeTenantId)
+        : await appClient.createAppProvisioningJob(verticalKey, runtimeTenantId === appTenantId ? undefined : runtimeTenantId);
     const responsePayload = await readResponsePayload(res);
 
     if (!res.ok) {
@@ -1809,8 +1846,8 @@ verticalCommand
     let completedPayload: unknown = responsePayload;
     if (!options.dryRun) {
       try {
-        completedPayload = await waitForAppProvisioningReady(ctx.client, responsePayload,
-          ctx.tenantId, runtimeTenantId, verticalKey);
+        completedPayload = await waitForAppProvisioningReady(appClient, responsePayload,
+          appTenantId, runtimeTenantId, verticalKey, options.jobId);
       } catch (err) {
         spinner?.fail('App provisioning did not complete');
         fail(errMsg(err));
@@ -1855,6 +1892,7 @@ verticalCommand
       out.json({
         tenantId: ctx.tenantId,
         targetTenantId: runtimeTenantId,
+        ...(appTenantId === ctx.tenantId ? {} : { appTenantId }),
         appKey: verticalKey,
         verticalKey,
         selected: Boolean(options.select) && !options.dryRun,
