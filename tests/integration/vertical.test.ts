@@ -840,7 +840,10 @@ describe('eai app', () => {
       .toMatchObject({ tenantId: childTenantId, source: { provisioningJobId: 'job-slow-1' } });
   }, 15_000);
 
-  test('rejects a ready parent job bound to another runtime child without local writes', async () => {
+  test.each([
+    { binding: 'another runtime child', enrollment: { childTenantId: 'another-child' } },
+    { binding: 'conflicting nested child', enrollment: { childTenantId: 'child-tenant', metadata: { childTenantId: 'another-child' } } },
+  ])('rejects a ready parent job bound to $binding without local writes', async ({ enrollment }) => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
     const childTenantId = 'child-tenant';
@@ -855,7 +858,7 @@ describe('eai app', () => {
       }
       if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/provisioning-jobs/job-child-1?targetTenantId=${childTenantId}`) {
         return jsonResponse({ tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', jobId: 'job-child-1', status: 'ready',
-          enrollment: { childTenantId: 'another-child' },
+          enrollment,
         });
       }
       return jsonResponse({ message: `Unexpected ${url}` }, 500);

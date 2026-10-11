@@ -288,8 +288,10 @@ async function awaitExactAppProvisioningJob(
     if (payload.status === 'ready' && appTenantId !== runtimeTenantId) {
       const enrollment = isRecord(payload.enrollment) ? payload.enrollment : {};
       const metadata = isRecord(enrollment.metadata) ? enrollment.metadata : {};
-      const boundChildTenantId = enrollment.childTenantId || metadata.childTenantId;
-      if (boundChildTenantId !== runtimeTenantId) {
+      const boundChildTenantIds = [enrollment.childTenantId, metadata.childTenantId]
+        .filter((value) => value !== undefined && value !== null);
+      if (boundChildTenantIds.length === 0
+        || boundChildTenantIds.some((value) => value !== runtimeTenantId)) {
         fail('App provisioning response is not bound to the requested runtime child. No local storage binding was written.');
       }
     }

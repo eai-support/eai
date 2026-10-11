@@ -1020,22 +1020,26 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 ---
 
 #### `eai app provision <key>`
-Prepare platform storage for an app.
+Run the parent-owned app provisioning job and write local storage bindings only after that exact job is ready. For an app with a separate runtime child tenant, specify both tenant IDs. A failed or incomplete job does not write local bindings.
 
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Target company workspace
-- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` (default: `all`)
+- `--tenant-id <id>` — Runtime tenant receiving the app storage bindings
+- `--app-tenant-id <id>` — Parent tenant owning the app enrollment; requires an explicit runtime `--tenant-id`
+- `--job-id <id>` — Resume the exact provisioning job without creating another; requires `--tenant-id` and cannot be combined with `--dry-run`
+- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` for `--dry-run` only (default: `all`)
 - `--dry-run` — Plan actions without applying changes
-- `--rebuild-search` — Request a search projection rebuild after provisioning
+- `--rebuild-search` — Request a search projection rebuild for `--dry-run` only
 - `--skip-validate` — Skip the app lookup
-- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after successful provisioning
+- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after the exact job is ready
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/data/resources/{tenantId}/tenant-vertical-enrollment` — validation (unless `--skip-validate`)
-- `POST /v4/data/resources/{tenantId}/storage/provision`
+- `GET /v4/data/resources/{appTenantId}/tenant-vertical-enrollment` — parent enrollment validation (unless `--skip-validate`)
+- `POST /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs` — create the parent-owned job with `targetTenantId` for a separate runtime child
+- `GET /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs/{jobId}?targetTenantId={runtimeTenantId}` — read or resume the exact job until ready
+- `POST /v4/data/resources/{runtimeTenantId}/storage/provision` — `--dry-run` storage planning only
 
 ---
 
