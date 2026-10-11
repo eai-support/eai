@@ -743,6 +743,13 @@ eai resources schema --tenant-id <workspace-id> --format json
 eai dev
 ```
 
+For an app enrolled under a parent workspace with a separate runtime child, use
+`eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json`.
+The CLI checks the exact parent/app/child enrollment before publishing through
+the parent app route and reads schema visibility from the child. This mode
+stops if the manifest route or binding is unavailable; it does not switch to
+direct Object Type writes.
+
 ## Check Source Before EAI Hosting
 
 After building an app, check its source before choosing EAI-managed publication:
@@ -4071,27 +4078,32 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 ---
 
 #### `eai app provision <key>`
-Prepare platform storage for an app.
+Run the parent-owned app provisioning job and write local storage bindings only after that exact job is ready. For an app with a separate runtime child tenant, specify both tenant IDs. A failed or incomplete job does not write local bindings.
 
-The company workspace owns the enrollment. Its `childTenantId`, when present,
-selects the runtime workspace for storage and local runtime settings. A dry run
+With `--app-tenant-id`, the parent owns the enrollment and `--tenant-id` pins the
+runtime child. Without an explicit parent, the selected workspace owns the
+enrollment and its exact `childTenantId`, when present, selects the runtime.
+Conflicting child bindings fail before storage or local writes. A dry run
 preserves local configuration, including when `--select` is supplied.
 
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Target company workspace
-- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` (default: `all`)
+- `--tenant-id <id>` — Runtime tenant receiving the app storage bindings
+- `--app-tenant-id <id>` — Parent tenant owning the app enrollment; requires an explicit runtime `--tenant-id`
+- `--job-id <id>` — Resume the exact provisioning job without creating another; requires `--tenant-id` and cannot be combined with `--dry-run`
+- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` for `--dry-run` only (default: `all`)
 - `--dry-run` — Plan actions without applying changes
-- `--rebuild-search` — Request a search projection rebuild after provisioning
+- `--rebuild-search` — Request a search projection rebuild for `--dry-run` only
 - `--skip-validate` — Skip the app lookup
-- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after successful provisioning
+- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after the exact job is ready
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/data/resources/{tenantId}/tenant-vertical-enrollment` — validation (unless `--skip-validate`)
-- `POST /v4/platform/tenants/{companyTenantId}/apps/{key}/provisioning-jobs` — sends the enrollment's runtime as `targetTenantId` when distinct from the company
-- `POST /v4/data/resources/{runtimeTenantId}/storage/provision` — dry-run storage plan
+- `GET /v4/data/resources/{appTenantId}/tenant-vertical-enrollment` — parent enrollment validation (unless `--skip-validate`)
+- `POST /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs` — create the parent-owned job with `targetTenantId` for a separate runtime child
+- `GET /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs/{jobId}?targetTenantId={runtimeTenantId}` — read or resume the exact job until ready
+- `POST /v4/data/resources/{runtimeTenantId}/storage/provision` — `--dry-run` storage planning only
 
 ---
 

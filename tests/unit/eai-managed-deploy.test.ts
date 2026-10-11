@@ -383,6 +383,7 @@ describe('EAI managed deployment helpers', () => {
     expect((await readdir(directory)).filter(name => name.endsWith('.tmp'))).toEqual([]);
   });
 
+
   test('refuses a dispatch claim that is readable by another local user', async () => {
     const directory = await temporaryDirectory('eai-managed-dispatch-permissions-');
     const state = fixtureState();
@@ -744,22 +745,22 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: '3a117e2cd12ef2375a80ebdc6031927b2da2be78' },
+      candidate: { commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: '3a117e2cd12ef2375a80ebdc6031927b2da2be78',
-        workflowSha256: 'sha256:e672ee440a434b9d681a73bb00b15c3a2dbb5b0561825cfd7e6abaefd892a4cb',
+        templateCommitSha: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
+        workflowSha256: 'sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed',
       },
       releaseGate: {
         status: 'released',
-        tag: 'v1.0.10',
-        commit: '3a117e2cd12ef2375a80ebdc6031927b2da2be78',
+        tag: 'v1.0.12',
+        commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
       },
     });
     const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
     expect(linkedSources.appTemplate).toMatchObject({
-      version: 'v1.0.10',
-      commit: '3a117e2cd12ef2375a80ebdc6031927b2da2be78',
+      version: 'v1.0.12',
+      commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
       packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
     });
     expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();

@@ -91,11 +91,12 @@ import {
   writePrivateFileNoFollow,
 } from "../../src/lib/eai-managed-deploy-filesystem.js";
 import { claimManagedDeployDispatch, loadManagedDeployState, prepareManagedDeployStateDirectory, readManagedDeployDispatchClaim, recordManagedDeployDispatch, saveManagedDeployState } from "../../src/lib/eai-managed-deploy-state.js";
-import { EAI_MANAGED_WORKFLOW_PATH, type ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
+import { EAI_MANAGED_WORKFLOW_PATH, managedDeployNonceSha256, type ManagedDeployState } from "../../src/lib/eai-managed-deploy-contract.js";
 import { bindManagedProjectRoot } from "../../src/lib/eai-managed-root-binding.js";
 import { dispatchWorkflow } from "../../src/commands/eai-managed-deploy-github-dispatch.js";
 import * as githubAccess from "../../src/commands/eai-managed-deploy-github-access.js";
 import * as commandContract from "../../src/commands/eai-managed-deploy-contract.js";
+import * as profile from "../../src/lib/profile.js";
 
 const cleanup: string[] = [];
 const original = "original authorized bytes\n";
@@ -155,7 +156,7 @@ async function fixture(mode: number): Promise<{ work: string; root: string; pare
   return { work, root, parent, target };
 }
 
-async function dispatchFixture(): Promise<{ directory: string; marker: string; state: ManagedDeployState }> {
+async function dispatchFixture(local = false): Promise<{ directory: string; marker: string; state: ManagedDeployState }> {
   const directory = await realpath(await mkdtemp(join(tmpdir(), "managed-claim-advance-")));
   cleanup.push(directory);
   const state: ManagedDeployState = {
@@ -167,6 +168,14 @@ async function dispatchFixture(): Promise<{ directory: string; marker: string; s
     githubLinkSessionId: "github-link-123", githubUserId: 456, githubLogin: "linked-user", githubProofId: "proof-123",
     publicApiUrl: "https://test-api.au.myenterprise.ai/public",
   };
+  if (local) {
+    state.profileName = "local-test";
+    state.publicApiUrl = "https://bound-8000.eai.devtunnels.ms";
+    state.localE2eOrigin = state.publicApiUrl;
+    state.localE2eExpiresAt = "2026-10-10T00:00:01.000Z";
+    state.localE2eNonceDigest = managedDeployNonceSha256(state.nonce);
+    state.localE2eAudience = `api://enterprise-ai-publicapi/source-unknown/local-v1/${"a".repeat(64)}`;
+  }
   await claimManagedDeployDispatch(state, directory);
   return { directory, marker: join(directory, `${state.operationId}.json.dispatch`), state };
 }
@@ -264,6 +273,57 @@ test.each(["before-claim", "after-provider"] as const)("preserves a concurrent r
   expect(await readManagedDeployDispatchClaim(state)).toMatchObject({ status: "accepted", githubRunId: 789 });
   await expect(saveManagedDeployState({ ...state, githubRunId: 456 })).rejects.toThrow("run ID");
   expect(await loadManagedDeployState(state.operationId)).toMatchObject({ dispatchedAt, githubRunId: 789 });
+});
+
+test("a callback expiring during GitHub access cannot acquire a new dispatch claim", async () => {
+  profile.setActiveProfile("local-test");
+  vi.spyOn(profile, "captureProfileConfig").mockReturnValue({
+    publicApiUrl: "https://bound-8000.eai.devtunnels.ms",
+    managedDeploymentApiUrl: "https://bound-8000.eai.devtunnels.ms",
+    authTenantName: "fixture", authTenantId: "fixture", authClientId: "fixture",
+  });
+  const { directory, marker, state } = await dispatchFixture(true);
+  vi.stubEnv("HOME", directory);
+  await rm(marker);
+  vi.useFakeTimers({ toFake: ["Date"] });
+  const before = new Date("2026-10-10T00:00:00.000Z");
+  vi.setSystemTime(before);
+  await saveManagedDeployState(state);
+  vi.spyOn(githubAccess, "verifyGitHubAccess").mockImplementation(async () => {
+    vi.setSystemTime(new Date(before.getTime() + 2000));
+  });
+  const provider = vi.spyOn(commandContract, "run");
+  try {
+    await expect(dispatchWorkflow(state, state.publicApiUrl, directory)).rejects.toThrow("expired before GitHub dispatch");
+    expect(provider).not.toHaveBeenCalled();
+    await expect(readManagedDeployDispatchClaim(state)).rejects.toMatchObject({ code: "ENOENT" });
+  } finally {
+    vi.useRealTimers();
+    profile.setActiveProfile("default");
+  }
+});
+
+test("an accepted one-use claim remains reconcilable after local callback expiry", async () => {
+  profile.setActiveProfile("local-test");
+  vi.spyOn(profile, "captureProfileConfig").mockReturnValue({
+    publicApiUrl: "https://bound-8000.eai.devtunnels.ms",
+    managedDeploymentApiUrl: "https://bound-8000.eai.devtunnels.ms",
+    authTenantName: "fixture", authTenantId: "fixture", authClientId: "fixture",
+  });
+  const { directory, state } = await dispatchFixture(true);
+  vi.stubEnv("HOME", directory);
+  await saveManagedDeployState(state);
+  await claimManagedDeployDispatch(state);
+  await recordManagedDeployDispatch(state, "accepted", 789);
+  vi.spyOn(githubAccess, "verifyGitHubAccess").mockResolvedValue(undefined);
+  const provider = vi.spyOn(commandContract, "run");
+  try {
+    await dispatchWorkflow(state, state.publicApiUrl, directory);
+    expect(provider).not.toHaveBeenCalled();
+    expect(state.githubRunId).toBe(789);
+  } finally {
+    profile.setActiveProfile("default");
+  }
 });
 
 test.each(writers)("$name publishes a new inode without modifying an existing opened file", async writer => {
