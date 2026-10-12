@@ -508,26 +508,48 @@ role definitions, Entra configuration, databases, or cloud portals.
 
 ## Support reports
 
-Run `eai support` after an unresolved CLI failure. It shows a locally redacted
-report and asks before sending. The report includes the last failing command,
-catalog error code and reason, CLI version, OS, and known workspace/app context.
-Credentials and unrelated environment settings are excluded.
-Saved failure context contains command and catalog metadata only. Raw error text
-is never saved for a later report; recognized errors use the catalog's title.
+Run `eai support` when you want help with a CLI failure. It shows a locally
+redacted report and asks before sending. The report includes the last failing
+command, catalog error code and reason, CLI version, OS, and known workspace/app
+context. Credentials and unrelated environment settings are excluded. Saved
+failure context contains command and catalog metadata only, is left out of the
+report after 24 hours (the CLI shows its time), and `--no-last-error` skips it.
 
-For an AI harness, preview first:
+Every failing command ends with the same offer: "Need help? Run eai support, or
+ask your AI assistant to get help. Nothing is sent without your approval." In JSON
+errors it sits in `error.help`, separate from the agent-facing `error.suggestion`.
+A failing `eai support` or `eai errors` command does not repeat it.
+
+An AI harness starts a report only when you ask for help ("get help" or
+`eai support`). It passes its bounded session summary (what you asked, the goal,
+steps, commands, errors, attempted fixes and project-relative files) through
+`--context-file`, which reads a JSON file or stdin (`-`), accepts at most 64 KiB,
+redacts credentials, hides your home directory and project root, and drops the
+oldest steps, commands and errors to stay within the website's 32 KiB cap:
 
 ```bash
-eai support --source harness --tool codex --format json
+eai support --source harness --tool codex --context-file - --format json
 ```
 
-Show the person the returned bundle. After they explicitly approve that report,
-rerun the same command with `--yes`. JSON runs without `--yes` never send a report.
-The returned link contains only a draft id and one-time token in its fragment.
-Open it to review and submit the report before the draft expires.
+The JSON preview returns `previewText`, the whole redacted report as plain text
+ending with its digest, and `bundleDigest`. The harness shows `previewText`
+unchanged and asks you. After you approve, it reruns with
+`--yes --approved-digest <bundleDigest>`; any other digest answers
+`consent_stale` and sends nothing. JSON runs without `--yes` never send a report,
+and `--yes` in JSON or noninteractive runs always needs the digest.
 
-A missing or expired `eai login` session, or a website 401, returns the plain
-Support link and creates no draft. `--no-open` prints the link without opening a
+When the saved session has no active workspace, the report needs to know where
+your organisation is based so it is stored in that region. A terminal asks you;
+JSON runs answer `consent_required` with `questions: ["organisationLocation"]`
+until `--organisation-location apac|emea|americas` is supplied. If the website
+still cannot place the report it answers `region_required`, and the CLI returns
+the Support chat link instead.
+
+The returned link contains only a draft id and one-time token in its fragment.
+Open it to review and submit the report before the draft expires. A missing or
+expired `eai login` session, a website 401, a declined report or `region_required`
+returns `<website>/support?chat=open`, which opens the Support chat without
+prefill and creates no draft. `--no-open` prints the link without opening a
 browser. Reports never go in URL parameters.
 
 Existing projects can preview updated harness instructions with

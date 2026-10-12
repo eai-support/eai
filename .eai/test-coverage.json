@@ -347,6 +347,7 @@
           "owned_paths": [
             "src/commands/support.ts",
             "src/lib/support-report.ts",
+            "src/lib/support-harness.ts",
             "src/lib/support-context.ts",
             "src/lib/support-redaction.ts",
             "src/lib/profile.ts",
@@ -356,7 +357,12 @@
             "src/commands/init.ts",
             "src/lib/agent-guide.ts",
             "resources/gofer/references/platform/eai-support.md",
-            "resources/gofer/instruction-templates/**"
+            "resources/gofer/instruction-templates/**",
+            "resources/gofer/node-scripts/generate-commands.mjs",
+            "resources/gofer/commands/0_gofer_start.md",
+            "resources/gofer/commands/gofer_eai_first_run.md",
+            "scripts/verify-error-guidance.cjs",
+            "tests/helpers/support-fixture.ts"
           ],
           "required_repo_tests": [
             "tests/integration/support.test.ts",

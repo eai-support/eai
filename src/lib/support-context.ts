@@ -26,8 +26,8 @@ export interface SupportErrorContext {
 
 const MAX_STDERR_LENGTH = 32768;
 const MAX_CONTEXT_BYTES = 16384;
-/** Shared escalation wording for text failures and the suggestion field of JSON errors. */
-export const SUPPORT_SUGGESTION = 'Run eai support to prepare a report for your approval.';
+/** Help offer for the person on every failing exit (text stderr) and in the `error.help` field of JSON errors; AI harnesses never act on it. */
+export const SUPPORT_HELP = 'Need help? Run eai support, or ask your AI assistant to get help. Nothing is sent without your approval.';
 
 let commandPath = 'eai';
 let latestError: Omit<SupportErrorContext, 'command' | 'exitCode' | 'recordedAt'> = {};
@@ -130,7 +130,8 @@ function persistSupportContext(exitCode: number): void {
 
 /**
  * Installs tracking once per process, including immediate process.exit() failures.
- * Nonzero exits atomically save private, profile-scoped context; support/errors commands preserve the original failure.
+ * Nonzero exits atomically save private, profile-scoped context; support/errors commands preserve the original failure
+ * and print no help offer, because offering help from the help path would loop.
  */
 export function installSupportErrorTracking(): void {
   if (trackingInstalled) return;
@@ -153,7 +154,7 @@ export function installSupportErrorTracking(): void {
           recordSupportJsonError(payload);
           const record = asRecord(payload);
           hasStructuredStderrError = Boolean(record?.error)
-            || (typeof record?.suggestion === 'string' && record.suggestion.includes(SUPPORT_SUGGESTION));
+            || (typeof record?.help === 'string' && record.help.includes(SUPPORT_HELP));
         } catch {
           // stderr may contain partial JSON or plain diagnostic text.
         }
@@ -167,16 +168,14 @@ export function installSupportErrorTracking(): void {
   });
 
   process.on('exit', (exitCode) => {
-    if (exitCode === 0) return;
-    if (!shouldKeepPreviousError()) {
-      try {
-        persistSupportContext(exitCode);
-      } catch {
-        Reflect.apply(originalWrite, process.stderr, ['Could not save the previous error for eai support.\n']);
-      }
+    if (exitCode === 0 || shouldKeepPreviousError()) return;
+    try {
+      persistSupportContext(exitCode);
+    } catch {
+      Reflect.apply(originalWrite, process.stderr, ['Could not save the previous error for eai support.\n']);
     }
     if (!hasStructuredStderrError) {
-      Reflect.apply(originalWrite, process.stderr, [`${SUPPORT_SUGGESTION}\n`]);
+      Reflect.apply(originalWrite, process.stderr, [`${SUPPORT_HELP}\n`]);
     }
   });
 }

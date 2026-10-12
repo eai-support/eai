@@ -1,19 +1,31 @@
 import { createRequire } from 'node:module';
-import { platform, release } from 'node:os';
+import { homedir, platform, release } from 'node:os';
 import { findProjectRoot, loadEnvFile } from './config.js';
 import type { StoredTokens } from './auth.js';
 import { getActiveProfile, loadProfileConfig } from './profile.js';
 import { findGuidanceByCodeOrReason } from './error-guidance/catalog.js';
 import { readSupportContext } from './support-context.js';
+import {
+  fitHarnessContext,
+  isOrganisationLocation,
+  pathAliases,
+  readHarnessContextSource,
+  redactHarnessContext,
+  validateHarnessContext,
+  type HarnessContext,
+  type OrganisationLocation,
+} from './support-harness.js';
 import { isSupportSensitiveKey, redactSupportBundle, redactSupportText } from './support-redaction.js';
 
 const require = createRequire(import.meta.url);
 const { version: cliVersion } = require('../../package.json') as { version: string };
 /** Deadline for one draft POST, including its bounded response body. */
 export const SUPPORT_TIMEOUT_MS = 10_000;
+/** Saved failure context older than this is shown with its time but left out of the report. */
+export const LAST_ERROR_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const MAX_RESPONSE_BYTES = 8_192;
 
-/** Report inputs; `yes` asserts the person approved this exact bundle before submission. */
+/** Report inputs; `yes` asserts the person approved the bundle whose digest is `approvedDigest`. */
 export interface SupportOptions {
   readonly format?: string;
   readonly source?: string;
@@ -23,6 +35,10 @@ export interface SupportOptions {
   readonly exitCode?: string;
   readonly errorCode?: string;
   readonly description?: string;
+  readonly contextFile?: string;
+  readonly approvedDigest?: string;
+  readonly organisationLocation?: string;
+  readonly lastError?: boolean;
   readonly yes?: boolean;
   readonly open?: boolean;
 }
@@ -45,6 +61,14 @@ export interface SupportBundle {
   readonly appName?: string;
   readonly error?: string;
   readonly occurredAt?: string;
+  readonly organisationLocation?: OrganisationLocation;
+  readonly harness?: HarnessContext;
+}
+
+/** The prepared report plus anything the person should know about what was left out. */
+export interface SupportReport {
+  readonly bundle: SupportBundle;
+  readonly ignoredLastError?: { readonly recordedAt: string; readonly reason: 'expired' };
 }
 
 /** Safe draft failure code and message, excluding server response content and credentials. */
@@ -69,17 +93,26 @@ export async function resolveSupportWebsite(): Promise<string> {
   return url.origin;
 }
 
+/** The chatbot entry used whenever no draft can be created; it opens the Support chat without prefill. */
+export function supportChatUrl(website: string): string {
+  return `${website}/support?chat=open`;
+}
+
 function boundedOption(value: string | undefined, limit: number, label: string): void {
   if (value !== undefined && (!value.trim() || value.length > limit)) {
     throw new Error(`${label} must be nonempty and at most ${limit} characters.`);
   }
 }
 
-/** Collect a bounded, redacted report from the saved session, current project and canonical error metadata. */
-export async function collectSupportBundle(options: SupportOptions, session: StoredTokens | null): Promise<SupportBundle> {
+/** Collect a bounded, redacted report from the saved session, current project, canonical error metadata and any harness summary. */
+export async function prepareSupportReport(options: SupportOptions, session: StoredTokens | null, stdin: NodeJS.ReadableStream = process.stdin): Promise<SupportReport> {
   if (options.format && !['text', 'json'].includes(options.format)) throw new Error('Use --format text or --format json.');
   const source = options.source ?? (options.tool ? 'harness' : 'eai-cli');
   if (source !== 'harness' && source !== 'eai-cli') throw new Error('Use --source eai-cli or --source harness.');
+  if (options.contextFile !== undefined && source !== 'harness') throw new Error('Use --source harness or --tool together with --context-file.');
+  if (options.organisationLocation !== undefined && !isOrganisationLocation(options.organisationLocation)) {
+    throw new Error('Use --organisation-location apac, emea or americas.');
+  }
   boundedOption(options.tool, 80, 'Tool name');
   boundedOption(options.toolVersion, 100, 'Tool version');
   boundedOption(options.command, 500, 'Command');
@@ -87,7 +120,13 @@ export async function collectSupportBundle(options: SupportOptions, session: Sto
   const exitCode = options.exitCode === undefined ? undefined : Number(options.exitCode);
   if (exitCode !== undefined && (!/^-?\d+$/.test(options.exitCode!) || !Number.isInteger(exitCode)
     || exitCode < -2147483648 || exitCode > 2147483647)) throw new Error('Exit code must be a signed 32-bit integer.');
-  const context = readSupportContext();
+  // Read the harness summary before anything else so a temp file is consumed even when the report fails later.
+  const rawHarness = options.contextFile === undefined ? undefined : await readHarnessContextSource(options.contextFile, stdin);
+  const harnessInput = rawHarness === undefined ? undefined : validateHarnessContext(rawHarness);
+  const savedContext = options.lastError === false ? null : readSupportContext();
+  const savedAge = savedContext ? Date.now() - Date.parse(savedContext.recordedAt) : 0;
+  const context = savedContext && savedAge <= LAST_ERROR_MAX_AGE_MS ? savedContext : null;
+  const ignoredLastError = savedContext && !context ? { recordedAt: savedContext.recordedAt, reason: 'expired' as const } : undefined;
   const guidance = findGuidanceByCodeOrReason(options.errorCode ?? context?.errorCode ?? context?.reasonCode ?? '');
   if (options.errorCode && !guidance) throw new Error('Unknown error code or reason. Run eai errors list --format json.');
   const projectRoot = await findProjectRoot();
@@ -106,7 +145,9 @@ export async function collectSupportBundle(options: SupportOptions, session: Sto
     command ? `Command: ${command}` : '', guidance ? `Error: ${guidance.code} (${guidance.reasonCode})` : '',
   ].filter(Boolean).join('\n'), 6000)!.trim();
   if (description.length < 10) throw new Error('Description must contain at least 10 characters after redaction.');
-  return redactSupportBundle({
+  const harness = harnessInput === undefined ? undefined
+    : fitHarnessContext(redactHarnessContext(harnessInput, { sensitiveValues, homes: pathAliases(homedir()), projectRoots: pathAliases(projectRoot, pathAliases(homedir())) }));
+  const bundle = redactSupportBundle<SupportBundle>({
     source, tool: { name: safe(options.tool ?? 'eai-cli', 80)!, version: safe(options.toolVersion ?? (options.tool ? undefined : cliVersion), 100) ?? '' },
     cli: { command, exitCode: exitCode ?? context?.exitCode, errorCode: guidance?.code, reasonCode: guidance?.reasonCode },
     cliVersion, service: 'eai-cli', category: 'technical', summary: safe(guidance?.title ?? 'Help with EAI CLI', 180)!,
@@ -115,20 +156,57 @@ export async function collectSupportBundle(options: SupportOptions, session: Sto
     tenantName: safe(env.EAI_TENANT_NAME ?? session?.activeTenantName, 160),
     appId: safe(env.EAI_APP_KEY ?? env.NEXT_PUBLIC_EAI_APP_KEY, 160), appName: safe(env.NEXT_PUBLIC_APP_NAME, 160),
     error: safe(guidance?.title, 4000), occurredAt: context?.recordedAt,
+    ...(isOrganisationLocation(options.organisationLocation) ? { organisationLocation: options.organisationLocation } : {}),
+    ...(harness ? { harness } : {}),
   }, sensitiveValues);
+  return { bundle, ...(ignoredLastError ? { ignoredLastError } : {}) };
 }
 
 /** Validated one-time capability link and expiry returned by the website. */
 export interface SupportDraft { readonly url: string; readonly expiresAt: string }
 
+const INVALID_RESPONSE = (): SupportRequestError => new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+
+async function readBoundedBody(response: Response): Promise<Buffer> {
+  if (!response.body) throw INVALID_RESPONSE();
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      bytes += value.byteLength;
+      if (bytes > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw INVALID_RESPONSE();
+      }
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  return Buffer.concat(chunks);
+}
+
+/** Only the website's error code is interpreted from a 400; its text is never shown. */
+async function readRejectionCode(response: Response): Promise<string | undefined> {
+  try {
+    const data: unknown = JSON.parse((await readBoundedBody(response)).toString('utf8'));
+    const code = data && typeof data === 'object' ? (data as Record<string, unknown>).error : undefined;
+    return typeof code === 'string' ? code : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Create one non-idempotent draft after consent; ambiguous failures never trigger a retry.
  * @param website Trusted origin from resolveSupportWebsite.
- * @param bundle Locally redacted payload returned by collectSupportBundle.
+ * @param bundle Locally redacted payload returned by prepareSupportReport.
  * @param bearer Access token from the saved eai login session.
  * @param timeoutMs Deadline for the request and bounded response read.
  * @returns A validated fragment link, or null when the website rejects the session with 401.
- * @throws SupportRequestError for safe HTTP, response-validation or ambiguous request failures.
+ * @throws SupportRequestError for safe HTTP, response-validation or ambiguous request failures;
+ *   `region_required` when the website needs the organisation location before storing anything.
  */
 export async function createSupportDraft(website: string, bundle: SupportBundle, bearer: string, timeoutMs = SUPPORT_TIMEOUT_MS): Promise<SupportDraft | null> {
   try {
@@ -138,6 +216,9 @@ export async function createSupportDraft(website: string, bundle: SupportBundle,
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${bearer}` }, body: JSON.stringify(bundle),
     });
     if (response.status !== 201) {
+      if (response.status === 400 && await readRejectionCode(response) === 'region_required') {
+        throw new SupportRequestError('region_required', 'The support website needs to know where the organisation is based before it stores a report. No draft was created.');
+      }
       await response.body?.cancel();
       if (response.status === 401) return null;
       const messages: Record<number, string> = {
@@ -149,36 +230,21 @@ export async function createSupportDraft(website: string, bundle: SupportBundle,
     }
     if (!response.headers.get('content-type')?.includes('application/json') || !response.body) {
       await response.body?.cancel();
-      throw new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+      throw INVALID_RESPONSE();
     }
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        bytes += value.byteLength;
-        if (bytes > MAX_RESPONSE_BYTES) {
-          await reader.cancel();
-          throw new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
-        }
-        chunks.push(value);
-      }
-    } finally { reader.releaseLock(); }
-    const data: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-    if (!data || typeof data !== 'object') throw new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+    const data: unknown = JSON.parse((await readBoundedBody(response)).toString('utf8'));
+    if (!data || typeof data !== 'object') throw INVALID_RESPONSE();
     const { id, token, expiresAt, redeemUrl } = data as Record<string, unknown>;
     if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
       || typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)
       || typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()
       || redeemUrl !== `${website}/support#draft=${id}.${token}`) {
-      throw new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+      throw INVALID_RESPONSE();
     }
     return { url: redeemUrl, expiresAt };
   } catch (error) {
     if (error instanceof SupportRequestError) throw error;
-    if (error instanceof SyntaxError) throw new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+    if (error instanceof SyntaxError) throw INVALID_RESPONSE();
     throw new SupportRequestError('request_failed', 'The support request failed or timed out. No retry was sent; a draft may have been created.');
   }
 }

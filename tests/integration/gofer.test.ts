@@ -188,7 +188,7 @@ describe("eai gofer refresh", () => {
         const update = buildPublicEntrypointPrompt({name:'eai-update', title:'EAI update', description:'Update EAI'}, [], host);
         return {
           host,
-          support: eai.split('## Support after an unresolved EAI error')[1]?.split('## Verified EAI CLI Command Contract')[0],
+          support: eai.split('## Support only when the person asks')[1]?.split('## Verified EAI CLI Command Contract')[0],
           welcome: eai.split('### Required First-Run Response')[1]?.split('## Route The Pipeline')[0],
           updateHasSupport: update.includes('eai support --source harness'),
         };
@@ -198,11 +198,15 @@ describe("eai gofer refresh", () => {
     const entries = JSON.parse(result.stdout) as Array<{ host: string; support: string; welcome: string; updateHasSupport: boolean }>;
     expect(entries).toHaveLength(6);
     for (const { host, support, welcome, updateHasSupport } of entries) {
-      expect(support, host).toContain("eai support --source harness --tool <current-tool> --format json");
-      expect(support, host).toContain("Only after they approve that bundle");
-      expect(support, host).toContain("--yes --no-open");
-      expect(support, host).toContain("Never assume consent");
-      expect(welcome, host).toContain('If anything fails, say "get help" or type `eai support`');
+      expect(support, host).toContain("Start a support report only when the person explicitly asks for help or support");
+      expect(support, host).toContain("Never start one on your own.");
+      expect(support, host).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
+      expect(support, host).toContain("Only after a clear yes");
+      expect(support, host).toContain("--yes --approved-digest <bundleDigest> --no-open");
+      expect(support, host).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
+      expect(support, host).toContain("If `eai support --help` does not list `--context-file`");
+      expect(welcome, host).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+      expect(welcome, host).not.toContain(['If anything fails,', 'say'].join(' '));
       expect(updateHasSupport, host).toBe(false);
     }
   });
@@ -492,7 +496,7 @@ describe("eai gofer refresh", () => {
     const skillPath = join(env.dir, ".agents/skills/eai/SKILL.md");
     const skill = await readFile(skillPath, "utf8");
     await writeFile(skillPath, skill.replace(
-      /## Support after an unresolved EAI error\n[\s\S]*?(?=## Verified EAI CLI Command Contract)/,
+      /## Support only when the person asks\n[\s\S]*?(?=## Verified EAI CLI Command Contract)/,
       "",
     ));
     await writeFile(join(env.dir, "CLAUDE.md"), "# Project notes\nKeep this custom instruction.\n");
@@ -500,8 +504,8 @@ describe("eai gofer refresh", () => {
 
     const result = await runCommand(ctx, "eai gofer refresh");
     expectCommandSucceeded(result);
-    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after they approve that bundle");
-    await expectFileContains(ctx, ".agents/skills/eai/SKILL.md", "--yes --no-open");
+    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after a clear yes");
+    await expectFileContains(ctx, ".agents/skills/eai/SKILL.md", "--yes --approved-digest <bundleDigest> --no-open");
     await expectFileContains(ctx, ".grok/skills/eai/SKILL.md", 'say "get help"');
     expect(await readFile(join(env.dir, "CLAUDE.md"), "utf8")).toBe("# Project notes\nKeep this custom instruction.\n");
     expect(await readFile(join(env.dir, "AGENTS.md"), "utf8")).toBe("# Agent notes\nKeep this custom instruction.\n");

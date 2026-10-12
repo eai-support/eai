@@ -12,7 +12,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseStageCommand } from './parse-stage-command.mjs';
-import { buildAuthAccessDecisionContract, buildEaiHostingAndDeploymentContract, buildContinuationContractSection, buildDeliveryDisciplineContract, buildBlockerMediationContract } from './generate-commands.mjs';
+import { buildAuthAccessDecisionContract, buildEaiHostingAndDeploymentContract, buildContinuationContractSection, buildDeliveryDisciplineContract, buildBlockerMediationContract, buildSupportReportContract } from './generate-commands.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -607,6 +607,8 @@ If the user is starting a first EAI Platform app, use the public \`eai\` entrypo
 
 ${buildVerifiedEaiCliCommandContract()}
 
+${buildSupportReportContract()}
+
 ${buildEaiPlatformDecisionSection()}
 
 ## Token And Cost Policy
@@ -747,6 +749,8 @@ I’ll help you improve a process and turn it into a secure enterprise applicati
 The EAI Platform supports every step with secure data, identity, multi-tenancy, and AI models.
 
 I’ll walk you through the whole process and ask short questions as we go. Tell me what you want me to do, or ask **“What’s next?”**, **“What else can you help with?”**, or **“Show me the admin screen.”**
+
+If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.
 
 **First question:** What process would you like to improve, or what would you like the application to help people do?
 \`\`\`
