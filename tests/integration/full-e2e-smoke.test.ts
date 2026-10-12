@@ -9,6 +9,8 @@ import { findProjectRoot, loadEnvFile, validateObjectTypeDefinitions } from '../
 
 interface CommandResult { status: number; stdout: string; stderr: string }
 interface SmokeReport {
+  environment: string;
+  expectedPublicApi: string;
   status: string;
   summaryPath: string;
   projectRoot: string;
@@ -949,6 +951,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
     const steps = require('../../scripts/cli-qa-cycle-steps.cjs');
     const projected = steps.cycleStepEvidence(report);
+    for (const row of projected.commands) {
+      expect(row.environment).toBe(report.environment); expect(row.publicApiUrl).toBe(report.expectedPublicApi);
+      for (const assertion of row.assertions) expect(assertion).toMatchObject({ environment: report.environment,
+        publicApiUrl: report.expectedPublicApi, scopeTenantId: row.scopeTenantId });
+    }
     // The actual callback-driven runner records controlled npm execution; it cannot certify a normal app build.
     expect(projected.commands.find((row: { command: string }) => row.command === 'npm run build').npmExecution.qualification).toBe('controlled-fixtures');
     expect(steps.cycleStepsVerified(projected, { tenantId: report.created.runtimeTenantId,

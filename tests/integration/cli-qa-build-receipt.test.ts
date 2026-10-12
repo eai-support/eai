@@ -378,6 +378,29 @@ describe('fresh normal-build receipt validation', () => {
   test('legacy PATH-selected normal-build receipts lack qualifying canonical execution proof', () => {
     expect(build.sourceBuildVerified({ ...receipt, canonicalExecution: undefined }, candidate, { now })).toBe(false);
   });
+  test.each(['node-path', 'npm-path', 'node-hash', 'npm-hash', 'node-version', 'npm-version', 'git-path', 'git-hash', 'git-version'])('plausible imported %s identity must match the installed tool', field => {
+    const model = structuredClone(receipt), canonical = model.canonicalExecution, git = model.gitExecution;
+    if (field === 'node-path') { canonical.nodePath = '/unrelated/node'; canonical.argv[0] = canonical.nodePath; }
+    if (field === 'npm-path') { canonical.npmCliPath = '/unrelated/npm-cli.js'; canonical.argv[1] = canonical.npmCliPath; }
+    if (field === 'node-hash') canonical.nodeSha256 = 'e'.repeat(64);
+    if (field === 'npm-hash') canonical.npmCliSha256 = 'e'.repeat(64);
+    if (field === 'node-version') { canonical.nodeVersion = 'v24.99.1'; model.nodeVersion = canonical.nodeVersion; }
+    if (field === 'npm-version') canonical.npmVersion = '0.0.1';
+    if (field === 'git-path') { git.gitPath = '/unrelated/git'; git.invocations = git.invocations.map((row: string[]) => [git.gitPath, ...row.slice(1)]); }
+    if (field === 'git-hash') git.gitSha256 = 'e'.repeat(64);
+    if (field === 'git-version') git.gitVersion = 'git version 0.0.1';
+    expect(build.sourceBuildVerified(model, candidate, { now })).toBe(false);
+  });
+  test.each(['node-path', 'npm-hash', 'node-version', 'npm-version'])('app npm consumers also refuse foreign installed %s identity', field => {
+    const model = { schemaVersion: 'eai.cli-app-npm-execution.v1', qualification: 'normal-execution', script: 'build',
+      canonicalExecution: structuredClone(canonicalExecutionModel), npmConfiguration: receipt.npmConfiguration };
+    const canonical = model.canonicalExecution;
+    if (field === 'node-path') { canonical.nodePath = '/unrelated/node'; canonical.argv[0] = canonical.nodePath; }
+    if (field === 'npm-hash') canonical.npmCliSha256 = 'e'.repeat(64);
+    if (field === 'node-version') canonical.nodeVersion = 'v24.99.1';
+    if (field === 'npm-version') canonical.npmVersion = '0.0.1';
+    expect(appNpm.appNpmExecutionVerified(model, 'build')).toBe(false);
+  });
   test.each(['selection', 'digest', 'argv', 'changed', 'exit'])('invalid canonical executor %s cannot qualify a normal build', failure => {
     const canonicalExecution = structuredClone(canonicalExecutionModel);
     if (failure === 'selection') canonicalExecution.selection = 'PATH';

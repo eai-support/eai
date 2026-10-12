@@ -65,6 +65,11 @@ binds the executable paths and hashes, exact invocation, successful exit and
 unchanged executables. Older receipts without this record cannot qualify; rerun
 the canonical builder. Receipts must also record the empty user/global configs,
 admitted project config and active Node bin first in lifecycle `PATH`.
+Source and app receipt consumers compare the recorded Node/npm paths, versions
+and hashes with the current installed tools; source receipts also compare Git.
+An internally consistent imported record for another installation cannot qualify.
+Rebuild when the installation changes; these checks do not authenticate unsigned
+operator observations or prove execution independently.
 The Node/npm installation, committed scripts and operator
 filesystem remain trusted; this receipt is not a filesystem sandbox or signed
 server attestation.
@@ -161,6 +166,10 @@ npm run qa:authorization -- --foundation /private/cli-qa/foundation.json --cli "
 
 The fifteen cases cover admin/builder creation and reads in each own workspace,
 viewer read and write denial, and denial of all five actors against the sibling.
+The probe retains each management DTO's actual child ID and immediate parent in
+`workspaceBindings`. Imported standalone role evidence must identify a valid
+foundation parent distinct from both siblings and bind both observed children
+to it; a parent cannot be admitted as a retained sibling scope.
 The generic `publicapi` command accepts an explicit UUID context for normal
 authenticated users and leaves authorization to PublicAPI. Local CLI rejection,
 401, outage, malformed envelopes and path/header mismatch never prove a role
@@ -255,7 +264,11 @@ Cycle qualification also retains the actual rotation, build, deletion, first
 inventory, recreation, recreated inventory/deletion and registration-absence
 command/guard receipts. Consumers independently require passing exits, exact
 runtime scope, expected guard outcomes and their recorded order; success flags
-alone cannot qualify a cycle. This selected lifecycle proof does not implement
+alone cannot qualify a cycle. Both selected steps and child create/purge guards
+retain their actual environment, PublicAPI URL and tenant scope. Each assertion
+must match its command and the expected runtime child or cleanup parent; a
+matching top-level header cannot replace these observations. Assertion-name
+lists must be arrays. This selected lifecycle proof does not implement
 the complete per-command producer-to-audit mapping tracked in issue #384.
 
 Intentionally unsupported capability classification stays separate from observed
@@ -296,7 +309,9 @@ The combined evidence keeps the exact `candidate`, environment/gateway,
 `cycleEvidence` and live `cleanupVerified` receipts. Preserve failures and
 incomplete entries when joining matching reports. An executed subset cannot
 claim `coverageComplete`; every command, alias and option needs its own named
-assertions. `types define` and `resources indexes-apply` intentionally return
+assertions and a zero exit for supported executions. Missing or nonzero exits
+cannot qualify command, alias or option coverage. `types define` and
+`resources indexes-apply` intentionally return
 unsupported before auth/network and need explicit exit-1/no-network evidence.
 Their receipts also require a complete UUID-bound execution with passing scoped
 assertions; bare exit/auth/network flags cannot certify unsupported completion.

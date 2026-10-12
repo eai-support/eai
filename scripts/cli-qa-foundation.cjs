@@ -205,12 +205,16 @@ function verifyIdentity(call, actor, foundation, tenantId = foundation.parentTen
   requireCondition(identity.oid === actor.oid && (identity.email || identity.upn || '').toLowerCase() === actor.email.toLowerCase(), 'QA profile actor does not match its explicit identity reference.');
 }
 function verifyWorkspaces(call, foundation) {
-  for (const workspace of Object.values(foundation.workspaces)) {
+  const bindings = {};
+  for (const [slot, workspace] of Object.entries(foundation.workspaces)) {
     requireCondition(UUID.test(workspace.id || ''), 'Foundation workspace preparation is incomplete.');
     const tenant = getBody(call, foundation.owner, `/v4/platform/tenants/${workspace.id}/management`, foundation.parentTenantId);
+    const parentTenantId = tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant;
     requireCondition(tenant.id === workspace.id && tenant.slug === workspace.slug
-      && (tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant) === foundation.parentTenantId, 'Owned workspace identity or immediate parent changed.');
+      && parentTenantId === foundation.parentTenantId, 'Owned workspace identity or immediate parent changed.');
+    bindings[slot] = { tenantId: tenant.id, parentTenantId };
   }
+  return bindings;
 }
 function verifyActors(call, foundation) {
   for (const [slot, [workspaceSlot, role]] of Object.entries(SLOTS)) {
@@ -411,7 +415,12 @@ function authorizationVerified(evidence, candidate, context) {
       && UUID.test(row.actorId || '') && UUID.test(row.scopeTenantId || '') && UUID.test(row.resourceId || '')
       && Number.isSafeInteger(row.httpStatus))) return false;
   const actors = authorization.actors || {}, tenants = authorization.tenantIds || {};
-  if (!UUID.test(tenants.a || '') || !UUID.test(tenants.b || '') || tenants.a === tenants.b) return false;
+  const parent = authorization.foundationParentTenantId, bindings = authorization.workspaceBindings;
+  if (![parent, tenants.a, tenants.b].every(value => typeof value === 'string' && UUID.test(value))
+    || new Set([parent, tenants.a, tenants.b].map(value => value.toLowerCase())).size !== 3
+    || !bindings || typeof bindings !== 'object' || Array.isArray(bindings)
+    || !['a', 'b'].every(slot => bindings[slot] && typeof bindings[slot] === 'object' && !Array.isArray(bindings[slot])
+      && bindings[slot].tenantId === tenants[slot] && bindings[slot].parentTenantId === parent)) return false;
   if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string'
     && /^[A-Za-z0-9_.-]{1,100}$/.test(actors[slot].profile))
     || new Set(Object.values(actors).map(actor => actor.oid)).size !== 5 || new Set(Object.values(actors).map(actor => actor.profile)).size !== 5) return false;
@@ -425,6 +434,8 @@ function authorizationVerified(evidence, candidate, context) {
 }
 function cycleReceiptVerified(row, foundation) {
   return row && typeof row === 'object' && !Array.isArray(row)
+    && qualificationScopeVerified(row)
+    && (foundation === undefined || (row.environment === foundation.environment && row.publicApiUrl === foundation.publicApiUrl))
     && UUID.test(row.clientId || '') && UUID.test(row.tenantId || '') && /^eai-e2e-[a-z0-9-]+$/.test(row.appKey || '')
     && row.status === 'passed' && row.rotationDispatches === 1 && row.credentialChanged === true && row.firstInventoryEmpty === true
     && row.recreatedSameKey === true && UUID.test(row.enrollmentId || '') && UUID.test(row.recreatedEnrollmentId || '')

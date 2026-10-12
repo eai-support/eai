@@ -5,6 +5,12 @@ const { createHash } = require('node:crypto');
 const { operationalEnvironment } = require('./cli-qa-operational-env.cjs');
 const CANONICAL_EXECUTION = 'eai.cli-canonical-npm-execution.v1';
 const HASH = /^[a-f0-9]{64}$/;
+let installedNpmCache;
+function toolStamp(path) {
+  const stat = fs.statSync(path, { bigint: true });
+  requireCondition(stat.isFile(), 'CANONICAL_NPM_UNVERIFIED');
+  return [path, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+}
 function requireCondition(condition, code) { if (!condition) { const error = new Error('Owned npm execution failed: ' + code + '.'); error.code = code; throw error; } }
 /** npm run build needs no project overrides; retain only the repository's harmless installation pins. */
 function projectConfigPins(path) {
@@ -30,14 +36,21 @@ function canonicalBuildExecution() {
   const selected = possible.find(path => fs.existsSync(path));
   requireCondition(selected, 'CANONICAL_NPM_UNVERIFIED');
   const npmCliPath = fs.realpathSync(selected);
-  requireCondition(fs.statSync(nodePath).isFile() && fs.statSync(npmCliPath).isFile(), 'CANONICAL_NPM_UNVERIFIED');
-  return { schemaVersion: CANONICAL_EXECUTION, selection: 'node-installation', nodePath, npmCliPath,
-    nodeVersion: process.version, nodeSha256: createHash('sha256').update(fs.readFileSync(nodePath)).digest('hex'),
+  const packagePath = join(dirname(npmCliPath), '..', 'package.json');
+  const key = [nodePath, npmCliPath, packagePath].map(toolStamp).join('|');
+  // Cache only an unchanged installed identity within this trusted invocation, never an imported claim.
+  if (installedNpmCache?.key === key) return structuredClone(installedNpmCache.value);
+  const npmVersion = JSON.parse(fs.readFileSync(packagePath, 'utf8')).version;
+  requireCondition(typeof npmVersion === 'string' && /^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?$/.test(npmVersion), 'CANONICAL_NPM_UNVERIFIED');
+  const value = { schemaVersion: CANONICAL_EXECUTION, selection: 'node-installation', nodePath, npmCliPath,
+    nodeVersion: process.version, npmVersion, nodeSha256: createHash('sha256').update(fs.readFileSync(nodePath)).digest('hex'),
     npmCliSha256: createHash('sha256').update(fs.readFileSync(npmCliPath)).digest('hex'),
     argv: [nodePath, npmCliPath, 'run', 'build'] };
+  requireCondition([nodePath, npmCliPath, packagePath].map(toolStamp).join('|') === key, 'CANONICAL_NPM_UNVERIFIED');
+  installedNpmCache = { key, value }; return structuredClone(value);
 }
 function canonicalExecutionVerified(record, nodeVersion, script = 'build') {
-  return record && typeof record === 'object' && !Array.isArray(record)
+  const valid = record && typeof record === 'object' && !Array.isArray(record)
     && record.schemaVersion === CANONICAL_EXECUTION && record.selection === 'node-installation'
     && typeof record.nodeVersion === 'string' && /^v[0-9]+\.[0-9]+\.[0-9]+$/.test(record.nodeVersion)
     && record.nodeVersion === nodeVersion && record.executablesUnchanged === true && record.exitCode === 0
@@ -45,6 +58,12 @@ function canonicalExecutionVerified(record, nodeVersion, script = 'build') {
     && ['nodeSha256', 'npmCliSha256'].every(field => typeof record[field] === 'string' && HASH.test(record[field]))
     && Array.isArray(record.argv) && record.argv.length === 4
     && [record.nodePath, record.npmCliPath, 'run', script].every((value, index) => record.argv[index] === value);
+  if (!valid) return false;
+  try {
+    const installed = canonicalBuildExecution();
+    return ['nodePath', 'npmCliPath', 'nodeVersion', 'npmVersion', 'nodeSha256', 'npmCliSha256']
+      .every(field => record[field] === installed[field]);
+  } catch { return false; }
 }
 
 /** Empty user/global configs and admitted installation pins are shared across owned builds. */

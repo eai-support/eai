@@ -105,6 +105,7 @@ describe('CLI backend audit evidence', () => {
     const authorizationEvidence = { schemaVersion: 'eai.cli-authorization-evidence.v1', fixtureId: id(30), foundationParentTenantId: id(19), runId,
       status: 'passed', qualification: 'normal-cli-profiles', qualified: true, environment: 'DEV', publicApiUrl,
       candidate, actors, tenantIds, foundationVerified: true, cleanupVerified: true, localCleanupVerified: true, completedAt: observedAt,
+      workspaceBindings: { a: { tenantId: tenantIds.a, parentTenantId: id(19) }, b: { tenantId: tenantIds.b, parentTenantId: id(19) } },
       publishedFixture: ['a', 'b'].map((slot, index) => ({ tenantId: tenantIds[slot as 'a' | 'b'],
         definitionId: id(40 + index), objectType, nonceField: 'qaNonce', schemaVersion: 1,
         publicationStatus: 'published', propertyFingerprintSha256: 'a'.repeat(64) })),
@@ -142,8 +143,8 @@ describe('CLI backend audit evidence', () => {
       ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed', ...scope })),
     ];
     const evidence = { candidate, environment: 'DEV', expectedPublicApi: publicApiUrl, cleanupVerified: true, authorizationEvidence,
-      commands: [{ command: 'eai workspace list', executionId, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], ...scope }],
-      aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, status: 'passed', coverageComplete: true,
+      commands: [{ command: 'eai workspace list', executionId, exitCode: 0, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], ...scope }],
+      aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, exitCode: 0, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'exact alias inventory', command: 'eai workspace list', alias: 'eai tenant list',
           executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], ...scope }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
@@ -161,6 +162,33 @@ describe('CLI backend audit evidence', () => {
     expect(report.commands[0].status).toBe('passed'); expect(report.aliasEvidence[0].status).toBe('passed');
     expect(report.optionCoverageComplete).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
   });
+  test.each([undefined, null, 1, 2, '0'])('supported command and alias exit %j never qualifies passing assertions', exitCode => {
+    const { input, decisions } = completeContractModel();
+    for (const row of [...input.evidence.commands, ...input.evidence.aliases]) Object.assign(row, { exitCode });
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).not.toBe('passed'); expect(report.aliasEvidence[0].status).not.toBe('passed');
+    expect(report.optionCoverageComplete).toBe(false); expect(report.backendCertified).toBe(false);
+  });
+  test.each(['missing-root', 'invalid-root', 'root-a', 'root-case-a', 'missing-bindings', 'foreign-child', 'foreign-parent'])('standalone retained scopes require exact distinct root/child binding: %s', failure => {
+    const { input, decisions } = completeContractModel(), auth = input.evidence.authorizationEvidence;
+    if (failure === 'missing-root') Object.assign(auth, { foundationParentTenantId: undefined });
+    if (failure === 'invalid-root') auth.foundationParentTenantId = 'unknown';
+    if (failure === 'root-a') { auth.foundationParentTenantId = auth.tenantIds.a; for (const binding of Object.values(auth.workspaceBindings)) binding.parentTenantId = auth.foundationParentTenantId; }
+    if (failure === 'root-case-a') {
+      const original = auth.tenantIds.a, child = 'aaaaaaaa-0000-4000-8000-000000000020';
+      Object.assign(auth, JSON.parse(JSON.stringify(auth).replaceAll(original, child)));
+      auth.foundationParentTenantId = child.toUpperCase();
+      for (const binding of Object.values(auth.workspaceBindings)) binding.parentTenantId = auth.foundationParentTenantId;
+      for (const row of [...input.evidence.commands, ...input.evidence.aliases]) Object.assign(row, { scopeTenantId: child,
+        assertions: row.assertions.map(assertion => ({ ...assertion, scopeTenantId: child })) });
+    }
+    if (failure === 'missing-bindings') Object.assign(auth, { workspaceBindings: undefined });
+    if (failure === 'foreign-child') auth.workspaceBindings.a.tenantId = auth.tenantIds.b;
+    if (failure === 'foreign-parent') auth.workspaceBindings.b.parentTenantId = auth.tenantIds.a;
+    const report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(false); expect(report.commands[0].status).not.toBe('passed');
+    expect(report.aliasCoverageComplete).toBe(false); expect(report.optionCoverageComplete).toBe(false);
+  });
   function addCompleteCycleModel(input: ReturnType<typeof completeContractModel>['input']) {
     // A synthetic consumer DTO model, never a live qualification observation.
     const id = (number: number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -170,6 +198,7 @@ describe('CLI backend audit evidence', () => {
       environment: authorization.environment, publicApiUrl: authorization.publicApiUrl,
       candidate: input.candidate, actors: structuredClone(authorization.actors), tenantIds: structuredClone(authorization.tenantIds),
       completedAt: authorization.completedAt, cycles: Array.from({ length: 10 }, (_, index) => ({
+        environment: authorization.environment, publicApiUrl: authorization.publicApiUrl,
         clientId: id(100 + index), tenantId: id(200 + index), appKey: 'eai-e2e-fixture-' + index, status: 'passed',
         enrollmentId: id(300 + index), recreatedEnrollmentId: id(400 + index), rotationDispatches: 1,
         credentialChanged: true, firstInventoryEmpty: true, recreatedSameKey: true, cleanupVerified: true,
@@ -300,7 +329,12 @@ describe('CLI backend audit evidence', () => {
     const [environment, region] = value.split(':'), publicApiUrl = qa.publicApi(environment, region);
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
-    for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
+    for (const cycle of cycles.cycles) {
+      for (const row of [cycle, cycle.stepEvidence, cycle.ownershipEvidence,
+        ...cycle.stepEvidence.commands.flatMap(command => [command, ...command.assertions]),
+        cycle.ownershipEvidence.creation.command, cycle.ownershipEvidence.creation.command.assertion,
+        cycle.ownershipEvidence.cleanup.command, cycle.ownershipEvidence.cleanup.command.assertion]) Object.assign(row, { environment, publicApiUrl });
+    }
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
@@ -635,6 +669,13 @@ describe('local dedicated tenant harness ownership', () => {
       'cli-qa-foundation.cjs', 'cli-qa-operational-env.cjs', 'cli-qa-npm-execution.cjs']) {
       writeFileSync(join(fixtureScripts, name), readFileSync(resolve('scripts', name)));
     }
+    if (mode.startsWith('parent-cleanup-')) {
+      // Seed only owned fixture IDs; the actual cleanup function remains byte-identical.
+      const path = join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh');
+      let fixtureSource = readFileSync(path, 'utf8');
+      for (const key of ['PG_ID', 'DOCDB_ID', 'BLOB_ID', 'SEARCH_ID']) fixtureSource = fixtureSource.replace(`${key}=""`, `${key}="synthetic-owned-resource"`);
+      writeFileSync(path, fixtureSource);
+    }
     writeFileSync(join(fixtureCli, 'package.json'), JSON.stringify({ name: 'owned-bash-build-fixture', type: 'module',
       scripts: { build: 'node build.cjs' } }));
     writeFileSync(join(fixtureCli, 'build.cjs'), `require('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`);
@@ -662,6 +703,11 @@ if (args.includes('list')) {
   fs.writeFileSync(process.env.EAI_HARNESS_TEST_LOG + '.create', JSON.stringify({slug:args[args.indexOf('--slug')+1],parent:args[args.indexOf('--parent')+1]}), {mode:0o600});
   console.log(JSON.stringify({tenant:{id:'00000000-0000-4000-8000-000000000099',slug:args[args.indexOf('--slug')+1],parentTenantId:args[args.indexOf('--parent')+1]}}));
 } else if (process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') && args.includes('select')) {
+  if (process.env.EAI_HARNESS_TEST_MODE === 'parent-cleanup-journal' && args.includes('00000000-0000-4000-8000-000000000099')) {
+    const directory = fs.readdirSync(${JSON.stringify(root)}).find(name=>name.startsWith('eai-local-e2e-creation-'));
+    const path = ${JSON.stringify(root)}+'/'+directory+'/creation.json', journal=JSON.parse(fs.readFileSync(path,'utf8'));
+    journal.phase='unresolved';fs.writeFileSync(path,JSON.stringify(journal));
+  }
   console.log(JSON.stringify({selected:true,id:args[args.indexOf('select')+1]}));
 } else if (process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') && args.includes('delete')) {
   const mode = process.env.EAI_HARNESS_TEST_MODE, id = args[args.indexOf('delete')+1], parent = args[args.indexOf('--parent')+1];
@@ -678,9 +724,10 @@ if (args.includes('list')) {
   console.log(JSON.stringify({ok:true,status:200,request:{method:'GET',path,tenantId,publicApiUrl:'http://localhost:8000'},body}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `.replaceAll('process.env.EAI_HARNESS_TEST_LOG', JSON.stringify(log)).replaceAll('process.env.EAI_HARNESS_TEST_MODE', JSON.stringify(mode)));
-    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ '${mode}' == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
+    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ '${mode}' == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ '${mode}' == 'parent-cleanup-cached' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then printf '00000000-0000-4000-8000-000000000098'; exit 0; fi\nif [[ '${mode}' == 'parent-cleanup-stamp' && "\${1:-}" == */cli-local-child-ownership.cjs && "\${2:-}" == 'cleanup-attempted' ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'npm'), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`, { mode: 0o700 });
-    writeFileSync(join(bin, 'docker'), '#!/usr/bin/env bash\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n', { mode: 0o700 });
+    const dockerLog = join(root, 'docker.log');
+    writeFileSync(join(bin, 'docker'), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> '${dockerLog}'\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n`, { mode: 0o700 });
     const result = spawnSync('bash', [join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh')], {
       encoding: 'utf8', timeout: 10000,
       env: { ...process.env, ...ambient, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
@@ -691,7 +738,8 @@ if (args.includes('list')) {
     try { calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { /* blocked before CLI calls */ }
     const journals = readdirSync(root).filter(name => name.startsWith('eai-local-e2e-creation-')).map(name => join(root, name, 'creation.json'));
     const environments = existsSync(envLog) ? readFileSync(envLog, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
-    return { ...result, calls, journals, environments, root, cliPath: join(fixtureCli, 'dist', 'index.js') };
+    const dockerCalls = existsSync(dockerLog) ? readFileSync(dockerLog, 'utf8').split('\n').filter(Boolean) : [];
+    return { ...result, calls, journals, environments, dockerCalls, root, cliPath: join(fixtureCli, 'dist', 'index.js') };
   }
 
   test('standalone CLI and build subprocesses ignore ambient credentials and routing', () => {
@@ -712,6 +760,13 @@ if (args.includes('list')) {
     const builds = result.environments.filter(row => row.source === 'build');
     expect(builds).toHaveLength(1); expect(builds[0].forbidden).toEqual([]); expect(builds[0].home).toBe(result.root);
     expect(result.calls.filter(args => args.includes('create'))).toHaveLength(1);
+  });
+  test.each(['journal', 'cached', 'stamp'])('cleanup %s failure refuses every remote resource/tenant/storage delete', failure => {
+    const result = runFixture('parent-cleanup-' + failure);
+    expect(result.status).not.toBe(0);
+    expect(result.calls.filter(args => args.includes('delete'))).toEqual([]);
+    expect(result.dockerCalls.filter(args => /DELETE FROM|DROP DATABASE|dropDatabase|python -/.test(args))).toEqual([]);
+    expect(result.journals).toHaveLength(1); expect(qa.readPrivate(result.journals[0]).cleanupVerified).toBe(false);
   });
 
   test('quota exhaustion never deletes other visible tenants or retries creation', () => {

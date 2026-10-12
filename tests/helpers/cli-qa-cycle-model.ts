@@ -6,8 +6,10 @@ const appNpmModel = { schemaVersion: 'eai.cli-app-npm-execution.v1', script: 'bu
   npmConfiguration: { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' } };
 interface CycleIdentity {
   tenantId: string; clientId: string; appKey: string; enrollmentId: string; recreatedEnrollmentId: string;
+  environment?: string; publicApiUrl?: string;
 }
 export function cycleStepModel(identity: CycleIdentity) {
+  const scope = { environment: identity.environment || 'DEV', publicApiUrl: identity.publicApiUrl || 'https://dev-api.au.myenterprise.ai/public', scopeTenantId: identity.tenantId };
   const definitions = [
     ['eai provision entra', 'app-sign-in', 'rotation-changed-local-credential', 0],
     ['npm run build', 'build', 'consultant-app-build', 1],
@@ -19,10 +21,10 @@ export function cycleStepModel(identity: CycleIdentity) {
     ['eai app list', 'cleanup', 'recreated-app-first-inventory-empty', 8],
     ['eai publicapi delete', 'cleanup', 'entra-cleanup-receipt', 2],
   ] as const;
-  return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity,
+  return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity, ...scope,
     commands: definitions.map(([command, phase, name, sequence], index) => ({ command, phase, sequence: sequence + 1, status: 'passed', exitCode: 0,
-      scopeTenantId: identity.tenantId, options: index === 0 ? ['--rotate-secret'] : [],
-      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, status: 'passed' }] })),
+      ...scope, options: index === 0 ? ['--rotate-secret'] : [],
+      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, status: 'passed', ...scope }] })),
     registration: { status: 'passed', clientId: identity.clientId, tenantId: identity.tenantId,
       authorizationAbsent: true, registrationAbsent: true, registrationAbsenceVerified: true } };
 }
@@ -34,9 +36,10 @@ interface CycleFoundation {
 // Explicit synthetic ownership DTO model; never an actual server observation.
 export function cycleOwnershipModel(identity: CycleIdentity, foundation: CycleFoundation) {
   const parentTenantId = foundation.tenantIds.a;
+  const scope = { environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, scopeTenantId: parentTenantId };
   const command = (name: string, phase: string, sequence: number, assertion: string, options: string[]) => ({
-    command: name, phase, sequence, status: 'passed', exitCode: 0, scopeTenantId: parentTenantId, options,
-    assertion: { name: assertion, phase, status: 'passed' },
+    command: name, phase, sequence, status: 'passed', exitCode: 0, ...scope, options,
+    assertion: { name: assertion, phase, status: 'passed', ...scope },
   });
   return { schemaVersion: 'eai.cli-cycle-ownership.v1', fixtureId: foundation.fixtureId,
     foundationParentTenantId: foundation.foundationParentTenantId, tenantIds: { ...foundation.tenantIds },

@@ -71,13 +71,15 @@ function executionAssertions(item, option) {
 }
 function executionStatus(executions, option, malformed = false) {
   if (!executions.length) return malformed ? 'incomplete' : 'not-run';
-  if (executions.some(item => item.status === 'failed')) return 'failed';
+  if (executions.some(item => item.status === 'failed' || (item.status === 'passed' && !UNSUPPORTED.has(item.command)
+    && Number.isInteger(item.exitCode) && item.exitCode !== 0))) return 'failed';
   if (executions.some(item => item.status === 'blocked')) return 'blocked';
   const assertions = executions.map(item => executionAssertions(item, option));
   if (assertions.some(rows => rows?.some(row => row.status === 'failed'))) return 'failed';
   if (assertions.some(rows => rows?.some(row => row.status === 'blocked'))) return 'blocked';
   if (malformed) return 'incomplete';
   return executions.every((item, index) => item.status === 'passed' && item.coverageComplete === true
+    && item.exitCode === (UNSUPPORTED.has(item.command) ? 1 : 0)
     && assertions[index]?.length > 0 && assertions[index].every(row => row.status === 'passed')
     && (!option || assertions[index].some(row => row.option === option))) ? 'passed' : 'incomplete';
 }

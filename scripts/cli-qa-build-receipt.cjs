@@ -109,7 +109,7 @@ function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
 function gitExecutionVerified(record) {
   const required = [['rev-parse', '--show-toplevel'], ['rev-parse', '--verify', 'HEAD'],
     ['status', '--porcelain=v1', '-z', '--untracked-files=all'], ['ls-files', '--stage', '-z']];
-  return record && typeof record === 'object' && !Array.isArray(record)
+  const valid = record && typeof record === 'object' && !Array.isArray(record)
     && record.schemaVersion === 'eai.cli-installed-git-execution.v1' && record.selection === 'conventional-installation'
     && typeof record.gitPath === 'string' && record.gitPath.length <= 4096 && isAbsolute(record.gitPath)
     && typeof record.gitSha256 === 'string' && HASH.test(record.gitSha256)
@@ -119,6 +119,11 @@ function gitExecutionVerified(record) {
       && argv[0] === record.gitPath && argv.every(value => typeof value === 'string' && value.length <= 4096))
     && required.every(args => record.invocations.some(argv => argv.length === args.length + 1
       && args.every((value, index) => argv[index + 1] === value)));
+  if (!valid) return false;
+  try {
+    const installed = installedGitExecution();
+    return ['gitPath', 'gitSha256', 'gitVersion'].every(field => record[field] === installed[field]);
+  } catch { return false; }
 }
 
 /** Run only the canonical build in this checkout and retain a private source/artifact join. */

@@ -36,6 +36,11 @@ proxy and trust settings plus its explicit local profile, loopback gateway,
 parent and optional Search service settings. Inherited headless tokens,
 application routing, npm/GitHub/Azure credentials and Node options cannot replace
 the selected saved CLI profile.
+Every cleanup path resolves the current journal-owned child in the exact saved
+profile, gateway and parent context and compares any cached tenant ID before
+recording the cleanup attempt. A missing, changed or unresolved journal, an ID
+mismatch or failed attempt stamp blocks all remote resource, tenant and local
+Docker storage deletions. The unresolved journal is retained for inspection.
 
 ## Required prerequisites
 

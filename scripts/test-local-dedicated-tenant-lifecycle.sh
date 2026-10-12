@@ -145,13 +145,22 @@ cleanup() {
   trap - EXIT
   set +e
   local cleanup_failed=0
-
-  if [[ -z "$TENANT_ID" && -n "$TENANT_CREATE_JOURNAL" ]]; then
-    TENANT_ID="$(node "$OWNERSHIP_HELPER" cleanup-id "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID")" || cleanup_failed=1
+  local cleanup_owned=0 journal_id=""
+  if [[ -n "$TENANT_CREATE_JOURNAL" ]]; then
+    if journal_id="$(node "$OWNERSHIP_HELPER" cleanup-id "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID")" \
+      && [[ -n "$journal_id" && ( -z "$TENANT_ID" || "$TENANT_ID" == "$journal_id" ) ]] \
+      && node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1; then
+      TENANT_ID="$journal_id"
+      cleanup_owned=1
+    else
+      # Unknown creation never authorizes remote cleanup; preserve the unresolved journal.
+      cleanup_failed=1
+    fi
+  elif [[ -n "$TENANT_ID" ]]; then
+    cleanup_failed=1
   fi
 
-  if [[ -n "$TENANT_ID" ]]; then
-    node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || cleanup_failed=1
+  if [[ $cleanup_owned -eq 1 ]]; then
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
 
     if [[ -n "$PG_ID" ]]; then

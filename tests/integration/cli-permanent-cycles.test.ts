@@ -155,6 +155,25 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     if (failure === 'registration-client') receipt.stepEvidence.registration.clientId = uuid(998);
     expect(qa.cycleReceiptVerified(receipt)).toBe(false);
   });
+  test.each(['step', 'creation', 'purge'].flatMap(family => ['command', 'assertion'].flatMap(target =>
+    ['environment', 'publicApiUrl', 'scopeTenantId'].flatMap(field => ['missing', 'foreign'].map(failure => ({ family, target, field, failure }))))))(
+    'serialized $family $target $field $failure cannot borrow the cycle header', ({ family, target, field, failure }) => {
+      const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+      expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+      const command = family === 'step' ? receipt.stepEvidence.commands[0]
+        : family === 'creation' ? receipt.ownershipEvidence.creation.command : receipt.ownershipEvidence.cleanup.command;
+      const row = target === 'command' ? command : family === 'step' ? command.assertions[0] : command.assertion;
+      row[field] = failure === 'missing' ? undefined : field === 'environment' ? 'TEST'
+        : field === 'scopeTenantId' ? uuid(999) : 'https://foreign.example.invalid/public';
+      expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+    });
+  test.each(['creation', 'purge'])('a string assertion list cannot become %s ownership proof', stage => {
+    const fixture = controlled(), report = fixture.liveReport(), phase = stage === 'creation' ? 'isolation' : 'cleanup';
+    const command = report.commands.find((row: { command: string; phase: string }) => row.phase === phase && row.command === (stage === 'creation' ? 'eai workspace create' : 'eai workspace delete'))!;
+    Object.assign(command, { assertions: command.assertions.join(',') });
+    const receipt = cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+  });
   test.each(['legacy', 'controlled', 'PATH', 'wrong-script', 'missing-config', 'user-config', 'global-config', 'node-policy'])('serialized app build %s cannot qualify retained cycles', failure => {
     const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
     expect(qa.cycleReceiptVerified(receipt)).toBe(true);

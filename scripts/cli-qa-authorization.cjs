@@ -193,7 +193,8 @@ function runAuthorizationProbe(options, dependencies = {}) {
         && UUID.test(foundation.workspaces.b.id || ''), 'Prepare the exact retained sibling foundation first.');
       requireCondition(candidateValid(candidate), 'Use a clean, source-bound built CLI candidate.');
       binding = fixtureBinding(foundation);
-      qa.verifyIdentity(call, foundation.owner, foundation); qa.verifyWorkspaces(call, foundation); qa.verifyActors(call, foundation);
+      qa.verifyIdentity(call, foundation.owner, foundation);
+      report.workspaceBindings = qa.verifyWorkspaces(call, foundation); save(); qa.verifyActors(call, foundation);
       report.publishedFixture = verifyPublishedFixture(call, foundation, binding);
       report.foundationVerified = true; save(); stage = 'runtime';
       for (const slot of WRITERS) {

@@ -267,6 +267,8 @@ describe('normal-profile authorization role probe', () => {
   });
   test('the actual controlled producer emits structurally complete receipts for the independent consumer', () => {
     const fixture = controlled(), report = fixture.run();
+    expect(report.workspaceBindings).toEqual({ a: { tenantId: uuid(30), parentTenantId: uuid(1) },
+      b: { tenantId: uuid(31), parentTenantId: uuid(1) } });
     // This is a consumer DTO model; changing its labels does not execute normal identities.
     const model = { ...report, qualified: true, qualification: 'normal-cli-profiles' };
     expect(qa.authorizationVerified({ authorizationEvidence: model }, candidate,

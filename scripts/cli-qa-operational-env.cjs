@@ -7,6 +7,7 @@ function operationalEnvironment(environment) {
   return Object.fromEntries(Object.entries(environment).filter(([key, value]) => allowed.has(key) && typeof value === 'string'));
 }
 /** Conventional system Git selection is independent of PATH; operator installation/config remain trusted. */
+let installedGitCache;
 function installedGitExecution() {
   const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto');
   const candidates = process.platform === 'win32'
@@ -18,13 +19,19 @@ function installedGitExecution() {
   for (const selected of candidates) {
     if (!fs.existsSync(selected)) continue;
     const gitPath = fs.realpathSync(selected);
-    if (!fs.statSync(gitPath).isFile()) continue;
+    const stat = fs.statSync(gitPath, { bigint: true });
+    if (!stat.isFile()) continue;
+    const stamp = [gitPath, stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs].join(':');
+    if (installedGitCache?.stamp === stamp) return structuredClone(installedGitCache.value);
     const version = require('node:child_process').spawnSync(gitPath, ['--version'], {
       encoding: 'utf8', env: operationalEnvironment(process.env), timeout: 10000, shell: false,
     });
     if (version.status !== 0 || version.error || version.signal || !/^git version [^\r\n]{1,100}$/.test(version.stdout.trim())) continue;
-    return { schemaVersion: 'eai.cli-installed-git-execution.v1', selection: 'conventional-installation', gitPath,
+    const value = { schemaVersion: 'eai.cli-installed-git-execution.v1', selection: 'conventional-installation', gitPath,
       gitSha256: crypto.createHash('sha256').update(fs.readFileSync(gitPath)).digest('hex'), gitVersion: version.stdout.trim() };
+    const after = fs.statSync(gitPath, { bigint: true });
+    if ([gitPath, after.dev, after.ino, after.size, after.mtimeNs, after.ctimeNs].join(':') !== stamp) continue;
+    installedGitCache = { stamp, value }; return structuredClone(value);
   }
   throw new Error('A conventional installed Git executable is required for source qualification.');
 }

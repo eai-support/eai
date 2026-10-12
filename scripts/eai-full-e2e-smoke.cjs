@@ -1756,8 +1756,9 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   const checkpoint = () => writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
 
   function assertion(name, condition, message, blocked = false) {
-    report.assertions.push({ name, phase, status: condition ? 'passed' : blocked ? 'blocked' : 'failed' });
     const last = report.commands.at(-1);
+    report.assertions.push({ name, phase, status: condition ? 'passed' : blocked ? 'blocked' : 'failed',
+      environment: report.environment, publicApiUrl: expectedApi, scopeTenantId: last?.scopeTenantId });
     if (last) {
       (last.assertions ||= []).push(name);
       if (!condition) last.status = blocked ? 'blocked' : 'failed';
@@ -1768,6 +1769,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   function eai(args, options = {}) {
     const selector = ['--tenant-id', '--tenant', '--workspace'].find(flag => args.includes(flag));
     const entry = { command: executedCommand(args), phase, status: 'running',
+      environment: report.environment, publicApiUrl: expectedApi,
       scopeTenantId: options.scopeTenantId || (selector ? args[args.indexOf(selector) + 1] : undefined),
       // Save option names only. Arguments, command output and env can contain secrets.
       options: args.filter(arg => arg.startsWith('--')) };
@@ -1814,7 +1816,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     return payload;
   }
   function appNpm(script, timeout) {
-    const entry = { command: 'npm run ' + script, phase, scopeTenantId: runtime(), status: 'running' };
+    const entry = { command: 'npm run ' + script, phase, scopeTenantId: runtime(), status: 'running',
+      environment: report.environment, publicApiUrl: expectedApi };
     report.commands.push(entry); checkpoint();
     const started = now();
     try {

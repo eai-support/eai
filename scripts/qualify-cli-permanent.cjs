@@ -13,6 +13,7 @@ function candidateValid(candidate) {
     && /^[a-f0-9]{64}$/.test(candidate.runtimeSha256 || '') && candidate.dirty === false;
 }
 function cycleReceipt(report) {
+  const context = { environment: report.environment, publicApiUrl: report.expectedPublicApi };
   const rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const registration = report.cleanup?.find(row => row.artifact === 'entra-registration');
   const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
@@ -20,10 +21,10 @@ function cycleReceipt(report) {
   const stepEvidence = cycleStepEvidence(report);
   const ownershipEvidence = cycleOwnershipEvidence(report);
   const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,
-    clientId: rotation.clientId, enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId });
+    clientId: rotation.clientId, enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId, ...context });
   const ownershipVerified = cycleOwnershipVerified(ownershipEvidence, { tenantId: rotation.tenantId,
-    appKey: report.created?.appKey, stepEvidence });
-  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence, ownershipEvidence,
+    appKey: report.created?.appKey, stepEvidence, ...context });
+  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence, ownershipEvidence, ...context,
     enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId,
     status: report.status === 'passed' && (!stepsVerified || !ownershipVerified) ? 'incomplete' : report.status,
     rotationDispatches: stepsVerified && rotations.length === 1 && rotations[0].status === 'passed' ? rotation.commandDispatches : 0,
