@@ -18,8 +18,10 @@ interface ResourceDTO {
 interface Invocation { slot: Slot | 'owner'; method: string; path: string; tenantId: string; data?: Record<string, unknown> }
 interface Faults {
   create?: 'unknown' | 'nonzero-ack' | 'foreign-scope' | 'missing-nonce' | 'replay';
-  baseline?: 'global' | 'wrong-oid' | 'builder-admin' | 'viewer-builder' | 'sibling-access' | 'wrong-parent' | 'admin-context-only';
-  schema?: 'missing-b' | 'wrong-tenant' | 'wrong-request' | 'duplicate' | 'required' | 'nonce-type' | 'wrong-data-type' | 'dropped';
+  baseline?: 'global' | 'wrong-oid' | 'builder-admin' | 'viewer-builder' | 'sibling-access' | 'wrong-parent' | 'admin-context-only'
+    | 'empty-inventory' | 'foreign-inventory' | 'unrelated-membership';
+  schema?: 'missing-b' | 'wrong-tenant' | 'wrong-request' | 'duplicate' | 'required' | 'nonce-type' | 'wrong-data-type' | 'dropped'
+    | 'sibling-type' | 'sibling-required' | 'sibling-options' | 'sibling-extra' | 'sibling-id-order';
   ownRead?: 'tenant' | 'type' | 'nonce' | 'version';
   viewerStatus?: number; viewerExit?: number; viewerRequest?: boolean; siblingStatus?: number;
   cleanup?: 'delete-failed-but-absent' | 'absence403' | 'foreign-current' | 'wrong-delete-id' | 'delete-not-confirmed' | 'delete-no-timestamp';
@@ -88,6 +90,9 @@ function controlled(faults: Faults = {}) {
     }
     if (path === '/v4/identity/tenants') {
       const tenants = [{ id: tenantId }];
+      if (faults.baseline === 'empty-inventory') tenants.splice(0);
+      if (faults.baseline === 'foreign-inventory') tenants[0].id = uuid(99);
+      if (faults.baseline === 'unrelated-membership') tenants.push({ id: uuid(99) });
       if (faults.baseline === 'sibling-access') tenants.push({ id: tenantId === uuid(30) ? uuid(31) : uuid(30) });
       return wire(200, { tenants, totalCount: tenants.length, superAdmin: faults.baseline === 'global' });
     }
@@ -99,6 +104,13 @@ function controlled(faults: Faults = {}) {
     }
     if (path.startsWith('/v4/data/resources/schema/')) {
       const type = definition();
+      if (tenantId === uuid(31)) {
+        if (faults.schema === 'sibling-type') type.properties[5].type = 'text';
+        if (faults.schema === 'sibling-required') type.properties[1].required = false;
+        if (faults.schema === 'sibling-options') type.properties[2].options!.push({ value: 'ready', label: 'Ready' });
+        if (faults.schema === 'sibling-extra') type.properties.push({ name: 'extra', type: 'text' });
+        if (faults.schema === 'sibling-id-order') { type.id = uuid(51); type.properties.reverse(); }
+      }
       if (faults.schema === 'required') type.properties.push({ name: 'requiredExtra', type: 'text', required: true });
       if (faults.schema === 'nonce-type') type.properties[0].type = 'number';
       if (faults.schema === 'wrong-data-type') type.properties[3].type = 'text';
@@ -265,6 +277,32 @@ describe('normal-profile authorization role probe', () => {
 });
 
 describe('role probe fixture and authority preflight', () => {
+  test.each(['empty-inventory', 'foreign-inventory'] as const)('actor %s cannot contradict its own workspace membership', baseline => {
+    const fixture = controlled({ baseline }); const report = fixture.failed();
+    expect(report.status).toBe('blocked'); expect(report.foundationVerified).toBe(false);
+    expect(report.created).toEqual([]); expect(fixture.calls.some(row => row.method !== 'GET')).toBe(false);
+  });
+  test('an unrelated membership does not grant parent/sibling authority or invalidate the scoped role probe', () => {
+    const fixture = controlled({ baseline: 'unrelated-membership' });
+    expect(fixture.run().status).toBe('passed');
+  });
+  test.each(['sibling-type', 'sibling-required', 'sibling-options', 'sibling-extra'] as const)('different published %s definitions block before row creation', schema => {
+    const fixture = controlled({ schema }); const report = fixture.failed();
+    expect(report.status).toBe('blocked'); expect(report.foundationVerified).toBe(false);
+    expect(report.created).toEqual([]); expect(fixture.calls.some(row => row.method !== 'GET')).toBe(false);
+  });
+  test('identical published properties allow tenant-local IDs and property order to differ', () => {
+    const fixture = controlled({ schema: 'sibling-id-order' });
+    expect(fixture.run().status).toBe('passed');
+  });
+  test.each(['candidate', 'identity'])('a %s preflight-only run cannot claim resource teardown proof', failure => {
+    const fixture = controlled(failure === 'identity' ? { baseline: 'wrong-oid' } : {});
+    if (failure === 'candidate') fixture.dependencies.candidateEvidence = () => ({ ...candidate, dirty: true });
+    const report = fixture.failed();
+    expect(report.status).toBe('blocked'); expect(report.qualified).toBe(false);
+    expect(report.created).toEqual([]); expect(report.cleanup).toEqual([]); expect(report.localCleanupVerified).toBe(true);
+    expect(report.cleanupVerified).toBe(false); expect(fixture.calls.some(row => row.method !== 'GET')).toBe(false);
+  });
   test.each(['global', 'wrong-oid', 'builder-admin', 'viewer-builder', 'sibling-access', 'wrong-parent', 'admin-context-only'] as const)('rejects %s before any row mutation', baseline => {
     const fixture = controlled({ baseline }); const report = fixture.failed();
     expect(report.status).toBe('blocked'); expect(report.foundationVerified).toBe(false); expect(report.qualified).toBe(false);
@@ -322,9 +360,12 @@ describe('incremental acknowledgment and independent cleanup', () => {
     expect(fixture.calls.filter(row => row.method === 'POST')).toHaveLength(1); expect(fixture.calls.filter(row => row.method === 'DELETE')).toHaveLength(0);
     expect(fixture.rows.size).toBe(1); if (create !== 'unknown') expect(report.created[0].resourceId).toBe(uuid(101));
   });
-  test('an unexpected idempotent replay cannot pass creation even with successful cleanup', () => {
+  test('an idempotent replay keeps the returned ID unresolved without deleting its row', () => {
     const fixture = controlled({ create: 'replay' }); const report = fixture.failed();
-    expect(report.cases[1].status).toBe('failed'); expect(report.cleanupVerified).toBe(true); expect(fixture.rows.size).toBe(0);
+    expect(report.cases[1].status).toBe('failed'); expect(report.cleanupVerified).toBe(false); expect(fixture.rows.size).toBe(1);
+    expect(report.created[0].resourceId).toBe(uuid(101)); expect(report.created[0].acknowledgedBound).toBe(false);
+    expect(report.created[0].phase).toBe('outcome-unknown'); expect(report.leftovers).toHaveLength(1);
+    expect(fixture.calls.filter(row => row.method === 'DELETE')).toHaveLength(0);
   });
   test('a failed DELETE is retained even when a later GET is 404, and other rows still clean up', () => {
     const fixture = controlled({ cleanup: 'delete-failed-but-absent' }); const report = fixture.failed();

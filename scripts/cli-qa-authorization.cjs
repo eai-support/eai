@@ -64,7 +64,7 @@ function fieldSupported(property, value) {
 
 /** Read the receiver's published schema in both siblings before issuing mutations. */
 function verifyPublishedFixture(call, foundation, binding) {
-  const observations = [];
+  const observations = []; let firstProperties;
   const scopedRead = (actor, args, tenantId) => {
     const response = call(actor, args, tenantId);
     requireCondition(exactWire(response, 'GET', args[2], tenantId, foundation),
@@ -97,8 +97,17 @@ function verifyPublishedFixture(call, foundation, binding) {
       requireCondition(property && SIMPLE_TYPES.includes(property.type) && fieldSupported(property, value),
         'Synthetic fixture data does not match supported published properties.');
     }
+    const properties = type.properties.map(property => ({ name: property.name, type: property.type, required: property.required === true,
+      ...(property.type === 'select' ? { options: (property.options || []).map(option => option.value)
+        .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))) } : {}),
+      ...(Object.hasOwn(property, 'defaultValue') ? { defaultValue: property.defaultValue } : {}) }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+    requireCondition(!firstProperties || isDeepStrictEqual(firstProperties, properties),
+      'Sibling published fixture property definitions must match before role mutations.');
+    firstProperties = properties;
     observations.push({ tenantId, definitionId: type.id, objectType: type.slug,
-      schemaVersion: type.schemaVersion, nonceField: binding.nonceField });
+      schemaVersion: type.schemaVersion, nonceField: binding.nonceField,
+      propertyFingerprintSha256: createHash('sha256').update(JSON.stringify(properties)).digest('hex') });
   }
   return observations;
 }
@@ -200,7 +209,8 @@ function runAuthorizationProbe(options, dependencies = {}) {
             { data: { ...binding.data, [binding.nonceField]: row.nonce }, idempotencyKey: row.idempotencyKey });
           const dto = response.body?.body;
           if (UUID.test(dto?.id || '')) row.resourceId = dto.id;
-          row.acknowledgedBound = resourceMatches(dto, row, binding);
+          row.acknowledgedBound = resourceMatches(dto, row, binding) && dto.idempotentReplay === false
+            && !report.created.some(other => other !== row && other.resourceId === row.resourceId);
           row.phase = row.acknowledgedBound ? 'acknowledged' : 'outcome-unknown';
           save(); // Never lose a returned ID because of the following exit/status checks.
           entry.httpStatus = httpStatus(response);
@@ -287,6 +297,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
       try { if (fs.existsSync(contextRoot)) fs.rmSync(contextRoot, { recursive: true }); report.localCleanupVerified = true; }
       catch { report.localCleanupVerified = false; }
       report.cleanupVerified = report.leftovers.length === 0 && report.cleanup.every(row => ['passed', 'not-needed'].includes(row.status))
+        && report.cleanup.some(row => row.status === 'passed' && row.deleteAcknowledged && row.absenceVerified)
         && report.localCleanupVerified;
       let sourceUnchanged = false; try { assertCandidate(); sourceUnchanged = true; } catch { /* preserve failure, never emit raw errors */ }
       const casesPassed = report.cases.length === ROLE_CASES.length && report.cases.every(row => row.status === 'passed');

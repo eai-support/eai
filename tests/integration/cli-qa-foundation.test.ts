@@ -210,6 +210,31 @@ describe('normal CLI retained fixture preparation', () => {
     expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
     expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
   });
+  test.each([null, 'false', 'true', 0, 1, {}, []].map(reused => ({ reused })))('a malformed present reused marker $reused cannot acknowledge a new child', ({ reused }) => {
+    const fixture = controlled();
+    const execute = (cli: string, args: string[]) => {
+      const result = fixture.execute(cli, args);
+      if (args[2] === 'workspace' && args[3] === 'create') {
+        const body = JSON.parse(result.stdout); body.tenant.reused = reused; result.stdout = JSON.stringify(body);
+      }
+      return result;
+    };
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute })).toThrow('creation');
+    const retained = qa.readPrivate(fixture.path);
+    expect(retained.workspaces.a.id).toBeNull(); expect(retained.journal.a.phase).toBe('creating');
+    expect(fixture.calls.some(args => args.includes('bootstrap-admin') || args.includes('invite'))).toBe(false);
+  });
+  test('the actual flat201 producer shape without a reused marker remains a supported new-child acknowledgment', () => {
+    const fixture = controlled();
+    const execute = (cli: string, args: string[]) => {
+      const result = fixture.execute(cli, args);
+      if (args[2] === 'workspace' && args[3] === 'create') {
+        const body = JSON.parse(result.stdout); delete body.tenant.reused; result.stdout = JSON.stringify(body);
+      }
+      return result;
+    };
+    expect(qa.prepareFoundation(fixture.path, 'dist/index.js', { execute }).state).toBe('verified');
+  });
   test('saved child IDs without exact creation ownership cannot reach any CLI dispatch', () => {
     const fixture = controlled(), retained = qa.readPrivate(fixture.path);
     retained.workspaces.a.id = uuid(30); retained.workspaces.b.id = uuid(31);

@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -157,7 +157,7 @@ describe('local dedicated tenant harness ownership', () => {
   const directories: string[] = [];
   afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
-  function runFixture(mode: 'quota' | 'unrelated-create', api = 'http://localhost:8000') {
+  function runFixture(mode: 'quota' | 'unrelated-create' | 'parent-valid' | 'parent-wrong' | 'parent-missing' | 'ack-absent' | 'ack-ambiguous', api = 'http://localhost:8000') {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-harness-test-')));
     directories.push(root);
     const bin = join(root, 'bin'); mkdirSync(bin, { mode: 0o700 });
@@ -171,9 +171,19 @@ describe('local dedicated tenant harness ownership', () => {
 const args = process.argv.slice(2);
 fs.appendFileSync(process.env.EAI_HARNESS_TEST_LOG, JSON.stringify(args) + '\\n');
 if (args.includes('list')) {
-  console.log(JSON.stringify({tenants:[{id:'parent-fixture',slug:'parent'},{id:'unrelated-fixture',slug:'coworker-workspace'}]}));
+  const tenants = [{id:'parent-fixture',slug:'parent'},{id:'unrelated-fixture',slug:'coworker-workspace'}];
+  const acknowledgment = process.env.EAI_HARNESS_TEST_LOG + '.create';
+  if ((process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') || process.env.EAI_HARNESS_TEST_MODE === 'ack-ambiguous') && fs.existsSync(acknowledgment)) {
+    const created = JSON.parse(fs.readFileSync(acknowledgment, 'utf8'));
+    tenants.push({id:'00000000-0000-4000-8000-000000000099',slug:created.slug,
+      ...(process.env.EAI_HARNESS_TEST_MODE === 'parent-missing' ? {} : {parentId:process.env.EAI_HARNESS_TEST_MODE === 'parent-wrong' ? 'foreign-parent' : created.parent})});
+    if (process.env.EAI_HARNESS_TEST_MODE === 'ack-ambiguous') tenants.push({id:'00000000-0000-4000-8000-000000000098',slug:created.slug,parentId:created.parent});
+  }
+  console.log(JSON.stringify({tenants}));
 } else if (args.includes('create')) {
   if (process.env.EAI_HARNESS_TEST_MODE === 'quota') { console.error('TENANT_QUOTA_EXCEEDED'); process.exit(1); }
+  fs.writeFileSync(process.env.EAI_HARNESS_TEST_LOG + '.create', JSON.stringify({slug:args[args.indexOf('--slug')+1],parent:args[args.indexOf('--parent')+1]}), {mode:0o600});
+  console.log(JSON.stringify({tenant:{id:'00000000-0000-4000-8000-000000000099',slug:args[args.indexOf('--slug')+1],parentTenantId:args[args.indexOf('--parent')+1]}}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `);
     writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
@@ -181,13 +191,14 @@ if (args.includes('list')) {
     writeFileSync(join(bin, 'docker'), '#!/usr/bin/env bash\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n', { mode: 0o700 });
     const result = spawnSync('bash', [resolve('scripts/test-local-dedicated-tenant-lifecycle.sh')], {
       encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, HOME: root, USERPROFILE: root, PATH: `${bin}:${process.env.PATH}`,
+      env: { ...process.env, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
         EAI_E2E_PROFILE: 'local', EAI_E2E_PUBLIC_API_URL: api, EAI_E2E_PARENT_TENANT_ID: 'parent-fixture',
         EAI_HARNESS_TEST_LOG: log, EAI_HARNESS_TEST_MODE: mode },
     });
     let calls: string[][] = [];
     try { calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { /* blocked before CLI calls */ }
-    return { ...result, calls };
+    const journals = readdirSync(root).filter(name => name.startsWith('eai-local-e2e-creation-')).map(name => join(root, name, 'creation.json'));
+    return { ...result, calls, journals };
   }
 
   test('quota exhaustion never deletes other visible tenants or retries creation', () => {
@@ -201,6 +212,28 @@ if (args.includes('list')) {
     const result = runFixture('unrelated-create');
     expect(result.status).not.toBe(0);
     expect(result.calls.filter(args => args.includes('select') || args.includes('delete'))).toHaveLength(0);
+  });
+  test.each(['parent-wrong', 'parent-missing'] as const)('a new matching slug with %s cannot authorize select, provisioning or cleanup', mode => {
+    const result = runFixture(mode);
+    expect(result.status).not.toBe(0);
+    expect(result.calls.filter(args => args.includes('create'))).toHaveLength(1);
+    expect(result.calls.filter(args => args.includes('select') || args.includes('provision') || args.includes('delete'))).toHaveLength(0);
+  });
+  test('a unique newly visible matching child with its exact requested parent passes the ownership boundary', () => {
+    const result = runFixture('parent-valid');
+    // The mock stops at selection; no real Docker, storage or network mutation occurs.
+    expect(result.status).not.toBe(0);
+    expect(result.calls.some(args => args.includes('select') && args.includes('00000000-0000-4000-8000-000000000099'))).toBe(true);
+  });
+  test.each(['ack-absent', 'ack-ambiguous'] as const)('retains an exact create acknowledgment when list reconciliation is %s without guessing cleanup', mode => {
+    const result = runFixture(mode);
+    expect(result.status).not.toBe(0); expect(result.calls.filter(args => args.includes('create'))).toHaveLength(1);
+    expect(result.calls.filter(args => args.includes('select') || args.includes('provision') || args.includes('delete'))).toHaveLength(0);
+    expect(result.journals).toHaveLength(1);
+    const journal = JSON.parse(readFileSync(result.journals[0], 'utf8'));
+    expect(journal).toMatchObject({ childTenantId: '00000000-0000-4000-8000-000000000099', parentTenantId: 'parent-fixture',
+      creationExitCode: 0, acknowledgmentBound: true, phase: 'unresolved', cleanupAttempted: false });
+    expect(statSync(result.journals[0]).mode & 0o777).toBe(0o600);
   });
   test('rejects a deployed API before Docker or CLI mutation', () => {
     const result = runFixture('quota', 'https://dev-api.au.myenterprise.ai/public');

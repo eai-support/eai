@@ -116,8 +116,13 @@
             "tests/integration/vertical.test.ts",
             "tests/integration/platform-api-client.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": [
             {
               "repository": "eai-testing-dev",
@@ -410,7 +415,8 @@
             "scripts/cli-qa-authorization.cjs",
             "tests/integration/cli-qa-authorization.test.ts",
             "scripts/cli-qa-build-receipt.cjs",
-            "tests/integration/cli-qa-build-receipt.test.ts"
+            "tests/integration/cli-qa-build-receipt.test.ts",
+            "scripts/cli-local-child-ownership.cjs"
           ],
           "required_repo_tests": [
             "tests/unit/cli-test-coverage.test.ts",

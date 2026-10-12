@@ -32,6 +32,8 @@ DOCDB_ID=""
 BLOB_ID=""
 SEARCH_ID=""
 TENANT_CREATE_STDERR=""
+TENANT_CREATE_JOURNAL=""
+OWNERSHIP_HELPER="$SCRIPT_DIR/cli-local-child-ownership.cjs"
 
 ensure_local_search_key_loaded() {
   local current_key=""
@@ -132,6 +134,7 @@ cleanup() {
   set +e
 
   if [[ -n "$TENANT_ID" ]]; then
+    node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || true
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
 
     if [[ -n "$PG_ID" ]]; then
@@ -153,6 +156,9 @@ cleanup() {
 
   rm -f "$TENANT_CREATE_STDERR"
   rm -rf "$PROJECT_DIR"
+  if [[ -n "$TENANT_CREATE_JOURNAL" ]]; then
+    echo "Local child creation journal retained: $TENANT_CREATE_JOURNAL" >&2
+  fi
 }
 
 trap cleanup EXIT
@@ -267,32 +273,24 @@ create_test_tenant() {
   local create_json=""
   local before_tenants_json=""
   local after_tenants_json=""
-  TENANT_CREATE_STDERR="$(mktemp "${TMPDIR:-/tmp}/eai-local-e2e-tenant-create.XXXXXX")"
   before_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
 
   set +e
-  node "$CLI_ROOT/dist/index.js" \
+  create_json="$(node "$CLI_ROOT/dist/index.js" \
     --profile "$PROFILE" \
     tenant create \
     --name "$TENANT_NAME" \
     --slug "$TENANT_SLUG" \
     --parent "$PARENT_TENANT_ID" \
-    --format text > /dev/null 2>"$TENANT_CREATE_STDERR"
+    --format json 2>"$TENANT_CREATE_STDERR")"
   local create_exit=$?
   set -e
+  printf '%s' "$create_json" | node "$OWNERSHIP_HELPER" ack "$TENANT_CREATE_JOURNAL" "$create_exit"
 
   if [[ $create_exit -eq 0 ]]; then
     after_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-    create_json="$(node -e '
-      const beforeData = JSON.parse(process.argv[1]);
-      const afterData = JSON.parse(process.argv[2]);
-      const slug = process.argv[3];
-      const beforeIds = new Set((beforeData.tenants || []).map((tenant) => tenant.id));
-      const matches = (afterData.tenants || []).filter((tenant) => tenant.slug === slug && !beforeIds.has(tenant.id));
-      const created = matches.length === 1 ? matches[0] : undefined;
-      if (!created) process.exit(1);
-      process.stdout.write(JSON.stringify({ tenant: created }));
-    ' "$before_tenants_json" "$after_tenants_json" "$TENANT_SLUG")"
+    create_json="$(printf '{"before":%s,"after":%s}' "$before_tenants_json" "$after_tenants_json" \
+      | node "$OWNERSHIP_HELPER" reconcile "$TENANT_CREATE_JOURNAL")"
     if [[ -n "$create_json" ]]; then
       printf '%s' "$create_json"
       return 0
@@ -432,6 +430,12 @@ EOF
 
 cd "$PROJECT_DIR"
 
+TENANT_CREATE_JOURNAL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/eai-local-e2e-creation-XXXXXX")"
+TENANT_CREATE_JOURNAL="$TENANT_CREATE_JOURNAL_DIR/creation.json"
+TENANT_CREATE_STDERR="$TENANT_CREATE_JOURNAL_DIR/create.stderr"
+node "$OWNERSHIP_HELPER" init "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID" "$TENANT_SLUG"
+touch "$TENANT_CREATE_STDERR"
+chmod 600 "$TENANT_CREATE_STDERR"
 CREATE_JSON="$(create_test_tenant)"
 TENANT_ID="$(json_field "$CREATE_JSON" "data.tenant.doc?.id ?? data.tenant.id")"
 assert_json "$CREATE_JSON" "typeof (data.tenant.doc?.id ?? data.tenant.id) === 'string' && (data.tenant.doc?.id ?? data.tenant.id).length > 0" "Created tenant id is missing"

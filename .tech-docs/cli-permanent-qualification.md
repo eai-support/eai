@@ -67,6 +67,8 @@ replace a child's existing administrator; independent actors use membership
 invitations. Preparation rejects newly created or unexpected directory users.
 It verifies exact child/parent relationships, complete actor inventories, active
 roles and absence of parent/sibling/global administrator authority.
+Each actor's complete inventory must also contain its assigned QA workspace.
+Existing unrelated memberships are allowed and grant no QA parent/sibling role.
 
 The foundation remains available between runs. Each probe rechecks its
 identities and roles; `state: verified` alone is insufficient. A single-host
@@ -80,6 +82,10 @@ including the fixture, operator, parent, slug and returned child. An ID returned
 with a nonzero exit remains saved for diagnosis and requires manual
 reconciliation before any later child mutation. Older journals without that
 exact ownership record cannot automatically adopt an existing child.
+The synchronous backend's new-child response is a flat 201 result without a
+`reused` marker; existing-child reuse explicitly returns `reused: true`.
+Preparation preserves the supported absent-marker response and rejects reuse
+or any malformed present marker rather than inferring ownership from it.
 
 ## Permission probe
 
@@ -89,6 +95,8 @@ with `workspaceSlot: a`, its exact `objectType`, a text `nonceField`, and bounde
 synthetic `data`. An optional exact Object Type `id` may be included. The probe
 reads and validates both published schemas before mutation; this binding cannot
 stand in for missing published schemas.
+Published property names, types, required flags, select values and defaults must
+match across siblings; local definition IDs and property order may differ.
 
 ```bash
 npm run qa:authorization -- --foundation /private/cli-qa/foundation.json --cli "$PWD/dist/index.js" --output /private/cli-qa/authorization.json
@@ -105,6 +113,11 @@ exact tenant, object type, data, version and resource IDs. It independently dele
 every acknowledged row through its own workspace administrator and requires an
 authenticated exact GET 404. Unknown creation outcomes remain recorded leftovers
 without automatic replay or guessed cleanup.
+An idempotent replay retains its returned ID as unresolved evidence and never
+authorizes automatic deletion. New-row ownership requires the typed
+`idempotentReplay: false` field supplied by ResourceAPI's response contract.
+Preflight-only probes keep resource `cleanupVerified: false`; removing their
+local context is recorded separately and cannot prove resource teardown.
 
 This resource permission matrix does not prove every endpoint's policy.
 System-admin cache refresh, tenant/user administration, provider, document and
@@ -193,6 +206,21 @@ Absent evidence remains `not-run`; attempted unfinished observations remain
 or incomplete observations, and one success cannot erase another attempt for
 the same option. A passing selected run never means the full
 inventory is qualified.
+Raw local/live smoke summaries prove selected command journeys and deliberately
+omit full per-command completion evidence. The audit preserves their observed
+success counts while classifying those partial observations as `incomplete`.
+Automatic producer-to-audit enrichment remains a follow-up: it must associate
+real named assertions and full command/option coverage rather than manufacture
+`coverageComplete: true` from a successful subprocess exit.
+The local Docker lifecycle harness also requires its single newly visible
+matching-slug child to carry the exact requested `parentId` before selection,
+storage provisioning or cleanup. Missing or mismatched parent metadata fails
+without adopting that workspace.
+It preserves a minimal private creation journal outside the disposable app,
+including the exact returned child ID and creation exit status before inventory
+reconciliation. Missing or ambiguous inventory leaves that journal unresolved
+for manual reconciliation without guessed selection or cleanup. The journal
+records cleanup attempts separately and does not claim verified backend absence.
 
 Provider, analyzer, classifier, documentWorkflow and GitHub bindings hold
 references to approved retained fixtures. No provider material, third-party

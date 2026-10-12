@@ -212,6 +212,7 @@ function verifyActors(call, foundation) {
     requireCondition(inventory.superAdmin === false && Array.isArray(inventory.tenants)
       && Number.isSafeInteger(inventory.totalCount) && inventory.totalCount === inventory.tenants.length
       && new Set(inventory.tenants.map(tenant => tenant.id)).size === inventory.tenants.length, 'Actor inventory is incomplete or has global administrator authority.');
+    requireCondition(inventory.tenants.some(tenant => tenant.id === tenantId), 'Actor inventory does not include its exact assigned QA workspace.');
     requireCondition(!inventory.tenants.some(tenant => tenant.id === foundation.parentTenantId
       || tenant.id === foundation.workspaces[workspaceSlot === 'a' ? 'b' : 'a'].id), 'Qualification actor has parent or sibling access.');
     const memberships = getBody(call, actor, `/v4/platform/users/${actor.oid}/memberships?tenant_id=${tenantId}`, tenantId);
@@ -247,7 +248,8 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
           '--starter-template', 'eai-app-template', '--home-region', foundation.region, '--format', 'json'], foundation.parentTenantId);
         const tenant = body?.tenant;
         if (UUID.test(tenant?.id || '') && tenant.id !== foundation.parentTenantId && tenant.slug === workspace.slug
-          && (tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant) === foundation.parentTenantId && tenant.reused !== true) {
+          && (tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant) === foundation.parentTenantId
+          && (!Object.hasOwn(tenant, 'reused') || tenant.reused === false)) {
           workspace.id = tenant.id;
           foundation.journal[slot] = { phase: result.status === 0 ? 'created' : 'acknowledged', slug: workspace.slug,
             acknowledgment: { fixtureId: foundation.fixtureId, actorId: foundation.owner.oid, tenantId: tenant.id,
