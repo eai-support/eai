@@ -41,6 +41,11 @@ describe('agent guide', () => {
       ]),
     );
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
+    const explain = guide.recoveryLoop.find(step => step.title === 'Explain the error');
+    expect(explain?.instruction).toContain('at most once for the original failure');
+    expect(explain?.instruction).toContain('Never retry or explain a failed eai errors explain command');
+    expect(guide.operatingRules.join('\n')).toContain('reuse existing guidance across recovery steps');
+
     expect(guide.operatingRules).toContain(
       'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     );

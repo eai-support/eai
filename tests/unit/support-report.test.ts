@@ -621,3 +621,64 @@ test('explicit decline cleans an allocated context without loading authenticatio
   await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
   await expect(access(`${contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
 });
+
+
+describe('local support actions use the trusted configured website', () => {
+  test.each(['default', 'environment', 'named-profile'] as const)('%s origin applies without authentication or network', async setting => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://support-env.fixture.invalid' : '');
+    if (setting === 'named-profile') {
+      setActiveProfile('fixture');
+      await mkdir(join(home.dir, '.eai'), { recursive: true });
+      await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
+        publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
+        authClientId: 'fixture', websiteUrl: 'https://support-profile.fixture.invalid',
+      } } }));
+    }
+    const expected = setting === 'default' ? 'https://www.enterpriseaigroup.com'
+      : setting === 'environment' ? 'https://support-env.fixture.invalid' : 'https://support-profile.fixture.invalid';
+    const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSupport({ createContextFile: true, format: 'json' });
+    const allocated = JSON.parse(String(write.mock.calls[0][0])) as { contextFile: string; url: string; status: string };
+    expect(allocated).toMatchObject({ status: 'context_created', url: `${expected}/support?chat=open` });
+    await expect(access(allocated.contextFile)).resolves.toBeUndefined();
+    write.mockClear();
+    await runSupport({ decline: true, contextFile: allocated.contextFile, format: 'json' });
+    expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined', url: `${expected}/support?chat=open` });
+    await expect(access(allocated.contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(`${allocated.contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(loadTokens).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+
+test.each(['environment', 'named-profile'] as const)('explicit decline resolves %s origin and cleans locally', async setting => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://decline-env.fixture.invalid' : '');
+  if (setting === 'named-profile') {
+    setActiveProfile('fixture');
+    await mkdir(join(home.dir, '.eai'), { recursive: true });
+    await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
+      publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
+      authClientId: 'fixture', websiteUrl: 'https://decline-profile.fixture.invalid',
+    } } }));
+  }
+  const file = createHarnessContextFile();
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ decline: true, contextFile: file, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined',
+    url: `https://decline-${setting === 'environment' ? 'env' : 'profile'}.fixture.invalid/support?chat=open` });
+  await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${file}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});

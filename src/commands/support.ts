@@ -93,6 +93,8 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
       process.exitCode = 1;
       return;
     }
+    const website = await resolveSupportWebsite();
+    chatUrl = supportChatUrl(website);
     if (options.decline) {
       discardOwnedHarnessContext(options.contextFile);
       emit({ ok: true, status: 'declined', url: chatUrl, message: 'No report was sent and no draft was created.' });
@@ -104,9 +106,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
         message: 'Write the JSON session summary into contextFile, then preview it with --context-file. Nothing was sent.' });
       return;
     }
-    const website = await resolveSupportWebsite();
     purgeStaleHarnessContexts();
-    chatUrl = supportChatUrl(website);
     const session = await loadTokens();
     const report = await prepareSupportReport(options, session, dependencies.stdin);
     let bundle = report.bundle;

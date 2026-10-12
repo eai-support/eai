@@ -1313,8 +1313,12 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
     await copyIfExists(root, relativePath, pluginRoot);
   }
   const supportAgentsPath = path.join(pluginRoot, 'AGENTS.md');
-  const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
-  await fs.writeFile(supportAgentsPath, ensureSupportReportContract(supportAgents), 'utf8');
+  try {
+    const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
+    await fs.writeFile(supportAgentsPath, ensureSupportReportContract(supportAgents), 'utf8');
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   await writeJson(path.join(pluginRoot, '.gemini', 'extension.json'), geminiManifest);
   await copyIfExistsAs(root, '.claude/commands', 'commands', pluginRoot);
   await copyIfExistsAs(root, '.claude/agents', 'agents', pluginRoot);
