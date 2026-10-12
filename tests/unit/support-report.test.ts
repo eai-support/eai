@@ -1,5 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { access, mkdir, symlink, utimes, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, symlink, utimes, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
@@ -38,6 +40,7 @@ const servers: DraftServer[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   vi.unstubAllEnvs();
   process.exitCode = 0;
   setActiveProfile('default');
@@ -1003,6 +1006,26 @@ test('explicit decline cleans an allocated context without loading authenticatio
 
 
 describe('local support actions use the trusted configured website', () => {
+  test.each([{ decline: true, yes: true }, { decline: true, createContextFile: true }])(
+    'conflicting local flags use the configured website without authentication or network: %j', async flags => {
+      const home = await createTestEnvironment();
+      contexts.push(home);
+      vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+      syncBuiltinESMExports();
+      vi.stubEnv('EAI_WEBSITE_URL', 'http://127.0.0.1:54321');
+      const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+      const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await runSupport({ ...flags, format: 'json' });
+      expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({
+        status: 'failed', url: 'http://127.0.0.1:54321/support?chat=open', error: { code: 'invalid_report' },
+      });
+      expect(process.exitCode).toBe(1);
+      expect(loadTokens).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   test.each(['default', 'environment', 'named-profile'] as const)('%s origin applies without authentication or network', async setting => {
     const home = await createTestEnvironment();
     contexts.push(home);
@@ -1033,6 +1056,41 @@ describe('local support actions use the trusted configured website', () => {
     expect(loadTokens).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+test.each([
+  ['malformed JSON', '{', 'context_invalid'],
+  ['oversized bytes', 'x'.repeat(65_537), 'context_too_large'],
+  ['invalid fields', JSON.stringify({ requestedByPerson: false }), 'context_invalid'],
+])('keeps the allocated file and ownership marker after an invalid preview: %s', async (_kind, input, code) => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+  syncBuiltinESMExports();
+  vi.stubEnv('EAI_WEBSITE_URL', 'http://127.0.0.1:54321');
+  vi.spyOn(auth, 'loadTokens').mockResolvedValue(null);
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const contextFile = createHarnessContextFile();
+  await writeFile(contextFile, input);
+  const marker = await readFile(`${contextFile}.owner`, 'utf8');
+  await runSupport({ tool: 'codex', contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'failed', error: { code } });
+  expect(process.exitCode).toBe(1);
+  expect(await readFile(contextFile, 'utf8')).toBe(input);
+  expect(await readFile(`${contextFile}.owner`, 'utf8')).toBe(marker);
+  await writeFile(contextFile, JSON.stringify(harnessContextFixture()));
+  process.exitCode = 0;
+  write.mockClear();
+  await runSupport({ tool: 'codex', contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'signed_out' });
+  await expect(access(contextFile)).resolves.toBeUndefined();
+  write.mockClear();
+  await runSupport({ decline: true, contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined' });
+  await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(fetch).not.toHaveBeenCalled();
 });
 
 

@@ -88,6 +88,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
   };
   try {
     if (options.decline && (options.yes || options.createContextFile)) {
+      chatUrl = supportChatUrl(await resolveSupportWebsite());
       const message = '--decline cannot be combined with --yes or --create-context-file.';
       emit({ ok: false, status: 'failed', error: { code: 'invalid_report', message }, url: chatUrl, message });
       process.exitCode = 1;
@@ -185,7 +186,6 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
       catch { console.error('The browser could not open. Use the Support link printed above.'); }
     }
   } catch (error) {
-    if (error instanceof SupportContextError) discardOwnedHarnessContext(options.contextFile);
     const safe = error instanceof SupportRequestError || error instanceof SupportContextError;
     const message = safe ? error.message
       : 'The support report could not be prepared. Check the support options and website configuration.';
