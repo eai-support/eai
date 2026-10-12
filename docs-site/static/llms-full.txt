@@ -2180,8 +2180,16 @@ ignored file so a reopened app workspace keeps its CLI authentication context.
 The selection order is an explicit `--profile`, your shell's `EAI_PROFILE`, the
 app-root `.env.local` selector, then the public default. Named selectors require
 an existing local CLI profile; a missing profile fails before platform requests.
-`eai env push` excludes this selector, and `eai env pull` preserves its local
-value. Profile credentials and CLI tokens remain outside the app repository.
+`eai env push` excludes this selector, and `eai env pull` excludes it before
+parsing or resolving cloud references, preserving its local value. Profile
+credentials and CLI tokens remain outside the app repository.
+
+`eai init` establishes the `.env.local` ignore rule before writing credentials.
+Existing `.gitignore` and `.env.local` files must be regular, unlinked files
+within 1 MiB. The ignore file's content and permissions are preserved when the
+rule is appended atomically. The generated `.env.local` replaces an ordinary
+scaffold file atomically with private permissions; linked credential destinations
+are refused, including when initializing in the current directory.
 
 Before authenticated commands run, a named profile's PublicAPI endpoint
 must agree with `BASE_URL_PUBLIC_API` and `ROUTING_BOOTSTRAP_PUBLIC_API_URL`

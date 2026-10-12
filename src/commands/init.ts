@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
+import { constants, type Stats } from "node:fs";
 import {
   readFile,
   writeFile,
@@ -17,6 +18,10 @@ import {
   mkdtemp,
   chmod,
   realpath,
+  lstat,
+  open,
+  rename,
+  unlink,
 } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -798,9 +803,9 @@ Use --no-gofer only when you need a bare app scaffold.
     // Step 3: Generate .env.local with placeholders
     const envSpinner = startEaiStep("Generating .env.local...");
     try {
+      await ensureLocalEnvIgnored(targetDir);
       const envContent = generateEnvFile(initOptions);
-      await writeFile(join(targetDir, ".env.local"), envContent, { encoding: "utf-8", mode: 0o600 });
-      await chmod(join(targetDir, ".env.local"), 0o600);
+      await updateInitProjectFile(targetDir, ".env.local", () => Buffer.from(envContent), 0o600);
       await hydrateEnvFromLoginContext(
         targetDir,
         initOptions.name,
@@ -809,7 +814,6 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.tenantHomeRegion,
         initOptions.appKey,
       );
-      await ensureLocalEnvIgnored(targetDir);
       envSpinner.succeed("Generated .env.local");
     } catch (err) {
       envSpinner.fail("Failed to generate .env.local");
@@ -2213,14 +2217,77 @@ async function hydrateEnvFromLoginContext(
 }
 
 async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {
-  const ignorePath = join(targetDir, ".gitignore");
-  let content = "";
-  try { content = await readFile(ignorePath, "utf-8"); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  await updateInitProjectFile(targetDir, ".gitignore", (content) => {
+    // Last-match precedence also protects custom templates which unignore env files.
+    const separator = content.length && content[content.length - 1] !== 10 ? "\n" : "";
+    return Buffer.concat([content, Buffer.from(`${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n`)]);
+  });
+}
+
+/** Replace an init-owned leaf without following linked credentials or unrelated project files. */
+async function updateInitProjectFile(
+  targetDir: string,
+  name: ".gitignore" | ".env.local",
+  update: (content: Buffer) => Buffer,
+  mode?: number,
+): Promise<void> {
+  const root = await realpath(targetDir);
+  const parent = await lstat(root);
+  const path = join(root, name);
+  const maxBytes = 1024 * 1024;
+  const unsafe = () => new Error(`Project ${name} must be an unlinked regular file within 1 MiB.`);
+  const sameFile = (left: Stats, right: Stats) => left.dev === right.dev && left.ino === right.ino
+    && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs
+    && left.mode === right.mode && right.isFile() && right.nlink === 1;
+  const statLeaf = async (): Promise<Stats | null> => {
+    try { return await lstat(path); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  };
+  const original = await statLeaf();
+  if (original && (!original.isFile() || original.isSymbolicLink() || original.nlink !== 1 || original.size > maxBytes)) throw unsafe();
+  let content = Buffer.alloc(0);
+  if (original) {
+    const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+    try {
+      const opened = await file.stat();
+      if (!sameFile(original, opened)) throw unsafe();
+      const buffer = Buffer.alloc(maxBytes + 1);
+      let length = 0;
+      while (length < buffer.length) {
+        const { bytesRead } = await file.read(buffer, length, buffer.length - length, null);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length !== original.size || length > maxBytes || !sameFile(original, await file.stat())) throw unsafe();
+      content = buffer.subarray(0, length);
+    } finally { await file.close(); }
   }
-  // Last-match precedence also protects custom templates which unignore env files.
-  const separator = content && !content.endsWith("\n") ? "\n" : "";
-  await writeFile(ignorePath, `${content}${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n`, "utf-8");
+  const assertUnchanged = async (): Promise<void> => {
+    const current = await statLeaf();
+    const parentAfter = await lstat(root);
+    if ((original ? !current || !sameFile(original, current) : current !== null)
+      || parent.dev !== parentAfter.dev || parent.ino !== parentAfter.ino || !parentAfter.isDirectory()) {
+      throw new Error(`Project ${name} changed during initialization; retry after checking the project files.`);
+    }
+  };
+  await assertUnchanged();
+  const updated = update(content);
+  const temporary = join(root, `${name}.eai-${randomBytes(16).toString("hex")}.tmp`);
+  const file = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  try {
+    await file.writeFile(updated);
+    await file.chmod(mode ?? (original ? original.mode & 0o777 : 0o666 & ~process.umask()));
+    await file.sync();
+    await assertUnchanged();
+    await rename(temporary, path);
+  } finally {
+    await file.close();
+    await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    });
+  }
 }
 
 function toDisplayName(name: string): string {

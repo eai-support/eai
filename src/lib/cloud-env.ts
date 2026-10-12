@@ -43,6 +43,7 @@ async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: s
   return exec(invocation.file, invocation.args);
 }
 
+/** Pull application values; the workstation-only profile selector is excluded before parsing or resolving references. */
 export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<CloudEnvPullResult> {
   const store = resolveAppConfigStore(options.environment);
   const includeSecrets = options.includeSecrets ?? false;
@@ -59,6 +60,8 @@ export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<
   const secretRefs: Array<{ key: string; vaultUri: string }> = [];
 
   for (const kv of kvPairs) {
+    // A local CLI selector cannot authorize even an otherwise valid cloud secret lookup.
+    if (kv.key === 'EAI_PROFILE') continue;
     if (kv.contentType === 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8') {
       let ref: { uri?: unknown };
       try {
