@@ -71,7 +71,7 @@ export interface ObjectTypeAction {
 
 export interface StorageIndexDefinition {
   name?: string;
-  fields: string[] | Array<Record<string, unknown>> | Record<string, unknown>;
+  fields: string[];
   unique?: boolean;
 }
 
@@ -105,7 +105,7 @@ export interface SearchStorageBinding {
   searchServiceAlias: string;
   indexName: string;
   sourceObjectTypes?: string[];
-  fieldMappings?: Record<string, unknown> | Array<Record<string, unknown>>;
+  fieldMappings?: Record<string, string>;
 }
 
 export interface StorageBindingDefinition {
@@ -453,6 +453,11 @@ export async function patchEnvFile(
     return;
   }
 
+  await writeFile(envPath, patchEnvContent(content, patches), "utf-8");
+}
+
+/** Render an existing dotenv file's patch without performing filesystem writes. */
+export function patchEnvContent(content: string, patches: Record<string, string>): string {
   const patchKeys = Object.keys(patches);
   const patched = new Set<string>();
 
@@ -473,7 +478,7 @@ export async function patchEnvFile(
   }
 
   const trailingNewline = content.endsWith("\n") ? "\n" : "";
-  await writeFile(envPath, updatedLines.join("\n") + trailingNewline, "utf-8");
+  return updatedLines.join("\n") + trailingNewline;
 }
 
 /**

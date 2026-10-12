@@ -80,13 +80,41 @@ jobs:
         run: npm run build
 
       - name: Run focused EAI CLI contract tests
+        id: focused-tests
         run: npm run test:eai-cli:ci
+
+      - name: Record focused EAI CLI evidence
+        if: always()
+        env:
+          FOCUSED_TEST_RESULT: ${{ steps.focused-tests.outcome }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const coverage = JSON.parse(readFileSync('.eai/test-coverage.json', 'utf8'));
+          const command = packageJson.scripts['test:eai-cli:ci'];
+          const requiredRepoTests = [...new Set(coverage.repositories.eai.features.flatMap(feature => feature.required_repo_tests))].sort();
+          mkdirSync('test-results', { recursive: true });
+          writeFileSync('test-results/eai-cli-evidence.json', JSON.stringify({
+            schema: 'eai.cli_ci_evidence.v1',
+            check: 'ci/eai-cli-tests',
+            sourceSha: process.env.GITHUB_SHA,
+            cliVersion: packageJson.version,
+            result: process.env.FOCUSED_TEST_RESULT,
+            command,
+            selectedRepoTests: command.split(/\s+/).filter(argument => /^(?:tests\/.*\.test\.ts|docs-site\/scripts\/.*\.test\.mjs)$/.test(argument)),
+            requiredRepoTests,
+          }, null, 2) + '\n');
+          NODE
 
       - name: Upload EAI CLI test results
         uses: actions/upload-artifact@v7
         if: always()
         with:
           name: eai-cli-test-results
-          path: test-results/eai-cli-results.xml
+          path: |
+            test-results/eai-cli-results.xml
+            test-results/eai-cli-registry-results.xml
+            test-results/eai-cli-evidence.json
           if-no-files-found: error
           retention-days: 30

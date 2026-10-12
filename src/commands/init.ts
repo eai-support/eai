@@ -7,6 +7,7 @@ import { execFile } from "node:child_process";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { promisify } from "node:util";
+import { constants, type Stats } from "node:fs";
 import {
   readFile,
   writeFile,
@@ -17,6 +18,11 @@ import {
   mkdtemp,
   chmod,
   realpath,
+  lstat,
+  open,
+  link,
+  rename,
+  unlink,
 } from "node:fs/promises";
 import { basename, join, resolve } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -53,7 +59,7 @@ import {
   type CapabilityDecision,
   type ParsedApiError,
 } from "../lib/api.js";
-import { entraScopeEnvPatch, findProjectRoot, patchEnvFile } from "../lib/config.js";
+import { entraScopeEnvPatch, findProjectRoot, patchEnvContent } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
@@ -798,8 +804,9 @@ Use --no-gofer only when you need a bare app scaffold.
     // Step 3: Generate .env.local with placeholders
     const envSpinner = startEaiStep("Generating .env.local...");
     try {
+      await ensureLocalEnvIgnored(targetDir);
       const envContent = generateEnvFile(initOptions);
-      await writeFile(join(targetDir, ".env.local"), envContent, "utf-8");
+      await updateInitProjectFile(targetDir, ".env.local", () => Buffer.from(envContent), 0o600);
       await hydrateEnvFromLoginContext(
         targetDir,
         initOptions.name,
@@ -809,8 +816,10 @@ Use --no-gofer only when you need a bare app scaffold.
         initOptions.appKey,
       );
       envSpinner.succeed("Generated .env.local");
-    } catch (_err) {
+    } catch (err) {
       envSpinner.fail("Failed to generate .env.local");
+      out.error(errMsg(err));
+      process.exit(1);
     }
 
     // Step 4: Generate Object Types scaffold
@@ -1596,7 +1605,7 @@ async function provisionEntraInline(
     const scopeEnv = entraScopeEnvPatch(result.scopes);
 
     if (result.clientSecret) {
-      await patchEnvFile(targetDir, {
+      await patchInitEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         ENTRA_CLIENT_SECRET: result.clientSecret,
         AUTH_URL: authEndpointUrl,
@@ -1614,7 +1623,7 @@ async function provisionEntraInline(
     }
 
     if (result.existing) {
-      await patchEnvFile(targetDir, {
+      await patchInitEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
@@ -1665,7 +1674,7 @@ async function hydrateCloudSecret(
     if (!secret) {
       return false;
     }
-    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
+    await patchInitEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
     return true;
   } catch {
     return false;
@@ -2149,6 +2158,9 @@ async function hydrateEnvFromLoginContext(
 
   const regionalPublicApiUrl = publicApiUrlForHomeRegion(tenantHomeRegion);
   const profileName = getActiveProfile();
+  // Persist only the selector. Private profile auth/API settings and CLI tokens
+  // remain in the user's local CLI configuration, outside the app repository.
+  patches.EAI_PROFILE = profileName;
   const profileConfig = await loadProfileConfig(profileName);
   if (profileConfig?.publicApiUrl) {
     patches.BASE_URL_PUBLIC_API = profileConfig.publicApiUrl;
@@ -2201,7 +2213,137 @@ async function hydrateEnvFromLoginContext(
   }
 
   if (Object.keys(patches).length > 0) {
-    await patchEnvFile(targetDir, patches);
+    await patchInitEnvFile(targetDir, patches);
+  }
+}
+
+/** Apply every init hydration/provisioning patch through the protected credential writer. */
+async function patchInitEnvFile(targetDir: string, patches: Record<string, string>): Promise<void> {
+  await updateInitProjectFile(targetDir, ".env.local", content => Buffer.from(patchEnvContent(content.toString("utf8"), patches)), 0o600);
+}
+
+async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {
+  await updateInitProjectFile(targetDir, ".gitignore", (content) => {
+    // Last-match precedence also protects custom templates which unignore env files.
+    const separator = content.length && content[content.length - 1] !== 10 ? "\n" : "";
+    return Buffer.concat([content, Buffer.from(`${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n/.env.local.eai-*.tmp\n`)]);
+  });
+}
+
+/** Serialize init writers; existing-target rename is atomic, not a filesystem compare-and-swap. */
+export async function updateInitProjectFile(
+  targetDir: string,
+  name: ".gitignore" | ".env.local",
+  update: (content: Buffer) => Buffer,
+  mode?: number,
+): Promise<void> {
+  const root = await realpath(targetDir);
+  const parent = await lstat(root);
+  const lockPath = join(root, `${name}.eai-init.lock`);
+  const lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  const ownedLock = await lock.stat();
+  const assertLock = async (): Promise<void> => {
+    const current = await lstat(lockPath);
+    if (!current.isFile() || current.nlink !== 1 || current.dev !== ownedLock.dev || current.ino !== ownedLock.ino) {
+      throw new Error(`Project ${name} initialization lock changed; inspect the project files before retrying.`);
+    }
+  };
+  const releaseOwnedLock = async (): Promise<void> => {
+    await lock.close();
+    try {
+      const current = await lstat(lockPath);
+      if (current.isFile() && current.nlink === 1 && current.dev === ownedLock.dev && current.ino === ownedLock.ino) await unlink(lockPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  };
+  try {
+    await assertLock();
+    await updateLockedInitProjectFile(root, parent, name, update, mode, assertLock);
+  } finally { await releaseOwnedLock(); }
+}
+
+async function updateLockedInitProjectFile(
+  root: string,
+  parent: Stats,
+  name: ".gitignore" | ".env.local",
+  update: (content: Buffer) => Buffer,
+  mode: number | undefined,
+  assertLock: () => Promise<void>,
+): Promise<void> {
+  const path = join(root, name);
+  const maxBytes = 1024 * 1024;
+  const unsafe = () => new Error(`Project ${name} must be an unlinked regular file within 1 MiB.`);
+  const sameFile = (left: Stats, right: Stats) => left.dev === right.dev && left.ino === right.ino
+    && left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs
+    && left.mode === right.mode && right.isFile() && right.nlink === 1;
+  const statLeaf = async (): Promise<Stats | null> => {
+    try { return await lstat(path); } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw error;
+    }
+  };
+  const original = await statLeaf();
+  if (original && (!original.isFile() || original.isSymbolicLink() || original.nlink !== 1 || original.size > maxBytes)) throw unsafe();
+  let content = Buffer.alloc(0);
+  if (original) {
+    const file = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+    try {
+      const opened = await file.stat();
+      if (!sameFile(original, opened)) throw unsafe();
+      const buffer = Buffer.alloc(maxBytes + 1);
+      let length = 0;
+      while (length < buffer.length) {
+        const { bytesRead } = await file.read(buffer, length, buffer.length - length, null);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length !== original.size || length > maxBytes || !sameFile(original, await file.stat())) throw unsafe();
+      content = buffer.subarray(0, length);
+    } finally { await file.close(); }
+  }
+  const assertUnchanged = async (): Promise<void> => {
+    const current = await statLeaf();
+    const parentAfter = await lstat(root);
+    if ((original ? !current || !sameFile(original, current) : current !== null)
+      || parent.dev !== parentAfter.dev || parent.ino !== parentAfter.ino || !parentAfter.isDirectory()) {
+      throw new Error(`Project ${name} changed during initialization; retry after checking the project files.`);
+    }
+  };
+  await assertUnchanged();
+  const updated = update(content);
+  const temporary = join(root, `${name}.eai-${randomBytes(16).toString("hex")}.tmp`);
+  const file = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  const ownedTemporary = await file.stat();
+  const removeOwnedTemporary = async (): Promise<void> => {
+    try {
+      const current = await lstat(temporary);
+      if (current.isFile() && current.dev === ownedTemporary.dev && current.ino === ownedTemporary.ino) await unlink(temporary);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  };
+  try {
+    await file.writeFile(updated);
+    await file.chmod(mode ?? (original ? original.mode & 0o777 : 0o666 & ~process.umask()));
+    await file.sync();
+    const written = await file.stat();
+    if (!sameFile(written, await lstat(temporary))) throw unsafe();
+    await assertLock();
+    await assertUnchanged();
+    // link publishes an absent target without replacing a concurrent occupant.
+    // Existing targets are rechecked under the cooperative lock, then renamed.
+    if (original) await rename(temporary, path);
+    else { await link(temporary, path); await removeOwnedTemporary(); }
+    const published = await statLeaf();
+    const parentAfter = await lstat(root);
+    if (!published || !sameFile(await file.stat(), published)
+      || parent.dev !== parentAfter.dev || parent.ino !== parentAfter.ino || !parentAfter.isDirectory()) {
+      throw new Error(`Project ${name} publication could not be verified; inspect the project files before retrying.`);
+    }
+  } finally {
+    await file.close();
+    await removeOwnedTemporary();
   }
 }
 

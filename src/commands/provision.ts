@@ -3,6 +3,7 @@
  */
 
 import { Command } from 'commander';
+import { safePlatformDiagnostics, safeSupportReference, type SafeRotationFailure } from '../lib/platform-diagnostics.js';
 import chalk from 'chalk';
 import { chmod, lstat, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -72,6 +73,8 @@ interface ErrorContext {
   serverCode?: string;
   requestId?: string;
   rawBody?: string;
+  supportReference?: string;
+  rotationFailure?: SafeRotationFailure;
 }
 
 interface ServerDetailOptions {
@@ -87,6 +90,8 @@ function readErrorContext(err: unknown): ErrorContext {
       serverCode: err.serverCode,
       requestId: err.requestId,
       rawBody: err.rawBody,
+      supportReference: err.supportReference,
+      rotationFailure: err.rotationFailure,
     };
   }
   return {};
@@ -148,20 +153,21 @@ function printServerDetail(
   diag: DiagnosticsContext,
   options: ServerDetailOptions = {},
 ): void {
-  const includeServerMessage = options.includeServerMessage ?? true;
   const includeServerCode = options.includeServerCode ?? true;
-
-  if (includeServerMessage && ctx.serverMessage) {
-    out.info(`Server: ${ctx.serverMessage}`);
+  const requestId = safeSupportReference(ctx.requestId);
+  const supportReference = safeSupportReference(ctx.supportReference);
+  if (requestId) {
+    out.info(`Request ID: ${requestId}`);
   }
-  if (ctx.requestId) {
-    out.info(`Request ID: ${ctx.requestId}`);
+  if (supportReference) {
+    out.info(`Support reference: ${supportReference}`);
   }
   if (diag.debug && ctx.status) {
     out.info(`HTTP status: ${ctx.status}`);
   }
-  if (diag.debug && includeServerCode && ctx.serverCode) {
-    out.info(`Server code: ${ctx.serverCode}`);
+  const code = safePlatformDiagnostics(ctx.status ?? 0, { code: ctx.serverCode }).code;
+  if (diag.debug && includeServerCode && code) {
+    out.info(`Server code: ${code}`);
   }
 }
 
@@ -239,7 +245,15 @@ function handleSecretRotationError(err: unknown, diag: DiagnosticsContext): neve
   out.error('Entra client secret rotation failed.');
   printServerDetail(ctx, diag);
   out.info('Reference: EAI-PROVISION-ROTATE-SECRET-FAILED');
-  out.info('Confirm you have workspace admin access and ENTRA_CLIENT_ID belongs to the active workspace.');
+  if (ctx.rotationFailure?.outcome === 'unknown') {
+    out.info('The credential creation outcome is unknown. Keep your existing local settings and ask the platform team to check the operation using the support reference before issuing another credential.');
+  } else if (ctx.rotationFailure?.retryable) {
+    out.info('The platform confirmed that no credential was issued. Wait for the reported provider condition to clear before requesting another rotation.');
+  } else if (ctx.status === 403 || ctx.status === 404) {
+    out.info('Confirm you have workspace admin access and ENTRA_CLIENT_ID belongs to the selected app and workspace.');
+  } else {
+    out.info('Keep your existing local settings. Ask the platform team to check the failed operation using the support reference before issuing another credential.');
+  }
   process.exit(1);
 }
 
@@ -467,6 +481,7 @@ Diagnostics:
         const rotated = await client.rotateEntraAppSecret({
           tenantId,
           clientId: normalizeLocalEntraSetting(env.ENTRA_CLIENT_ID)!,
+          appName,
         });
         await patchEnvFile(root, {
           ENTRA_CLIENT_ID: rotated.clientId,

@@ -93,9 +93,11 @@ function setTestHome(path: string): () => void {
 describe('eai login', () => {
   let env: TestEnvironment;
   let ctx: TestContext;
+  let restoreTestHome: () => void;
 
   beforeEach(async () => {
     env = await createTestEnvironment();
+    restoreTestHome = setTestHome(env.dir);
     ctx = {
       workingDir: env.dir,
       mockAPI: {} as TestContext['mockAPI'],
@@ -109,6 +111,7 @@ describe('eai login', () => {
     vi.unstubAllGlobals();
     vi.doUnmock('node:child_process');
     await env.cleanup();
+    restoreTestHome();
   });
 
   test('help output excludes --client-id', async () => {
