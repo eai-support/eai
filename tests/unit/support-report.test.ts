@@ -103,6 +103,36 @@ describe('local support report redaction', () => {
     expect(redactSupportText(clean)).toBe(clean);
   });
 
+  test('placeholder tails consume private words and delimiters while retaining fields and serialized wrappers', () => {
+    for (const suffix of [' ', '\t', ',', ';', '&', '}', ']', '};, & ']) {
+      let diagnostic = `api_key=[redacted]${suffix}PRIVATE_CANARY extra private words status=public-id`;
+      let stable = `api_key=[redacted]${suffix}status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).not.toContain('extra private words');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        expect(redactSupportText(stable)).toBe(stable);
+        diagnostic = JSON.stringify(diagnostic);
+        stable = JSON.stringify(stable);
+      }
+    }
+    for (const value of ['api_key=[redacted]', JSON.stringify('api_key=[redacted]'), '{"api_key":[redacted],"client_id":"public-id"}', 'client_id=[redacted] PRIVATE_CANARY']) {
+      expect(redactSupportText(value)).toBe(value);
+    }
+    const dense = Array.from({ length: 500 }, () => 'api_key=[redacted] PRIVATE_CANARY status=public-id').join(' ');
+    const long = 'api_key=[redacted]' + '};, & '.repeat(11000) + 'PRIVATE_CANARY status=public-id';
+    const started = performance.now();
+    for (const input of [dense, long]) {
+      const clean = redactSupportText(input);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('redacts delimiter-leading credential values without rescanning long prefixes', () => {
     for (const prefix of ['}', ';', ',', '&', '};;,&']) {
       let diagnostic = `api_key=${prefix})PRIVATE_CANARY status=public-id`;

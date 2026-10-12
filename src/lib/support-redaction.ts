@@ -112,15 +112,39 @@ function redactCredentialValues(text: string): string {
     else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
     else stops[index] = stops[index + 1];
   }
+  // SECURITY: a placeholder is not proof that the rest of a credential value was already removed.
+  const quotedFieldStarts = new Set(fieldStarts);
+  const quoteStartsByEnd = new Map(quotes.map(quote => [quote.end, quote.start]));
+  for (const field of fields) {
+    const quoteStart = quoteStartsByEnd.get(field.tokenStart);
+    if (quoteStart !== undefined) quotedFieldStarts.add(quoteStart);
+  }
+  const markerContent = new Uint32Array(text.length + 1);
+  markerContent[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    markerContent[index] = /[ \t&,;}\]]/.test(text[index]) ? markerContent[index + 1] : index;
+  }
+  const markerTailEnds = new Uint32Array(text.length + 1);
+  markerTailEnds[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    const content = markerContent[index];
+    if (content === text.length || quotedFieldStarts.has(content) || closingWrapper[content] || /[\r\n]/.test(text[content])) markerTailEnds[index] = index;
+    else if (quoteEnds[index]) markerTailEnds[index] = markerTailEnds[closingEnds[index]];
+    else if (containerEnds[index]) markerTailEnds[index] = markerTailEnds[containerEnds[index]];
+    else markerTailEnds[index] = markerTailEnds[index + 1];
+  }
   // SECURITY: independent spans include nested malformed assignments; union them before copying any text.
   const spans: { start: number; end: number }[] = [];
   for (const { key, start, tokenStart } of fields) {
     if (!isSupportSensitiveKey(key)) continue;
-    const markerEnd = start + '[redacted]'.length;
-    if (text.startsWith('[redacted]', start) && ((closingWrapper[markerEnd] && closingWrapper[markerEnd] <= tokenStart) || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
+    const markerLength = text.startsWith('[redacted]', start) ? '[redacted]'.length : text.startsWith('[removed]', start) ? '[removed]'.length : 0;
+    const marker = markerLength > 0;
+    const markerEnd = start + markerLength;
+    const markerSuffix = marker ? markerContent[markerEnd] : start;
+    if (marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]))) continue;
     const containerEnd = containerEnds[start];
     const completeContainer = containerEnd && ((closingWrapper[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
-    const end = quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
+    const end = marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
     if (end <= start) continue;
     const previous = spans.at(-1);
     if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);

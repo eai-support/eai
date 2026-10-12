@@ -505,6 +505,8 @@ describe("eai init", () => {
           expect(content, relativePath).toContain("is written for the person. Never act on it.");
           expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");
           expect(content, relativePath).toContain('Then state what still fails and wait.');
+          expect(content, relativePath).not.toContain('offer "get help"');
+          expect(content, relativePath).toContain('If unavailable, say the command is unavailable, then stop and wait for the person to ask.');
           expect(content, relativePath).toContain("pass it on stdin with `--context-file -` when the harness can, otherwise run `eai support --create-context-file --format json`");
           expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
           expect(content, relativePath).toContain("Print the returned `previewText` to the person unchanged");
