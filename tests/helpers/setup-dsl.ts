@@ -5,7 +5,8 @@
  * Used to set up the environment before executing commands.
  */
 
-import { chmod, lstat, writeFile, mkdir, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { chmod, lstat, open, writeFile, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { PublicAPIMock } from './mock-server.js';
 import { resolveIsolatedTestHome } from './test-env.js';
@@ -29,6 +30,20 @@ async function resolveTestHome(ctx: TestContext): Promise<string> {
     try {
       const info = await lstat(directory);
       if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Auth fixture token directories must not contain links or special files.');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  const { getActiveProfile } = await import('../../src/lib/profile.js');
+  const profile = getActiveProfile();
+  const leaves = [join(home, '.eai', 'tokens.json')];
+  if (profile !== 'default') leaves.push(join(home, '.eai', 'tokens', `${profile}.json`));
+  for (const path of leaves) {
+    try {
+      const info = await lstat(path);
+      if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) {
+        throw new Error('Auth fixture token leaves must be unlinked regular files.');
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
@@ -108,12 +123,12 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
   encrypted += cipher.final('hex');
   const encryptedData = `${iv.toString('hex')}:${encrypted}`;
 
-  await writeFile(
-    join(tokensDir, 'tokens.json'),
-    encryptedData,
-    { encoding: 'utf-8', mode: 0o600 }
-  );
-  await chmod(join(tokensDir, 'tokens.json'), 0o600);
+  // Cleanup removed the old fixture leaf. Exclusive creation refuses a new
+  // occupant, including a link introduced between validation and publication.
+  const file = await open(join(tokensDir, 'tokens.json'),
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  try { await file.writeFile(encryptedData, 'utf8'); await file.chmod(0o600); }
+  finally { await file.close(); }
 }
 
 /**

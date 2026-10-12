@@ -143,14 +143,25 @@ scaffold file atomically with private permissions; linked credential destination
 are refused, including when initializing in the current directory.
 Temporary `.env.local.eai-*.tmp` credential files are ignored as well, so an
 interrupted initialization cannot leave them eligible for ordinary Git staging.
+Init file writers use an exclusive lock with no stale-lock takeover. New leaves
+are published without replacing another file. Existing regular files are
+rechecked under that lock and replaced atomically; these checks coordinate init
+writers and detect observed changes, without isolating arbitrary concurrent
+filesystem changes by the same user. Inspect the files and lock before retrying
+an interrupted initialization.
 
-Before authenticated commands run, a named profile's PublicAPI endpoint
+Before commands use PublicAPI authentication, a named profile's PublicAPI endpoint
 must agree with `BASE_URL_PUBLIC_API` and `ROUTING_BOOTSTRAP_PUBLIC_API_URL`
 where configured in the app-root `.env.local` or your shell. The shell bootstrap
 is checked even when the project has no `BASE_URL_PUBLIC_API`.
+`eai login` accepts its authentication flags before that check, then rechecks
+the selected profile and returned token configuration before protected workspace
+discovery. `eai logout` clears only the selected local token namespace.
 
 `eai env pull` and `eai env push` use Azure CLI authorization independently of
-your platform workspace role. For an App Configuration identity with data-plane
+your platform workspace role and PublicAPI configuration. They validate the
+local profile selector without requiring saved platform authentication settings.
+For an App Configuration identity with data-plane
 permissions, use Azure CLI's login mode for the command:
 
 ```bash

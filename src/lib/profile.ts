@@ -130,7 +130,7 @@ function commandPath(command: Command): string[] {
 
 function isLocalProfileDiscovery(command: Command, path: string[]): boolean {
   const options = command.optsWithGlobals();
-  return ['update', 'errors', 'agent', 'blocks', 'runtime', 'gofer', 'template'].includes(path[0])
+  return ['update', 'errors', 'agent', 'blocks', 'runtime', 'gofer', 'template', 'login', 'logout'].includes(path[0])
     || (path[0] === 'env' && path[1] === 'list')
     || (path[0] === 'types' && path[1] === 'validate')
     || (path.includes('source') && command.name() === 'validate')
@@ -189,8 +189,18 @@ export async function activateCommandProfile(
   const env = projectRoot ? captureProjectProfileEnv(projectRoot) : {};
   const profile = resolveCommandProfile(command, environmentProfile, env.EAI_PROFILE);
   setActiveProfile(profile);
+  // Local cleanup and Azure CLI configuration do not consume PublicAPI auth.
+  if (path[0] === 'logout' || (path[0] === 'env' && ['pull', 'push'].includes(path[1]))) return;
   const config = captureProfileConfig(profile); // A missing named profile never falls back to default tokens.
   if (!isLocalProfileDiscovery(command, path)) await assertProfileApiCoherence(profile, config, env);
+}
+
+/** Revalidate the already selected profile before login's protected workspace discovery. */
+export async function assertActiveProfileApiCoherence(projectRoot?: string): Promise<void> {
+  const profile = getActiveProfile();
+  const config = captureProfileConfig(profile);
+  const env = projectRoot ? captureProjectProfileEnv(projectRoot) : {};
+  await assertProfileApiCoherence(profile, config, env);
 }
 
 // ── Paths ────────────────────────────────────────────────────────────────────

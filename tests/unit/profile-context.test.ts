@@ -13,6 +13,7 @@ import {
 } from '../../src/lib/profile.js';
 import * as auth from '../../src/lib/auth.js';
 import { resolvePublicApiUrl } from '../../src/lib/tenant-context.js';
+import { loginCommand, logoutCommand } from '../../src/commands/login.js';
 
 const devApi = 'https://dev-api.au.myenterprise.ai/public';
 const prodApi = 'https://api.au.myenterprise.ai/public';
@@ -74,6 +75,37 @@ describe('app-local CLI profile context', () => {
     setActiveProfile('default');
     vi.unstubAllEnvs(); vi.unstubAllGlobals();
     await rm(fixture.root, { recursive: true, force: true });
+  });
+
+  test('mounted login applies explicit authority flags before the workspace coherence gate', async () => {
+    fixture.cwd = await project('login-app', '', devApi);
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.cwd);
+    const browser = vi.spyOn(auth, 'browserLogin').mockResolvedValue({ accessToken: 'synthetic-login', expiresAt: Date.now() + 600_000,
+      tenantName: 'flag-authority', tenantId: 'flag-tenant', clientId: 'synthetic-client' });
+    for (const name of ['tenantName', 'tenantId', 'scope', 'callbackPort']) loginCommand.setOptionValue(name, undefined);
+    const root = new Command('eai').option('--profile <name>');
+    root.hook('preAction', (_root, command) => activateCommandProfile(command, undefined, fixture.cwd));
+    root.addCommand(loginCommand);
+    await root.parseAsync(['login', '--tenant-name', 'flag-authority', '--tenant-id', 'flag-tenant'], { from: 'user' });
+    expect(browser).toHaveBeenCalledWith('flag-authority', 'flag-tenant', expect.any(String), expect.any(String), expect.any(Object));
+    expect((await auth.loadTokens())?.accessToken).toBe('synthetic-login');
+    // Auth succeeded; incompatible workspace routing remains denied before fetch.
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test.each(['default', 'dev'])('mounted logout clears only %s tokens despite mismatched project API', async selected => {
+    fixture.cwd = await project('logout-app', selected === 'dev' ? 'EAI_PROFILE=dev\n' : '', testApi);
+    vi.spyOn(process, 'cwd').mockReturnValue(fixture.cwd);
+    setActiveProfile(selected);
+    await auth.storeTokens({ accessToken: 'synthetic-recovery-token', expiresAt: Date.now() + 600_000,
+      tenantName: 'synthetic', tenantId: 'synthetic', clientId: 'synthetic' });
+    const root = new Command('eai').option('--profile <name>');
+    root.hook('preAction', (_root, command) => activateCommandProfile(command, undefined, fixture.cwd));
+    root.addCommand(logoutCommand);
+    await root.parseAsync(['logout'], { from: 'user' });
+    expect(getActiveProfile()).toBe(selected);
+    expect(await auth.loadTokens()).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   test('outside an app the public default ignores persisted activeProfile and nearby env files', async () => {

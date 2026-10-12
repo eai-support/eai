@@ -100,6 +100,24 @@ describe('complete Object Type read exports', () => {
     await expect(readConsistentObjectTypes({ getPublishedObjectTypes: async () => response(page(docs, 1)) }, tenantId)).rejects.toThrow('outside the selected workspace');
   });
 
+  test.each([
+    ...['tenant', 'tenantId', 'tenant_id'].flatMap(key => [null, false, 42, [], {}, ''].map(value => ({ [key]: value }))),
+    { tenant: { slug: 'foreign-tenant' } }, { tenant: { id: 42 } }, { tenant: { id: null } }, { tenant: { id: '' } },
+  ])('rejects a malformed present workspace marker %j', async marker => {
+    const docs = [{ ...documents(1)[0], ...marker }];
+    await expect(readConsistentObjectTypes({ getPublishedObjectTypes: async () => response(page(docs, 1)) }, tenantId))
+      .rejects.toThrow('workspace');
+  });
+
+  test.each([
+    {}, { tenant: tenantId }, { tenant: { id: tenantId, displayName: 'Preserved relationship metadata' } },
+    { tenantId }, { tenant_id: tenantId }, { tenant: tenantId, tenantId, tenant_id: tenantId },
+  ])('preserves valid or legacy-omitted workspace markers %j', async marker => {
+    const [definition] = documents(1); delete definition.tenant;
+    const docs = [{ ...definition, ...marker }];
+    expect(await readConsistentObjectTypes({ getPublishedObjectTypes: async () => response(page(docs, 1)) }, tenantId)).toEqual(docs);
+  });
+
   test('later-page outages remain failures', async () => {
     const client = { getPublishedObjectTypes: async (options?: { page?: number }) => options?.page === 2 ? response({ secret: 'do-not-print' }, 503) : response(page(documents(205), 1)) };
     await expect(readConsistentObjectTypes(client, tenantId)).rejects.toThrow('HTTP 503');
