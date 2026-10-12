@@ -5,7 +5,7 @@
  */
 
 import { execFile } from "node:child_process";
-import { chmod, link, lstat, mkdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { Command } from "commander";
 import { createRequire } from "node:module";
 import { join } from "node:path";
@@ -206,14 +206,17 @@ describe("eai init", () => {
     }
   });
 
-  test.each([".gitignore", ".env.local"] as const)("an absent %s cannot overwrite a file created at publication", async name => {
+  test.each(([".gitignore", ".env.local"] as const).flatMap(name => [false, true].map(alias => ({ name, alias }))))
+    ("an absent $name cannot overwrite a file created at publication (alias=$alias)", async ({ name, alias }) => {
     const directory = join(env.dir, "publication-fixture"); await mkdir(directory);
-    const target = join(directory, name); const sentinel = "Unrelated concurrent bytes\n";
+    const selected = alias ? join(env.dir, "publication-alias") : directory;
+    if (alias) await symlink(directory, selected, "dir");
+    const target = join(await realpath(selected), name); const sentinel = "Unrelated concurrent bytes\n";
     initPublication.beforePublish = async destination => {
       if (destination === target) { initPublication.beforePublish = undefined; await writeFile(target, sentinel); }
     };
     let failure: unknown;
-    try { await updateInitProjectFile(directory, name, () => Buffer.from("Synthetic init bytes\n"), 0o600); }
+    try { await updateInitProjectFile(selected, name, () => Buffer.from("Synthetic init bytes\n"), 0o600); }
     catch (error) { failure = error; }
     expect(failure).toBeInstanceOf(Error);
     expect(await readFile(target, "utf8")).toBe(sentinel);
@@ -221,7 +224,7 @@ describe("eai init", () => {
 
   test('existing-leaf init writers fail on lock contention without stale takeover', async () => {
     const directory = join(env.dir, "cooperative-publication-fixture"); await mkdir(directory);
-    const target = join(directory, ".gitignore"); await writeFile(target, "Original\n");
+    const target = join(await realpath(directory), ".gitignore"); await writeFile(target, "Original\n");
     let entered!: () => void; const publishing = new Promise<void>(resolve => { entered = resolve; });
     let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
     initPublication.beforePublish = async destination => {
@@ -281,7 +284,7 @@ describe("eai init", () => {
     }
   });
 
-  test.each(["symlink", "hardlink", "directory"])("current-dir init refuses an unsafe credential destination %s", async (kind) => {
+  test.each(["symlink", "hardlink", "directory", "hydration-symlink", "hydration-hardlink"])("current-dir init refuses an unsafe credential destination %s", async (kind) => {
     const projectDir = join(env.dir, "credential-destination-app");
     await mkdir(projectDir);
     const outside = join(env.dir, "outside-credential-fixture");
@@ -291,7 +294,7 @@ describe("eai init", () => {
     const destination = join(projectDir, ".env.local");
     if (kind === "symlink") await symlink(outside, destination);
     else if (kind === "hardlink") await link(outside, destination);
-    else { await mkdir(destination); await writeFile(join(destination, "sentinel"), "fixture\n"); }
+    else if (kind === "directory") { await mkdir(destination); await writeFile(join(destination, "sentinel"), "fixture\n"); }
     workingDirectoryIs(ctx, projectDir);
     // No app context exists before init. The real preAction cannot guard the newly copied target.
     expect(await findProjectRoot(projectDir)).toBeNull();
@@ -319,6 +322,16 @@ describe("eai init", () => {
     const app = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({
       childTenant: null,
     }), { status: 201 }));
+    const originalProfileLoader = profile.loadProfileConfig;
+    let redirected = false;
+    const profileLoader = vi.spyOn(profile, "loadProfileConfig").mockImplementation(async name => {
+      if (!redirected && kind.startsWith("hydration-") && await lstat(destination).catch(() => null)) {
+        redirected = true; await rm(destination);
+        if (kind === "hydration-symlink") await symlink(outside, destination);
+        else await link(outside, destination);
+      }
+      return originalProfileLoader(name);
+    });
     const exit = vi.spyOn(process, "exit").mockImplementation((() => { throw new Error("Unsafe credential destination rejected"); }) as never);
     try {
       let failure: unknown;
@@ -331,14 +344,15 @@ describe("eai init", () => {
       expect(failure).toBeInstanceOf(Error);
       expect((failure as Error).message).toBe("Unsafe credential destination rejected");
       expect(exit).toHaveBeenCalledWith(1);
-      if (kind === "symlink") expect((await lstat(destination)).isSymbolicLink()).toBe(true);
-      if (kind === "hardlink") expect((await lstat(destination)).nlink).toBe(2);
+      if (kind.endsWith("symlink")) expect((await lstat(destination)).isSymbolicLink()).toBe(true);
+      if (kind.endsWith("hardlink")) expect((await lstat(destination)).nlink).toBe(2);
       if (kind === "directory") expect(await readFile(join(destination, "sentinel"), "utf8")).toBe("fixture\n");
+      if (kind.startsWith("hydration-")) expect(redirected).toBe(true);
     } finally {
       initCommand.parent = savedParent;
       profile.setActiveProfile(savedProfile);
       for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
-      for (const spy of [exit, authSpy, publicApiSpy, tenantSpy, tokenSpy, capability, tenant, app]) spy.mockRestore();
+      for (const spy of [exit, authSpy, publicApiSpy, tenantSpy, tokenSpy, capability, tenant, app, profileLoader]) spy.mockRestore();
     }
   });
 

@@ -272,6 +272,41 @@ describe('eai resources command guidance', () => {
     }
   });
 
+  test.each(['json', 'text'].flatMap(format => ['error', 'rejected', 'pending', 'running', 'cancelled', '', 'success', 'FAILED']
+    .map(status => ({ format, status }))))('sync-schema fails closed for an unsupported $status state in $format', async ({ format, status }) => {
+    await storeTestTokens(env.dir, STORAGE_SYNC_TENANT_ID);
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/${STORAGE_SYNC_TENANT_ID}/storage/sync-schema`, () =>
+      HttpResponse.json({ tenantId: STORAGE_SYNC_TENANT_ID, dryRun: true, results: [
+        { objectType: 'project', backend: 'documentdb', status, routeSource: 'published', actions: [] },
+      ] })));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled schema status exit'); }) as never);
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(resourcesCommand.parseAsync(['sync-schema', '--dry-run', '--format', format], { from: 'user' }))
+      .rejects.toThrow('Controlled schema status exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(write).not.toHaveBeenCalled();
+    expect(joinedConsoleOutput(error)).toContain('invalid results contract');
+    expect(joinedConsoleOutput(log)).not.toContain('processed');
+  });
+
+  test.each(['json', 'text'].flatMap(format => ['planned', 'provisioned', 'skipped', 'applied', 'already_applied']
+    .map(status => ({ format, status }))))('sync-schema preserves the producer $status state in $format', async ({ format, status }) => {
+    await storeTestTokens(env.dir, STORAGE_SYNC_TENANT_ID);
+    const payload = { tenantId: STORAGE_SYNC_TENANT_ID, dryRun: true, results: [
+      { objectType: 'project', backend: 'documentdb', status, routeSource: 'published', actions: [] },
+    ] };
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/${STORAGE_SYNC_TENANT_ID}/storage/sync-schema`, () => HttpResponse.json(payload)));
+    const exit = vi.spyOn(process, 'exit');
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await resourcesCommand.parseAsync(['sync-schema', '--dry-run', '--format', format], { from: 'user' });
+    expect(exit).not.toHaveBeenCalled();
+    if (format === 'json') expect(JSON.parse(String(write.mock.calls[0][0]))).toEqual(payload);
+    else expect(joinedConsoleOutput(log)).toContain(status);
+  });
+
   test('prints semantic search recovery guidance when hybrid search lacks embeddings', async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/data/resources/test-tenant-id/search`, () =>

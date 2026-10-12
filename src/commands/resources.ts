@@ -1348,7 +1348,7 @@ resourcesCommand
 
       if (!Array.isArray(payload.results) || payload.results.some(result =>
         !result || typeof result.objectType !== 'string' || typeof result.backend !== 'string'
-        || typeof result.status !== 'string'
+        || !['planned', 'provisioned', 'skipped', 'applied', 'already_applied', 'failed'].includes(result.status)
         || (result.actions !== undefined && (!Array.isArray(result.actions)
           || result.actions.some(action => typeof action !== 'string'))))) {
         throw new Error('Storage schema sync returned an invalid results contract.');
