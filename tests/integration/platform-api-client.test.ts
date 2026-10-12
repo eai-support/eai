@@ -1,3 +1,7 @@
+import { spawnSync } from 'node:child_process'
+import { mkdtemp, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
 
 vi.mock('../../src/lib/auth.js', () => ({
@@ -7,6 +11,88 @@ vi.mock('../../src/lib/auth.js', () => ({
 import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
+
+describe('compiled managed deadline rejection handling', () => {
+  test.each(['transport', 'body', 'deadline', 'late-rejection', 'success', 'already-aborted-input', 'already-aborted-body', 'expired-response-body'])
+    ('handles %s without an uncaught secondary rejection', async mode => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-deadline-process-'))
+      try {
+        const script = `
+          import assert from 'node:assert/strict';
+          import { getEventListeners } from 'node:events';
+          import { createServer } from 'node:http';
+          import { setTimeout as delay } from 'node:timers/promises';
+          import { awaitManagedRequestDeadline, PlatformAPIClient, readManagedPublicResponseText, isManagedPublicRequestTimeout } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
+          const mode = ${JSON.stringify(mode)};
+          const controller = new AbortController();
+          const reason = new DOMException('Owned deadline', 'TimeoutError');
+          const failure = new Error('Owned native read failure');
+          let server;
+          let reader;
+          try {
+            let input;
+            let expected = failure;
+            if (mode === 'transport') {
+              server = createServer(request => request.socket.destroy());
+              await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+              input = fetch('http://127.0.0.1:' + server.address().port).catch(error => { expected = error; throw error; });
+            } else if (mode === 'expired-response-body') {
+              server = createServer((_request, response) => { response.writeHead(200); response.write('{'); });
+              await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+              const nativeFetch = globalThis.fetch;
+              let requestSignal;
+              globalThis.fetch = (url, options) => { requestSignal = options.signal; return nativeFetch(url, options); };
+              const client = new PlatformAPIClient('http://127.0.0.1:' + server.address().port, 'owned-workspace');
+              const response = await client.getPublishedObjectTypes({ timeoutMs: 250 });
+              if (!requestSignal.aborted) await new Promise(resolve => requestSignal.addEventListener('abort', resolve, { once: true }));
+              expected = requestSignal.reason;
+              assert.equal(isManagedPublicRequestTimeout(expected), true);
+              input = readManagedPublicResponseText(response);
+            } else if (mode === 'body' || mode === 'already-aborted-body') {
+              reader = new ReadableStream({ start(stream) { stream.error(failure); } }).getReader();
+              input = reader.read();
+            } else if (mode === 'deadline' || mode === 'late-rejection') {
+              expected = reason;
+              input = new Promise((_resolve, reject) => {
+                if (mode === 'late-rejection') setTimeout(() => reject(failure), 20);
+              });
+              setTimeout(() => controller.abort(reason), 5);
+            } else if (mode === 'success') {
+              input = Promise.resolve({ preserved: true });
+            } else {
+              input = Promise.reject(failure);
+            }
+            if (mode.startsWith('already-aborted')) {
+              controller.abort(reason);
+              expected = reason;
+            }
+            if (mode === 'success') {
+              assert.deepEqual(await awaitManagedRequestDeadline(controller.signal, input), { preserved: true });
+            } else {
+              let caught;
+              try { await awaitManagedRequestDeadline(controller.signal, input); } catch (error) { caught = error; }
+              assert.equal(caught, expected);
+            }
+            await delay(30);
+            assert.equal(getEventListeners(controller.signal, 'abort').length, 0);
+            console.log(JSON.stringify({ mode, originalErrorRetained: true, abortListeners: 0 }));
+          } finally {
+            reader?.releaseLock();
+            if (server) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+          }
+        `
+        const result = spawnSync(process.execPath, ['--unhandled-rejections=strict', '--input-type=module', '-e', script], {
+          encoding: 'utf8', timeout: 5000,
+          env: { ...process.env, HOME: home, USERPROFILE: home, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '<owned-loopback-token>', EAI_NO_UPDATE_CHECK: '1' },
+        })
+        expect(result.error).toBeUndefined()
+        expect(result.signal).toBeNull()
+        expect(result.stderr).toBe('')
+        expect(result.status).toBe(0)
+        expect(JSON.parse(result.stdout)).toEqual({ mode, originalErrorRetained: true, abortListeners: 0 })
+      } finally { await rm(home, { recursive: true, force: true }) }
+    })
+})
 
 describe('PlatformAPIClient', () => {
   afterEach(() => {
