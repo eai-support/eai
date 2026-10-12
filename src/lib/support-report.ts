@@ -120,7 +120,7 @@ export async function prepareSupportReport(options: SupportOptions, session: Sto
   const exitCode = options.exitCode === undefined ? undefined : Number(options.exitCode);
   if (exitCode !== undefined && (!/^-?\d+$/.test(options.exitCode!) || !Number.isInteger(exitCode)
     || exitCode < -2147483648 || exitCode > 2147483647)) throw new Error('Exit code must be a signed 32-bit integer.');
-  // Read the harness summary before anything else so a temp file is consumed even when the report fails later.
+  // Read before report construction so invalid context cannot enter the preview.
   const rawHarness = options.contextFile === undefined ? undefined : await readHarnessContextSource(options.contextFile, stdin);
   const harnessInput = rawHarness === undefined ? undefined : validateHarnessContext(rawHarness);
   const savedContext = options.lastError === false ? null : readSupportContext();
@@ -165,10 +165,10 @@ export async function prepareSupportReport(options: SupportOptions, session: Sto
 /** Validated one-time capability link and expiry returned by the website. */
 export interface SupportDraft { readonly url: string; readonly expiresAt: string }
 
-const INVALID_RESPONSE = (): SupportRequestError => new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+const invalidDraftResponse = (): SupportRequestError => new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
 
 async function readBoundedBody(response: Response): Promise<Buffer> {
-  if (!response.body) throw INVALID_RESPONSE();
+  if (!response.body) throw invalidDraftResponse();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
@@ -179,7 +179,7 @@ async function readBoundedBody(response: Response): Promise<Buffer> {
       bytes += value.byteLength;
       if (bytes > MAX_RESPONSE_BYTES) {
         await reader.cancel();
-        throw INVALID_RESPONSE();
+        throw invalidDraftResponse();
       }
       chunks.push(value);
     }
@@ -230,21 +230,21 @@ export async function createSupportDraft(website: string, bundle: SupportBundle,
     }
     if (!response.headers.get('content-type')?.includes('application/json') || !response.body) {
       await response.body?.cancel();
-      throw INVALID_RESPONSE();
+      throw invalidDraftResponse();
     }
     const data: unknown = JSON.parse((await readBoundedBody(response)).toString('utf8'));
-    if (!data || typeof data !== 'object') throw INVALID_RESPONSE();
+    if (!data || typeof data !== 'object') throw invalidDraftResponse();
     const { id, token, expiresAt, redeemUrl } = data as Record<string, unknown>;
     if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
       || typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)
       || typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()
       || redeemUrl !== `${website}/support#draft=${id}.${token}`) {
-      throw INVALID_RESPONSE();
+      throw invalidDraftResponse();
     }
     return { url: redeemUrl, expiresAt };
   } catch (error) {
     if (error instanceof SupportRequestError) throw error;
-    if (error instanceof SyntaxError) throw INVALID_RESPONSE();
+    if (error instanceof SyntaxError) throw invalidDraftResponse();
     throw new SupportRequestError('request_failed', 'The support request failed or timed out. No retry was sent; a draft may have been created.');
   }
 }

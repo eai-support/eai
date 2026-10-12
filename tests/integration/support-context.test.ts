@@ -176,7 +176,7 @@ describe('support context from failing commands', () => {
     expect(Object.keys(context).sort()).toEqual(['command', 'exitCode', 'recordedAt']);
   });
 
-  test('fragmented structured stderr errors keep one parseable document with the help offer in error.help', async () => {
+  test('fragmented structured stderr errors keep one parseable document without changing the JSON error envelope', async () => {
     const script = `
       import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(contextModule)};
       import { formatErrorJSON, ErrorCode } from ${JSON.stringify(errorModule)};
@@ -190,10 +190,11 @@ describe('support context from failing commands', () => {
 
     expect(result.status).toBe(1);
     const payload = JSON.parse(String(result.stderr));
-    expect(payload.error).toMatchObject({ code: 'E305', exitCode: 1, help: SUPPORT_HELP });
+    expect(payload.error).toMatchObject({ code: 'E305', exitCode: 1 });
+    expect(Object.keys(payload.error).sort()).toEqual(['code', 'exitCode', 'message', 'suggestion']);
     expect(payload.error.suggestion).not.toContain('eai support');
     expect(Object.keys(payload)).toEqual(['error']);
-    expect(Object.keys(payload.error).sort()).toEqual(['code', 'exitCode', 'help', 'message', 'suggestion']);
+    expect(Object.keys(payload.error).sort()).toEqual(['code', 'exitCode', 'message', 'suggestion']);
     expect(String(result.stderr).trim().endsWith('}')).toBe(true);
   });
 
@@ -309,32 +310,33 @@ describe('support context from failing commands', () => {
       console.log(JSON.stringify(envelopes));
     `]);
     expect(result.status).toBe(0);
-    const envelopes = JSON.parse(String(result.stdout)) as Array<{ error: { suggestion: string; help: string } }>;
+    const envelopes = JSON.parse(String(result.stdout)) as Array<{ error: { suggestion: string; guidance?: unknown } }>;
     expect(envelopes.length).toBeGreaterThan(10);
     for (const { error } of envelopes) {
       expect(error.suggestion).not.toContain('eai support');
       expect(error.suggestion).not.toContain('Need help?');
-      expect(error.help).toBe(SUPPORT_HELP);
+      expect(error).not.toHaveProperty('help');
+      expect(Object.keys(error).sort()).toEqual(['code', 'exitCode', ...(error.guidance ? ['guidance'] : []), 'message', 'suggestion'].sort());
     }
   });
 
-  test('a failing eai support or eai errors command prints no help offer, because it would loop', async () => {
+  test('a failing eai support or eai errors command keeps the person-facing hint on every nonzero exit', async () => {
     const explanation = run([cliEntry, 'errors', 'explain', 'unknown-entry', '--format', 'json']);
     expect(explanation.status).toBe(1);
-    expect(String(explanation.stderr)).not.toContain('Need help?');
-    expect(String(explanation.stderr)).not.toContain('eai support');
+    expect(String(explanation.stderr)).toContain(SUPPORT_HELP);
+
 
     const explanationText = run([cliEntry, 'errors', 'explain', 'unknown-entry']);
     expect(explanationText.status).toBe(1);
-    expect(String(explanationText.stderr)).not.toContain('Need help?');
+    expect(String(explanationText.stderr)).toContain('Need help?');
 
     const supportParseFailure = run([cliEntry, 'support', '--unknown-option']);
     expect(supportParseFailure.status).toBe(1);
-    expect(String(supportParseFailure.stderr)).not.toContain('Need help?');
+    expect(String(supportParseFailure.stderr)).toContain('Need help?');
 
     const supportFailure = run([cliEntry, 'support', '--format', 'json', '--no-open', '--source', 'dashboard'], { EAI_WEBSITE_URL: 'http://127.0.0.1:9' });
     expect(supportFailure.status).toBe(1);
-    expect(String(supportFailure.stderr)).not.toContain('Need help?');
+    expect(String(supportFailure.stderr)).toContain('Need help?');
 
     const otherFailure = run([cliEntry, 'whoami']);
     expect(otherFailure.status).toBe(1);

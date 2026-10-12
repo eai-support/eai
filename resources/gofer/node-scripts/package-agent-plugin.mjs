@@ -552,6 +552,7 @@ ${buildLocalSettingsCleanupContract()}
 
 ${buildAppPreviewRunnerContract()}
 
+
 ## Controlled English Contract
 
 Use ASD-STE100 Simplified Technical English as the target writing standard for all Gofer-authored chat, documents, commands, summaries, PR notes, error guidance, and validation artifacts. ASD-STE100 is copyright and a trademark of ASD; do not bundle the protected ASD dictionary and do not claim ASD certification.
@@ -1311,6 +1312,9 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
   for (const relativePath of copiedResources) {
     await copyIfExists(root, relativePath, pluginRoot);
   }
+  const supportAgentsPath = path.join(pluginRoot, 'AGENTS.md');
+  const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
+  await fs.writeFile(supportAgentsPath, `${supportAgents.trimEnd()}\n\n${buildSupportReportContract()}\n`, 'utf8');
   await writeJson(path.join(pluginRoot, '.gemini', 'extension.json'), geminiManifest);
   await copyIfExistsAs(root, '.claude/commands', 'commands', pluginRoot);
   await copyIfExistsAs(root, '.claude/agents', 'agents', pluginRoot);

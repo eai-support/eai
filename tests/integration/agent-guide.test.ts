@@ -96,7 +96,8 @@ describe('agent guide', () => {
     expect(support?.instruction).toContain('chat link the CLI returned');
     expect(support?.instruction).toContain('--organisation-location apac|emea|americas');
     const verify = guide.recoveryLoop.find(step => step.title === 'Verify and stop');
-    expect(verify?.instruction).toContain('say "get help"');
+    expect(verify?.instruction).toContain('Then state what still fails and wait.');
+    expect(verify?.instruction).not.toContain('say "get help"');
     expect(verify?.instruction).toContain('Do not start a support report on your own.');
     const rules = guide.operatingRules.join('\n');
     expect(rules).toContain('Start a support report only when the person explicitly asks for help or support');

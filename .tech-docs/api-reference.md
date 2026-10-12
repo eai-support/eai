@@ -1372,7 +1372,7 @@ draft id and one-time token in its fragment. The page submits the final report.
 | `--exit-code <code>` | Signed 32-bit exit code override. |
 | `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
 | `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
-| `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file under the per-user temp folder is deleted after reading. |
+| `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Files older than 24 hours in that directory are removed on the next support invocation; files elsewhere are never deleted. |
 | `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in JSON or noninteractive runs; a mismatch answers `consent_stale`. |
 | `--organisation-location <location>` | `apac`, `emea` or `americas`; sent as `organisationLocation` when the saved session has no active workspace. |
 | `--no-last-error` | Leave the saved context of the last failing command out of the report. |
@@ -1406,9 +1406,9 @@ website errors return safe messages and exit 1. Draft requests have a 10-second
 timeout and never retry automatically.
 
 Every nonzero exit prints "Need help? Run eai support, or ask your AI assistant
-to get help. Nothing is sent without your approval." to stderr, except after a
-failing `eai support` or `eai errors` command. JSON errors carry the same text
-in `error.help`; `error.suggestion` holds only the catalog suggestion.
+to get help. Nothing is sent without your approval." to stderr in text mode,
+including failing `eai support` and `eai errors` commands. JSON error keys remain
+unchanged; `error.suggestion` holds only the catalog suggestion.
 
 Previous failure context stores only command, exit code, recognized catalog code
 and reason, and timestamp. Raw diagnostic text is excluded, including from older

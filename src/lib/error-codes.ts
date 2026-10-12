@@ -10,7 +10,7 @@
 
 import { findGuidanceByCode } from './error-guidance/catalog.js';
 import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
-import { recordSupportError, SUPPORT_HELP } from './support-context.js';
+import { recordSupportError } from './support-context.js';
 import { redactSupportBundle, redactSupportText } from './support-redaction.js';
 
 /** Stable public codes used by CLI output, automation, and support guidance. */
@@ -223,7 +223,6 @@ export function formatErrorJSON(
       code,
       message,
       suggestion,
-      help: SUPPORT_HELP,
       ...(guidance ? { guidance: guidanceToJSON(guidance, context) } : {}),
       exitCode: 1,
     },

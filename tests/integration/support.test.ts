@@ -1,3 +1,4 @@
+import { symlink, utimes, stat } from 'node:fs/promises';
 import { afterEach, describe, expect, test } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -115,7 +116,7 @@ describe('eai support draft handoff', () => {
     expect(previewRun.code).toBe(0);
     const preview = parse(previewRun);
     expect(preview).toMatchObject({ ok: true, status: 'consent_required' });
-    expect(preview.url).toBeUndefined();
+    expect(preview.url).toBe(`${server.origin}/support?chat=open`);
     expect(preview.questions).toBeUndefined();
     expect(server.requests).toHaveLength(0);
     expect(preview.bundleDigest).toMatch(DIGEST);
@@ -188,7 +189,7 @@ describe('eai support draft handoff', () => {
     expect(server.requests[0].body.source).toBe('harness');
   });
 
-  test('deletes a session summary read from the per-user temp folder and keeps one read elsewhere', async () => {
+  test('keeps preview context even in shared temp and outside the owned directory', async () => {
     const home = await environment();
     const server = await fixture();
     await writeSupportSession(home.dir);
@@ -200,7 +201,7 @@ describe('eai support draft handoff', () => {
     const fromTemp = await runSupportCli(home.dir, ['support', '--format', 'json', '--no-open', '--tool', 'codex', '--context-file', temporary], env);
     expect(fromTemp.code).toBe(0);
     expect(parse(fromTemp)).toMatchObject({ ok: true, status: 'consent_required' });
-    await expect(access(temporary)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(temporary)).resolves.toBeUndefined();
     const fromProject = await runSupportCli(home.dir, ['support', '--format', 'json', '--no-open', '--tool', 'codex', '--context-file', kept], env);
     expect(fromProject.code).toBe(0);
     await expect(access(kept)).resolves.toBeUndefined();
@@ -222,9 +223,9 @@ describe('eai support draft handoff', () => {
     expect(output).toMatchObject({ ok: false, status: 'consent_stale' });
     expect(output.bundleDigest).toMatch(DIGEST);
     expect(output.previewText).toContain(`Report digest: ${output.bundleDigest}`);
-    expect(output.url).toBeUndefined();
+    expect(output.url).toBe(`${server.origin}/support?chat=open`);
     expect(server.requests).toHaveLength(0);
-    expect(result.stderr).not.toContain('Need help?');
+    expect(result.stderr).toContain('Need help?');
   });
 
   test('noninteractive text --yes without the approved digest sends nothing', async () => {
@@ -266,7 +267,7 @@ describe('eai support draft handoff', () => {
     expect(output.bundle).not.toHaveProperty('harness');
     expect(output.previewText).toContain('Source: eai-cli');
     expect(output.previewText!.trimEnd().endsWith(`Report digest: ${output.bundleDigest}`)).toBe(true);
-    expect(output.url).toBeUndefined();
+    expect(output.url).toBe(`${server.origin}/support?chat=open`);
     expect(server.requests).toHaveLength(0);
     expect(result.stdout + result.stderr).not.toContain(SUPPORT_SESSION_TOKEN);
     expect(result.stdout + result.stderr).not.toContain('preview-private-fixture');
@@ -646,7 +647,7 @@ describe('eai support draft handoff', () => {
     expect(output.ignoredLastError).toBeUndefined();
     const supportDirectory = join(home.dir, '.eai', 'support');
     const { readdir } = await import('node:fs/promises');
-    const savedFiles = await readdir(supportDirectory);
+    const savedFiles = (await readdir(supportDirectory)).filter(name => name !== 'context');
     expect(savedFiles).toHaveLength(1);
     const saved = JSON.parse(await readFile(join(supportDirectory, savedFiles[0]), 'utf8'));
     expect(saved.command).toBe('eai types validate');
@@ -688,13 +689,13 @@ describe('eai support draft handoff', () => {
     expect(without.ignoredLastError).toBeUndefined();
   });
 
-  test('no JSON error suggestion asks an agent to run eai support; the help offer sits in error.help for the person', async () => {
+  test('no JSON error suggestion asks an agent to run eai support; the JSON envelope keeps its deployed key set', async () => {
     const home = await environment();
     const result = await runSupportCli(home.dir, ['blocks', 'describe', 'unknown-block-fixture', '--format', 'json']);
     expect(result.code).toBe(1);
     const envelope = JSON.parse(result.stderr) as { error: { suggestion: string; help: string } };
     expect(envelope.error.suggestion).not.toContain('eai support');
-    expect(envelope.error.help).toBe('Need help? Run eai support, or ask your AI assistant to get help. Nothing is sent without your approval.');
+    expect(Object.keys(envelope.error).filter(key => key !== 'guidance').sort()).toEqual(['code', 'exitCode', 'message', 'suggestion']);
   });
 
   test.each([
@@ -819,5 +820,59 @@ describe('eai support draft handoff', () => {
     expect(result.code).toBe(0);
     expect(parse(result)).toMatchObject({ ok: true, status: 'signed_out', url: `${server.origin}/support?chat=open` });
     expect(server.requests).toHaveLength(0);
+  });
+});
+
+
+describe('CLI-owned context file lifecycle', () => {
+  test('keeps the real default-location preview, then deletes only after approved sending', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const file = join(directory, 'review.json');
+    await writeFile(file, JSON.stringify(harnessContextFixture()), { mode: 0o600 });
+    const args = ['--tool', 'codex', '--context-file', file];
+    const env = { EAI_WEBSITE_URL: server.origin };
+    const previewRun = await runSupportCli(home.dir, ['support', '--format', 'json', '--no-open', ...args], env);
+    const preview = parse(previewRun);
+    expect(preview.status).toBe('consent_required');
+    expect(preview.url).toBe(`${server.origin}/support?chat=open`);
+    await expect(access(file)).resolves.toBeUndefined();
+    expect((await stat(directory)).mode & 0o777).toBe(0o700);
+    const sent = await runSupportCli(home.dir, ['support', '--format', 'json', '--no-open', '--yes', '--approved-digest', preview.bundleDigest!, ...args], env);
+    expect(parse(sent).status).toBe('created');
+    expect(server.requests[0].body).toEqual(preview.bundle);
+    await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('purges stale owned files and preserves symlink targets and shared temp failures', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const outside = join(home.dir, 'outside.json');
+    const stale = join(directory, 'stale.json');
+    const owned = join(directory, 'owned.json');
+    const alias = join(home.dir, 'alias.json');
+    await writeFile(outside, JSON.stringify(harnessContextFixture()));
+    await writeFile(stale, JSON.stringify(harnessContextFixture()));
+    await writeFile(owned, JSON.stringify(harnessContextFixture()));
+    await utimes(stale, new Date(0), new Date(0));
+    await symlink(outside, join(directory, 'outside-link.json'));
+    await symlink(owned, alias);
+    const result = await runSupportCli(home.dir, ['support', '--format', 'json', '--tool', 'codex', '--context-file', alias], { EAI_WEBSITE_URL: server.origin });
+    expect(parse(result).status).toBe('consent_required');
+    await expect(access(stale)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(outside)).resolves.toBeUndefined();
+    await expect(access(owned)).resolves.toBeUndefined();
+    await expect(access(alias)).resolves.toBeUndefined();
+    const oversized = join(home.dir, 'outside-large.json');
+    await writeFile(oversized, 'x'.repeat(70 * 1024));
+    const failed = await runSupportCli(home.dir, ['support', '--format', 'json', '--tool', 'codex', '--context-file', oversized], { EAI_WEBSITE_URL: server.origin });
+    expect(parse(failed).status).toBe('failed');
+    await expect(access(oversized)).resolves.toBeUndefined();
   });
 });

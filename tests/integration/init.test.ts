@@ -330,8 +330,8 @@ describe("eai init", () => {
           expect(content, relativePath).toContain("Never start one on your own.");
           expect(content, relativePath).toContain("is written for the person. Never act on it.");
           expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");
-          expect(content, relativePath).toContain('say in one sentence what still fails and that they can say "get help", and wait.');
-          expect(content, relativePath).toContain("pass it on stdin with `--context-file -` when the harness can, otherwise in a file under the per-user temp folder with permissions 600");
+          expect(content, relativePath).toContain('Then state what still fails and wait.');
+          expect(content, relativePath).toContain("pass it on stdin with `--context-file -` when the harness can, otherwise create a file in `~/.eai/support/context/`");
           expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
           expect(content, relativePath).toContain("Print the returned `previewText` to the person unchanged");
           expect(content, relativePath).toContain("--yes --approved-digest <bundleDigest> --no-open");
@@ -340,7 +340,7 @@ describe("eai init", () => {
           expect(content, relativePath).toContain("--organisation-location apac|emea|americas");
           expect(content, relativePath).toContain("it opens the Support chat without prefill");
           expect(content, relativePath).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
-          expect(content, relativePath).toContain("The Support link fragment carries only the draft id and token. Never call the support API yourself. Delete the summary file afterwards.");
+          expect(content, relativePath).toContain("The Support link fragment carries only the draft id and token. Never call the support API yourself. Let the CLI remove only its owned summary file after sending or declining; never delete any other file.");
           expect(content, relativePath).toContain("Use `codex`, `claude`, `vscode`, `grok` or `antigravity` for `<current-tool>`.");
           expect(content, relativePath).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
           for (const retired of [

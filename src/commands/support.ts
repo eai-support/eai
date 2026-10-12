@@ -5,6 +5,8 @@ import inquirer from 'inquirer';
 import { getBrowserOpenCommand, loadTokens } from '../lib/auth.js';
 import {
   bundleDigest,
+  discardOwnedHarnessContext,
+  purgeStaleHarnessContexts,
   isOrganisationLocation,
   renderSupportPreview,
   SupportContextError,
@@ -74,7 +76,7 @@ function withLocation(bundle: SupportBundle, organisationLocation: OrganisationL
  */
 export async function runSupport(options: SupportOptions, dependencies: SupportDependencies = {}): Promise<void> {
   const json = options.format === 'json';
-  let chatUrl: string | undefined;
+  let chatUrl = supportChatUrl('https://www.enterpriseaigroup.com');
   const emit = (result: Record<string, unknown>): void => {
     // The validated capability link is the only token-bearing output; do not serialize the server response.
     if (json) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
@@ -85,6 +87,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
   };
   try {
     const website = await resolveSupportWebsite();
+    purgeStaleHarnessContexts();
     chatUrl = supportChatUrl(website);
     const session = await loadTokens();
     const report = await prepareSupportReport(options, session, dependencies.stdin);
@@ -98,7 +101,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
     }
     const questions = needsLocation && !bundle.organisationLocation ? ['organisationLocation'] : [];
     const digest = bundleDigest(bundle);
-    const previewText = renderSupportPreview(bundle as unknown as Record<string, unknown>, digest);
+    const previewText = renderSupportPreview({ ...bundle }, digest);
     const ignored = report.ignoredLastError ? { ignoredLastError: report.ignoredLastError } : {};
     if (!json) {
       if (report.ignoredLastError) {
@@ -114,19 +117,19 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
       return;
     }
     if (questions.length > 0) {
-      emit({ ok: true, status: 'consent_required', bundle, previewText, bundleDigest: digest, questions, ...ignored, message: LOCATION_MESSAGE });
+      emit({ ok: true, status: 'consent_required', bundle, previewText, bundleDigest: digest, questions, url: chatUrl, ...ignored, message: LOCATION_MESSAGE });
       return;
     }
     // JSON mode is a preview until the human has approved the report in the harness chat.
     if (!options.yes && (json || !interactive)) {
-      emit({ ok: true, status: 'consent_required', bundle, previewText, bundleDigest: digest, ...ignored, message: PREVIEW_MESSAGE });
+      emit({ ok: true, status: 'consent_required', bundle, previewText, bundleDigest: digest, url: chatUrl, ...ignored, message: PREVIEW_MESSAGE });
       return;
     }
     if (options.yes) {
       // Relayed consent must name the exact report the person saw; any change invalidates it.
       const approved = options.approvedDigest?.trim().toLowerCase();
       if ((json || !interactive || approved !== undefined) && approved !== digest) {
-        emit({ ok: false, status: 'consent_stale', bundle, previewText, bundleDigest: digest, ...ignored,
+        emit({ ok: false, status: 'consent_stale', bundle, previewText, bundleDigest: digest, url: chatUrl, ...ignored,
           message: approved === undefined
             ? 'Approval must name the previewed report: rerun with --yes --approved-digest <bundleDigest> after the person approves previewText. Nothing was sent.'
             : 'The report changed since it was approved. Show previewText again and, after approval, rerun with the new --approved-digest. Nothing was sent.' });
@@ -134,12 +137,13 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
         return;
       }
     } else if (!await (dependencies.confirm ?? confirmSupport)()) {
-      emit({ ok: true, status: 'declined', bundle, ...ignored, message: 'No report was sent and no draft was created.' });
+      discardOwnedHarnessContext(options.contextFile);
+      emit({ ok: true, status: 'declined', bundle, url: chatUrl, ...ignored, message: 'No report was sent and no draft was created.' });
       return;
     }
     let draft;
     try {
-      draft = await createSupportDraft(website, bundle, session!.accessToken);
+      draft = await createSupportDraft(website, bundle, session?.accessToken ?? '');
     } catch (error) {
       if (error instanceof SupportRequestError && error.code === 'region_required') {
         const unanswered = !bundle.organisationLocation;
@@ -154,6 +158,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
         message: 'The website rejected the login session. Open the Support chat to report this manually; no draft was created.' });
       return;
     }
+    discardOwnedHarnessContext(options.contextFile);
     emit({ ok: true, status: 'created', bundle, url: draft.url, expiresAt: draft.expiresAt, ...ignored,
       message: 'Support draft created. Open the link to review and submit it before it expires.' });
     if (!json && options.open !== false) {
@@ -161,6 +166,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
       catch { console.error('The browser could not open. Use the Support link printed above.'); }
     }
   } catch (error) {
+    if (error instanceof SupportContextError) discardOwnedHarnessContext(options.contextFile);
     const safe = error instanceof SupportRequestError || error instanceof SupportContextError;
     const message = safe ? error.message
       : 'The support report could not be prepared. Check the support options and website configuration.';

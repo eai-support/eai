@@ -26,7 +26,7 @@ export interface SupportErrorContext {
 
 const MAX_STDERR_LENGTH = 32768;
 const MAX_CONTEXT_BYTES = 16384;
-/** Help offer for the person on every failing exit (text stderr) and in the `error.help` field of JSON errors; AI harnesses never act on it. */
+/** Help offer for the person on every failing exit (text stderr); AI harnesses never act on it. */
 export const SUPPORT_HELP = 'Need help? Run eai support, or ask your AI assistant to get help. Nothing is sent without your approval.';
 
 let commandPath = 'eai';
@@ -131,7 +131,7 @@ function persistSupportContext(exitCode: number): void {
 /**
  * Installs tracking once per process, including immediate process.exit() failures.
  * Nonzero exits atomically save private, profile-scoped context; support/errors commands preserve the original failure
- * and print no help offer, because offering help from the help path would loop.
+ * while text failures still print the person-facing help offer.
  */
 export function installSupportErrorTracking(): void {
   if (trackingInstalled) return;
@@ -152,9 +152,7 @@ export function installSupportErrorTracking(): void {
         try {
           const payload: unknown = JSON.parse(stderrText);
           recordSupportJsonError(payload);
-          const record = asRecord(payload);
-          hasStructuredStderrError = Boolean(record?.error)
-            || (typeof record?.help === 'string' && record.help.includes(SUPPORT_HELP));
+          hasStructuredStderrError = Boolean(asRecord(payload)?.error);
         } catch {
           // stderr may contain partial JSON or plain diagnostic text.
         }
@@ -168,9 +166,9 @@ export function installSupportErrorTracking(): void {
   });
 
   process.on('exit', (exitCode) => {
-    if (exitCode === 0 || shouldKeepPreviousError()) return;
+    if (exitCode === 0) return;
     try {
-      persistSupportContext(exitCode);
+      if (!shouldKeepPreviousError()) persistSupportContext(exitCode);
     } catch {
       Reflect.apply(originalWrite, process.stderr, ['Could not save the previous error for eai support.\n']);
     }

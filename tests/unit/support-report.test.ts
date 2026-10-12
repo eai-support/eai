@@ -475,3 +475,20 @@ describe('support consent and request limits', () => {
     expect(String((other as Error).message)).not.toContain('server-private-fixture');
   });
 });
+
+
+describe('support path safety', () => {
+  test.each(['../.env', 'src/../.env', 'src\\..\\.env', 'file://local/path', 'https://example.test/path', 'C:relative'])('rejects escaping or URL filesTouched: %s', file => {
+    expect(() => validateHarnessContext({ ...harnessContextFixture(), filesTouched: [file] })).toThrow(SupportContextError);
+  });
+
+  test('redacts both Windows separators while preserving sibling path prefixes', () => {
+    const input = validateHarnessContext({ ...harnessContextFixture(), summary: 'C:/Users/alex/project/src C:\\Users\\alex\\project\\src C:/Users/alexander/src' });
+    const safe = redactHarnessContext(input, { sensitiveValues: [], homes: ['C:\\Users\\alex'], projectRoots: ['C:\\Users\\alex\\project'] });
+    expect(safe.summary).toContain('./src');
+    expect(safe.summary).toContain('.\\src');
+    expect(safe.summary).toContain('C:/Users/alexander/src');
+    expect(safe.summary).not.toContain('C:/Users/alex/project');
+    expect(safe.summary).not.toContain('C:\\Users\\alex\\project');
+  });
+});

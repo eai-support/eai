@@ -976,3 +976,29 @@ describe("current AI workspace documentation", () => {
     expect(catalogSection).not.toMatch(/Gemini/i);
   });
 });
+
+
+test('fresh installer-created CLAUDE.md retains help-on-request within its line budget', async () => {
+  const environment = await createTestEnvironment();
+  try {
+    await installGoferResources(environment.dir, { workflowProfile: 'enterpriseai' });
+    const content = await readFile(join(environment.dir, 'CLAUDE.md'), 'utf8');
+    expect(content.split('\n').length).toBeLessThan(65);
+    expect(content).toContain('Support starts only when the person asks "get help".');
+    expect(content).toContain('Follow the full support contract in AGENTS.md.');
+    expect(content).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+  } finally { await environment.cleanup(); }
+});
+
+
+test('hand-kept support mirror blocks equal the canonical generator contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['commands/0_gofer_start.md', 'commands/gofer_eai_first_run.md', 'references/platform/eai-support.md', 'instruction-templates/base/agents-base.md', 'instruction-templates/base/copilot-base.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, file), 'utf8'), file).toContain(contract);
+  }
+});

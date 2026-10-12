@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, realpathSync, rmSync, statSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { isAbsolute, sep } from 'node:path';
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import { redactSupportText } from './support-redaction.js';
 
 /** Raw `--context-file` bytes accepted before parsing. */
@@ -72,19 +72,58 @@ async function readStdin(stdin: NodeJS.ReadableStream): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-function isUnderTempFolder(path: string): boolean {
+/** Only this private directory is eligible for automatic context deletion. */
+export function ensureSupportContextDirectory(): string {
+  let directory = realpathSync(homedir());
+  for (const part of ['.eai', 'support', 'context']) {
+    directory = join(directory, part);
+    if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) {
+      throw new SupportContextError('context_unreadable', 'The support context directory must not be a symlink.');
+    }
+    mkdirSync(directory, { recursive: true, mode: 0o700 });
+  }
+  if (realpathSync(directory) !== directory || lstatSync(directory).isSymbolicLink()) {
+    throw new SupportContextError('context_unreadable', 'The support context directory must not be a symlink.');
+  }
+  chmodSync(directory, 0o700);
+  return directory;
+}
+
+function ownedContextFile(source: string): string | undefined {
   try {
-    const temp = realpathSync(tmpdir());
-    const target = realpathSync(path);
-    return target.startsWith(temp.endsWith(sep) ? temp : `${temp}${sep}`);
+    const directory = ensureSupportContextDirectory();
+    const candidate = resolve(source);
+    const lexicalDirectory = resolve(homedir(), '.eai', 'support', 'context');
+    if (!candidate.startsWith(`${directory}${sep}`) && !candidate.startsWith(`${lexicalDirectory}${sep}`)) return undefined;
+    const metadata = lstatSync(candidate);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) return undefined;
+    if (typeof process.getuid === 'function' && metadata.uid !== process.getuid()) return undefined;
+    const actual = realpathSync(candidate);
+    return actual.startsWith(`${directory}${sep}`) ? candidate : undefined;
   } catch {
-    return false;
+    return undefined;
+  }
+}
+
+export function discardOwnedHarnessContext(source: string | undefined): void {
+  if (!source || source === '-') return;
+  const file = ownedContextFile(source);
+  if (!file) return;
+  try { rmSync(file, { force: true }); }
+  catch { process.stderr.write('The owned support context file could not be deleted; remove it yourself.\n'); }
+}
+
+export function purgeStaleHarnessContexts(now = Date.now()): void {
+  const directory = ensureSupportContextDirectory();
+  for (const entry of readdirSync(directory)) {
+    const file = ownedContextFile(join(directory, entry));
+    if (file && now - statSync(file).mtimeMs > 24 * 60 * 60 * 1000) discardOwnedHarnessContext(file);
   }
 }
 
 /**
  * Reads the harness summary from stdin (`-`) or a path, bounded before parsing.
- * A file under the per-user temp folder is deleted once read, so the summary does not linger.
+ * Preview keeps the file so an approved rerun can read the same report.
  * @returns The parsed JSON value, still unvalidated.
  */
 export async function readHarnessContextSource(source: string, stdin: NodeJS.ReadableStream = process.stdin): Promise<unknown> {
@@ -104,24 +143,25 @@ export async function readHarnessContextSource(source: string, stdin: NodeJS.Rea
       throw new SupportContextError('context_unreadable', 'The context file could not be read. Check the --context-file path.');
     }
     if (!metadata.isFile()) throw new SupportContextError('context_unreadable', 'The context file must be a regular file.');
-    const temporary = isUnderTempFolder(source);
     try {
       if (metadata.size > HARNESS_CONTEXT_MAX_RAW_BYTES) {
         throw new SupportContextError('context_too_large', `The context file exceeds ${HARNESS_CONTEXT_MAX_RAW_BYTES} bytes.`);
       }
-      raw = readFileSync(source);
+      const descriptor = openSync(source, 'r');
+      try {
+        const buffer = Buffer.alloc(HARNESS_CONTEXT_MAX_RAW_BYTES + 1);
+        let bytes = 0;
+        while (bytes < buffer.length) {
+          const received = readSync(descriptor, buffer, bytes, buffer.length - bytes, null);
+          if (received === 0) break;
+          bytes += received;
+        }
+        if (bytes > HARNESS_CONTEXT_MAX_RAW_BYTES) throw new SupportContextError('context_too_large', 'The context file exceeds the raw byte limit.');
+        raw = buffer.subarray(0, bytes);
+      } finally { closeSync(descriptor); }
     } catch (error) {
       if (error instanceof SupportContextError) throw error;
       throw new SupportContextError('context_unreadable', 'The context file could not be read. Check the --context-file path.');
-    } finally {
-      // The summary is the person's data in a shared temp folder; the CLI consumes it rather than leaving a copy.
-      if (temporary) {
-        try {
-          rmSync(source, { force: true });
-        } catch {
-          process.stderr.write('The context file in the temp folder could not be deleted after reading; remove it yourself.\n');
-        }
-      }
     }
   }
   try {
@@ -223,18 +263,18 @@ export function validateHarnessContext(value: unknown): HarnessContext {
     (entry, path) => issues.text(LIMITS.attemptedFix, path, entry, true));
   const filesTouched = issues.list('filesTouched', value.filesTouched, LIMITS.filesTouched, (entry, path) => {
     const file = issues.text(LIMITS.fileTouched, path, entry, true);
-    if (file !== undefined && isAbsoluteOrHomePath(file)) {
+    if (file !== undefined && (isAbsoluteOrHomePath(file) || /^[a-z][a-z0-9+.-]*:/i.test(file) || file.split(/[\\/]/).includes('..'))) {
       issues.add(`${path} (absolute path)`);
       return undefined;
     }
     return file;
   });
   if (value.truncated !== undefined && typeof value.truncated !== 'boolean') issues.add('truncated');
-  if (issues.names.length > 0) {
+  if (issues.names.length > 0 || request === undefined || goal === undefined || summary === undefined) {
     throw new SupportContextError('context_invalid', `Invalid harness context fields: ${issues.names.join(', ')}.`);
   }
   return {
-    requestedByPerson: true, request: request!, goal: goal!, summary: summary!,
+    requestedByPerson: true, request, goal, summary,
     steps, commands, errors, attemptedFixes, filesTouched, truncated: value.truncated === true,
   };
 }
@@ -263,6 +303,7 @@ export function pathAliases(path: string | null | undefined, parents: readonly s
   if (!path) return [];
   const resolved = realpathOrSelf(path);
   const aliases = new Set([path, resolved]);
+  if (process.env.PWD && realpathOrSelf(process.env.PWD) === resolved) aliases.add(process.env.PWD);
   for (const parent of parents) {
     const resolvedParent = realpathOrSelf(parent);
     if (resolved === resolvedParent) aliases.add(parent);
@@ -274,9 +315,10 @@ export function pathAliases(path: string | null | undefined, parents: readonly s
 }
 
 function replacePathPrefix(text: string, prefix: string, replacement: string): string {
-  if (!prefix || prefix === sep) return text;
-  const trimmed = prefix.endsWith(sep) ? prefix.slice(0, -1) : prefix;
-  return text.split(`${trimmed}${sep}`).join(`${replacement}${sep}`).split(trimmed).join(replacement);
+  const trimmed = prefix.replace(/[\\/]+$/, '');
+  if (!trimmed) return text;
+  const escaped = trimmed.split(/[\\/]/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]');
+  return text.replace(new RegExp(`${escaped}(?=$|[\\\\/\\s"'\x60:),;])`, /^[a-z]:/i.test(trimmed) ? 'gi' : 'g'), replacement);
 }
 
 /**

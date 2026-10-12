@@ -516,13 +516,18 @@ failure context contains command and catalog metadata only, is left out of the
 report after 24 hours (the CLI shows its time), and `--no-last-error` skips it.
 
 Every failing command ends with the same offer: "Need help? Run eai support, or
-ask your AI assistant to get help. Nothing is sent without your approval." In JSON
-errors it sits in `error.help`, separate from the agent-facing `error.suggestion`.
-A failing `eai support` or `eai errors` command does not repeat it.
+ask your AI assistant to get help. Nothing is sent without your approval." Text mode
+prints this on every nonzero exit. JSON error keys stay unchanged; `error.suggestion`
+contains only the catalog suggestion.
+
+Re-run `eai init --tool <tool>` to refresh instructions in projects created with older CLI versions.
+`eai gofer refresh` preserves their CLAUDE.md and AGENTS.md.
 
 An AI harness starts a report only when you ask for help ("get help" or
 `eai support`). It passes its bounded session summary (what you asked, the goal,
 steps, commands, errors, attempted fixes and project-relative files) through
+For a file, use `~/.eai/support/context/` (directory 0700, file 0600 from creation with `umask 077`). Preview keeps it; an approved send or decline deletes it. Files older than 24 hours there are removed on the next support run. Files elsewhere are never deleted.
+
 `--context-file`, which reads a JSON file or stdin (`-`), accepts at most 64 KiB,
 redacts credentials, hides your home directory and project root, and drops the
 oldest steps, commands and errors to stay within the website's 32 KiB cap:
@@ -894,3 +899,5 @@ Full documentation: https://eai-support.github.io/eai/
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
 - [x] npmjs install alias (`npm install -g eai-cli`) with static registry fallback
+
+Bundled Gofer assets stay pinned to v3.14.3 and include the support-only patch from eai-gofer#433 until its release. Regenerated entrypoints include the existing Gofer 3.12.7 to 3.14.3 generator drift.
