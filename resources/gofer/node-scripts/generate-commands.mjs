@@ -461,8 +461,11 @@ In the welcome reply, say: If you need help at any point, say "get help". I will
 export function ensureSupportReportContract(content) {
   const contract = buildSupportReportContract();
   const heading = '## Support only when the person asks';
-  if (content.includes(contract) && content.split(heading).length === 2) return content;
-  const withoutSupport = content.replace(/^## Support only when the person asks\n[\s\S]*?(?=^## |$(?![\s\S]))/gm, '').trimEnd();
+  const retiredHeading = ['## Support after', 'an unresolved EAI error'].join(' ');
+  const retiredSection = new RegExp(`^${retiredHeading}[ \\t]*\\r?$`, 'm');
+  if (content.includes(contract) && content.split(heading).length === 2 && !retiredSection.test(content)) return content;
+  const ownedSections = new RegExp(`^(?:${heading}|${retiredHeading})[ \\t]*(?:\\r?\\n|$)[\\s\\S]*?(?=^## |$(?![\\s\\S]))`, 'gm');
+  const withoutSupport = content.replace(ownedSections, '').trimEnd();
   return `${withoutSupport}\n\n${contract}\n`;
 }
 

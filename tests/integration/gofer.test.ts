@@ -1017,3 +1017,66 @@ test('active generated CLI instructions carry the canonical support producer con
     expect(await readFile(join(BUNDLED_GOFER_RESOURCES, '../..', file), 'utf8'), file).toContain(contract);
   }
 });
+
+test.each([false, true])(
+  "installed tagged bootstrap emits singular support instructions (EAI=%s)",
+  async (eai) => {
+    const environment = await createTestEnvironment();
+    try {
+      await mkdir(join(environment.dir, ".git"));
+      await writeFile(
+        join(environment.dir, "package.json"),
+        '{"name":"tagged-bootstrap-fixture"}',
+      );
+      if (eai)
+        await writeFile(
+          join(environment.dir, "eai.runtime.json"),
+          '{"schemaVersion":1}',
+        );
+      await installGoferResources(environment.dir, {
+        workflowProfile: "enterpriseai",
+      });
+      for (const file of [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/copilot-instructions.md",
+      ])
+        await rm(join(environment.dir, file), { force: true });
+      const result = await runChild(
+        process.execPath,
+        [
+          join(
+            environment.dir,
+            ".specify/scripts/node/gofer-workspace-bootstrap.mjs",
+          ),
+          "--workspace",
+          environment.dir,
+          "--host",
+          eai ? "claude" : "copilot",
+          "--include-mirrors",
+        ],
+        { cwd: environment.dir },
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      for (const file of ["AGENTS.md", ".github/copilot-instructions.md"]) {
+        const content = await readFile(join(environment.dir, file), "utf8");
+        expect(content, file).toContain(
+          "Never retry or explain a failed `eai errors explain` command",
+        );
+        expect(
+          content.split("## Support only when the person asks"),
+          file,
+        ).toHaveLength(2);
+        expect(content).not.toMatch(/After any .*eai.* command error/);
+      }
+      const claude = await readFile(join(environment.dir, "CLAUDE.md"), "utf8");
+      expect(claude).toContain(
+        "Follow the full support contract in AGENTS.md.",
+      );
+      expect(claude).not.toContain("## Support only when the person asks");
+      expect(claude.split("\n").length).toBeLessThanOrEqual(65);
+    } finally {
+      await environment.cleanup();
+    }
+  },
+);

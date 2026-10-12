@@ -452,7 +452,7 @@ Do not invent, guess, or complete EAI CLI commands from memory.
 2. Start with \`eai --describe\` and use its command map as the source of truth.
 3. For a specific command, run \`eai <command> --help\` or the CLI-described equivalent before using flags, subcommands, or examples.
 4. Use \`eai agent guide --format json\` when the CLI advertises it.
-5. Use \`eai errors explain <code-or-reason> --format json\` after errors when the CLI advertises it.
+5. Use advertised error guidance at most once for the original failure. Never retry or explain a failed \`eai errors explain\` command.
 6. If the command is not listed or help fails, do not run it. Say the installed EAI CLI does not expose that command, then choose a safe listed command or ask the user to update EAI CLI.
 7. Record the verified command and source in \`eai-preflight.md\`, \`service-fit-matrix.md\`, or the active feature notes before the command changes files or external systems.
 8. For commands that create, deploy, publish, change workspace data or access, change Entra, or spend money, confirm with the user after verification and before execution.
@@ -601,7 +601,7 @@ If the user is starting a first EAI Platform app, use the public \`eai\` entrypo
 - Run \`eai update --check\` before first EAI platform work when the CLI may be stale.
 - Run \`eai --describe\` before assuming command syntax.
 - If advertised, run \`eai agent guide --format json\` before planning or fixing EAI workflows.
-- After any \`eai\` error, run \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
+- Follow the recovery rule in Support only when the person asks below; do not query guidance twice for the same original failure.
 - If \`eai errors explain\` is unavailable, match \`.specify/references/platform/eai-error-catalog.yaml\`, run read-only diagnostics before mutating fixes, and stop at the retry or escalation condition.
 - For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` means workspace admin access. Then tell the app user to sign out and sign back in.
 - Use \`eai publicapi\` only for authorized PublicAPI \`/v4/...\` routes.
@@ -909,7 +909,7 @@ Start with \`/eai\`, \`#eai\`, or \`$eai\` depending on the host. Gofer first cl
 
 Gofer does not invent EAI CLI commands. It verifies command paths and flags with \`eai --describe\` and command-specific \`--help\` before suggesting or running them. If the installed CLI does not list a command, Gofer does not run it.
 
-For EAI errors, Gofer expects agents to run live EAI guidance first, use \`.specify/references/platform/eai-error-catalog.yaml\` as fallback, run read-only diagnostics before mutating fixes, and stop at the retry/escalation condition. For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` grants workspace admin access. For \`MISSING_TENANT\`, \`app_token_tenant_context_required\`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, run \`eai errors explain app_token_tenant_context_required --format json\`, confirm workspace context, and retry \`/v4/platform/tenants/<tenant-id>/...\` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.
+For original EAI command failures, query advertised guidance at most once and never retry or explain a failed \`eai errors explain\` command. Use \`.specify/references/platform/eai-error-catalog.yaml\` as fallback, run read-only diagnostics before mutating fixes, and stop at the retry/escalation condition. For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` grants workspace admin access. For \`MISSING_TENANT\`, \`app_token_tenant_context_required\`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, run \`eai errors explain app_token_tenant_context_required --format json\`, confirm workspace context, and retry \`/v4/platform/tenants/<tenant-id>/...\` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.
 
 If \`/eai\` is unknown in a new repo, install or update this plugin first, then refresh/restart the host command picker.
 

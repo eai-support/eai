@@ -1026,8 +1026,10 @@ separation from `tasks.md`:
 - Carry forward the last completed gate, blocked gate, and next recovery
   command from `eai-preflight.md` whenever provisioning, object-type publish,
   schema/storage health, workflow readiness, or preview readiness changes.
-- After any failed `eai` command, run `eai errors explain <code-or-reason>
-  --format json` when advertised before proposing a fix. If the command is not
+- For an original failed `eai` command other than `eai errors explain`, run
+  `eai errors explain <code-or-reason> --format json` at most once when
+  advertised before proposing a fix. Never retry or explain a failed
+  `eai errors explain` command. If the command is not
   advertised, match `.specify/references/platform/eai-error-catalog.yaml`. Run
   read-only diagnostics before mutating fixes, ask for approval before workspace
   membership or admin changes, and stop at the guidance retry/escalation
