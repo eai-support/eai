@@ -112,7 +112,8 @@ describe('agent guide', () => {
       expect(everything).not.toContain(retired);
     }
     expect(guide.stopConditions.join('\n')).toContain('create no draft until the current previewText is approved with its digest');
-    expect(guide.stopConditions.join('\n')).toContain('say what still fails and that the person can say "get help"');
+    expect(guide.stopConditions.join('\n')).toContain('stop remediation, say what still fails, then wait');
+    expect(guide.stopConditions.join('\n')).not.toContain('get help');
   });
 
   test('catalog tells agents how to choose document workflow versus resource files', () => {

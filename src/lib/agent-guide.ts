@@ -207,7 +207,7 @@ const guide: AgentGuide = {
     },
   ],
   stopConditions: [
-    'The same error repeats after the guidance retry limit; stop remediation, say what still fails and that the person can say "get help", then wait.',
+    'The same error repeats after the guidance retry limit; stop remediation, say what still fails, then wait.',
     'A command reports a paid plan, workspace role, or platform-side server blocker that the current user cannot change.',
     'A mutating remediation command is not listed in the guidance entry for this error.',
     'The command would require editing secrets or local env files without explicit user approval.',
