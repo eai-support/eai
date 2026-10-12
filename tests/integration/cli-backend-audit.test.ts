@@ -130,7 +130,8 @@ describe('CLI backend audit evidence', () => {
     const buildReceipt = { schemaVersion: 'eai.cli-source-build.v1', status: 'passed', qualification: 'normal-build', qualified: true,
       candidate, sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
       sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
-      exitCode: 0, nodeVersion: process.version, observedAt, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
+      exitCode: 0, nodeVersion: process.version, observedAt, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel,
+      npmConfiguration: { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' } };
     const schema = { command: 'eai', subcommands: [{ command: 'workspace', aliases: ['tenant'],
       subcommands: [{ command: 'list', options: [{ name: '--format' }, { name: '--workspace,' }] }] }] };
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
@@ -617,7 +618,7 @@ describe('local dedicated tenant harness ownership', () => {
   const directories: string[] = [];
   afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
-  function runFixture(mode: string, api = 'http://localhost:8000', ambient: Record<string, string> = {}) {
+  function runFixture(mode: string, api = 'http://localhost:8000', ambient: Record<string, string> = {}, operatorConfig?: string) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-harness-test-')));
     directories.push(root);
     const bin = join(root, 'bin'); mkdirSync(bin, { mode: 0o700 });
@@ -626,6 +627,19 @@ describe('local dedicated tenant harness ownership', () => {
       publicApiUrl: 'http://localhost:8000', authTenantName: 'fixture', authTenantId: 'fixture', authClientId: 'fixture',
     } } }), { mode: 0o600 });
     const log = join(root, 'commands.jsonl'), envLog = join(root, 'environment.jsonl');
+    if (operatorConfig) writeFileSync(join(root, '.npmrc'), operatorConfig, { mode: 0o600 });
+    // Actual harness/helper bytes in a small owned source tree; no PATH build stub.
+    const fixtureCli = join(root, 'owned-cli'), fixtureScripts = join(fixtureCli, 'scripts');
+    mkdirSync(fixtureScripts, { recursive: true, mode: 0o700 }); mkdirSync(join(fixtureCli, 'dist', 'lib'), { recursive: true });
+    for (const name of ['test-local-dedicated-tenant-lifecycle.sh', 'cli-local-child-ownership.cjs',
+      'cli-qa-foundation.cjs', 'cli-qa-operational-env.cjs', 'cli-qa-npm-execution.cjs']) {
+      writeFileSync(join(fixtureScripts, name), readFileSync(resolve('scripts', name)));
+    }
+    writeFileSync(join(fixtureCli, 'package.json'), JSON.stringify({ name: 'owned-bash-build-fixture', type: 'module',
+      scripts: { build: 'node build.cjs' } }));
+    writeFileSync(join(fixtureCli, 'build.cjs'), `require('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`);
+    writeFileSync(join(fixtureCli, 'dist', 'index.js'), '// Controlled CLI dispatch is replaced by the owned Node wrapper.\n');
+    writeFileSync(join(fixtureCli, 'dist', 'lib', 'profile.js'), `import fs from 'node:fs'; export const captureProfileConfig = name => JSON.parse(fs.readFileSync(process.env.HOME+'/.eai/config.json','utf8')).profiles[name];\n`);
     const mock = join(root, 'mock.cjs');
     writeFileSync(mock, `const fs = require('node:fs');
 const args = process.argv.slice(2);
@@ -667,7 +681,7 @@ if (args.includes('list')) {
     writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ '${mode}' == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'npm'), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'docker'), '#!/usr/bin/env bash\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n', { mode: 0o700 });
-    const result = spawnSync('bash', [resolve('scripts/test-local-dedicated-tenant-lifecycle.sh')], {
+    const result = spawnSync('bash', [join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh')], {
       encoding: 'utf8', timeout: 10000,
       env: { ...process.env, ...ambient, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
         EAI_E2E_PROFILE: 'local', EAI_E2E_PUBLIC_API_URL: api, EAI_E2E_PARENT_TENANT_ID: 'parent-fixture',
@@ -677,7 +691,7 @@ if (args.includes('list')) {
     try { calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { /* blocked before CLI calls */ }
     const journals = readdirSync(root).filter(name => name.startsWith('eai-local-e2e-creation-')).map(name => join(root, name, 'creation.json'));
     const environments = existsSync(envLog) ? readFileSync(envLog, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
-    return { ...result, calls, journals, environments, root };
+    return { ...result, calls, journals, environments, root, cliPath: join(fixtureCli, 'dist', 'index.js') };
   }
 
   test('standalone CLI and build subprocesses ignore ambient credentials and routing', () => {
@@ -691,6 +705,13 @@ if (args.includes('list')) {
       expect(row.forbidden).toEqual([]); expect(row.home).toBe(result.root);
       if (row.source === 'cli') expect(row.profile).toBe('local');
     }
+  });
+  test('actual standalone Bash build isolates operator npm configuration while retaining the selected profile home', () => {
+    const result = runFixture('quota', 'http://localhost:8000', {}, 'node-options=--conditions=synthetic-operator-config\n');
+    expect(result.stderr).toContain('TENANT_QUOTA_EXCEEDED');
+    const builds = result.environments.filter(row => row.source === 'build');
+    expect(builds).toHaveLength(1); expect(builds[0].forbidden).toEqual([]); expect(builds[0].home).toBe(result.root);
+    expect(result.calls.filter(args => args.includes('create'))).toHaveLength(1);
   });
 
   test('quota exhaustion never deletes other visible tenants or retries creation', () => {
@@ -718,7 +739,7 @@ if (args.includes('list')) {
     expect(result.status).not.toBe(0);
     expect(result.calls.some(args => args.includes('select') && args.includes('00000000-0000-4000-8000-000000000099'))).toBe(true);
     expect(result.calls.filter(args => args.includes('delete'))).toEqual([
-      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
+      [result.cliPath, '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
         '--parent', 'parent-fixture', '--force', '--force-hard-purge', '--format', 'json'],
     ]);
     expect(result.journals).toHaveLength(1);
@@ -732,7 +753,7 @@ if (args.includes('list')) {
     const result = runFixture('parent-parse-failed');
     expect(result.status).not.toBe(0); expect(result.calls.some(args => args.includes('provision'))).toBe(false);
     expect(result.calls.filter(args => args.includes('delete'))).toEqual([
-      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
+      [result.cliPath, '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
         '--parent', 'parent-fixture', '--force', '--force-hard-purge', '--format', 'json'],
     ]);
     expect(result.journals).toHaveLength(1);

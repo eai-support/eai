@@ -1,4 +1,9 @@
 // Synthetic selected-step DTOs for consumer controls; never live qualification.
+import { createRequire } from 'node:module';
+const npm = createRequire(import.meta.url)('../../scripts/cli-qa-npm-execution.cjs');
+const appNpmModel = { schemaVersion: 'eai.cli-app-npm-execution.v1', script: 'build', qualification: 'normal-execution',
+  canonicalExecution: { ...npm.canonicalBuildExecution(), exitCode: 0, executablesUnchanged: true },
+  npmConfiguration: { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' } };
 interface CycleIdentity {
   tenantId: string; clientId: string; appKey: string; enrollmentId: string; recreatedEnrollmentId: string;
 }
@@ -16,7 +21,8 @@ export function cycleStepModel(identity: CycleIdentity) {
   ] as const;
   return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity,
     commands: definitions.map(([command, phase, name, sequence], index) => ({ command, phase, sequence: sequence + 1, status: 'passed', exitCode: 0,
-      scopeTenantId: identity.tenantId, options: index === 0 ? ['--rotate-secret'] : [], assertions: [{ name, phase, status: 'passed' }] })),
+      scopeTenantId: identity.tenantId, options: index === 0 ? ['--rotate-secret'] : [],
+      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, status: 'passed' }] })),
     registration: { status: 'passed', clientId: identity.clientId, tenantId: identity.tenantId,
       authorizationAbsent: true, registrationAbsent: true, registrationAbsenceVerified: true } };
 }

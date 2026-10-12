@@ -350,7 +350,7 @@ create_test_tenant() {
 }
 
 cd "$CLI_ROOT"
-npm run build >/dev/null
+node "$SCRIPT_DIR/cli-qa-npm-execution.cjs" "$CLI_ROOT" >/dev/null
 node --input-type=module - "$CLI_ROOT" "$PROFILE" "$PUBLIC_API_URL" <<'NODE'
 import { pathToFileURL } from 'node:url';
 import { join } from 'node:path';

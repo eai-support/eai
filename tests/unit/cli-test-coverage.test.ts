@@ -27,6 +27,7 @@ describe('focused CLI evidence ownership', () => {
   test('the shared qualification environment and installed-Git helper has explicit owning suites', () => {
     const feature = coverage.repositories.eai.features.find(row => row.id === 'eai-cli-owned-qualification');
     expect(feature?.owned_paths).toContain('scripts/cli-qa-operational-env.cjs');
+    expect(feature?.owned_paths).toContain('scripts/cli-qa-npm-execution.cjs');
     expect(feature?.required_repo_tests).toContain('tests/integration/cli-qa-build-receipt.test.ts');
     expect(feature?.required_repo_tests).toContain('tests/integration/full-e2e-smoke.test.ts');
   });

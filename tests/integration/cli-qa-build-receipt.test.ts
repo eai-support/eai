@@ -1,12 +1,13 @@
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const build = require('../../scripts/cli-qa-build-receipt.cjs');
+const appNpm = require('../../scripts/cli-qa-npm-execution.cjs');
 const smoke = require('../../scripts/eai-full-e2e-smoke.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 // Real toolchain identity inside a synthetic consumer DTO, not executed qualification evidence.
@@ -74,7 +75,7 @@ function fixture() {
 }
 function normalFixture() {
   const value = fixture();
-  for (const name of ['cli-qa-build-receipt.cjs', 'cli-qa-foundation.cjs', 'eai-full-e2e-smoke.cjs', 'cli-qa-operational-env.cjs']) {
+  for (const name of ['cli-qa-build-receipt.cjs', 'cli-qa-foundation.cjs', 'eai-full-e2e-smoke.cjs', 'cli-qa-operational-env.cjs', 'cli-qa-npm-execution.cjs']) {
     const path = resolve('scripts', name);
     if (existsSync(path)) writeFileSync(join(value.root, 'scripts', name), readFileSync(path));
   }
@@ -84,6 +85,23 @@ function normalFixture() {
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test.each(['build', 'build:object-types', 'check:object-types'])('normal owned %s uses installed npm/Node and empty configs despite PATH and HOME overrides', script => {
+    const value = fixture(), operator = realpathSync(mkdtempSync(join(tmpdir(), 'eai-app-operator-'))); roots.push(operator);
+    const bin = join(operator, 'bin'); mkdirSync(bin, { mode: 0o700 });
+    const shadow = join(operator, 'shadow-invoked');
+    for (const command of ['npm', 'node']) writeFileSync(join(bin, command), `#!/bin/sh\nprintf invoked >> '${shadow}'\nexit 0\n`, { mode: 0o700 });
+    writeFileSync(join(operator, '.npmrc'), 'node-options=--conditions=synthetic-operator-config\n', { mode: 0o600 });
+    writeFileSync(join(value.root, 'package.json'), JSON.stringify({ name: 'owned-app-build-fixture', private: true,
+      scripts: { [script]: 'node scripts/build.cjs' } }));
+    writeFileSync(join(value.root, 'scripts/build.cjs'), "require('node:fs').writeFileSync('built.json', JSON.stringify({nodeOptionsPresent:Boolean(process.env.NODE_OPTIONS),nodePath:process.execPath}));\n");
+    const output = appNpm.runNpmScript({ cwd: value.root, configParent: operator, script,
+      env: { ...process.env, HOME: operator, USERPROFILE: operator, PATH: bin + ':' + process.env.PATH } });
+    expect(output.result.status).toBe(0); expect(existsSync(shadow)).toBe(false);
+    expect(JSON.parse(readFileSync(join(value.root, 'built.json'), 'utf8')))
+      .toEqual({ nodeOptionsPresent: false, nodePath: realpathSync(process.execPath) });
+    expect(appNpm.appNpmExecutionVerified(output.npmExecution, script)).toBe(true);
+    expect(readdirSync(operator).filter(name => name.startsWith('.eai-npm-config-'))).toEqual([]);
+  });
   test('normal source identity refuses a dirty tree despite a PATH-shadowed Git clean/HEAD claim', () => {
     const value = normalFixture(), bin = join(value.root, '.private', 'bin'); mkdirSync(bin, { recursive: true, mode: 0o700 });
     const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim(), shadow = join(value.root, '.private', 'git-invoked');
@@ -171,7 +189,7 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
       expect(call.options.env).toBeDefined();
       for (const key of Object.keys(forbidden)) expect(call.options.env?.[key]).toBeUndefined();
     }
-    expect(npm.options.env?.PATH).toBe(process.env.PATH); expect(npm.options.env?.HOME).toBe(process.env.HOME);
+    expect(npm.options.env?.PATH).toContain(process.env.PATH); expect(npm.options.env?.HOME).toBe(process.env.HOME);
   });
   test('an actual miniature npm build cannot observe an ambient credential in its hooks', () => {
     const value = fixture();
@@ -334,7 +352,15 @@ describe('fresh normal-build receipt validation', () => {
   const receipt = { schemaVersion: build.SCHEMA, status: 'passed', qualification: 'normal-build', qualified: true,
     sourceSha: candidate.gitSha, sourceSha256: 'd'.repeat(64), sourceFileCount: 900,
     sourceFingerprintVersion: build.SOURCE_FINGERPRINT, sourceUnchanged: true, command: ['npm', 'run', 'build'], exitCode: 0,
-    nodeVersion: process.version, observedAt, candidate, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
+    nodeVersion: process.version, observedAt, candidate, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel,
+    npmConfiguration: { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' } };
+  test.each([undefined, null, [], {}, { user: 'operator-home', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' },
+    { user: 'empty-private', global: 'operator-global', project: 'absent', lifecycleNode: 'active-node-bin-first' },
+    { user: 'empty-private', global: 'empty-private', project: 'unknown', lifecycleNode: 'active-node-bin-first' },
+    { user: 'empty-private', global: 'empty-private', project: 'absent' },
+    { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'ambient-PATH' }])('missing or unsafe serialized npm configuration %j cannot qualify', npmConfiguration => {
+    expect(build.sourceBuildVerified({ ...receipt, npmConfiguration }, candidate, { now })).toBe(false);
+  });
   test('legacy PATH-selected Git receipts cannot qualify after the source reader is hardened', () => {
     expect(build.sourceBuildVerified({ ...receipt, gitExecution: undefined }, candidate, { now })).toBe(false);
   });

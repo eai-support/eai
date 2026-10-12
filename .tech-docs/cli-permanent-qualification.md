@@ -63,7 +63,9 @@ Normal builds execute `npm-cli.js` directly through the active Node installation
 without selecting npm from `PATH`. The required `canonicalExecution` record
 binds the executable paths and hashes, exact invocation, successful exit and
 unchanged executables. Older receipts without this record cannot qualify; rerun
-the canonical builder. The Node/npm installation, committed scripts and operator
+the canonical builder. Receipts must also record the empty user/global configs,
+admitted project config and active Node bin first in lifecycle `PATH`.
+The Node/npm installation, committed scripts and operator
 filesystem remain trusted; this receipt is not a filesystem sandbox or signed
 server attestation.
 A project `.npmrc` may contain only `save-exact=true` and `package-lock=true`
@@ -266,8 +268,14 @@ rechecks all six candidate fields between probe steps.
 The controller requires a successful consultant build and removes ambient
 optional lane flags; deployment, chat and provider journeys need separate
 approved runs. CLI/build subprocesses retain the normal profile home while
-removing inherited app routing and headless authentication overrides. Cycle
-output must be new and separate from every fixture, proof and CLI input.
+removing inherited app routing and headless authentication overrides. The cycle
+app scripts and the standalone Bash build share the canonical installed npm,
+empty configuration and active lifecycle Node policy. App-build receipts record
+this executor identity and policy; legacy or callback-driven build success cannot
+qualify a normal consultant build. Disposable local Git fixtures use the verified
+installed Git executable. The installation, committed scripts and owned app
+dependencies remain trusted, and build code retains the OS account's file access.
+Cycle output must be new and separate from every fixture, proof and CLI input.
 The controller owns a fresh private output root for each cycle. Its `finally`
 cleanup removes the generated app folders, including `.env.local` credentials,
 on success or failure while retaining the private summary and command receipts.

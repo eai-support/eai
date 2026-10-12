@@ -16,7 +16,7 @@ const HASH = /^[a-f0-9]{64}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/;
 const NODE = /^v24\.[0-9]+\.[0-9]+$/;
 const CANDIDATE_FIELDS = ['gitSha', 'binarySha256', 'runtimeSha256', 'runtimeFileCount', 'version', 'dirty'];
-const CANONICAL_EXECUTION = 'eai.cli-canonical-npm-execution.v1';
+const { canonicalBuildExecution, canonicalExecutionVerified, withNpmConfiguration, npmConfigurationVerified } = require('./cli-qa-npm-execution.cjs');
 
 function requireCondition(condition, code) {
   if (!condition) { const error = new Error('CLI source build receipt failed: ' + code + '.'); error.code = code; throw error; }
@@ -75,22 +75,6 @@ function sourceSnapshot(root, run) {
   }
   return { sourceSha, sourceSha256: hash.digest('hex'), sourceFileCount: files.length, sourceFingerprintVersion: SOURCE_FINGERPRINT };
 }
-/** npm run build needs no project overrides; retain only the repository's harmless installation pins. */
-function projectConfigPins(path) {
-  const descriptor = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
-  try {
-    const stat = fs.fstatSync(descriptor);
-    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 4096) return false;
-    const lines = fs.readFileSync(descriptor, 'utf8').split(/\r?\n/).map(line => line.trim())
-      .filter(line => line && !line.startsWith('#') && !line.startsWith(';'));
-    const seen = new Set();
-    return lines.every(line => {
-      const match = /^(save-exact|package-lock)\s*=\s*true$/.exec(line);
-      if (!match || seen.has(match[1])) return false;
-      seen.add(match[1]); return true;
-    });
-  } finally { fs.closeSync(descriptor); }
-}
 function candidateValid(candidate) {
   return candidate && typeof candidate === 'object' && !Array.isArray(candidate) && typeof candidate.gitSha === 'string' && SHA.test(candidate.gitSha)
     && ['binarySha256', 'runtimeSha256'].every(field => typeof candidate[field] === 'string' && HASH.test(candidate[field]))
@@ -105,35 +89,13 @@ function candidateMatches(left, right) {
 function sameSource(left, right) {
   return left.sourceSha === right.sourceSha && left.sourceSha256 === right.sourceSha256 && left.sourceFileCount === right.sourceFileCount;
 }
-/** Select npm beside the active Node installation, independently of PATH. Trusted installation/scripts are not sandboxed. */
-function canonicalBuildExecution() {
-  const nodePath = fs.realpathSync(process.execPath);
-  const possible = [resolve(dirname(nodePath), '../lib/node_modules/npm/bin/npm-cli.js'),
-    join(dirname(nodePath), 'node_modules/npm/bin/npm-cli.js')];
-  const selected = possible.find(path => fs.existsSync(path));
-  requireCondition(selected, 'CANONICAL_NPM_UNVERIFIED');
-  const npmCliPath = fs.realpathSync(selected);
-  requireCondition(fs.statSync(nodePath).isFile() && fs.statSync(npmCliPath).isFile(), 'CANONICAL_NPM_UNVERIFIED');
-  return { schemaVersion: CANONICAL_EXECUTION, selection: 'node-installation', nodePath, npmCliPath,
-    nodeVersion: process.version, nodeSha256: createHash('sha256').update(fs.readFileSync(nodePath)).digest('hex'),
-    npmCliSha256: createHash('sha256').update(fs.readFileSync(npmCliPath)).digest('hex'),
-    argv: [nodePath, npmCliPath, 'run', 'build'] };
-}
-function canonicalExecutionVerified(record, nodeVersion) {
-  return record && typeof record === 'object' && !Array.isArray(record)
-    && record.schemaVersion === CANONICAL_EXECUTION && record.selection === 'node-installation'
-    && record.nodeVersion === nodeVersion && record.executablesUnchanged === true && record.exitCode === 0
-    && ['nodePath', 'npmCliPath'].every(field => typeof record[field] === 'string' && record[field].length <= 4096 && isAbsolute(record[field]))
-    && ['nodeSha256', 'npmCliSha256'].every(field => typeof record[field] === 'string' && HASH.test(record[field]))
-    && Array.isArray(record.argv) && record.argv.length === 4
-    && [record.nodePath, record.npmCliPath, 'run', 'build'].every((value, index) => record.argv[index] === value);
-}
 function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || !candidateValid(candidate)
     || receipt.schemaVersion !== SCHEMA || receipt.qualification !== 'normal-build' || receipt.qualified !== true
     || receipt.status !== 'passed' || receipt.sourceUnchanged !== true || receipt.exitCode !== 0
     || typeof receipt.nodeVersion !== 'string' || !NODE.test(receipt.nodeVersion)
-    || !canonicalExecutionVerified(receipt.canonicalExecution, receipt.nodeVersion) || !gitExecutionVerified(receipt.gitExecution)
+    || !canonicalExecutionVerified(receipt.canonicalExecution, receipt.nodeVersion) || !npmConfigurationVerified(receipt.npmConfiguration)
+    || !gitExecutionVerified(receipt.gitExecution)
     || receipt.sourceFingerprintVersion !== SOURCE_FINGERPRINT || typeof receipt.sourceSha256 !== 'string' || !HASH.test(receipt.sourceSha256)
     || !Number.isSafeInteger(receipt.sourceFileCount) || receipt.sourceFileCount <= 0 || receipt.sourceSha !== candidate.gitSha
     || !Array.isArray(receipt.command) || receipt.command.length !== COMMAND.length || !COMMAND.every((part, index) => receipt.command[index] === part)
@@ -193,27 +155,13 @@ function runBuildReceipt(options, dependencies = {}) {
       requireCondition(typeof receipt.nodeVersion === 'string' && NODE.test(receipt.nodeVersion), 'NODE_24_REQUIRED');
       requireCondition(cliPath === join(root, 'dist', 'index.js'), 'EXACT_CLI_PATH_REQUIRED'); unlinkedPath(cliPath);
       const before = sourceSnapshot(root, run); Object.assign(receipt, before); save();
-      // npm can restore lifecycle NODE_OPTIONS from files after the environment was filtered.
-      // Builds need no registry settings; project overrides require a separately reviewed policy.
-      let projectConfig;
-      try { projectConfig = fs.lstatSync(join(root, '.npmrc')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      requireCondition(!projectConfig || projectConfigPins(join(root, '.npmrc')), 'NPM_PROJECT_CONFIG_UNSUPPORTED');
       const selectedExecution = qualification === 'normal-build' ? canonicalBuildExecution() : null;
-      const configRoot = fs.mkdtempSync(join(dirname(output), '.eai-npm-config-'));
-      const configParents = state.privateDirectory(configRoot);
-      let build;
-      try {
-        const userConfig = join(configRoot, 'user.npmrc'), globalConfig = join(configRoot, 'global.npmrc');
-        state.writePrivateText(userConfig, ''); state.writePrivateText(globalConfig, '');
-        build = run(selectedExecution ? selectedExecution.nodePath : COMMAND[0],
-          selectedExecution ? [selectedExecution.npmCliPath, ...COMMAND.slice(1)] : COMMAND.slice(1), { cwd: root, timeout: 300000,
-          env: { ...operational, npm_config_userconfig: userConfig, npm_config_globalconfig: globalConfig,
-            npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false',
-            npm_config_audit: 'false', npm_config_fund: 'false' } });
-      } finally {
-        state.assertPrivateDirectory(configParents); fs.rmSync(configRoot, { recursive: true });
-      }
-      receipt.npmConfiguration = { user: 'empty-private', global: 'empty-private', project: projectConfig ? 'installation-pins-only' : 'absent' };
+      const configured = withNpmConfiguration(root, dirname(output), operational, env =>
+        run(selectedExecution ? selectedExecution.nodePath : COMMAND[0],
+          selectedExecution ? [selectedExecution.npmCliPath, ...COMMAND.slice(1)] : COMMAND.slice(1),
+          { cwd: root, timeout: 300000, env }));
+      const build = configured.value;
+      receipt.npmConfiguration = configured.npmConfiguration;
       receipt.exitCode = Number.isInteger(build?.status) ? build.status : null;
       if (selectedExecution) {
         const observedExecution = canonicalBuildExecution();

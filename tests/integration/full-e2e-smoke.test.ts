@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ts from 'typescript';
@@ -26,7 +26,8 @@ interface SmokeReport {
   workflowReadiness?: { workflowKey: string; status: string; reasonCode: string; executable: boolean };
   leftovers: { artifact: string; reason: string }[];
 }
-type ControlledOptions = { cwd: string; allowFailure: boolean; timeout: number; env: Record<string, string | undefined>; replaceEnv?: boolean };
+type ControlledOptions = { cwd: string; allowFailure: boolean; timeout: number; env: Record<string, string | undefined>; replaceEnv?: boolean;
+  executedFile?: string; executedArgs?: string[] };
 type ControlledCall = { args: string[]; cwd: string };
 type HarnessOptions = {
   runtime?: string;
@@ -419,14 +420,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       }
       return ok({ ok: true });
     }
-    const execute = (_command: unknown, invocation: string[], options: ControlledOptions) => {
-      const args = invocation[0] === '--profile' ? invocation.slice(2) : invocation;
+    const execute = (command: { file: string; baseArgs: string[] }, invocation: string[], options: ControlledOptions) => {
+      const args = invocation[0] === '--profile' ? invocation.slice(2)
+        : invocation[0]?.endsWith('npm-cli.js') ? invocation.slice(1) : invocation;
       if (invocation[0] === '--profile') expect(invocation[1]).toBe('dev-qa');
       expect(options.allowFailure).toBe(true);
       expect(options.timeout).toBeGreaterThan(0);
       calls.push({ args, cwd: options.cwd });
       const result = base(args, options);
-      return settings.override?.(args, result, options) || result;
+      return settings.override?.(args, result, { ...options, executedFile: command.file,
+        executedArgs: [...command.baseArgs, ...invocation] }) || result;
     };
     return { env, calls, dir, preflight, resources,
       run: (overrides: Record<string, string> = {}): SmokeReport => runLiveSmoke(cliPath, {
@@ -946,9 +949,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
     const steps = require('../../scripts/cli-qa-cycle-steps.cjs');
     const projected = steps.cycleStepEvidence(report);
+    // The actual callback-driven runner records controlled npm execution; it cannot certify a normal app build.
+    expect(projected.commands.find((row: { command: string }) => row.command === 'npm run build').npmExecution.qualification).toBe('controlled-fixtures');
     expect(steps.cycleStepsVerified(projected, { tenantId: report.created.runtimeTenantId,
       clientId: report.created.entraClientId, appKey: report.created.appKey, enrollmentId: report.created.enrollmentId,
-      recreatedEnrollmentId: report.created.recreatedEnrollmentId })).toBe(true);
+      recreatedEnrollmentId: report.created.recreatedEnrollmentId })).toBe(false);
     expect(readFileSync(report.summaryPath, 'utf8')).not.toContain(privateSecret);
   });
   test('live CLI and build subprocesses replace ambient auth/routing with the owned profile and app context', () => {
@@ -981,6 +986,52 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(captured.every(options => options.replaceEnv === true && forbidden.every(key => options.env[key] === undefined))).toBe(true);
     expect(captured.every(options => options.env.HOME === '/normal-profile-home'
       && options.env.HTTPS_PROXY === 'https://proxy.example.invalid' && options.env.EAI_PROFILE === 'dev-qa')).toBe(true);
+  });
+  test('all live app scripts execute installed npm with private empty user/global configuration', () => {
+    const observed: ControlledOptions[] = [];
+    const controlled = harness({ override(args, _result, options) {
+      if (args[0] === 'run') {
+        observed.push(options);
+        for (const key of ['npm_config_userconfig', 'npm_config_globalconfig']) {
+          expect(readFileSync(options.env[key], 'utf8')).toBe('');
+          expect(statSync(options.env[key]).mode & 0o777).toBe(0o600);
+        }
+      }
+      return undefined;
+    } });
+    expect(controlled.run().cleanupVerified).toBe(true); expect(observed.length).toBeGreaterThan(0);
+    const selected = require('../../scripts/cli-qa-build-receipt.cjs').canonicalBuildExecution();
+    expect(observed.every(row => row.executedFile === selected.nodePath && row.executedArgs?.[0] === selected.npmCliPath)).toBe(true);
+    expect(observed.every(row => typeof row.env.npm_config_userconfig === 'string'
+      && typeof row.env.npm_config_globalconfig === 'string')).toBe(true);
+  });
+  test.each(['path-shadow', 'user-node-options'] as const)('actual miniature app build refuses %s as lifecycle proof', variant => {
+    const operator = realpathSync(mkdtempSync(join(tmpdir(), 'eai-app-npm-boundary-')));
+    const shadow = join(operator, 'bin'); mkdirSync(shadow, { mode: 0o700 });
+    writeFileSync(join(shadow, 'npm'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o700 });
+    writeFileSync(join(shadow, 'node'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o700 });
+    writeFileSync(join(operator, '.npmrc'), 'node-options=--conditions=synthetic-operator-config\n', { mode: 0o600 });
+    let project = '';
+    try {
+      const controlled = harness({ override(args, _result, options) {
+        if (matches(args, ['init'])) {
+          project = options.cwd;
+          writeFileSync(join(project, 'package.json'), JSON.stringify({ name: 'owned-miniature-app', private: true,
+            scripts: { build: 'node build.cjs' } }));
+          writeFileSync(join(project, 'build.cjs'), "require('node:fs').writeFileSync('built.json', JSON.stringify({nodeOptionsPresent:!!process.env.NODE_OPTIONS}));\n");
+        }
+        if (matches(args, ['run', 'build'])) {
+          const result = spawnSync(options.executedFile!, options.executedArgs!, { cwd: options.cwd,
+            env: options.env, encoding: 'utf8', timeout: 10000 });
+          return { status: result.status ?? 1, stdout: result.stdout, stderr: result.stderr };
+        }
+        return undefined;
+      } });
+      expect(controlled.run({ HOME: operator, USERPROFILE: operator,
+        PATH: variant === 'path-shadow' ? `${shadow}:${process.env.PATH}` : process.env.PATH! }).cleanupVerified).toBe(true);
+      expect(existsSync(join(project, 'built.json'))).toBe(true);
+      expect(JSON.parse(readFileSync(join(project, 'built.json'), 'utf8'))).toEqual({ nodeOptionsPresent: false });
+    } finally { rmSync(operator, { recursive: true, force: true }); }
   });
 
   test.each(['nonzero', 'unknown', 'same-id', 'foreign'])('recreation %s preserves acknowledged cleanup and never retries creation', condition => {
@@ -1255,6 +1306,17 @@ describe('local CLI qualification', () => {
       && ['NODE_OPTIONS', 'NPM_TOKEN', 'GH_TOKEN', 'AZURE_CLIENT_SECRET'].every(key => options.env[key] === undefined))).toBe(true);
     expect(captured.every(options => options.env.HOME !== process.env.HOME
       && options.env.HTTPS_PROXY === 'https://proxy.example.invalid')).toBe(true);
+  });
+  test('disposable local Git fixture setup bypasses a PATH-shadowed Git executable', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-git-shadow-'))), bin = join(root, 'bin');
+    mkdirSync(bin, { mode: 0o700 }); const shadow = join(root, 'git-invoked');
+    writeFileSync(join(bin, 'git'), `#!/bin/sh\nprintf invoked > '${shadow}'\nexit 0\n`, { mode: 0o700 });
+    try {
+      const report: LocalReport = runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: outputRoot(),
+        PATH: bin + ':' + process.env.PATH }, execute: controlledExecute(), log: () => {} });
+      expect(report.status).toBe('passed'); expect(existsSync(shadow)).toBe(false);
+      expect(report.localCleanupVerified).toBe(true);
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
 
   test.each(['failedRuntime', 'mutateEnvRead', 'leakSyntheticSecret'] as const)('controlled local failure %s preserves truthful command evidence and cleans fixtures', option => {

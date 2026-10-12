@@ -53,7 +53,8 @@ function controlled() {
     sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
     sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
     exitCode: 0, nodeVersion: process.version, observedAt: new Date(now).toISOString(), candidate,
-    canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
+    canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel,
+    npmConfiguration: { user: 'empty-private', global: 'empty-private', project: 'absent', lifecycleNode: 'active-node-bin-first' } };
   qa.writePrivate(options.buildReceiptPath, buildReceipt);
   const execute = (_cli: string, args: string[]) => {
     const profile = args[1], command = args.slice(2), scope = command[command.indexOf('--tenant-id') + 1];
@@ -152,6 +153,20 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     if (failure === 'foreign-scope') receipt.stepEvidence.commands[0].scopeTenantId = uuid(999);
     if (failure === 'order') receipt.stepEvidence.commands[3].sequence = receipt.stepEvidence.commands[2].sequence;
     if (failure === 'registration-client') receipt.stepEvidence.registration.clientId = uuid(998);
+    expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+  });
+  test.each(['legacy', 'controlled', 'PATH', 'wrong-script', 'missing-config', 'user-config', 'global-config', 'node-policy'])('serialized app build %s cannot qualify retained cycles', failure => {
+    const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+    const row = receipt.stepEvidence.commands.find((value: { command: string }) => value.command === 'npm run build');
+    if (failure === 'legacy') delete row.npmExecution;
+    if (failure === 'controlled') row.npmExecution.qualification = 'controlled-fixtures';
+    if (failure === 'PATH') row.npmExecution.canonicalExecution.selection = 'PATH';
+    if (failure === 'wrong-script') row.npmExecution.script = 'check:object-types';
+    if (failure === 'missing-config') delete row.npmExecution.npmConfiguration;
+    if (failure === 'user-config') row.npmExecution.npmConfiguration.user = 'operator-home';
+    if (failure === 'global-config') row.npmExecution.npmConfiguration.global = 'operator-global';
+    if (failure === 'node-policy') delete row.npmExecution.npmConfiguration.lifecycleNode;
     expect(qa.cycleReceiptVerified(receipt)).toBe(false);
   });
   test.each(['fixtureId', 'foundationParentTenantId', 'tenantIds.a', 'tenantIds.b',

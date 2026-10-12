@@ -1613,7 +1613,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     }, options);
   }
   function localGit(args, cwd) {
-    const result = spawnSync('git', args, { cwd, env: childEnv, encoding: 'utf8', timeout: 10000 });
+    const result = spawnSync(installedGitExecution().gitPath, args, { cwd, env: childEnv, encoding: 'utf8', timeout: 10000 });
     if (result.status !== 0) throw new Error('Disposable local Git fixture setup failed.');
     return result.stdout.trim();
   }
@@ -1818,12 +1818,15 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     report.commands.push(entry); checkpoint();
     const started = now();
     try {
-      const result = execute({ file: process.platform === 'win32' ? 'npm.cmd' : 'npm', baseArgs: [] }, ['run', script],
-        { cwd: projectRoot, allowFailure: true, replaceEnv: true, env: { ...childEnv, EAI_PROFILE: profile, BASE_URL_PUBLIC_API: expectedApi,
+      const built = require('./cli-qa-npm-execution.cjs').runNpmScript({ cwd: projectRoot, configParent: runRoot,
+        script, timeout, env: childEnv, context: { EAI_PROFILE: profile, BASE_URL_PUBLIC_API: expectedApi,
           EAI_TENANT_ID: runtime(), EAI_PARENT_TENANT_ID: child(), EAI_APP_KEY: appName,
           EAI_OBJECT_TYPES_INPUT_PATH: join(projectRoot, 'src', 'eai.config', 'object-types.ts'),
           EAI_OBJECT_TYPES_OUTPUT_PATH: join(projectRoot, 'src', 'eai.config', 'object-types.json'),
-          EAI_OBJECT_TYPES_PROVISIONING_OUTPUT_PATH: join(projectRoot, 'src', 'eai.config', 'object-types.provisioning.json') }, timeout });
+          EAI_OBJECT_TYPES_PROVISIONING_OUTPUT_PATH: join(projectRoot, 'src', 'eai.config', 'object-types.provisioning.json') } },
+        dependencies.execute ? { execute: (file, args, settings) => execute({ file, baseArgs: [] }, args,
+          { ...settings, allowFailure: true, replaceEnv: true }) } : {});
+      const result = built.result; entry.npmExecution = built.npmExecution;
       entry.exitCode = result.status; entry.status = result.status === 0 ? 'passed' : 'failed';
       entry.durationMs = Math.max(0, now() - started); checkpoint();
       return result;

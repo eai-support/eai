@@ -23,7 +23,8 @@ function cycleStepEvidence(report) {
     if (rows.length !== 1 || assertions.length !== 1) return null;
     const row = rows[0];
     commands.push({ command, phase, sequence: report.commands.indexOf(row), status: row.status, exitCode: row.exitCode, scopeTenantId: row.scopeTenantId,
-      options: row.options || [], assertions: assertions.map(value => ({ name: value.name, phase: value.phase, status: value.status })) });
+      options: row.options || [], npmExecution: row.npmExecution,
+      assertions: assertions.map(value => ({ name: value.name, phase: value.phase, status: value.status })) });
   }
   const counts = [['eai provision entra', 'app-sign-in', 1, '--rotate-secret'], ['npm run build', 'build', 1],
     ['eai app delete', 'cleanup', 2], ['eai app list', 'cleanup', 3], ['eai app create', 'cleanup', 1]];
@@ -50,6 +51,7 @@ function cycleStepsVerified(value, cycle) {
       && Number.isSafeInteger(row.sequence) && row.sequence >= 0
       && row.scopeTenantId === cycle.tenantId && Array.isArray(row.options) && row.options.every(option => typeof option === 'string')
       && (index !== 0 || row.options.includes('--rotate-secret')) && Array.isArray(row.assertions) && row.assertions.length === 1
+      && (command !== 'npm run build' || require('./cli-qa-npm-execution.cjs').appNpmExecutionVerified(row.npmExecution, 'build'))
       && record(row.assertions[0]) && row.assertions[0].name === name && row.assertions[0].phase === phase && row.assertions[0].status === 'passed';
   })) return false;
   const order = [0, 1, 8, 2, 3, 4, 5, 6, 7];
