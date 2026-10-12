@@ -52,11 +52,16 @@ export function isManagedPublicRequestTimeout(error: unknown): boolean {
 
 /** Bound the managed caller while retaining the issued signal's exact abort reason. */
 export async function awaitManagedRequestDeadline<T>(signal: AbortSignal, result: Promise<T>): Promise<T> {
-  signal.throwIfAborted();
   return new Promise<T>((resolve, reject) => {
-    const abort = (): void => reject(signal.reason);
+    const cleanup = (): void => signal.removeEventListener('abort', abort);
+    const abort = (): void => { cleanup(); reject(signal.reason); };
     signal.addEventListener('abort', abort, { once: true });
-    result.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+    // Own both outcomes of the already-started request, including an expired signal at entry.
+    void result.then(
+      value => { cleanup(); resolve(value); },
+      (error: unknown) => { cleanup(); reject(error); },
+    );
+    if (signal.aborted) abort();
   });
 }
 
