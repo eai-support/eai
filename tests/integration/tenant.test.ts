@@ -948,6 +948,7 @@ describe('child workspace creation admission', () => {
   test.each([
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
     { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'CHILD_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The existing child workspace has no supported home region. Ask a platform admin to repair the child workspace home region before reuse or recovery.' },
   ])('emits a structured immediate $status rejection without creating or bootstrapping a workspace', async ({ status, code, field, message }) => {
     const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({
       error: code, message: 'Rejected value: tax-file-secret', details: { field, input: 'tax-file-secret' },

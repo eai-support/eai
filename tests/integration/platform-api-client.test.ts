@@ -320,6 +320,7 @@ describe('PlatformAPIClient', () => {
     { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
     { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'The parent workspace home region is not supported for a child workspace. Ask a platform admin to repair the parent workspace home region.' },
     { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'CHILD_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The existing child workspace has no supported home region. Ask a platform admin to repair the child workspace home region before reuse or recovery.' },
     { status: 409, code: 'CHILD_TENANT_REGION_MUST_MATCH_PARENT', field: 'homeRegion', message: "A child workspace inherits its parent workspace home region. Omit homeRegion, or send the parent's region." },
   ])('keeps safe child-create guidance for $code/$field without rejected input', async ({ status, code, field, message }) => {
     for (const body of [

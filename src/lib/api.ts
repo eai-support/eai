@@ -496,7 +496,6 @@ export interface ParsedApiError {
   bodyText?: string;
 }
 
-// A child workspace always inherits its parent's home region, so region errors point at the parent.
 const PARENT_HOME_REGION_REPAIR_GUIDANCE =
   'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.';
 
@@ -534,6 +533,11 @@ const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
     status: 422,
     fields: ['homeRegion'],
     message: PARENT_HOME_REGION_REPAIR_GUIDANCE,
+  },
+  CHILD_HOME_REGION_REQUIRED: {
+    status: 422,
+    fields: ['homeRegion'],
+    message: 'The existing child workspace has no supported home region. Ask a platform admin to repair the child workspace home region before reuse or recovery.',
   },
   CHILD_TENANT_REGION_MUST_MATCH_PARENT: {
     status: 409,
