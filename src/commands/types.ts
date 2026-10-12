@@ -946,16 +946,17 @@ export async function pullObjectTypesToFile(
   root: string,
   output: string,
 ): Promise<{ count: number; outputPath: string }> {
-  const { dirname, join: pathJoin, relative, resolve } = await import("node:path");
-  const { mkdir: makeDirectory, writeFile: write, rename, rm, realpath } = await import("node:fs/promises");
-  const { randomUUID } = await import("node:crypto");
+  const { basename, dirname, join: pathJoin, relative, resolve } = await import("node:path");
+  const { lstat, mkdir: makeDirectory, realpath } = await import("node:fs/promises");
+  const { assertDirectoryIdentities, snapshotNoLinkDirectoryPath } =
+    await import('../lib/eai-managed-deploy-filesystem.js');
+  const { writeObjectTypeExportFile } = await import('../lib/object-type-export-filesystem.js');
   const outputPath = await resolveTypesPullOutputPath(root, output);
   const modelPath = pathJoin(root, "src", "eai.config", "object-types");
   const canonicalPath = async (path: string): Promise<string> => {
     try { return await realpath(path); }
     catch (error) {
       if (!isRecord(error) || error.code !== 'ENOENT') throw error;
-      const { basename } = await import("node:path");
       const parent = dirname(path);
       return parent === path ? resolve(path) : pathJoin(await canonicalPath(parent), basename(path));
     }
@@ -965,26 +966,43 @@ export async function pullObjectTypesToFile(
       throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
     }
   };
-  if (resolve(outputPath) === resolve(modelPath + ".ts")) {
+  // A parent replacement redirects both sibling paths. Reserve the producer's
+  // leaf name as well as its canonical path, including case-insensitive systems.
+  if (basename(outputPath).toLowerCase() === 'object-types.ts') {
     throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
   }
   await assertGeneratedOutput();
+  let existingParent = dirname(resolve(outputPath));
+  let parentIdentities: Awaited<ReturnType<typeof snapshotNoLinkDirectoryPath>>;
+  try {
+    while (true) {
+      try { await lstat(existingParent); break; }
+      catch (error) {
+        if (!isRecord(error) || error.code !== 'ENOENT' || dirname(existingParent) === existingParent) throw error;
+        existingParent = dirname(existingParent);
+      }
+    }
+    parentIdentities = await snapshotNoLinkDirectoryPath(existingParent);
+  } catch {
+    throw new Error('Object Type pull could not replace the generated output. Existing output is preserved.');
+  }
   const docs = await readConsistentObjectTypes(client, tenantId);
   const modelRelative = relative(dirname(outputPath), modelPath).replace(/\\/g, "/");
   const modelImport = modelRelative.startsWith(".") ? modelRelative : "./" + modelRelative;
   const source = generatePulledTypesTypeScript(docs, tenantId, modelImport);
-  const temporaryPath = pathJoin(dirname(outputPath), `.eai-types-pull-${randomUUID()}.tmp`);
-  try {
-    await makeDirectory(dirname(outputPath), { recursive: true });
-    await write(temporaryPath, source, { encoding: "utf-8", flag: "wx" });
+  const binding = { path: existingParent, assert: async (): Promise<void> => {
+    await assertDirectoryIdentities(parentIdentities);
     await assertGeneratedOutput();
-    await rename(temporaryPath, outputPath);
+  } };
+  try {
+    await binding.assert();
+    await makeDirectory(dirname(outputPath), { recursive: true });
+    await binding.assert();
+    await writeObjectTypeExportFile(outputPath, source, binding);
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Choose a generated output')) throw error;
     // eslint-disable-next-line preserve-caught-error -- local I/O errors can reveal private paths; keep the public error static.
     throw new Error('Object Type pull could not replace the generated output. Existing output is preserved.');
-  } finally {
-    await rm(temporaryPath, { force: true }).catch(() => {});
   }
   return { count: docs.length, outputPath };
 }

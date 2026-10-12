@@ -142,6 +142,7 @@
             "scripts/smoke-gofer-refresh-cache.cjs",
             "scripts/release-preflight.sh",
             "scripts/clean-build-output.cjs",
+            "scripts/run-eai-cli-tests.cjs",
             "docs-site/static/registry/**",
             "scripts/sync-linked-sources.js",
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",

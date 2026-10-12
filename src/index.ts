@@ -319,7 +319,12 @@ if (cliArgs.includes('--describe')) {
   const invokedCommand = program.commands.find(command => command.name() === topLevelCommandName
     || command.aliases().includes(topLevelCommandName ?? ''));
   if (invokedCommand) setSupportCommand(`eai ${invokedCommand.name()}`);
-  setActiveProfile(readInvocationProfile(cliArgs));
+  try {
+    setActiveProfile(readInvocationProfile(cliArgs));
+  } catch (error) {
+    exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+      isMachineReadableInvocation(cliArgs) ? 'json' : 'text');
+  }
   const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||

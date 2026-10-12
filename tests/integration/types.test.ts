@@ -2,10 +2,37 @@
  * Tenant resolution tests for eai types.
  */
 
-import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import ts from 'typescript';
 import { afterEach, describe, expect, test, vi } from 'vitest';
+const exportFilesystem = vi.hoisted(() => ({ missingPosixFlags: false, windowsModes: false }));
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return { ...actual, constants: new Proxy({ ...actual.constants }, {
+    get(target, key: keyof typeof actual.constants) {
+      if (exportFilesystem.missingPosixFlags && (key === 'O_NOFOLLOW' || key === 'O_NONBLOCK')) return 0;
+      return target[key];
+    },
+  }) };
+});
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  const windowsMode = (status: import('node:fs').Stats): import('node:fs').Stats => {
+    if (exportFilesystem.windowsModes && status.isFile()) status.mode = (status.mode & ~0o777) | 0o666;
+    return status;
+  };
+  return { ...actual,
+    lstat: async (path: import('node:fs').PathLike) => windowsMode(await actual.lstat(path)),
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      const stat = handle.stat.bind(handle);
+      handle.stat = (async () => windowsMode(await stat())) as typeof handle.stat;
+      return handle;
+    },
+  };
+});
+
 import * as commandContext from '../../src/lib/context.js';
 import { buildPayloadEqualsParams, PlatformAPIClient } from '../../src/lib/api.js';
 import {
@@ -16,6 +43,7 @@ import {
   type ObjectTypeProperty,
 } from '../../src/lib/config.js';
 import { validateObjectTypeDefaultValues } from '../../src/lib/object-type-defaults.js';
+import { objectTypeExportOpenFlags } from '../../src/lib/object-type-export-filesystem.js';
 import {
   appOwnedSqlTablePrefix,
   appObjectTypePublishFallbackReason,
@@ -259,7 +287,101 @@ describe('Object Type pull source and response contract', () => {
           hasPrevPage: false, hasNextPage: true, prevPage: null, nextPage: 2 }), { status: 200 }) };
       await expect(pullObjectTypesToFile(client, tenantId, env.dir, output)).rejects.toThrow('HTTP 503');
       expect((await readFile(output)).equals(original)).toBe(true);
-      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-types-pull-'))).toBe(false);
+      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-'))).toBe(false);
+    } finally { await env.cleanup(); }
+  });
+
+  test('portable export relaxes absent POSIX flags only for Windows', () => {
+    expect(objectTypeExportOpenFlags({}, 'win32')).toBe(0);
+    expect(() => objectTypeExportOpenFlags({}, 'linux')).toThrow('requires no-follow and nonblocking');
+    expect(() => objectTypeExportOpenFlags({}, 'darwin')).toThrow('requires no-follow and nonblocking');
+  });
+
+  test.each([
+    { missingPosixFlags: false, windowsModes: false },
+    { missingPosixFlags: true, windowsModes: false },
+    { missingPosixFlags: false, windowsModes: true },
+    { missingPosixFlags: true, windowsModes: true },
+  ])('portable export supports Windows simulation flags=$missingPosixFlags modes=$windowsModes', async capabilities => {
+    const env = await createTestEnvironment();
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    try {
+      const output = join(env.dir, 'generated.ts');
+      await writeFile(output, 'Original generated source\n');
+      Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+      exportFilesystem.missingPosixFlags = capabilities.missingPosixFlags;
+      exportFilesystem.windowsModes = capabilities.windowsModes;
+      const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage(documents)), { status: 200 }) };
+      const result = await pullObjectTypesToFile(client, tenantId, env.dir, output);
+      expect(decodedSource(await readFile(result.outputPath, 'utf8'))).toEqual({ [tenantId]: documents });
+      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-'))).toBe(false);
+    } finally {
+      exportFilesystem.missingPosixFlags = false; exportFilesystem.windowsModes = false;
+      Object.defineProperty(process, 'platform', platform);
+      await env.cleanup();
+    }
+  });
+
+  test('legitimate generated exports larger than the init file-read limit retain all metadata', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const large = [{ ...documents[0], platformMetadata: { retained: true, body: 'x'.repeat(2 * 1024 * 1024) } }];
+      const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage(large)), { status: 200 }) };
+      const result = await pullObjectTypesToFile(client, tenantId, env.dir, 'generated.ts');
+      expect(decodedSource(await readFile(result.outputPath, 'utf8'))).toEqual({ [tenantId]: large });
+    } finally { await env.cleanup(); }
+  });
+
+  test('preserves explicitly selected absolute generated outputs outside the project', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const root = join(env.dir, 'project');
+      const output = join(env.dir, 'custom folder', 'generated.ts');
+      await mkdir(root);
+      const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage(documents)), { status: 200 }) };
+      const result = await pullObjectTypesToFile(client, tenantId, root, output);
+      expect(result.outputPath).toBe(output);
+      expect(decodedSource(await readFile(output, 'utf8'))).toEqual({ [tenantId]: documents });
+      expect(await readFile(output, 'utf8')).toContain('../project/src/eai.config/object-types');
+    } finally { await env.cleanup(); }
+  });
+
+  test.each(['object-types.ts', 'OBJECT-TYPES.TS'])('reserves model filename %s even in an unrelated directory', async filename => {
+    const env = await createTestEnvironment();
+    try {
+      const client = { getPublishedObjectTypes: vi.fn() };
+      await expect(pullObjectTypesToFile(client, tenantId, env.dir, join(env.dir, 'generated', filename)))
+        .rejects.toThrow('preserve src/eai.config/object-types.ts');
+      expect(client.getPublishedObjectTypes).not.toHaveBeenCalled();
+    } finally { await env.cleanup(); }
+  });
+
+  test.each(['symlink', 'directory'])('refuses a %s output-parent replacement during the authoritative read', async kind => {
+    const env = await createTestEnvironment();
+    try {
+      const parent = join(env.dir, 'generated');
+      const displaced = join(env.dir, 'displaced');
+      const outside = join(env.dir, 'unrelated');
+      await mkdir(parent); await mkdir(outside);
+      const output = join(parent, 'generated.ts');
+      const original = 'Original generated bytes\n';
+      const unrelated = 'Unrelated destination bytes\n';
+      await writeFile(output, original);
+      await writeFile(join(outside, 'generated.ts'), unrelated);
+      let calls = 0;
+      const client = { getPublishedObjectTypes: async () => {
+        calls += 1;
+        if (calls === 1) {
+          await rename(parent, displaced);
+          if (kind === 'symlink') await symlink(outside, parent, 'dir');
+          else { await mkdir(parent); await writeFile(output, unrelated); }
+        }
+        return new Response(JSON.stringify(pullPage(documents)), { status: 200 });
+      } };
+      await expect(pullObjectTypesToFile(client, tenantId, env.dir, output)).rejects.toThrow('could not replace');
+      expect(await readFile(join(displaced, 'generated.ts'), 'utf8')).toBe(original);
+      expect(await readFile(output, 'utf8')).toBe(unrelated);
+      expect(await readFile(join(outside, 'generated.ts'), 'utf8')).toBe(unrelated);
     } finally { await env.cleanup(); }
   });
 
@@ -270,7 +392,7 @@ describe('Object Type pull source and response contract', () => {
       const client = { getPublishedObjectTypes: async () => new Response(JSON.stringify(pullPage(documents)), { status: 200 }) };
       await expect(pullObjectTypesToFile(client, tenantId, env.dir, output)).rejects.toThrow('could not replace');
       expect(await readFile(join(output, 'keep.txt'), 'utf8')).toBe('Keep this directory');
-      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-types-pull-'))).toBe(false);
+      expect((await readdir(env.dir)).some(file => file.startsWith('.eai-'))).toBe(false);
     } finally { await env.cleanup(); }
   });
 

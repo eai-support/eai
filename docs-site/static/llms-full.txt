@@ -3458,8 +3458,12 @@ Compare local definitions with remote state.
 Download remote types to local TypeScript. Stored identifiers and platform
 metadata are preserved through a serialized JSON data boundary. The generated
 file imports the project model relative to its output location. Failed or malformed
-responses preserve existing output; the producer model and its symbolic-link
-aliases cannot be overwritten. The command reads all pages in ID order with the
+responses preserve existing output. The model filename `object-types.ts` is
+reserved in every directory; choose a generated filename. Linked output paths
+are refused, and parent identities are checked before the read and throughout
+atomic publication. These checks detect observed namespace changes; they do not
+provide isolation against an arbitrary concurrent writer with the same filesystem
+permissions. The command reads all pages in ID order with the
 same workspace filter and compares two complete scans before atomically replacing
 the generated file. Pagination drift, duplicate IDs, foreign workspace records,
 or an incomplete scan fail the command. Export bounds are 1,000 pages per scan,
