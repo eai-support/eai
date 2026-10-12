@@ -97,6 +97,32 @@ describe('local support report redaction', () => {
     expect(report).toContain('failed');
   });
 
+  test('complete credential containers remain private across nesting and serialized wrappers', () => {
+    for (const value of [[], {}, ['first', 'CONTAINER_PRIVATE_CANARY'], { first: 'visible', second: 'CONTAINER_PRIVATE_CANARY' }, [{ nested: ['CONTAINER_PRIVATE_CANARY', { punctuation: 'brackets ] } , inside quotes' }] }]]) {
+      let diagnostic = JSON.stringify({ ENTRA_CLIENT_SECRET: value, ENTRA_CLIENT_ID: 'public-id' });
+      for (let wrapper = 0; wrapper < 4; wrapper++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+    for (const diagnostic of ['secret=[first,CONTAINER_PRIVATE_CANARY', 'secret={first:visible,second:CONTAINER_PRIVATE_CANARY', 'secret=[first,} CONTAINER_PRIVATE_CANARY', 'secret=opaque:[first,CONTAINER_PRIVATE_CANARY]']) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    const dense = Array.from({ length: 500 }, () => JSON.stringify(JSON.stringify({ secret: ['first', { value: 'CONTAINER_PRIVATE_CANARY' }] }))).join(' ');
+    const started = performance.now();
+    const clean = redactSupportText(dense);
+    expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+    expect(performance.now() - started).toBeLessThan(1000);
+    const nested = 'secret=' + '['.repeat(16000) + 'CONTAINER_PRIVATE_CANARY' + ']'.repeat(16000);
+    expect(redactSupportText(nested)).not.toContain('CONTAINER_PRIVATE_CANARY');
+  });
+
   test.each([0, 1, 3, 7])('redacts complete serialized credentials at quote escape depth %i', (depth) => {
     const quote = '\\'.repeat(depth) + '"';
     const inputs = [

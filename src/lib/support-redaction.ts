@@ -49,6 +49,21 @@ function redactCredentialValues(text: string): string {
     closingEnds[quote.start] = nearestQuoteEnd.get(quote.key) ?? text.length;
     nearestQuoteEnd.set(quote.key, quote.end);
   }
+  // SECURITY: every position is cached, including containers inside serialized outer quotes.
+  const containerEnds = new Uint32Array(text.length);
+  const nextDelimiter = new Uint32Array(text.length + 1);
+  nextDelimiter[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    if (quoteEnds[index]) nextDelimiter[index] = nextDelimiter[closingEnds[index]];
+    else if (text[index] === ']' || text[index] === '}') nextDelimiter[index] = index;
+    else if (text[index] === '[' || text[index] === '{') {
+      const close = nextDelimiter[index + 1];
+      const expected = text[index] === '[' ? ']' : '}';
+      containerEnds[index] = text[close] === expected ? close + 1 : text.length;
+      nextDelimiter[index] = nextDelimiter[containerEnds[index]];
+    } else nextDelimiter[index] = nextDelimiter[index + 1];
+  }
+
   const fields: CredentialField[] = [];
   for (const match of text.matchAll(/[\w.\\-]+/g)) {
     const rawKey = match[0];
@@ -73,6 +88,7 @@ function redactCredentialValues(text: string): string {
   stops[text.length] = text.length;
   for (let index = text.length - 1; index >= 0; index--) {
     if (quoteEnds[index]) stops[index] = stops[closingEnds[index]];
+    else if (containerEnds[index]) stops[index] = stops[containerEnds[index]];
     else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
     else stops[index] = stops[index + 1];
   }
@@ -82,7 +98,7 @@ function redactCredentialValues(text: string): string {
     if (!isSupportSensitiveKey(key)) continue;
     const markerEnd = start + '[redacted]'.length;
     if (text.startsWith('[redacted]', start) && (quoteEnds[markerEnd] || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
-    const end = quoteEnds[start] ? closingEnds[start] : stops[start];
+    const end = quoteEnds[start] ? closingEnds[start] : containerEnds[start] || stops[start];
     if (end <= start) continue;
     const previous = spans.at(-1);
     if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);
