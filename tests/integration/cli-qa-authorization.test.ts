@@ -203,6 +203,20 @@ function controlled(faults: Faults = {}) {
 afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
 
 describe('normal-profile authorization role probe', () => {
+  test.each(['version', 'runtimeFileCount'])('candidate %s drift stops the actual probe before further runtime dispatch', field => {
+    const fixture = controlled();
+    fixture.dependencies.candidateEvidence = () => fixture.rows.size > 0
+      ? { ...candidate, [field]: field === 'version' ? '3.19.99' : 999 } : candidate;
+    const report = fixture.failed();
+    expect(report.status).toBe('failed'); expect(report.qualified).toBe(false);
+    expect(fixture.calls.filter(row => row.method === 'POST')).toHaveLength(1);
+    expect(fixture.calls.filter(row => row.method === 'DELETE')).toHaveLength(0);
+  });
+  test.each(['version', 'runtimeFileCount'])('missing candidate %s blocks the actual probe before any backend dispatch', field => {
+    const fixture = controlled();
+    fixture.dependencies.candidateEvidence = () => ({ ...candidate, [field]: undefined }) as typeof candidate;
+    const report = fixture.failed(); expect(report.status).toBe('blocked'); expect(fixture.calls).toEqual([]);
+  });
   test.each([undefined, null, true, 0, 'false'])('requires an explicitly clean candidate, rejecting dirty=%s before runtime calls', dirty => {
     const fixture = controlled();
     fixture.dependencies.candidateEvidence = () => ({ ...candidate, dirty }) as typeof candidate;

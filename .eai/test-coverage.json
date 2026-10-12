@@ -416,7 +416,9 @@
             "tests/integration/cli-qa-authorization.test.ts",
             "scripts/cli-qa-build-receipt.cjs",
             "tests/integration/cli-qa-build-receipt.test.ts",
-            "scripts/cli-local-child-ownership.cjs"
+            "scripts/cli-local-child-ownership.cjs",
+            "scripts/cli-qa-cycle-steps.cjs",
+            "tests/helpers/cli-qa-cycle-model.ts"
           ],
           "required_repo_tests": [
             "tests/unit/cli-test-coverage.test.ts",

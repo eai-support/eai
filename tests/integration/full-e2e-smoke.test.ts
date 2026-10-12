@@ -18,7 +18,7 @@ interface SmokeReport {
   commands: { command: string; status: string; phase: string; exitCode?: number; scopeTenantId?: string }[];
   cleanup: { artifact: string; status: string; evidence?: { tenantId?: string }; reason?: string }[];
   coverage: { command: string; status: string; executions: number }[];
-  created: { childTenantId: string; appKey: string; resources: { type: string; id: string }[]; entraClientId: string; workflowIds: string[];
+  created: { childTenantId: string; runtimeTenantId: string; appKey: string; resources: { type: string; id: string }[]; entraClientId: string; workflowIds: string[];
     enrollmentId?: string; recreatedEnrollmentId?: string };
   deletionCycle?: { firstInventoryEmpty: boolean; recreatedSameKey: boolean; enrollmentId: string; recreatedEnrollmentId?: string };
   rotationCycle?: { commandDispatches: number; credentialChanged: boolean };
@@ -929,6 +929,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(controlled.calls.filter(call => matches(call.args, ['app', 'create']))).toHaveLength(2);
     expect(controlled.calls.filter(call => matches(call.args, ['app', 'delete']))).toHaveLength(2);
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
+    const steps = require('../../scripts/cli-qa-cycle-steps.cjs');
+    const projected = steps.cycleStepEvidence(report);
+    expect(steps.cycleStepsVerified(projected, { tenantId: report.created.runtimeTenantId,
+      clientId: report.created.entraClientId, appKey: report.created.appKey, enrollmentId: report.created.enrollmentId,
+      recreatedEnrollmentId: report.created.recreatedEnrollmentId })).toBe(true);
     expect(readFileSync(report.summaryPath, 'utf8')).not.toContain(privateSecret);
   });
   test('live CLI and build subprocesses replace ambient auth/routing with the owned profile and app context', () => {

@@ -90,6 +90,24 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   if (evidence && !candidateMatches(evidence.candidate, candidate)) {
     throw new Error('Live evidence does not identify this exact CLI candidate.');
   }
+  const context = { environment: environment || evidence?.environment, publicApiUrl: publicApiUrl || evidence?.expectedPublicApi, now };
+  const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
+  const retained = evidence?.authorizationEvidence?.tenantIds;
+  const ownedTenants = new Set(retained && uuid(retained.a) && uuid(retained.b) && retained.a !== retained.b
+    ? [retained.a, retained.b] : []);
+  if (qualification.foundationEvidenceBound(evidence) && qualification.cyclesVerified(evidence, candidate, context))
+    for (const cycle of evidence.cycleEvidence.cycles) ownedTenants.add(cycle.tenantId);
+  function scopeVerified(row) {
+    return qualification.qualificationScopeVerified(context) && row.environment === context.environment
+      && row.publicApiUrl === context.publicApiUrl && uuid(row.scopeTenantId) && ownedTenants.has(row.scopeTenantId);
+  }
+  function scopedStatus(executions, option, malformed, contract) {
+    const status = executionStatus(executions, option, malformed);
+    if (status !== 'passed' || !contract.requiresProtectedBackend) return status;
+    return executions.every(item => scopeVerified(item)
+      && executionAssertions(item, option).every(assertion => scopeVerified(assertion)
+        && assertion.scopeTenantId === item.scopeTenantId)) ? 'passed' : 'incomplete';
+  }
   // Unscoped malformed attempts cannot be discarded to certify another success.
   // Retain bounded collection/index observations, never raw malformed input.
   const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command));
@@ -112,9 +130,12 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const commands = entries.map(entry => {
     const row = decisions.get(entry.command);
     const contract = backendContract(entry.command, row.crud);
-    const executions = commandReceipts.filter(item => item.command === entry.command);
-    const status = UNSUPPORTED.has(entry.command) ? 'unsupported' : executionStatus(executions, undefined, !evidenceValid);
+    const unsupported = UNSUPPORTED.has(entry.command);
+    const executions = [...commandReceipts, ...(unsupported ? unsupportedReceipts : [])].filter(item => item.command === entry.command);
+    const actualExecutionStatus = scopedStatus(executions, undefined, !evidenceValid, contract);
+    const status = unsupported && ['passed', 'not-run'].includes(actualExecutionStatus) ? 'unsupported' : actualExecutionStatus;
     return { ...entry, operation: row.crud, ...contract, status, executions: executions.length,
+      capability: unsupported ? 'unsupported' : 'available', actualExecutionStatus,
       observedSuccesses: executions.filter(item => item.status === 'passed').length,
       plannedCoverage: row.coverage, prerequisite: row.notes,
       cleanupMechanism: row.cleanupMechanism, cleanupVerification: row.cleanupVerified,
@@ -122,7 +143,6 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   });
   const summary = Object.fromEntries(['passed', 'failed', 'blocked', 'incomplete', 'unsupported', 'not-run'].map(status => [status, commands.filter(row => row.status === status).length]));
   const backendCommands = commands.filter(row => row.requiresProtectedBackend);
-  const context = { environment: environment || evidence?.environment, publicApiUrl: publicApiUrl || evidence?.expectedPublicApi, now };
   const parityComplete = qualification.deploymentParity(deployments, { ...context, now,
     requiredServices: [...qualification.SERVICES, ...(backendCommands.some(row => row.command === 'eai support') ? ['Website'] : [])] });
   const authorizationVerified = qualification.authorizationVerified(evidence, candidate, context);
@@ -130,16 +150,17 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const candidateVerified = sourceBuildVerified(buildReceipt, candidate, { now });
   const aliasEvidence = commands.flatMap(row => row.aliases.map(alias => {
     const executions = aliasReceipts.filter(item => item.alias === alias && item.command === row.command);
-    return { alias, command: row.command, status: executionStatus(executions, undefined, !evidenceValid) };
+    return { alias, command: row.command, status: scopedStatus(executions, undefined, !evidenceValid, row) };
   }));
   const optionEvidence = commands.flatMap(row => row.options.map(option => ({ command: row.command, option: option.name.replace(/,$/, ''),
-    status: executionStatus(commandReceipts.filter(item => item.command === row.command
-      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, ''))), option.name.replace(/,$/, ''), !evidenceValid) })));
+    status: scopedStatus((UNSUPPORTED.has(row.command) ? unsupportedReceipts : commandReceipts).filter(item => item.command === row.command
+      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, ''))), option.name.replace(/,$/, ''), !evidenceValid, row) })));
   const aliasCoverageComplete = aliasEvidence.every(row => row.status === 'passed');
   const optionCoverageComplete = optionEvidence.every(row => row.status === 'passed');
   const unsupportedVerified = evidenceValid && [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {
     const executions = unsupportedReceipts.filter(row => row.command === command);
-    return executionStatus(executions) === 'passed' && executions.every(row => row.status === 'passed'
+    return commands.find(row => row.command === command).actualExecutionStatus === 'passed'
+      && executionStatus(executions) === 'passed' && executions.every(row => row.status === 'passed'
       && row.exitCode === 1 && row.authenticationBypassed === true && row.networkCalls === 0);
   });
   const backendCertified = evidenceValid && backendCommands.length > 0 && backendCommands.every(row => row.status === 'passed')

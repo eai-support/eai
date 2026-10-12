@@ -6,6 +6,7 @@ const { existsSync, mkdtempSync, readdirSync, lstatSync, rmSync, rmdirSync } = r
 const qa = require('./cli-qa-foundation.cjs');
 const smoke = require('./eai-full-e2e-smoke.cjs');
 const { sourceBuildVerified } = require('./cli-qa-build-receipt.cjs');
+const { cycleStepEvidence, cycleStepsVerified } = require('./cli-qa-cycle-steps.cjs');
 function requireCondition(condition, message) { if (!condition) throw new Error(message); }
 function candidateValid(candidate) {
   return /^[a-f0-9]{40}$/.test(candidate.gitSha || '') && /^[a-f0-9]{64}$/.test(candidate.binarySha256 || '')
@@ -16,9 +17,13 @@ function cycleReceipt(report) {
   const registration = report.cleanup?.find(row => row.artifact === 'entra-registration');
   const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
   const builds = (report.commands || []).filter(row => row.command === 'npm run build');
-  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId,
+  const stepEvidence = cycleStepEvidence(report);
+  const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,
+    clientId: rotation.clientId, enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId });
+  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence,
     enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId,
-    status: report.status, rotationDispatches: rotations.length === 1 && rotations[0].status === 'passed' ? rotation.commandDispatches : 0,
+    status: report.status === 'passed' && !stepsVerified ? 'incomplete' : report.status,
+    rotationDispatches: stepsVerified && rotations.length === 1 && rotations[0].status === 'passed' ? rotation.commandDispatches : 0,
     credentialChanged: rotation.credentialChanged === true, firstInventoryEmpty: deletion.firstInventoryEmpty === true,
     recreatedSameKey: deletion.recreatedSameKey === true, deletionVerified: deletion.deletionVerified === true,
     appBuildVerified: builds.length === 1 && builds[0].status === 'passed' && builds[0].exitCode === 0
@@ -60,6 +65,7 @@ function ownedReportValid(report, foundation, candidate, preflight) {
   const created = report.created || {}, rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const leaf = report.cleanup?.find(row => row.artifact === 'child-tenant');
   return report.fixtureId === foundation.fixtureId
+    && report.foundationParentTenantId === foundation.parentTenantId
     && report.tenantIds?.a === foundation.workspaces.a.id && report.tenantIds?.b === foundation.workspaces.b.id
     && Object.keys(qa.SLOTS).every(slot => report.actors?.[slot]?.oid === foundation.actors[slot].oid
       && report.actors[slot].profile === foundation.actors[slot].profile)
@@ -70,7 +76,11 @@ function ownedReportValid(report, foundation, candidate, preflight) {
     && report.environment === foundation.environment && report.expectedPublicApi === foundation.publicApiUrl
     && report.preflight?.publicApiGitSha === preflight.publicApiGitSha && report.preflight?.adminApiGitSha === preflight.adminApiGitSha
     && report.preflight?.observedAt === preflight.observedAt && report.preflight?.childDeleteRoute === preflight.childDeleteRoute
-    && report.parentTenantId === foundation.workspaces.a.id && created.childTenantId !== foundation.workspaces.a.id
+    && ['schemaVersion', 'publicApiUrl', 'parentTenantId', 'actorId', 'childDeleteVerified'].every(key => report.preflight?.[key] === preflight[key])
+    && report.preflight.publicApiUrl === foundation.publicApiUrl && report.preflight.parentTenantId === foundation.workspaces.a.id
+    && report.preflight.actorId === foundation.actors.adminA.oid && report.preflight.childDeleteVerified === true
+    && report.parentTenantId === foundation.workspaces.a.id
+    && ![foundation.parentTenantId, foundation.workspaces.a.id, foundation.workspaces.b.id].includes(created.childTenantId)
     && created.runtimeTenantId === created.childTenantId && created.entraClientId === rotation.clientId
     && rotation.tenantId === created.childTenantId && deletion.tenantId === created.childTenantId
     && rotation.appKey === created.appKey && deletion.appKey === created.appKey
@@ -131,7 +141,8 @@ function runQualification(options, dependencies = {}) {
         let result, receipt;
         try {
           result = runLive(options.cliPath, { ...dependencies, expectedFixture: {
-            fixtureId: foundation.fixtureId, tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
+            fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+            tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
             actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])) },
           env: { ...cycleEnv,
             EAI_E2E_OUTPUT_ROOT: workspaceRoot,

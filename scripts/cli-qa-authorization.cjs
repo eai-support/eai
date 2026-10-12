@@ -6,12 +6,11 @@ const { randomUUID, createHash } = require('node:crypto');
 const { isDeepStrictEqual } = require('node:util');
 const qa = require('./cli-qa-foundation.cjs');
 const smoke = require('./eai-full-e2e-smoke.cjs');
+const { candidateValid, candidateMatches } = require('./cli-qa-build-receipt.cjs');
 
 const SCHEMA = 'eai.cli-authorization-evidence.v1';
 const ROLE_CASES = qa.ROLE_CASES;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const SHA = /^[a-f0-9]{40}$/;
-const SHA256 = /^[a-f0-9]{64}$/;
 const FIELD = /^[A-Za-z][A-Za-z0-9_]{0,63}$/;
 const WRITERS = ['adminA', 'builderA', 'adminB', 'builderB'];
 const SIMPLE_TYPES = ['text', 'number', 'boolean', 'date', 'select', 'json'];
@@ -19,13 +18,6 @@ const SIMPLE_TYPES = ['text', 'number', 'boolean', 'date', 'select', 'json'];
 function requireCondition(condition, message) { if (!condition) throw new Error(message); }
 function record(value) { return value && typeof value === 'object' && !Array.isArray(value); }
 function sourceHash(path) { return createHash('sha256').update(fs.readFileSync(path)).digest('hex'); }
-function candidateValid(candidate) {
-  return candidate && SHA.test(candidate.gitSha || '') && SHA256.test(candidate.runtimeSha256 || '')
-    && SHA256.test(candidate.binarySha256 || '') && candidate.dirty === false;
-}
-function candidateSame(left, right) {
-  return candidateValid(right) && ['gitSha', 'runtimeSha256', 'binarySha256'].every(key => left[key] === right[key]);
-}
 function fixtureBinding(foundation) {
   const binding = foundation.bindings?.authorization;
   requireCondition(binding && typeof binding.objectType === 'string' && binding.objectType.length <= 128
@@ -181,7 +173,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
       }), created: [], cleanup: [], leftovers: [], cleanupVerified: false, localCleanupVerified: false };
     const save = () => qa.writePrivate(output, report);
     const call = qa.cliCaller(options.cliPath, foundation, contextRoot, dependencies);
-    const assertCandidate = () => requireCondition(candidateSame(candidate, evidenceFor(options.cliPath))
+    const assertCandidate = () => requireCondition(candidateMatches(candidate, evidenceFor(options.cliPath))
       && sourceHash(__filename) === report.probeSourceSha256
       && sourceHash(require.resolve('./cli-qa-foundation.cjs')) === report.foundationSourceSha256,
     'The CLI candidate or QA source changed during the probe.');

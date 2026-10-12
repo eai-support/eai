@@ -41,6 +41,11 @@ Normal-profile calls and lifecycle subprocesses receive only allowlisted OS,
 profile-home and network settings plus the harness's explicit tenant/profile
 settings. Ambient GitHub, Azure, npm and headless credential variables, injected
 Node options and operator lifecycle overrides are excluded.
+Protected command and assertion receipts must each record exact `environment`,
+`publicApiUrl` and `scopeTenantId`. Their scope must match the audit gateway and
+a retained sibling or a child from verified cycles bound to the same foundation.
+A same-candidate command observed in another environment cannot certify this
+environment. These unsigned records are trusted operator observations.
 The canonical build and its source Git reads use the same restricted operational
 environment. npm receives fresh empty private user/global configuration files.
 Normal builds execute `npm-cli.js` directly through the active Node installation,
@@ -60,6 +65,15 @@ operator configuration file. Standard registry token keys are not exported by
 npm as environment variables. This configuration policy does not sandbox trusted
 build code from files accessible to the same OS account. Profile home and the
 allowlisted network/CA settings remain available.
+
+Source and candidate Git reads use verified conventional installed Git locations,
+independently of `PATH`. The normal build records Git path, executable hash,
+version, exact source-read invocations and unchanged identity. Legacy or malformed
+Git records cannot qualify and require a fresh build. System/Homebrew and normal
+Windows Git installation locations are supported; an unavailable installation
+blocks qualification. Tool installation, operating-system path settings, Git
+configuration and the operator remain trusted. This is no filesystem sandbox or
+signed server attestation; actual Windows execution has not been qualified here.
 
 ## Retained foundation
 
@@ -211,6 +225,11 @@ all five actor OID/profile pairs to the runner. The runner checks its selected
 administrator and parent against those references before any CLI dispatch and
 records the context in its private receipt. A missing or different fixture,
 workspace or actor reference cannot qualify a cycle.
+The expected context includes the foundation's own parent UUID. The runner
+refuses that parent and both retained workspaces as creation/cleanup ownership
+before adopting a returned child ID. Its receipt preserves the full validated
+child-cleanup observation, including schema, gateway, actor, parent and exact
+`childDeleteVerified: true`, alongside source revisions, time and route.
 All ten registration IDs,
 child IDs and app keys must be distinct, and all twenty original/recreated
 enrollment IDs must be unique. Fixture-controlled cycles can pass
@@ -219,6 +238,19 @@ Candidate Git reads use the shared operational environment, excluding ambient
 Git directory, worktree and index overrides. Controller local-project cleanup
 starts unverified and passes only after its own removal and absence checks; a
 runner's cleanup flag cannot survive a controller cleanup failure.
+Cycle qualification also retains the actual rotation, build, deletion, first
+inventory, recreation, recreated inventory/deletion and registration-absence
+command/guard receipts. Consumers independently require passing exits, exact
+runtime scope, expected guard outcomes and their recorded order; success flags
+alone cannot qualify a cycle. This selected lifecycle proof does not implement
+the complete per-command producer-to-audit mapping tracked in issue #384.
+
+Intentionally unsupported capability classification stays separate from observed
+execution status. Failed, blocked and incomplete attempts remain visible;
+unsupported option coverage requires the corresponding denial execution and
+option-specific passing assertion. Authorization receipts require exact boolean
+foundation verification and bounded normal-profile references, and the producer
+rechecks all six candidate fields between probe steps.
 
 The controller requires a successful consultant build and removes ambient
 optional lane flags; deployment, chat and provider journeys need separate

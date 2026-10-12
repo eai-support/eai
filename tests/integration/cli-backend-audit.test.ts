@@ -4,12 +4,17 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
+import { cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
 
 const require = createRequire(import.meta.url);
 const { buildAudit, markdown } = require('../../scripts/audit-cli-backend.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 const canonicalExecutionModel = { ...require('../../scripts/cli-qa-build-receipt.cjs').canonicalBuildExecution(),
   exitCode: 0, executablesUnchanged: true };
+const selectedGit = require('../../scripts/cli-qa-operational-env.cjs').installedGitExecution();
+const gitExecutionModel = { ...selectedGit, executablesUnchanged: true, invocations: [
+  ['rev-parse', '--show-toplevel'], ['rev-parse', '--verify', 'HEAD'], ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+  ['ls-files', '--stage', '-z']].map(args => [selectedGit.gitPath, ...args]) };
 const schema = { command: 'eai', subcommands: [
   { command: 'verify', hasAction: true, subcommands: [{ command: 'calls' }] },
   { command: 'workspace', aliases: ['tenant'], subcommands: [{ command: 'list' }] },
@@ -19,7 +24,8 @@ const commands = ['eai verify', 'eai verify calls', 'eai workspace list', 'eai t
 const decisions = commands.map(command => ({ command, crud: 'read', coverage: 'live', notes: 'fixture', cleanupMechanism: 'none', cleanupVerified: 'read only' }));
 const candidate = { gitSha: 'a'.repeat(40), binarySha256: 'b'.repeat(64), runtimeSha256: 'c'.repeat(64),
   version: '3.19.1', runtimeFileCount: 200, dirty: false };
-interface AuditAssertion { name: string; command: string; executionId: string; status: string; option?: string; alias?: string }
+interface AuditAssertion { name: string; command: string; executionId: string; status: string; option?: string; alias?: string;
+  environment?: string; publicApiUrl?: string; scopeTenantId?: string }
 
 describe('CLI backend audit evidence', () => {
   test.each([
@@ -46,7 +52,8 @@ describe('CLI backend audit evidence', () => {
     const evidence = { candidate, commands: [{ command: 'eai resources indexes-apply', status: 'passed' }] };
     const report = buildAudit({ schema: indexSchema, candidate, evidence }, indexDecisions);
     expect(report.commands[0]).toMatchObject({
-      status: 'unsupported', reason: expect.stringContaining('no public index-apply contract'),
+      capability: 'unsupported', status: 'incomplete', actualExecutionStatus: 'incomplete',
+      reason: expect.stringContaining('no public index-apply contract'),
     });
     expect(report.summary.passed).toBe(0);
   });
@@ -123,20 +130,21 @@ describe('CLI backend audit evidence', () => {
     const buildReceipt = { schemaVersion: 'eai.cli-source-build.v1', status: 'passed', qualification: 'normal-build', qualified: true,
       candidate, sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
       sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
-      exitCode: 0, nodeVersion: process.version, observedAt, canonicalExecution: canonicalExecutionModel };
+      exitCode: 0, nodeVersion: process.version, observedAt, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
     const schema = { command: 'eai', subcommands: [{ command: 'workspace', aliases: ['tenant'],
       subcommands: [{ command: 'list', options: [{ name: '--format' }, { name: '--workspace,' }] }] }] };
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
     const executionId = id(90), aliasExecutionId = id(91);
+    const scope = { environment: 'DEV', publicApiUrl, scopeTenantId: tenantIds.a };
     const assertions: AuditAssertion[] = [
-      { name: 'exact inventory', command: 'eai workspace list', executionId, status: 'passed' },
-      ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed' })),
+      { name: 'exact inventory', command: 'eai workspace list', executionId, status: 'passed', ...scope },
+      ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed', ...scope })),
     ];
     const evidence = { candidate, environment: 'DEV', expectedPublicApi: publicApiUrl, cleanupVerified: true, authorizationEvidence,
-      commands: [{ command: 'eai workspace list', executionId, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'] }],
+      commands: [{ command: 'eai workspace list', executionId, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], ...scope }],
       aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'exact alias inventory', command: 'eai workspace list', alias: 'eai tenant list',
-          executionId: aliasExecutionId, status: 'passed' } as AuditAssertion] }] };
+          executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], ...scope }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
   }
 
@@ -159,6 +167,7 @@ describe('CLI backend audit evidence', () => {
         credentialChanged: true, firstInventoryEmpty: true, recreatedSameKey: true, cleanupVerified: true,
         localProjectCleanupVerified: true, registrationAbsent: true, deletionVerified: true, appBuildVerified: true,
       })) };
+    cycleEvidence.cycles = cycleEvidence.cycles.map(cycle => ({ ...cycle, stepEvidence: cycleStepModel(cycle) }));
     Object.assign(input.evidence, { cycleEvidence }); return cycleEvidence;
   }
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
@@ -186,6 +195,10 @@ describe('CLI backend audit evidence', () => {
       ? 'https://example.invalid/public' : scope === 'region' ? 'https://dev-api.eu.myenterprise.ai/public' : input.evidence.expectedPublicApi;
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
+      Object.assign(receipt, { environment, publicApiUrl });
+      for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
+    }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
     const context = { environment, publicApiUrl, now: input.now };
     expect(qa.deploymentParity(input.deployments, context)).toBe(false);
@@ -200,6 +213,10 @@ describe('CLI backend audit evidence', () => {
     const [environment, region] = value.split(':'), publicApiUrl = qa.publicApi(environment, region);
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
+      Object.assign(receipt, { environment, publicApiUrl });
+      for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
+    }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
   });
@@ -238,6 +255,45 @@ describe('CLI backend audit evidence', () => {
   test('unsupported completion accepts a complete execution-bound denial observation', () => {
     const { schema, evidence, decisions } = unsupportedModel();
     expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
+  });
+  test.each(['failed', 'blocked', 'running', 'incomplete'])('unsupported capability retains its attempted %s observation in the summary', status => {
+    const { schema, evidence, decisions } = unsupportedModel(); evidence.unsupported[0].status = status;
+    const report = buildAudit({ schema, candidate, evidence }, decisions);
+    const outcome = ['running', 'incomplete'].includes(status) ? 'incomplete' : status;
+    expect(report.commands[0].status).toBe(outcome); expect(report.summary[outcome]).toBe(1);
+    expect(report.unsupportedVerified).toBe(false);
+  });
+  test('unsupported option coverage uses its qualifying unsupported execution and option-specific assertion', () => {
+    const { schema, evidence, decisions } = unsupportedModel();
+    Object.assign(schema.subcommands[0].subcommands[0], { options: [{ name: '--format' }] });
+    Object.assign(evidence.unsupported[0], { options: ['--format'] });
+    evidence.unsupported[0].assertions.push({ ...evidence.unsupported[0].assertions[0], name: 'exact format denial', option: '--format' } as any);
+    const report = buildAudit({ schema, candidate, evidence }, decisions);
+    expect(report.optionEvidence[0]).toMatchObject({ command: 'eai types define', option: '--format', status: 'passed' });
+    expect(report.optionCoverageComplete).toBe(true); expect(report.unsupportedVerified).toBe(true);
+  });
+  test.each(['false', 1, {}, []].map(value => ({ value })))('authorization foundation flag $value cannot certify evidence', ({ value }) => {
+    const { input, decisions } = completeContractModel(); Object.assign(input.evidence.authorizationEvidence, { foundationVerified: value });
+    expect(buildAudit(input, decisions).authorizationVerified).toBe(false);
+  });
+  test.each(['', ' ', 'unsafe/profile', 'p'.repeat(101)])('authorization profile %j must satisfy the bounded normal-profile contract', profile => {
+    const { input, decisions } = completeContractModel(), authorization = input.evidence.authorizationEvidence;
+    authorization.actors.viewerA.profile = profile;
+    for (const row of authorization.cases) if (row.name.startsWith('viewerA:')) row.profile = profile;
+    expect(buildAudit(input, decisions).authorizationVerified).toBe(false);
+  });
+  test.each(['missing', 'foreign-environment', 'foreign-gateway', 'foreign-tenant', 'assertion-scope'])('protected execution with %s scope cannot borrow DEV role/deployment evidence', failure => {
+    const { input, decisions } = completeContractModel(), row = input.evidence.commands[0];
+    const scope = { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi,
+      scopeTenantId: input.evidence.authorizationEvidence.tenantIds.a };
+    Object.assign(row, scope); for (const assertion of row.assertions) Object.assign(assertion, scope);
+    if (failure === 'missing') Object.assign(row, { environment: undefined, publicApiUrl: undefined, scopeTenantId: undefined });
+    if (failure === 'foreign-environment') Object.assign(row, { environment: 'TEST' });
+    if (failure === 'foreign-gateway') Object.assign(row, { publicApiUrl: 'https://test-api.au.myenterprise.ai/public' });
+    if (failure === 'foreign-tenant') Object.assign(row, { scopeTenantId: '00000000-0000-4000-8000-000000000999' });
+    if (failure === 'assertion-scope') Object.assign(row.assertions[0], { environment: 'TEST' });
+    const report = buildAudit(input, decisions); expect(report.commands[0].status).toBe('incomplete');
+    expect(report.backendCertified).toBe(false);
   });
   test('an alias-scoped unsupported denial cannot qualify canonical unsupported completion', () => {
     const { schema, evidence, decisions } = unsupportedModel(), row = evidence.unsupported[0];

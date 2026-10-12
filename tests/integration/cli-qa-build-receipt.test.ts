@@ -11,6 +11,10 @@ const smoke = require('../../scripts/eai-full-e2e-smoke.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 // Real toolchain identity inside a synthetic consumer DTO, not executed qualification evidence.
 const canonicalExecutionModel = { ...build.canonicalBuildExecution(), exitCode: 0, executablesUnchanged: true };
+const selectedGit = require('../../scripts/cli-qa-operational-env.cjs').installedGitExecution();
+const gitExecutionModel = { ...selectedGit, executablesUnchanged: true, invocations: [
+  ['rev-parse', '--show-toplevel'], ['rev-parse', '--verify', 'HEAD'], ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+  ['ls-files', '--stage', '-z']].map(args => [selectedGit.gitPath, ...args]) };
 const roots: string[] = [];
 const observedAt = '2026-10-09T06:00:00.000Z';
 const now = Date.parse(observedAt);
@@ -80,6 +84,17 @@ function normalFixture() {
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test('normal source identity refuses a dirty tree despite a PATH-shadowed Git clean/HEAD claim', () => {
+    const value = normalFixture(), bin = join(value.root, '.private', 'bin'); mkdirSync(bin, { recursive: true, mode: 0o700 });
+    const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim(), shadow = join(value.root, '.private', 'git-invoked');
+    writeFileSync(join(value.root, 'src/main.js'), 'changed tracked source after commit\n');
+    writeFileSync(join(bin, 'git'), `#!/usr/bin/env bash\nprintf invoked >> '${shadow}'\ncase "$*" in\n'rev-parse --verify HEAD'|'rev-parse HEAD') printf '${'e'.repeat(40)}\\n';;\nstatus*) exit 0;;\n*) exec '${realGit}' "$@";;\nesac\n`, { mode: 0o700 });
+    const result = spawnSync(process.execPath, [join(value.root, 'scripts/cli-qa-build-receipt.cjs'), '--cli', value.cliPath, '--output', value.output],
+      { cwd: value.root, encoding: 'utf8', timeout: 20000,
+        env: { ...process.env, NODE_PATH: resolve('node_modules'), PATH: bin + ':' + process.env.PATH } });
+    expect(result.status).not.toBe(0); expect(existsSync(shadow)).toBe(false);
+    expect(qa.readPrivate(value.output)).toMatchObject({ qualified: false, status: 'failed', failureCode: 'SOURCE_DIRTY' });
+  });
   test('the actual normal builder cannot use a PATH-shadowed npm instead of the installed canonical executable', () => {
     const value = normalFixture(), bin = join(value.root, '.private', 'bin'); mkdirSync(bin, { recursive: true, mode: 0o700 });
     mkdirSync(join(value.root, 'dist'), { recursive: true }); writeFileSync(value.cliPath, 'stale compiled output');
@@ -319,7 +334,21 @@ describe('fresh normal-build receipt validation', () => {
   const receipt = { schemaVersion: build.SCHEMA, status: 'passed', qualification: 'normal-build', qualified: true,
     sourceSha: candidate.gitSha, sourceSha256: 'd'.repeat(64), sourceFileCount: 900,
     sourceFingerprintVersion: build.SOURCE_FINGERPRINT, sourceUnchanged: true, command: ['npm', 'run', 'build'], exitCode: 0,
-    nodeVersion: process.version, observedAt, candidate, canonicalExecution: canonicalExecutionModel };
+    nodeVersion: process.version, observedAt, candidate, canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
+  test('legacy PATH-selected Git receipts cannot qualify after the source reader is hardened', () => {
+    expect(build.sourceBuildVerified({ ...receipt, gitExecution: undefined }, candidate, { now })).toBe(false);
+  });
+  test.each(['selection', 'path', 'hash', 'version', 'changed', 'missing-invocation', 'malformed-invocation'])('normal Git provenance rejects %s', field => {
+    const gitExecution = structuredClone(gitExecutionModel);
+    if (field === 'selection') gitExecution.selection = 'PATH';
+    if (field === 'path') gitExecution.gitPath = 'git';
+    if (field === 'hash') gitExecution.gitSha256 = 'unknown';
+    if (field === 'version') gitExecution.gitVersion = '';
+    if (field === 'changed') gitExecution.executablesUnchanged = false;
+    if (field === 'missing-invocation') gitExecution.invocations = [];
+    if (field === 'malformed-invocation') Object.assign(gitExecution, { invocations: [null] });
+    expect(build.sourceBuildVerified({ ...receipt, gitExecution }, candidate, { now })).toBe(false);
+  });
   test('legacy PATH-selected normal-build receipts lack qualifying canonical execution proof', () => {
     expect(build.sourceBuildVerified({ ...receipt, canonicalExecution: undefined }, candidate, { now })).toBe(false);
   });

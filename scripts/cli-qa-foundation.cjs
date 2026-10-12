@@ -404,7 +404,7 @@ function authorizationVerified(evidence, candidate, context) {
     || authorization.environment !== context.environment || authorization.publicApiUrl !== context.publicApiUrl
     || !require('./cli-qa-build-receipt.cjs').candidateMatches(authorization.candidate, candidate)
     || !Number.isFinite(age) || age < -60000 || age > 3600000
-    || !authorization.foundationVerified || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)
+    || authorization.foundationVerified !== true || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)
     || authorization.cases.length !== ROLE_CASES.length
     || !authorization.cases.every(row => row && typeof row === 'object' && !Array.isArray(row)
       && ROLE_CASES.includes(row.name) && row.status === 'passed' && typeof row.profile === 'string'
@@ -412,7 +412,8 @@ function authorizationVerified(evidence, candidate, context) {
       && Number.isSafeInteger(row.httpStatus))) return false;
   const actors = authorization.actors || {}, tenants = authorization.tenantIds || {};
   if (!UUID.test(tenants.a || '') || !UUID.test(tenants.b || '') || tenants.a === tenants.b) return false;
-  if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string')
+  if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string'
+    && /^[A-Za-z0-9_.-]{1,100}$/.test(actors[slot].profile))
     || new Set(Object.values(actors).map(actor => actor.oid)).size !== 5 || new Set(Object.values(actors).map(actor => actor.profile)).size !== 5) return false;
   return ROLE_CASES.every(name => authorization.cases.filter(row => row.name === name).length === 1
     && authorization.cases.some(row => row.name === name && row.status === 'passed'
@@ -429,7 +430,8 @@ function cycleReceiptVerified(row) {
     && row.recreatedSameKey === true && UUID.test(row.enrollmentId || '') && UUID.test(row.recreatedEnrollmentId || '')
     && row.recreatedEnrollmentId.toLowerCase() !== row.enrollmentId.toLowerCase()
     && row.cleanupVerified === true && row.localProjectCleanupVerified === true && row.registrationAbsent === true
-    && row.deletionVerified === true && row.appBuildVerified === true;
+    && row.deletionVerified === true && row.appBuildVerified === true
+    && require('./cli-qa-cycle-steps.cjs').cycleStepsVerified(row.stepEvidence, row);
 }
 function cycleIdentitiesFresh(rows) {
   return rows.length === 10 && new Set(rows.map(row => row.clientId.toLowerCase())).size === 10
@@ -480,5 +482,5 @@ function main() {
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
 module.exports = { SCHEMA, SLOTS, SERVICES, ROLE_CASES, publicApi, initialize, validateFoundation, readPrivate, writePrivate, writePrivateText,
   withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cycleIdentitiesFresh, cyclesVerified, foundationEvidenceBound,
-  privateDirectory, assertPrivateDirectory, operationalEnvironment,
+  privateDirectory, assertPrivateDirectory, operationalEnvironment, qualificationScopeVerified,
   cliCaller, getBody, verifyActors, verifyIdentity, verifyWorkspaces };

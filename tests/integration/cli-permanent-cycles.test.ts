@@ -3,11 +3,16 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test } from 'vitest';
+import { cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
 const require = createRequire(import.meta.url);
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 const cycles = require('../../scripts/qualify-cli-permanent.cjs');
 const canonicalExecutionModel = { ...require('../../scripts/cli-qa-build-receipt.cjs').canonicalBuildExecution(),
   exitCode: 0, executablesUnchanged: true };
+const selectedGit = require('../../scripts/cli-qa-operational-env.cjs').installedGitExecution();
+const gitExecutionModel = { ...selectedGit, executablesUnchanged: true, invocations: [
+  ['rev-parse', '--show-toplevel'], ['rev-parse', '--verify', 'HEAD'], ['status', '--porcelain=v1', '-z', '--untracked-files=all'],
+  ['ls-files', '--stage', '-z']].map(args => [selectedGit.gitPath, ...args]) };
 const uuid = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const candidate = { gitSha: 'a'.repeat(40), binarySha256: 'b'.repeat(64), runtimeSha256: 'c'.repeat(64),
   runtimeFileCount: 200, version: '3.19.2', dirty: false };
@@ -48,7 +53,7 @@ function controlled() {
     sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
     sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
     exitCode: 0, nodeVersion: process.version, observedAt: new Date(now).toISOString(), candidate,
-    canonicalExecution: canonicalExecutionModel };
+    canonicalExecution: canonicalExecutionModel, gitExecution: gitExecutionModel };
   qa.writePrivate(options.buildReceiptPath, buildReceipt);
   const execute = (_cli: string, args: string[]) => {
     const profile = args[1], command = args.slice(2), scope = command[command.indexOf('--tenant-id') + 1];
@@ -70,7 +75,9 @@ function controlled() {
   const liveReport = () => {
     const index = ++runs, child = uuid(100 + index), client = uuid(200 + index), enrollment = uuid(300 + index), recreated = uuid(400 + index);
     const appKey = 'eai-e2e-cycle-' + index;
+    const steps = cycleStepModel({ tenantId: child, clientId: client, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated });
     return { candidate, preflight, fixtureId: foundation.fixtureId,
+      foundationParentTenantId: foundation.parentTenantId,
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
       actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => {
         const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];
@@ -80,9 +87,9 @@ function controlled() {
       rotationCycle: { clientId: client, tenantId: child, appKey, commandDispatches: 1, credentialChanged: true },
       deletionCycle: { tenantId: child, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated,
         deletionVerified: true, firstInventoryEmpty: true, recreatedSameKey: true },
-      commands: [{ command: 'eai provision entra', options: ['--rotate-secret'], status: 'passed' },
-        { command: 'npm run build', status: 'passed', exitCode: 0, scopeTenantId: child }],
-      cleanup: [{ artifact: 'entra-registration', status: 'passed', evidence: { registrationAbsenceVerified: true } },
+      commands: [...steps.commands].sort((a, b) => a.sequence - b.sequence).map(row => ({ ...row, assertions: row.assertions.map(value => value.name) })),
+      assertions: steps.commands.flatMap(row => row.assertions),
+      cleanup: [{ artifact: 'entra-registration', status: 'passed', evidence: steps.registration },
         { artifact: 'child-tenant', status: 'passed', evidence: { tenantId: child, parentTenantId: uuid(30), hardPurged: true, absenceVerified: true } }] };
   };
   const dependencies = { now: () => now, env: {}, execute, candidateEvidence: () => candidate,
@@ -94,7 +101,52 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
-  test.each(['fixtureId', 'tenantIds.a', 'tenantIds.b',
+  test.each(['a', 'b', 'qa-parent'])('a lifecycle cannot claim retained %s as its fresh child', slot => {
+    const fixture = controlled(), report = fixture.liveReport();
+    const child = slot === 'qa-parent' ? fixture.foundation.parentTenantId : fixture.foundation.workspaces[slot].id;
+    Object.assign(report.created, { childTenantId: child, runtimeTenantId: child });
+    report.rotationCycle.tenantId = child; report.deletionCycle.tenantId = child;
+    Object.assign(report.cleanup[1].evidence, { tenantId: child });
+    expect(cycles.ownedReportValid(report, fixture.foundation, candidate, fixture.preflight)).toBe(false);
+  });
+  test.each(['publicApiUrl', 'parentTenantId', 'actorId', 'childDeleteVerified'])('runner preflight %s must match the full parent-authorized observation', field => {
+    const fixture = controlled(), report = fixture.liveReport();
+    report.preflight = { ...report.preflight, [field]: field === 'childDeleteVerified' ? false : 'foreign-context' };
+    expect(cycles.ownedReportValid(report, fixture.foundation, candidate, fixture.preflight)).toBe(false);
+  });
+  test('unbacked runner lifecycle booleans cannot qualify rotation, deletion or recreation', () => {
+    const fixture = controlled();
+    const runLive = () => { const report = fixture.liveReport();
+      Object.assign(report, { assertions: [] });
+      for (const row of report.commands) Object.assign(row, { assertions: [] });
+      return report; };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+    expect(fixture.runs()).toBe(1); expect(qa.readPrivate(fixture.options.output).qualified).toBe(false);
+  });
+  test.each(['rotation', 'first-delete', 'first-inventory', 'recreation', 'recreated-inventory', 'recreated-delete', 'registration'])
+    ('failed underlying %s observation cannot be replaced by runner success flags', step => {
+      const fixture = controlled();
+      const runLive = () => {
+        const report = fixture.liveReport();
+        const names: Record<string, string> = { rotation: 'rotation-changed-local-credential', 'first-delete': 'app-deletion-receipt',
+          'first-inventory': 'first-app-inventory-empty', recreation: 'new-enrollment-same-key',
+          'recreated-inventory': 'recreated-app-first-inventory-empty', 'recreated-delete': 'recreated-app-deletion-receipt',
+          registration: 'entra-cleanup-receipt' };
+        report.assertions.find(row => row.name === names[step])!.status = 'failed'; return report;
+      };
+      expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+      expect(fixture.runs()).toBe(1); expect(qa.readPrivate(fixture.options.output).qualified).toBe(false);
+    });
+  test.each(['legacy', 'foreign-scope', 'order', 'registration-client'])('serialized %s cycle evidence cannot certify retained cycles', failure => {
+    const fixture = controlled(), report = fixture.liveReport(), receipt = cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+    if (failure === 'legacy') delete receipt.stepEvidence;
+    if (failure === 'foreign-scope') receipt.stepEvidence.commands[0].scopeTenantId = uuid(999);
+    if (failure === 'order') receipt.stepEvidence.commands[3].sequence = receipt.stepEvidence.commands[2].sequence;
+    if (failure === 'registration-client') receipt.stepEvidence.registration.clientId = uuid(998);
+    expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+  });
+  test.each(['fixtureId', 'foundationParentTenantId', 'tenantIds.a', 'tenantIds.b',
     ...Object.keys(qa.SLOTS).flatMap(slot => [`actors.${slot}.oid`, `actors.${slot}.profile`])])(
     'rejects lifecycle evidence from another retained fixture field %s', field => {
       const fixture = controlled();
@@ -117,7 +169,8 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
   });
   test('the actual runner retains its explicit fixture context even when identity preflight blocks', () => {
     const fixture = controlled(); const model = fixture.liveReport(); let report: any;
-    const expectedFixture = { fixtureId: model.fixtureId, tenantIds: model.tenantIds, actors: model.actors };
+    const expectedFixture = { fixtureId: model.fixtureId, foundationParentTenantId: fixture.foundation.parentTenantId,
+      tenantIds: model.tenantIds, actors: model.actors };
     try {
       require('../../scripts/eai-full-e2e-smoke.cjs').runLiveSmoke(fixture.options.cliPath, {
         expectedFixture, env: { EAI_E2E_OUTPUT_ROOT: fixture.root, EAI_E2E_TEST_PROFILE: fixture.foundation.actors.adminA.profile,
@@ -134,7 +187,8 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const fixture = controlled(); const model = fixture.liveReport(); let report: any; let dispatches = 0;
     try {
       require('../../scripts/eai-full-e2e-smoke.cjs').runLiveSmoke(fixture.options.cliPath, {
-        expectedFixture: { fixtureId: model.fixtureId, tenantIds: model.tenantIds, actors: model.actors },
+        expectedFixture: { fixtureId: model.fixtureId, foundationParentTenantId: fixture.foundation.parentTenantId,
+          tenantIds: model.tenantIds, actors: model.actors },
         env: { EAI_E2E_OUTPUT_ROOT: fixture.root,
           EAI_E2E_TEST_PROFILE: mismatch === 'profile' ? 'foreign-profile' : fixture.foundation.actors.adminA.profile,
           EAI_E2E_TEST_USERNAME: fixture.foundation.actors.adminA.email,
@@ -147,6 +201,38 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     expect(report.status).toBe('blocked'); expect(dispatches).toBe(0);
     expect(report.assertions[0]).toMatchObject({ name: 'retained-fixture-context', status: 'blocked' });
     expect(report.created.childTenantId).toBe('');
+  });
+  test.each(['b', 'qa-parent'])('the actual runner never selects or purges reserved %s returned by create', slot => {
+    const fixture = controlled(), model = fixture.liveReport(), parent = fixture.foundation.workspaces.a.id;
+    const reserved = slot === 'b' ? fixture.foundation.workspaces.b.id : fixture.foundation.parentTenantId;
+    const calls: string[][] = []; let report: any;
+    const execute = (_command: string, invocation: string[]) => {
+      const args = invocation.slice(2); calls.push(args);
+      const ok = (value: unknown) => ({ status: 0, stdout: JSON.stringify(value), stderr: '' });
+      if (args[0] === 'whoami') return { status: 0, stdout: 'PublicAPI: ' + fixture.foundation.publicApiUrl, stderr: '' };
+      if (args[0] === 'tenant' && args[1] === 'list') return ok({ tenants: [{ id: parent }] });
+      if (args[0] === 'tenant' && args[1] === 'select') return ok({ selected: true });
+      if (args[0] === 'tenant' && args[1] === 'info') return ok({ id: parent });
+      if (args[0] === 'tenant' && args[1] === 'create') return ok({ tenant: { id: reserved,
+        slug: args[args.indexOf('--slug') + 1], parentTenantId: parent } });
+      if (args[2] === '/v4/identity/me') return ok({ ok: true, status: 200, body: fixture.foundation.actors.adminA });
+      if (args[2]?.endsWith('/management')) return ok({ ok: true, status: 200, body: { id: parent } });
+      if (args[2]?.includes('/memberships?')) return ok({ ok: true, status: 200, body: { tenants: [{ id: parent, roles: ['tenant-admin'] }] } });
+      if (args[2] === '/v4/platform/capabilities/evaluate') return ok({ ok: true, status: 200, body: { outcome: 'allow', reasonCode: 'subscription_active' } });
+      throw new Error('No other simulated backend operation is permitted.');
+    };
+    try { require('../../scripts/eai-full-e2e-smoke.cjs').runLiveSmoke(fixture.options.cliPath, {
+      expectedFixture: { fixtureId: model.fixtureId, foundationParentTenantId: fixture.foundation.parentTenantId,
+        tenantIds: model.tenantIds, actors: model.actors }, now: fixture.dependencies.now, execute, log: () => {},
+      env: { EAI_E2E_OUTPUT_ROOT: fixture.root, EAI_E2E_TEST_PROFILE: fixture.foundation.actors.adminA.profile,
+        EAI_E2E_TEST_USERNAME: fixture.foundation.actors.adminA.email, EAI_E2E_TEST_USER_OID: fixture.foundation.actors.adminA.oid,
+        EAI_E2E_PARENT_TENANT_ID: parent, EAI_E2E_EXPECTED_PUBLIC_API: fixture.foundation.publicApiUrl,
+        EAI_E2E_CLEANUP_PREFLIGHT: fixture.options.cleanupPreflight },
+    }); } catch (error) { report = (error as Error & { report: unknown }).report; }
+    expect(calls.filter(args => args[0] === 'tenant' && args[1] === 'create')).toHaveLength(1);
+    expect(report.created.childTenantId).toBe(''); expect(report.cleanupVerified).toBe(false);
+    expect(calls.some(args => args[0] === 'tenant' && ['select', 'delete', 'bootstrap-admin'].includes(args[1]) && args.includes(reserved))).toBe(false);
+    expect(report.preflight).toMatchObject(fixture.preflight);
   });
   test('controller cleanup failure cannot retain a runner local-cleanup success claim', () => {
     const fixture = controlled();
@@ -209,7 +295,7 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
         for (const key of Object.keys(ambient)) expect(options.env[key]).toBeUndefined();
         expect(options.env.HOME).toBe('/normal-home'); expect(options.env.PATH).toBe('/normal-bin');
         expect(options.env.EAI_E2E_TEST_PROFILE).toBe(fixture.foundation.actors.adminA.profile);
-        expect(options.expectedFixture).toEqual({ fixtureId: fixture.foundation.fixtureId,
+        expect(options.expectedFixture).toEqual({ fixtureId: fixture.foundation.fixtureId, foundationParentTenantId: fixture.foundation.parentTenantId,
           tenantIds: { a: fixture.foundation.workspaces.a.id, b: fixture.foundation.workspaces.b.id },
           actors: Object.fromEntries(Object.entries(fixture.foundation.actors).map(([slot, actor]) => {
             const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];

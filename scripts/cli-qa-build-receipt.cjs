@@ -5,6 +5,7 @@ const { dirname, isAbsolute, join, relative, resolve, sep } = require('node:path
 const { spawnSync } = require('node:child_process');
 const { createHash } = require('node:crypto');
 const smoke = require('./eai-full-e2e-smoke.cjs');
+const { installedGitExecution } = require('./cli-qa-operational-env.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const SCHEMA = 'eai.cli-source-build.v1';
@@ -132,7 +133,7 @@ function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
     || receipt.schemaVersion !== SCHEMA || receipt.qualification !== 'normal-build' || receipt.qualified !== true
     || receipt.status !== 'passed' || receipt.sourceUnchanged !== true || receipt.exitCode !== 0
     || typeof receipt.nodeVersion !== 'string' || !NODE.test(receipt.nodeVersion)
-    || !canonicalExecutionVerified(receipt.canonicalExecution, receipt.nodeVersion)
+    || !canonicalExecutionVerified(receipt.canonicalExecution, receipt.nodeVersion) || !gitExecutionVerified(receipt.gitExecution)
     || receipt.sourceFingerprintVersion !== SOURCE_FINGERPRINT || typeof receipt.sourceSha256 !== 'string' || !HASH.test(receipt.sourceSha256)
     || !Number.isSafeInteger(receipt.sourceFileCount) || receipt.sourceFileCount <= 0 || receipt.sourceSha !== candidate.gitSha
     || !Array.isArray(receipt.command) || receipt.command.length !== COMMAND.length || !COMMAND.every((part, index) => receipt.command[index] === part)
@@ -142,13 +143,34 @@ function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
   return Number.isFinite(age) && age >= -60000 && age <= 3600000;
 }
 
+/** Legacy PATH-selected Git observations do not establish the normal source identity. */
+function gitExecutionVerified(record) {
+  const required = [['rev-parse', '--show-toplevel'], ['rev-parse', '--verify', 'HEAD'],
+    ['status', '--porcelain=v1', '-z', '--untracked-files=all'], ['ls-files', '--stage', '-z']];
+  return record && typeof record === 'object' && !Array.isArray(record)
+    && record.schemaVersion === 'eai.cli-installed-git-execution.v1' && record.selection === 'conventional-installation'
+    && typeof record.gitPath === 'string' && record.gitPath.length <= 4096 && isAbsolute(record.gitPath)
+    && typeof record.gitSha256 === 'string' && HASH.test(record.gitSha256)
+    && typeof record.gitVersion === 'string' && /^git version [^\r\n]{1,100}$/.test(record.gitVersion)
+    && record.executablesUnchanged === true && Array.isArray(record.invocations) && record.invocations.length <= 32
+    && record.invocations.every(argv => Array.isArray(argv) && argv.length >= 2 && argv.length <= 9
+      && argv[0] === record.gitPath && argv.every(value => typeof value === 'string' && value.length <= 4096))
+    && required.every(args => record.invocations.some(argv => argv.length === args.length + 1
+      && args.every((value, index) => argv[index + 1] === value)));
+}
+
 /** Run only the canonical build in this checkout and retain a private source/artifact join. */
 function runBuildReceipt(options, dependencies = {}) {
   const state = privateState(), executor = dependencies.execute || execute, now = dependencies.now || Date.now;
   const operational = state.operationalEnvironment(process.env);
-  const run = (command, args, settings) => executor(command, args, { ...settings, env: settings.env || operational });
-  const root = fs.realpathSync(dependencies.root || ROOT), cliPath = resolve(options.cliPath || ''), output = resolve(options.output || '');
   const qualification = Object.keys(dependencies).length ? 'controlled-fixtures' : 'normal-build';
+  const selectedGit = qualification === 'normal-build' ? installedGitExecution() : null, gitInvocations = [];
+  const run = (command, args, settings) => {
+    const executable = command === 'git' && selectedGit ? selectedGit.gitPath : command;
+    if (command === 'git' && selectedGit) gitInvocations.push([executable, ...args]);
+    return executor(executable, args, { ...settings, env: settings.env || operational });
+  };
+  const root = fs.realpathSync(dependencies.root || ROOT), cliPath = resolve(options.cliPath || ''), output = resolve(options.output || '');
   const receipt = { schemaVersion: SCHEMA, qualification, qualified: false, status: 'running', command: [...COMMAND],
     exitCode: null, sourceUnchanged: false, nodeVersion: dependencies.nodeVersion || process.version,
     startedAt: new Date(now()).toISOString(), observedAt: new Date(now()).toISOString(), candidate: null };
@@ -205,6 +227,11 @@ function runBuildReceipt(options, dependencies = {}) {
       const candidate = (dependencies.candidateEvidence || smoke.candidateEvidence)(cliPath);
       requireCondition(candidateValid(candidate) && candidate.gitSha === before.sourceSha, 'BUILT_CANDIDATE_UNVERIFIED');
       const final = sourceSnapshot(root, run); requireCondition(sameSource(before, final), 'SOURCE_CHANGED_DURING_MEASUREMENT');
+      if (selectedGit) {
+        receipt.gitExecution = { ...selectedGit, invocations: gitInvocations,
+          executablesUnchanged: JSON.stringify(installedGitExecution()) === JSON.stringify(selectedGit) };
+        requireCondition(gitExecutionVerified(receipt.gitExecution), 'CANONICAL_GIT_UNVERIFIED');
+      }
       receipt.candidate = Object.fromEntries(CANDIDATE_FIELDS.map(field => [field, candidate[field]]));
       receipt.sourceUnchanged = true; receipt.status = 'passed'; receipt.observedAt = new Date(now()).toISOString();
       receipt.qualified = qualification === 'normal-build'; save(); return receipt;
@@ -214,7 +241,7 @@ function runBuildReceipt(options, dependencies = {}) {
         'SOURCE_HEAD_UNVERIFIED', 'SOURCE_STATUS_UNVERIFIED', 'SOURCE_DIRTY', 'SOURCE_INVENTORY_UNVERIFIED', 'SOURCE_INVENTORY_EMPTY',
         'SOURCE_FILE_UNSUPPORTED', 'SOURCE_INVENTORY_DUPLICATE', 'LINKED_PATH', 'BUILD_FAILED', 'SOURCE_CHANGED_DURING_BUILD',
         'BUILT_CANDIDATE_UNVERIFIED', 'SOURCE_CHANGED_DURING_MEASUREMENT', 'NPM_PROJECT_CONFIG_UNSUPPORTED',
-        'CANONICAL_NPM_UNVERIFIED'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
+        'CANONICAL_NPM_UNVERIFIED', 'CANONICAL_GIT_UNVERIFIED'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
       receipt.observedAt = new Date(now()).toISOString(); save();
       const failure = new Error('CLI source build receipt failed: ' + receipt.failureCode + '.'); failure.receipt = receipt; throw failure;
     }
@@ -231,4 +258,4 @@ function main() {
     sourceSha: receipt.sourceSha, runtimeSha256: receipt.candidate.runtimeSha256, observedAt: receipt.observedAt }));
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
-module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified, candidateMatches, canonicalBuildExecution };
+module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified, candidateValid, candidateMatches, canonicalBuildExecution, gitExecutionVerified };

@@ -7,7 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { tmpdir } = require('node:os');
 const { basename, dirname, join, relative, resolve, sep } = require('node:path');
 const ts = require('typescript');
-const { operationalEnvironment } = require('./cli-qa-operational-env.cjs');
+const { operationalEnvironment, installedGitExecution } = require('./cli-qa-operational-env.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
@@ -1545,8 +1545,9 @@ function candidateEvidence(cliPath) {
   const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   const localCandidate = realpathSync(packageRoot) === realpathSync(ROOT);
   const gitEnvironment = operationalEnvironment(process.env);
-  const head = localCandidate ? spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
-  const dirty = localCandidate ? spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
+  const gitPath = localCandidate ? installedGitExecution().gitPath : null;
+  const head = localCandidate ? spawnSync(gitPath, ['rev-parse', 'HEAD'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
+  const dirty = localCandidate ? spawnSync(gitPath, ['status', '--porcelain', '--untracked-files=all'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
   return {
     gitSha: localCandidate ? (head.status === 0 ? head.stdout.trim() : null) : (/^[a-f0-9]{40}$/.test(pkg.gitHead || '') ? pkg.gitHead : null),
     binarySha256: createHash('sha256').update(readFileSync(binary)).digest('hex'),
@@ -1700,12 +1701,14 @@ function retainedFixtureContext(value, profile, actorId, parentTenantId) {
   const slots = ['adminA', 'builderA', 'viewerA', 'adminB', 'builderB'];
   if (!uuid(value?.fixtureId) || !uuid(value.tenantIds?.a) || !uuid(value.tenantIds?.b)
     || value.tenantIds.a === value.tenantIds.b || value.tenantIds.a !== parentTenantId
+    || !uuid(value.foundationParentTenantId) || [value.tenantIds.a, value.tenantIds.b].includes(value.foundationParentTenantId)
     || !slots.every(slot => uuid(value.actors?.[slot]?.oid) && typeof value.actors[slot].profile === 'string'
       && /^[A-Za-z0-9_.-]{1,100}$/.test(value.actors[slot].profile))
     || new Set(slots.map(slot => value.actors[slot].oid.toLowerCase())).size !== slots.length
     || new Set(slots.map(slot => value.actors[slot].profile.toLowerCase())).size !== slots.length
     || value.actors.adminA.oid !== actorId || value.actors.adminA.profile !== profile) return null;
-  return { fixtureId: value.fixtureId, tenantIds: { a: value.tenantIds.a, b: value.tenantIds.b },
+  return { fixtureId: value.fixtureId, foundationParentTenantId: value.foundationParentTenantId,
+    tenantIds: { a: value.tenantIds.a, b: value.tenantIds.b },
     actors: Object.fromEntries(slots.map(slot => [slot, { oid: value.actors[slot].oid, profile: value.actors[slot].profile }])) };
 }
 
@@ -1748,6 +1751,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   let appOwned = false;
   let runtimeOwned = false;
   let entraAttempted = false;
+  const reservedTenantIds = new Set([parentTenantId]);
   const batchIds = [];
   const child = () => report.created.childTenantId;
   const runtime = () => report.created.runtimeTenantId;
@@ -1859,6 +1863,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       const context = retainedFixtureContext(dependencies.expectedFixture, profile, env.EAI_E2E_TEST_USER_OID, parentTenantId);
       assertion('retained-fixture-context', Boolean(context), 'Retained fixture references must match the explicit administrator and parent.', true);
       Object.assign(report, context); checkpoint();
+      for (const id of [context.foundationParentTenantId, context.tenantIds.a, context.tenantIds.b]) reservedTenantIds.add(id);
     }
     for (const key of ['EAI_E2E_TEST_PROFILE', 'EAI_E2E_TEST_USERNAME', 'EAI_E2E_PARENT_TENANT_ID'])
       assertion('prerequisite-' + key, Boolean(env[key]?.trim()), 'Live mode requires ' + key + '.', true);
@@ -1929,7 +1934,9 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       && preflight.childDeleteRoute === '/v4/platform/tenants/{parent}/children/{child}/delete' && preflight.childDeleteVerified === true
       && Number.isFinite(age) && age >= -60000 && age <= 3600000,
     'Deployed child-delete route observation is missing, stale or mismatched to DEV, QA parent or actor.', true);
-    report.preflight = { publicApiGitSha: preflight.publicApiGitSha, adminApiGitSha: preflight.adminApiGitSha,
+    report.preflight = { schemaVersion: preflight.schemaVersion, publicApiUrl: preflight.publicApiUrl,
+      parentTenantId: preflight.parentTenantId, actorId: preflight.actorId, childDeleteVerified: preflight.childDeleteVerified,
+      publicApiGitSha: preflight.publicApiGitSha, adminApiGitSha: preflight.adminApiGitSha,
       childDeleteRoute: preflight.childDeleteRoute, observedAt: preflight.observedAt }; checkpoint();
     const capability = json(['publicapi', 'post', '/v4/platform/capabilities/evaluate', '--tenant-id', parentTenantId,
       '--data', JSON.stringify({ tenant_id: parentTenantId, target_capability: 'child-tenants', requested_operation: 'create' }),
@@ -1969,7 +1976,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const tenant = payload.tenant;
         if (tenant?.reused === true) childAttempted = false;
         const immediateParent = tenant?.parentTenantId ?? tenant?.parentTenant?.id ?? tenant?.parentTenant;
-        if (tenant && typeof tenant.id === 'string' && tenant.id !== parentTenantId && tenant.slug === appName
+        if (tenant && typeof tenant.id === 'string' && !reservedTenantIds.has(tenant.id) && tenant.slug === appName
           && immediateParent === parentTenantId && tenant.reused !== true) {
           report.created.childTenantId = tenant.id; childOwned = true; checkpoint();
         }
@@ -2281,7 +2288,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       assertion('entra-runtime-authorized', auth.tenantAuthorizedApps?.status === 'authorized', 'Entra client was not authorized for the isolated runtime.');
       if (env.EAI_E2E_ROTATE_ENTRA_SECRET === '1') {
         const before = readEnvValue(projectRoot, 'ENTRA_CLIENT_SECRET');
-        eai(['provision', 'entra', '--rotate-secret']);
+        eai(['provision', 'entra', '--rotate-secret'], { scopeTenantId: runtime() });
         const after = readEnvValue(projectRoot, 'ENTRA_CLIENT_SECRET');
         assertion('rotation-changed-local-credential', Boolean(before) && Boolean(after) && before !== after,
           'Successful rotation did not replace the isolated app credential.');
