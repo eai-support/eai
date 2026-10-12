@@ -888,3 +888,48 @@ describe('CLI-owned context file lifecycle', () => {
     await expect(access(oversized)).resolves.toBeUndefined();
   });
 });
+
+
+describe('explicit local harness decline', () => {
+  test('declines a preview immediately without posting and removes only its allocated file and marker', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const allocation = await runSupportCli(home.dir, ['support', '--create-context-file', '--format', 'json']);
+    const file = JSON.parse(allocation.stdout).contextFile as string;
+    await writeFile(file, JSON.stringify(harnessContextFixture()));
+    const preview = await runSupportCli(home.dir, ['support', '--context-file', file, '--tool', 'codex', '--format', 'json'], { EAI_WEBSITE_URL: server.origin });
+    expect(parse(preview).status).toBe('consent_required');
+    const declined = await runSupportCli(home.dir, ['support', '--decline', '--context-file', file, '--format', 'json']);
+    expect(declined.code).toBe(0);
+    expect(parse(declined)).toMatchObject({ status: 'declined', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+    expect(server.requests).toHaveLength(0);
+    await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(`${file}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test.each(['untracked', 'outside', 'symlink'])('preserves %s files on explicit decline', async kind => {
+    const home = await environment();
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const target = join(home.dir, 'user-notes.json');
+    await writeFile(target, JSON.stringify(harnessContextFixture()));
+    const file = kind === 'outside' ? target : join(directory, 'user-notes.json');
+    if (kind === 'symlink') await symlink(target, file);
+    else if (kind === 'untracked') await writeFile(file, JSON.stringify(harnessContextFixture()));
+    const declined = await runSupportCli(home.dir, ['support', '--decline', '--context-file', file, '--format', 'json']);
+    expect(parse(declined).status).toBe('declined');
+    await expect(access(file)).resolves.toBeUndefined();
+    await expect(access(target)).resolves.toBeUndefined();
+  });
+
+  test('rejects simultaneous approval and decline without deleting the preview file', async () => {
+    const home = await environment();
+    const allocation = await runSupportCli(home.dir, ['support', '--create-context-file', '--format', 'json']);
+    const file = JSON.parse(allocation.stdout).contextFile as string;
+    const result = await runSupportCli(home.dir, ['support', '--yes', '--decline', '--context-file', file, '--format', 'json']);
+    expect(result.code).toBe(1);
+    expect(parse(result)).toMatchObject({ status: 'failed', error: { code: 'invalid_report' }, url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+    await expect(access(file)).resolves.toBeUndefined();
+  });
+});

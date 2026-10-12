@@ -72,7 +72,7 @@ function withLocation(bundle: SupportBundle, organisationLocation: OrganisationL
 /**
  * Previews a locally redacted report; options.yes plus a matching --approved-digest asserts the person approved that exact report.
  * JSON/noninteractive callers otherwise preview only; interactive text asks before sending.
- * JSON emits consent_required, consent_stale, signed_out, region_required, created or failed and never opens a browser.
+ * JSON emits context_created, declined, consent_required, consent_stale, signed_out, region_required, created or failed and never opens a browser.
  * Preparation/request failures set process.exitCode to 1; every no-draft outcome returns the chat link without prefill.
  */
 export async function runSupport(options: SupportOptions, dependencies: SupportDependencies = {}): Promise<void> {
@@ -87,6 +87,17 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
     }
   };
   try {
+    if (options.decline && (options.yes || options.createContextFile)) {
+      const message = '--decline cannot be combined with --yes or --create-context-file.';
+      emit({ ok: false, status: 'failed', error: { code: 'invalid_report', message }, url: chatUrl, message });
+      process.exitCode = 1;
+      return;
+    }
+    if (options.decline) {
+      discardOwnedHarnessContext(options.contextFile);
+      emit({ ok: true, status: 'declined', url: chatUrl, message: 'No report was sent and no draft was created.' });
+      return;
+    }
     if (options.createContextFile) {
       const contextFile = createHarnessContextFile();
       emit({ ok: true, status: 'context_created', contextFile, url: chatUrl,
@@ -198,6 +209,7 @@ export const supportCommand = new Command('support')
   .option('--exit-code <code>', 'Failing command exit code')
   .option('--error-code <code-or-reason>', 'Error code or reason from eai errors list')
   .option('--description <text>', 'Optional report description, redacted locally')
+  .option('--decline', 'Decline a preview and remove only its CLI-owned context file; no report is sent')
   .option('--create-context-file', 'Allocate a private CLI-owned file for a harness summary; no report is sent')
   .option('--context-file <path>', 'JSON session summary from the AI harness (- reads stdin); redacted and capped locally')
   .option('--approved-digest <sha256>', 'bundleDigest of the previewed report the person approved; required with --yes in JSON or noninteractive runs')
@@ -205,5 +217,5 @@ export const supportCommand = new Command('support')
   .option('--no-last-error', 'Leave the saved context of the last failing command out of the report')
   .option('--yes', 'Send only when the person has already explicitly consented to this report', false)
   .option('--no-open', 'Print the Support link without opening the browser')
-  .addHelpText('after', '\nWithout --yes, JSON and noninteractive runs only preview the report and return previewText and bundleDigest.\nAfter the person approves that preview, rerun the same command with --yes --approved-digest <bundleDigest>.\nA changed report answers consent_stale and sends nothing. Only the draft id and one-time token appear in the link fragment.\nWithout a draft (signed out, declined, region_required), the printed link opens the Support chat without prefill.\n')
+  .addHelpText('after', '\n--create-context-file and --decline operate locally without sending a report.\nWithout --yes, other JSON and noninteractive runs only preview the report and return previewText and bundleDigest.\nAfter the person approves that preview, rerun the same command with --yes --approved-digest <bundleDigest>.\nA changed report answers consent_stale and sends nothing. Only the draft id and one-time token appear in the link fragment.\nWithout a draft (signed out, declined, region_required), the printed link opens the Support chat without prefill.\n')
   .action(async (options: SupportOptions) => { await runSupport(options); });

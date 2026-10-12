@@ -606,3 +606,18 @@ test('allocates context without loading authentication or posting a report', asy
   await expect(access(output.contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
   await expect(access(`${output.contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
 });
+
+
+test('explicit decline cleans an allocated context without loading authentication', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const contextFile = createHarnessContextFile();
+  await runSupport({ decline: true, contextFile, format: 'json' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+  await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+});

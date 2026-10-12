@@ -394,6 +394,8 @@ Options:
   --error-code <code-or-reason>       Error code or reason from eai errors list
   --description <text>                Optional report description, redacted
                                       locally
+  --decline                           Decline a preview and remove only its
+                                      CLI-owned context file; no report is sent
   --create-context-file               Allocate a private CLI-owned file for a
                                       harness summary; no report is sent
   --context-file <path>               JSON session summary from the AI harness
@@ -414,7 +416,8 @@ Options:
                                       browser
   -h, --help                          display help for command
 
-Without --yes, JSON and noninteractive runs only preview the report and return previewText and bundleDigest.
+--create-context-file and --decline operate locally without sending a report.
+Without --yes, other JSON and noninteractive runs only preview the report and return previewText and bundleDigest.
 After the person approves that preview, rerun the same command with --yes --approved-digest <bundleDigest>.
 A changed report answers consent_stale and sends nothing. Only the draft id and one-time token appear in the link fragment.
 Without a draft (signed out, declined, region_required), the printed link opens the Support chat without prefill.
@@ -4371,6 +4374,7 @@ draft id and one-time token in its fragment. The page submits the final report.
 | `--exit-code <code>` | Signed 32-bit exit code override. |
 | `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
 | `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--decline` | Decline a preview locally and remove only its CLI-owned `--context-file`; no authentication or network request. Cannot be combined with `--yes` or `--create-context-file`. |
 | `--create-context-file` | Allocate an empty private CLI-owned file and return `contextFile`; no authentication or network request. Write the JSON summary into that file without replacing it. |
 | `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file allocated with `--create-context-file` under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Marked files older than 24 hours in that directory are removed on the next support invocation; untracked files and files elsewhere are never deleted. |
 | `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in JSON or noninteractive runs; a mismatch answers `consent_stale`. |
