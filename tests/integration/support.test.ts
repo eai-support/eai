@@ -165,7 +165,7 @@ describe('eai support draft handoff', () => {
     const home = await environment();
     const server = await fixture();
     await writeSupportSession(home.dir);
-    const diagnostic = JSON.stringify(JSON.stringify({ ENTRA_CLIENT_SECRET: ['first', { nested: 'CONTAINER_PRIVATE_CANARY' }], ENTRA_CLIENT_ID: 'public-id' }));
+    const diagnostic = JSON.stringify(JSON.stringify({ ENTRA_CLIENT_SECRET: ['first', { nested: 'CONTAINER_PRIVATE_CANARY' }], ENTRA_CLIENT_ID: 'public-id' })) + ' api_key=[redacted]PLACEHOLDER_TAIL_PRIVATE_CANARY';
     const contextPath = join(home.dir, 'container-summary.json');
     await writeFile(contextPath, JSON.stringify(harnessContextFixture({ request: diagnostic, goal: diagnostic, summary: diagnostic,
       commands: [{ command: diagnostic, exitCode: 1 }], errors: [{ message: diagnostic }], attemptedFixes: [diagnostic] })));
@@ -177,6 +177,7 @@ describe('eai support draft handoff', () => {
     expect(server.requests[0].body).toEqual(preview.bundle);
     for (const text of [preview.previewText!, JSON.stringify(preview.bundle), JSON.stringify(server.requests[0].body), sent.stdout]) {
       expect(text).not.toContain('CONTAINER_PRIVATE_CANARY');
+      expect(text).not.toContain('PLACEHOLDER_TAIL_PRIVATE_CANARY');
       expect(text).toContain('public-id');
     }
   });

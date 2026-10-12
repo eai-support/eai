@@ -98,7 +98,9 @@ function redactCredentialValues(text: string): string {
     if (!isSupportSensitiveKey(key)) continue;
     const markerEnd = start + '[redacted]'.length;
     if (text.startsWith('[redacted]', start) && (quoteEnds[markerEnd] || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
-    const end = quoteEnds[start] ? closingEnds[start] : containerEnds[start] || stops[start];
+    const containerEnd = containerEnds[start];
+    const completeContainer = containerEnd && (quoteEnds[containerEnd] || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
+    const end = quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[start];
     if (end <= start) continue;
     const previous = spans.at(-1);
     if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);

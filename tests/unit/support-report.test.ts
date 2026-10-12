@@ -97,6 +97,12 @@ describe('local support report redaction', () => {
     expect(report).toContain('failed');
   });
 
+  test.each(['[redacted]PRIVATE_CANARY', '[first,second]PRIVATE_CANARY', '{first:second}PRIVATE_CANARY'])('redacts an opaque suffix after credential container %s', value => {
+    const clean = redactSupportText(`api_key=${value}`);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
   test('complete credential containers remain private across nesting and serialized wrappers', () => {
     for (const value of [[], {}, ['first', 'CONTAINER_PRIVATE_CANARY'], { first: 'visible', second: 'CONTAINER_PRIVATE_CANARY' }, [{ nested: ['CONTAINER_PRIVATE_CANARY', { punctuation: 'brackets ] } , inside quotes' }] }]]) {
       let diagnostic = JSON.stringify({ ENTRA_CLIENT_SECRET: value, ENTRA_CLIENT_ID: 'public-id' });
