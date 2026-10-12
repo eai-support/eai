@@ -42,9 +42,14 @@ profile-home and network settings plus the harness's explicit tenant/profile
 settings. Ambient GitHub, Azure, npm and headless credential variables, injected
 Node options and operator lifecycle overrides are excluded.
 The canonical build and its source Git reads use the same restricted operational
-environment. The build explicitly enables committed lifecycle scripts and fixes
-its audit/fund/update-notifier settings; ambient npm configuration cannot alter
-those settings or inject credentials or Node startup code into the child build.
+environment. npm receives fresh empty private user/global configuration files;
+a project `.npmrc` blocks qualification until its policy is explicitly reviewed.
+The build enables committed lifecycle scripts and fixes its audit/fund/update
+settings. This prevents npm from restoring lifecycle `NODE_OPTIONS` from an
+operator configuration file. Standard registry token keys are not exported by
+npm as environment variables. This configuration policy does not sandbox trusted
+build code from files accessible to the same OS account. Profile home and the
+allowlisted network/CA settings remain available.
 
 ## Retained foundation
 
@@ -124,7 +129,11 @@ authenticated users and leaves authorization to PublicAPI. Local CLI rejection,
 401, outage, malformed envelopes and path/header mismatch never prove a role
 denial. The probe requires exact request metadata and HTTP 403/404 for denial.
 It creates four fresh nonce-bound rows with fresh idempotency keys and checks
-exact tenant, object type, data, version and resource IDs. It independently deletes
+exact tenant, object type, data, version, resource IDs and the writer's creator
+OID. PostgreSQL creates have `updated_by: null`; unchanged reads preserve that
+metadata. An unexpectedly persisted viewer update fails authorization and can
+only be reconciled for cleanup against that exact recorded viewer/nonce attempt.
+Foreign creator or updater attribution cannot qualify the probe. It independently deletes
 every acknowledged row through its own workspace administrator and requires an
 authenticated exact GET 404. Unknown creation outcomes remain recorded leftovers
 without automatic replay or guessed cleanup.
@@ -184,7 +193,10 @@ A first-read 503 or nonempty inventory stays failed even if later reads recover.
 No failed rotation or ambiguous recreation is automatically replayed. Each
 runner still attempts independent cleanup in `finally`; the controller stops
 on the first failed cycle. Source/build/deployment/cleanup proofs are rechecked
-between cycles and joined to each runner's receipt. All ten registration IDs,
+between cycles and joined to each runner's receipt. Each runner must match the
+controller's complete candidate record: clean status,
+version, runtime file count, Git SHA, entry hash and full runtime hash.
+All ten registration IDs,
 child IDs and app keys must be distinct, and all twenty original/recreated
 enrollment IDs must be unique. Fixture-controlled cycles can pass
 their structural assertions but remain `qualified: false`.
@@ -221,6 +233,12 @@ Absent evidence remains `not-run`; attempted unfinished observations remain
 or incomplete observations, and one success cannot erase another attempt for
 the same option. A passing selected run never means the full
 inventory is qualified.
+Use a new private audit output, separate from every input. Candidate collection
+and private input failures retain a sanitized blocked-attempt JSON/Markdown
+record and cannot qualify. Malformed receipt collections or entries are retained
+as collection/index observations without copying raw input. Their unknown scope
+prevents other successes from certifying the audit. Null cycles return an
+unqualified result instead of aborting the consumer.
 Qualifying executions have an exact UUID `executionId`. Each assertion is a
 record with a bounded `name`, that exact `executionId`, matching `command`, and
 an explicit `status: passed`. Alias assertions also name the exact `alias`.
@@ -251,8 +269,12 @@ without adopting that workspace.
 It preserves a minimal private creation journal outside the disposable app,
 including the exact returned child ID and creation exit status before inventory
 reconciliation. Missing or ambiguous inventory leaves that journal unresolved
-for manual reconciliation without guessed selection or cleanup. The journal
-records cleanup attempts separately and does not claim verified backend absence.
+for manual reconciliation without guessed selection or cleanup. Cleanup uses
+the exact parent-authorized `--parent` and `--force-hard-purge` route. The journal
+only sets `cleanupVerified` after the exact child/parent hard-purge receipt and
+all bounded parent child-inventory pages prove absence. A failed, malformed,
+partial or nonempty observation cannot pass; the harness reports success only
+after cleanup. This child receipt does not certify an external provider teardown.
 
 Provider, analyzer, classifier, documentWorkflow and GitHub bindings hold
 references to approved retained fixtures. No provider material, third-party

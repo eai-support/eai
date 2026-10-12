@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Produces an evidence inventory. Planned smoke coverage is never live proof.
 const { spawnSync } = require('node:child_process');
+const { existsSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const smoke = require('./eai-full-e2e-smoke.cjs');
 const qualification = require('./cli-qa-foundation.cjs');
@@ -68,13 +69,14 @@ function executionAssertions(item, option) {
       && item.options.includes(row.option))))) return null;
   return option ? item.assertions.filter(row => row.option === undefined || row.option === option) : item.assertions;
 }
-function executionStatus(executions, option) {
-  if (!executions.length) return 'not-run';
+function executionStatus(executions, option, malformed = false) {
+  if (!executions.length) return malformed ? 'incomplete' : 'not-run';
   if (executions.some(item => item.status === 'failed')) return 'failed';
   if (executions.some(item => item.status === 'blocked')) return 'blocked';
   const assertions = executions.map(item => executionAssertions(item, option));
   if (assertions.some(rows => rows?.some(row => row.status === 'failed'))) return 'failed';
   if (assertions.some(rows => rows?.some(row => row.status === 'blocked'))) return 'blocked';
+  if (malformed) return 'incomplete';
   return executions.every((item, index) => item.status === 'passed' && item.coverageComplete === true
     && assertions[index]?.length > 0 && assertions[index].every(row => row.status === 'passed')
     && (!option || assertions[index].some(row => row.option === option))) ? 'passed' : 'incomplete';
@@ -89,11 +91,29 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     || !candidate.runtimeSha256 || evidence.candidate?.runtimeSha256 !== candidate.runtimeSha256)) {
     throw new Error('Live evidence does not identify this exact CLI candidate.');
   }
+  // Unscoped malformed attempts cannot be discarded to certify another success.
+  // Retain bounded collection/index observations, never raw malformed input.
+  const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command));
+  function collection(name) {
+    const values = evidence?.[name];
+    if (values === undefined) return [];
+    if (!Array.isArray(values)) { malformedAttempts.push({ collection: name, index: null }); return []; }
+    return values.filter((row, index) => {
+      const valid = row && typeof row === 'object' && !Array.isArray(row) && knownCommands.has(row.command)
+        && ['passed', 'failed', 'blocked', 'running', 'incomplete', 'not-run', 'skipped', 'unsupported'].includes(row.status)
+        && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
+        && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
+      if (!valid) malformedAttempts.push({ collection: name, index });
+      return Boolean(valid);
+    });
+  }
+  const commandReceipts = collection('commands'), aliasReceipts = collection('aliases'), unsupportedReceipts = collection('unsupported');
+  const evidenceValid = malformedAttempts.length === 0;
   const commands = entries.map(entry => {
     const row = decisions.get(entry.command);
     const contract = backendContract(entry.command, row.crud);
-    const executions = (evidence?.commands || []).filter(item => item.command === entry.command);
-    const status = UNSUPPORTED.has(entry.command) ? 'unsupported' : executionStatus(executions);
+    const executions = commandReceipts.filter(item => item.command === entry.command);
+    const status = UNSUPPORTED.has(entry.command) ? 'unsupported' : executionStatus(executions, undefined, !evidenceValid);
     return { ...entry, operation: row.crud, ...contract, status, executions: executions.length,
       observedSuccesses: executions.filter(item => item.status === 'passed').length,
       plannedCoverage: row.coverage, prerequisite: row.notes,
@@ -109,25 +129,26 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const foundationEvidenceBound = qualification.foundationEvidenceBound(evidence);
   const candidateVerified = sourceBuildVerified(buildReceipt, candidate, { now });
   const aliasEvidence = commands.flatMap(row => row.aliases.map(alias => {
-    const executions = (evidence?.aliases || []).filter(item => item.alias === alias && item.command === row.command);
-    return { alias, command: row.command, status: executionStatus(executions) };
+    const executions = aliasReceipts.filter(item => item.alias === alias && item.command === row.command);
+    return { alias, command: row.command, status: executionStatus(executions, undefined, !evidenceValid) };
   }));
   const optionEvidence = commands.flatMap(row => row.options.map(option => ({ command: row.command, option: option.name.replace(/,$/, ''),
-    status: executionStatus((evidence?.commands || []).filter(item => item.command === row.command
-      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, ''))), option.name.replace(/,$/, '')) })));
+    status: executionStatus(commandReceipts.filter(item => item.command === row.command
+      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, ''))), option.name.replace(/,$/, ''), !evidenceValid) })));
   const aliasCoverageComplete = aliasEvidence.every(row => row.status === 'passed');
   const optionCoverageComplete = optionEvidence.every(row => row.status === 'passed');
-  const unsupportedVerified = [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {
-    const executions = (evidence?.unsupported || []).filter(row => row.command === command);
+  const unsupportedVerified = evidenceValid && [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {
+    const executions = unsupportedReceipts.filter(row => row.command === command);
     return executions.length > 0 && executions.every(row => row.status === 'passed'
       && row.exitCode === 1 && row.authenticationBypassed === true && row.networkCalls === 0);
   });
-  const backendCertified = backendCommands.length > 0 && backendCommands.every(row => row.status === 'passed')
+  const backendCertified = evidenceValid && backendCommands.length > 0 && backendCommands.every(row => row.status === 'passed')
     && evidence?.cleanupVerified === true && parityComplete && authorizationVerified && candidateVerified
     && optionEvidence.filter(row => backendCommands.some(command => command.command === row.command)).every(row => row.status === 'passed');
   return {
     schemaVersion: 'eai.cli-backend-audit.v2', generatedAt: new Date(now).toISOString(), candidate,
     commands, deployments, summary, environment: context.environment, publicApiUrl: context.publicApiUrl,
+    evidenceValidation: { valid: evidenceValid, malformedAttempts },
     aliasEvidence, optionEvidence, aliasCoverageComplete, optionCoverageComplete, unsupportedVerified, candidateVerified,
     cleanupVerified: evidence?.cleanupVerified === true,
     parityComplete, foundationEvidenceBound,
@@ -154,26 +175,40 @@ function commandOutput(args) {
 }
 
 function markdown(report) {
-  return `# EAI CLI backend capability evidence\n\nCandidate: ${report.candidate.version}, ${report.candidate.gitSha}; generated ${report.generatedAt}.\n\nBackend certified: **${report.backendCertified ? 'yes' : 'no'}**. Deployment parity complete: ${report.parityComplete}. Verified lifecycle cleanup: ${report.cleanupVerified}.\n\nPlanned coverage is separate from executed evidence. The matrix includes aliases and executable parent commands.\n\n| Command | Aliases | Operation | Actual evidence | Backend / dependencies | Prerequisite |\n| --- | --- | --- | --- | --- | --- |\n${report.commands.map(row => `| ${row.command} | ${row.aliases.join(', ')} | ${row.operation} | ${row.status} | ${row.dependencies.join(', ')} | ${row.prerequisite.replace(/[\\|]/g, '\\$&')} |`).join('\n')}\n\n${report.limitations.map(value => '- ' + value).join('\n')}\n`;
+  const candidate = report.candidate ? `${report.candidate.version}, ${report.candidate.gitSha}` : 'unverified';
+  return `# EAI CLI backend capability evidence\n\nCandidate: ${candidate}; generated ${report.generatedAt}.\n\nBackend certified: **${report.backendCertified ? 'yes' : 'no'}**. Deployment parity complete: ${report.parityComplete}. Verified lifecycle cleanup: ${report.cleanupVerified}.\n\nPlanned coverage is separate from executed evidence. The matrix includes aliases and executable parent commands.\n\n| Command | Aliases | Operation | Actual evidence | Backend / dependencies | Prerequisite |\n| --- | --- | --- | --- | --- | --- |\n${report.commands.map(row => `| ${row.command} | ${row.aliases.join(', ')} | ${row.operation} | ${row.status} | ${row.dependencies.join(', ')} | ${row.prerequisite.replace(/[\\|]/g, '\\$&')} |`).join('\n')}\n\n${report.limitations.map(value => '- ' + value).join('\n')}\n`;
 }
 
 function main() {
   const args = process.argv.slice(2);
   const argument = name => { const index = args.indexOf(name); return index >= 0 ? args[index + 1] : undefined; };
   const cliPath = resolve(argument('--cli') || join(ROOT, 'dist/index.js'));
-  const schema = JSON.parse(commandOutput([process.execPath, cliPath, '--describe']));
-  const candidate = smoke.candidateEvidence(cliPath);
   const evidencePath = argument('--evidence');
   const deploymentsPath = argument('--deployments');
   const buildReceiptPath = argument('--build-receipt');
-  const evidence = evidencePath ? qualification.readPrivate(resolve(evidencePath)) : undefined;
-  const deployments = deploymentsPath ? qualification.readPrivate(resolve(deploymentsPath)) : [];
-  const buildReceipt = buildReceiptPath ? qualification.readPrivate(resolve(buildReceiptPath)) : undefined;
-  const report = buildAudit({ schema, candidate, evidence, deployments, buildReceipt });
   const output = resolve(argument('--output') || join(ROOT, '.smoke/cli-backend-audit'));
-  qualification.writePrivate(join(output, 'capabilities.json'), report);
-  qualification.writePrivateText(join(output, 'capabilities.md'), markdown(report));
-  console.log(JSON.stringify({ commands: report.commands.length, ...report.summary, backendCertified: report.backendCertified, output }));
+  const jsonPath = join(output, 'capabilities.json'), markdownPath = join(output, 'capabilities.md');
+  if ([cliPath, evidencePath, deploymentsPath, buildReceiptPath].filter(Boolean).some(path => [jsonPath, markdownPath].includes(resolve(path)))
+    || existsSync(jsonPath) || existsSync(markdownPath)) throw new Error('Use a new private audit output separate from its inputs.');
+  qualification.withLease(jsonPath, () => {
+    const attempted = { schemaVersion: 'eai.cli-backend-audit.v2', generatedAt: new Date().toISOString(), candidate: null,
+      status: 'running', commands: [], summary: {}, backendCertified: false, fullCapabilityQualified: false,
+      parityComplete: false, cleanupVerified: false, limitations: ['The attempted audit has not qualified any capability.'] };
+    const save = report => { qualification.writePrivate(jsonPath, report); qualification.writePrivateText(markdownPath, markdown(report)); };
+    save(attempted);
+    try {
+      const schema = JSON.parse(commandOutput([process.execPath, cliPath, '--describe']));
+      const candidate = smoke.candidateEvidence(cliPath); attempted.candidate = candidate;
+      const evidence = evidencePath ? qualification.readPrivate(resolve(evidencePath)) : undefined;
+      const deployments = deploymentsPath ? qualification.readPrivate(resolve(deploymentsPath)) : [];
+      const buildReceipt = buildReceiptPath ? qualification.readPrivate(resolve(buildReceiptPath)) : undefined;
+      const report = buildAudit({ schema, candidate, evidence, deployments, buildReceipt }); save(report);
+      console.log(JSON.stringify({ commands: report.commands.length, ...report.summary, backendCertified: report.backendCertified, output }));
+    } catch {
+      attempted.status = 'blocked'; attempted.reason = 'Required audit input or candidate could not be verified.';
+      save(attempted); throw new Error('Audit could not qualify; inspect its private blocked-attempt evidence.');
+    }
+  });
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
 module.exports = { buildAudit, backendContract, markdown };

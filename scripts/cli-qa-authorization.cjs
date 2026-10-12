@@ -143,7 +143,9 @@ function denial(response, method, path, tenantId, foundation, statuses = [403, 4
 function resourceMatches(dto, row, binding, expectedNonce = row.nonce) {
   return record(dto) && UUID.test(dto.id || '') && (!row.resourceId || dto.id === row.resourceId)
     && dto.tenant_id === row.tenantId && dto.object_type === binding.objectType && record(dto.data)
-    && dto.data[binding.nonceField] === expectedNonce;
+    && dto.data[binding.nonceField] === expectedNonce && dto.created_by === row.creatorId
+    && dto.updated_by === (expectedNonce === row.nonce ? null
+      : row.attemptedUpdates?.find(update => update.nonce === expectedNonce)?.actorId);
 }
 function requireResource(dto, row, binding, nonce = row.nonce) {
   requireCondition(resourceMatches(dto, row, binding, nonce) && Number.isSafeInteger(dto.version) && dto.version >= 1
@@ -203,8 +205,9 @@ function runAuthorizationProbe(options, dependencies = {}) {
       report.foundationVerified = true; save(); stage = 'runtime';
       for (const slot of WRITERS) {
         const tenantId = foundation.workspaces[qa.SLOTS[slot][0]].id;
-        const row = { creatorSlot: slot, tenantId, nonce: `cli-qa-${runId}-${slot}-${uuid()}`,
-          idempotencyKey: uuid(), phase: 'not-dispatched', creationDispatched: false, acknowledgedBound: false, allowedNonces: [] };
+        const row = { creatorSlot: slot, creatorId: foundation.actors[slot].oid, tenantId, nonce: `cli-qa-${runId}-${slot}-${uuid()}`,
+          idempotencyKey: uuid(), phase: 'not-dispatched', creationDispatched: false, acknowledgedBound: false,
+          allowedNonces: [], attemptedUpdates: [] };
         requireCondition(UUID.test(row.idempotencyKey)
           && !report.created.some(existing => existing.idempotencyKey === row.idempotencyKey), 'Creation needs a fresh UUID idempotency key.');
         row.allowedNonces.push(row.nonce); report.created.push(row); save();
@@ -248,6 +251,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
         entry.resourceId = viewerRow.resourceId;
         const path = rowPath(viewerRow), attemptNonce = `cli-qa-${runId}-viewer-attempt-${uuid()}`;
         viewerRow.allowedNonces.push(attemptNonce); save();
+        viewerRow.attemptedUpdates.push({ nonce: attemptNonce, actorId: foundation.actors.viewerA.oid }); save();
         const response = dispatch(call, foundation.actors.viewerA, 'PUT', path, viewerRow.tenantId,
           { data: { ...binding.data, [binding.nonceField]: attemptNonce }, version: viewerRow.version });
         entry.httpStatus = httpStatus(response); denial(response, 'PUT', path, viewerRow.tenantId, foundation);

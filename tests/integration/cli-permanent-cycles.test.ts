@@ -87,6 +87,16 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
+  test.each(['dirty', 'version', 'runtimeFileCount', 'missing-count'])('a runner with mismatched %s cannot contribute a successful cycle', field => {
+    const fixture = controlled();
+    const runLive = () => { const report = fixture.liveReport(); report.candidate = { ...candidate,
+      ...(field === 'dirty' ? { dirty: true } : field === 'version' ? { version: '99.0.0' }
+        : { runtimeFileCount: field === 'missing-count' ? undefined : candidate.runtimeFileCount + 1 }) } as typeof candidate;
+      return report; };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+    const report = qa.readPrivate(fixture.options.output); expect(report.qualified).toBe(false); expect(report.cycles).toHaveLength(1);
+    expect(report.cycles[0].status).toBe('failed'); expect(report.cycles[0].localProjectCleanupVerified).toBe(true);
+  });
   test.each(['throw-before-report', 'throw-primitive', 'summary-without-report'])('retains a sanitized failed attempt for %s', failure => {
     const fixture = controlled(); let dispatches = 0;
     const runLive = () => { dispatches++;

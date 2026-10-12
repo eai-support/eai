@@ -69,6 +69,27 @@ function fixture() {
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test.each(['user', 'global'])('an actual npm build cannot restore NODE_OPTIONS from %s config', configSource => {
+    const value = fixture(), operator = realpathSync(mkdtempSync(join(tmpdir(), 'eai-build-operator-'))); roots.push(operator);
+    const globalConfig = join(operator, 'global.npmrc');
+    writeFileSync(globalConfig, 'node-options=--conditions=synthetic-npm-config\n', { mode: 0o600 });
+    writeFileSync(join(operator, '.npmrc'), configSource === 'user'
+      ? 'node-options=--conditions=synthetic-npm-config\n//registry.npmjs.org/:_authToken=synthetic-only-config-token\n'
+      : `globalconfig=${globalConfig}\n`, { mode: 0o600 });
+    writeFileSync(join(value.root, 'scripts/build.cjs'), readFileSync(join(value.root, 'scripts/build.cjs'), 'utf8')
+      + "fs.writeFileSync('dist/npm-environment.json', JSON.stringify({nodeOptionsPresent: Boolean(process.env.NODE_OPTIONS), registryTokenExported: Object.values(process.env).includes('synthetic-only-config-token')}));\n");
+    commit(value.root); vi.stubEnv('HOME', operator); vi.stubEnv('USERPROFILE', operator);
+    const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
+    expect(JSON.parse(readFileSync(join(value.root, 'dist/npm-environment.json'), 'utf8')))
+      .toEqual({ nodeOptionsPresent: false, registryTokenExported: false });
+    expect(receipt.status).toBe('passed'); expect(receipt.qualified).toBe(false);
+    expect(readFileSync(value.output, 'utf8')).not.toContain('synthetic-only-config-token');
+  });
+  test('project npm configuration cannot silently change the qualified build environment', () => {
+    const value = fixture(); writeFileSync(join(value.root, '.npmrc'), 'node-options=--conditions=synthetic-project-config\n'); commit(value.root);
+    expect(() => build.runBuildReceipt(value.options, value.dependencies)).toThrow('NPM_PROJECT_CONFIG_UNSUPPORTED');
+    expect(value.builds()).toBe(0); expect(qa.readPrivate(value.output)).toMatchObject({ qualified: false, status: 'failed' });
+  });
   test('canonical build and source Git reads exclude ambient credentials, code injection and npm overrides', () => {
     const value = fixture();
     const forbidden = { NODE_OPTIONS: '--no-warnings', NPM_TOKEN: 'synthetic-npm', GH_TOKEN: 'synthetic-gh',
@@ -76,7 +97,9 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
     for (const [key, entry] of Object.entries(forbidden)) vi.stubEnv(key, entry);
     build.runBuildReceipt(value.options, value.dependencies);
     const npm = value.calls.find(row => row.command === 'npm')!;
-    for (const key of Object.keys(forbidden).filter(key => key !== 'npm_config_ignore_scripts')) expect(npm.options.env?.[key]).toBeUndefined();
+    for (const key of Object.keys(forbidden).filter(key => !['npm_config_ignore_scripts', 'npm_config_userconfig'].includes(key))) expect(npm.options.env?.[key]).toBeUndefined();
+    expect(npm.options.env?.npm_config_userconfig).toMatch(/\.eai-npm-config-[^/]+\/user\.npmrc$/);
+    expect(npm.options.env?.npm_config_globalconfig).toMatch(/\.eai-npm-config-[^/]+\/global\.npmrc$/);
     expect(npm.options.env?.npm_config_ignore_scripts).toBe('false');
     for (const call of value.calls.filter(row => row.command === 'git')) {
       expect(call.options.env).toBeDefined();

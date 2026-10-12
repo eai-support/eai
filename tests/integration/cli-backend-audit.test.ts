@@ -88,7 +88,7 @@ describe('CLI backend audit evidence', () => {
     const tenantIds = { a: id(20), b: id(21) };
     const runId = id(31), objectType = 'cli-qa-authorization-row';
     const created = ['adminA', 'builderA', 'adminB', 'builderB'].map((creatorSlot, index) => ({
-      creatorSlot, tenantId: tenantIds[qa.SLOTS[creatorSlot][0] as 'a' | 'b'], resourceId: id(60 + index),
+      creatorSlot, creatorId: actors[creatorSlot].oid, tenantId: tenantIds[qa.SLOTS[creatorSlot][0] as 'a' | 'b'], resourceId: id(60 + index),
       nonce: `cli-qa-${runId}-${creatorSlot}-${id(80 + index)}`, idempotencyKey: id(70 + index),
       phase: 'absent', creationDispatched: true, acknowledgedBound: true, version: 1,
     }));
@@ -161,6 +161,38 @@ describe('CLI backend audit evidence', () => {
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['commands', 'aliases', 'unsupported'])('a null %s attempt is retained and cannot be hidden by a passing receipt', collection => {
+    const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
+    Object.assign(input.evidence, { [collection]: [null, ...(input.evidence[collection as 'commands'] || [])] });
+    const report = buildAudit(input, decisions);
+    expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+    expect(report.evidenceValidation).toMatchObject({ valid: false,
+      malformedAttempts: expect.arrayContaining([expect.objectContaining({ collection, index: 0 })]) });
+  });
+  test.each(['commands', 'aliases', 'unsupported'])('a non-array %s receipt collection stays non-qualifying', collection => {
+    const { input, decisions } = completeContractModel(); Object.assign(input.evidence, { [collection]: { secret: 'synthetic-input-marker' } });
+    const report = buildAudit(input, decisions);
+    expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+    expect(report.evidenceValidation.valid).toBe(false); expect(JSON.stringify(report)).not.toContain('synthetic-input-marker');
+  });
+  test.each(['failed', 'blocked'])('malformed attempts preserve a known %s scoped assertion outcome', status => {
+    const { input, decisions } = completeContractModel(); input.evidence.commands[0].assertions[0].status = status;
+    Object.assign(input.evidence, { commands: [...input.evidence.commands, null] });
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe(status);
+    expect(report.optionEvidence.find((row: any) => row.option === '--format').status).toBe(status);
+    expect(report.backendCertified).toBe(false); expect(report.evidenceValidation.valid).toBe(false);
+  });
+  test('a created receipt attributed to another actor cannot qualify the permission consumer', () => {
+    const { input, decisions } = completeContractModel(); input.evidence.authorizationEvidence.created[0].creatorId = '00000000-0000-4000-8000-000000000999';
+    const report = buildAudit(input, decisions); expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
+  test.each([null, undefined].map(cycle => ({ cycle })))('a malformed retained cycle $cycle remains unqualified', ({ cycle }) => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+    Object.assign(cycles.cycles, { 0: cycle });
+    const report = buildAudit(input, decisions); expect(report.fullCapabilityQualified).toBe(false);
+    expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(false);
   });
   test.each(['failed', 'blocked', 'missing-status', 'missing-name', 'foreign-command', 'foreign-execution', 'legacy-string', 'null', 'foreign-alias'])('a %s assertion cannot certify its execution', failure => {
     const { input, decisions } = completeContractModel();
@@ -277,11 +309,49 @@ describe('CLI backend audit evidence', () => {
   });
 });
 
+describe('private blocked audit attempts', () => {
+  const directories: string[] = [];
+  afterEach(() => { for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); });
+  test('a normal source inventory persists its matrix without claiming executed capability', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-inventory-'))); directories.push(root);
+    const output = join(root, 'audit');
+    const result = spawnSync(process.execPath, [resolve('scripts/audit-cli-backend.cjs'), '--cli', resolve('dist/index.js'), '--output', output], {
+      encoding: 'utf8', timeout: 10000, env: { ...process.env, EAI_DISABLE_KV_AUTO_FETCH: '1' },
+    });
+    expect(result.status).toBe(0); const report = qa.readPrivate(join(output, 'capabilities.json'));
+    expect(report.commands.length).toBeGreaterThan(100); expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+    expect(report.evidenceValidation).toEqual({ valid: true, malformedAttempts: [] });
+  });
+  test.each(['candidate', 'evidence-missing', 'evidence-malformed', 'deployments-missing', 'deployments-malformed',
+    'build-receipt-missing', 'build-receipt-malformed'])('retains sanitized %s failure in new private output', failure => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-blocked-'))); directories.push(root);
+    const output = join(root, 'audit'), input = join(root, 'input.json');
+    let cli = resolve('dist/index.js'); const args = ['--output', output];
+    if (failure === 'candidate') {
+      cli = join(root, 'broken-cli.cjs'); writeFileSync(cli, JSON.stringify('unused'));
+      writeFileSync(cli, "console.log(JSON.stringify({command:'eai',subcommands:[{command:'verify'}]}));\n");
+    } else {
+      const flag = '--' + failure.replace(/-(missing|malformed)$/, ''); args.push(flag, input);
+      if (failure.endsWith('malformed')) writeFileSync(input, '{synthetic-input-marker', { mode: 0o600 });
+    }
+    const result = spawnSync(process.execPath, [resolve('scripts/audit-cli-backend.cjs'), '--cli', cli, ...args], {
+      encoding: 'utf8', timeout: 10000, env: { ...process.env, EAI_DISABLE_KV_AUTO_FETCH: '1' },
+    });
+    expect(result.status).toBe(1); const report = qa.readPrivate(join(output, 'capabilities.json'));
+    expect(report).toMatchObject({ schemaVersion: 'eai.cli-backend-audit.v2', status: 'blocked',
+      backendCertified: false, fullCapabilityQualified: false, cleanupVerified: false });
+    expect(statSync(join(output, 'capabilities.json')).mode & 0o777).toBe(0o600);
+    expect(statSync(join(output, 'capabilities.md')).mode & 0o777).toBe(0o600);
+    expect(JSON.stringify(report) + readFileSync(join(output, 'capabilities.md'), 'utf8') + result.stderr)
+      .not.toContain('synthetic-input-marker');
+  });
+});
+
 describe('local dedicated tenant harness ownership', () => {
   const directories: string[] = [];
   afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
-  function runFixture(mode: 'quota' | 'unrelated-create' | 'parent-valid' | 'parent-wrong' | 'parent-missing' | 'ack-absent' | 'ack-ambiguous', api = 'http://localhost:8000') {
+  function runFixture(mode: string, api = 'http://localhost:8000') {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-harness-test-')));
     directories.push(root);
     const bin = join(root, 'bin'); mkdirSync(bin, { mode: 0o700 });
@@ -308,8 +378,21 @@ if (args.includes('list')) {
   if (process.env.EAI_HARNESS_TEST_MODE === 'quota') { console.error('TENANT_QUOTA_EXCEEDED'); process.exit(1); }
   fs.writeFileSync(process.env.EAI_HARNESS_TEST_LOG + '.create', JSON.stringify({slug:args[args.indexOf('--slug')+1],parent:args[args.indexOf('--parent')+1]}), {mode:0o600});
   console.log(JSON.stringify({tenant:{id:'00000000-0000-4000-8000-000000000099',slug:args[args.indexOf('--slug')+1],parentTenantId:args[args.indexOf('--parent')+1]}}));
-} else if (process.env.EAI_HARNESS_TEST_MODE === 'parent-valid' && args.includes('delete')) {
-  console.log(JSON.stringify({deleted:true,tenantId:args[args.indexOf('delete')+1]}));
+} else if (process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') && args.includes('select')) {
+  console.log(JSON.stringify({selected:true,id:args[args.indexOf('select')+1]}));
+} else if (process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') && args.includes('delete')) {
+  const mode = process.env.EAI_HARNESS_TEST_MODE, id = args[args.indexOf('delete')+1], parent = args[args.indexOf('--parent')+1];
+  if (mode === 'parent-delete-failed') process.exit(75);
+  fs.writeFileSync(process.env.EAI_HARNESS_TEST_LOG + '.delete', 'attempted');
+  console.log(JSON.stringify({id:mode === 'parent-delete-wrong-id' ? 'foreign-child' : id,deleted:true,
+    hardPurged:args.includes('--force-hard-purge') && mode !== 'parent-delete-soft',
+    response:{id,status:mode === 'parent-delete-soft' ? 'deleted' : 'hard_purged',parentTenantId:parent}}));
+} else if (args.includes('get') && args.some(value => value.includes('/children?'))) {
+  const mode = process.env.EAI_HARNESS_TEST_MODE, path = args[args.indexOf('get')+1], tenantId = args[args.indexOf('--tenant-id')+1];
+  const body = mode === 'parent-inventory-malformed' ? {items:[]} : mode === 'parent-inventory-overflow'
+    ? Array.from({length:100}, (_,index) => ({id:'foreign-'+index})) : mode === 'parent-still-present'
+      ? [{id:'00000000-0000-4000-8000-000000000099'}] : [];
+  console.log(JSON.stringify({ok:true,status:200,request:{method:'GET',path,tenantId,publicApiUrl:'http://localhost:8000'},body}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `);
     writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
@@ -347,16 +430,26 @@ if (args.includes('list')) {
   });
   test('a unique newly visible matching child with its exact requested parent passes the ownership boundary', () => {
     const result = runFixture('parent-valid');
-    // The mock stops at selection; no real Docker, storage or network mutation occurs.
+    // Actual reconciliation and selection succeed; the mock stops at provisioning.
+    // Cleanup executes its real Bash/helper path without a real provider/network mutation.
     expect(result.status).not.toBe(0);
     expect(result.calls.some(args => args.includes('select') && args.includes('00000000-0000-4000-8000-000000000099'))).toBe(true);
     expect(result.calls.filter(args => args.includes('delete'))).toEqual([
-      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099', '--force', '--format', 'json'],
+      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
+        '--parent', 'parent-fixture', '--force', '--force-hard-purge', '--format', 'json'],
     ]);
     expect(result.journals).toHaveLength(1);
     expect(JSON.parse(readFileSync(result.journals[0], 'utf8'))).toMatchObject({ phase: 'verified',
       reconciliationVerified: true, acknowledgmentBound: true, cleanupAttempted: true,
-      childTenantId: '00000000-0000-4000-8000-000000000099' });
+      childTenantId: '00000000-0000-4000-8000-000000000099', cleanupVerified: true, hardPurgeVerified: true, absenceVerified: true });
+    expect(result.calls.some(args => args.includes('/v4/platform/tenants/parent-fixture/children?limit=100&offset=0'))).toBe(true);
+    expect(result.stdout).not.toContain('lifecycle E2E passed');
+  });
+  test.each(['parent-delete-failed', 'parent-delete-soft', 'parent-delete-wrong-id', 'parent-still-present',
+    'parent-inventory-malformed', 'parent-inventory-overflow'])('%s cannot certify standalone child cleanup', mode => {
+    const result = runFixture(mode); expect(result.status).not.toBe(0); expect(result.stdout).not.toContain('lifecycle E2E passed');
+    expect(result.calls.filter(args => args.includes('delete'))).toHaveLength(1);
+    expect(JSON.parse(readFileSync(result.journals[0], 'utf8'))).toMatchObject({ cleanupAttempted: true, cleanupVerified: false });
   });
   test.each(['ack-absent', 'ack-ambiguous'] as const)('retains an exact create acknowledgment when list reconciliation is %s without guessing cleanup', mode => {
     const result = runFixture(mode);

@@ -13,17 +13,17 @@ type Slot = 'adminA' | 'builderA' | 'viewerA' | 'adminB' | 'builderB';
 interface Actor { oid: string; profile: string; email: string }
 interface ResourceDTO {
   id: string; tenant_id: string; object_type: string; data: Record<string, unknown>; version: number;
-  created_by: string; updated_by: string; created_at: string; updated_at: string; idempotentReplay: boolean;
+  created_by: string; updated_by: string | null; created_at: string; updated_at: string; idempotentReplay: boolean;
 }
 interface Invocation { slot: Slot | 'owner'; method: string; path: string; tenantId: string; data?: Record<string, unknown> }
 interface Faults {
-  create?: 'unknown' | 'nonzero-ack' | 'foreign-scope' | 'missing-nonce' | 'replay';
+  create?: 'unknown' | 'nonzero-ack' | 'foreign-scope' | 'missing-nonce' | 'replay' | 'creator' | 'updater';
   baseline?: 'global' | 'wrong-oid' | 'builder-admin' | 'viewer-builder' | 'sibling-access' | 'wrong-parent' | 'admin-context-only'
     | 'empty-inventory' | 'foreign-inventory' | 'unrelated-membership';
   schema?: 'missing-b' | 'wrong-tenant' | 'wrong-request' | 'duplicate' | 'required' | 'nonce-type' | 'wrong-data-type' | 'dropped'
     | 'sibling-type' | 'sibling-required' | 'sibling-options' | 'sibling-extra' | 'sibling-id-order'
     | 'draft' | 'disabled' | 'missing-publication';
-  ownRead?: 'tenant' | 'type' | 'nonce' | 'version';
+  ownRead?: 'tenant' | 'type' | 'nonce' | 'version' | 'creator' | 'updater';
   viewerStatus?: number; viewerExit?: number; viewerRequest?: boolean; siblingStatus?: number;
   cleanup?: 'delete-failed-but-absent' | 'absence403' | 'foreign-current' | 'wrong-delete-id' | 'delete-not-confirmed' | 'delete-no-timestamp';
   candidateDrift?: boolean;
@@ -135,7 +135,7 @@ function controlled(faults: Faults = {}) {
       expect(Object.keys(data!).sort()).toEqual(['data', 'idempotencyKey']);
       expect(data).not.toHaveProperty('id'); expect(data!.idempotencyKey).toMatch(/^[a-f0-9-]{36}$/);
       const dto: ResourceDTO = { id: uuid(++rowNumber), tenant_id: tenantId, object_type: 'cli-qa-authorization-row',
-        data: data!.data as Record<string, unknown>, version: 1, created_by: current.oid, updated_by: current.oid,
+        data: data!.data as Record<string, unknown>, version: 1, created_by: current.oid, updated_by: null,
         created_at: timestamp, updated_at: timestamp, idempotentReplay: false };
       rows.set(rowKey(tenantId, dto.id), structuredClone(dto));
       if (createNumber === 1 && faults.create === 'unknown') return { status: 1, stdout: '', stderr: 'Controlled unknown create' };
@@ -143,6 +143,8 @@ function controlled(faults: Faults = {}) {
       if (createNumber === 1 && faults.create === 'foreign-scope') returned.tenant_id = uuid(99);
       if (createNumber === 1 && faults.create === 'missing-nonce') delete returned.data.qaNonce;
       if (createNumber === 1 && faults.create === 'replay') returned.idempotentReplay = true;
+      if (createNumber === 1 && faults.create === 'creator') returned.created_by = uuid(99);
+      if (createNumber === 1 && faults.create === 'updater') returned.updated_by = uuid(99);
       return wire(201, returned, createNumber === 1 && faults.create === 'nonzero-ack' ? 1 : 0);
     }
     const id = match[2], key = rowKey(tenantId, id), row = rows.get(key);
@@ -158,6 +160,8 @@ function controlled(faults: Faults = {}) {
         if (faults.ownRead === 'type') dto.object_type = 'foreign-object-type';
         if (faults.ownRead === 'nonce') dto.data.qaNonce = 'foreign-nonce';
         if (faults.ownRead === 'version') dto.version = 9;
+        if (faults.ownRead === 'creator') dto.created_by = uuid(99);
+        if (faults.ownRead === 'updater') dto.updated_by = uuid(99);
       }
       const saved = existsSync(output) ? JSON.parse(readFileSync(output, 'utf8')) : {};
       if (!cleanupFaultUsed && faults.cleanup === 'foreign-current' && saved.cleanup?.length) {
@@ -168,7 +172,7 @@ function controlled(faults: Faults = {}) {
     if (method === 'PUT') {
       expect(slot).toBe('viewerA'); expect(Object.keys(data!).sort()).toEqual(['data', 'version']); expect(data!.version).toBe(1);
       if (faults.viewerStatus === 200) {
-        row!.data = data!.data as Record<string, unknown>; row!.version++;
+        row!.data = data!.data as Record<string, unknown>; row!.version++; row!.updated_by = current.oid;
         return wire(200, row);
       }
       return wire(faults.viewerStatus || 403, {}, faults.viewerExit, faults.viewerRequest !== false);
@@ -280,7 +284,20 @@ describe('normal-profile authorization role probe', () => {
     expect(report.cases.filter((row: any) => row.name.endsWith(':sibling-denied')).every((row: any) => row.status === 'failed')).toBe(true);
     expect(report.cleanupVerified).toBe(true);
   });
-  test.each(['tenant', 'type', 'nonce', 'version'] as const)('wrong %s in an allowed DTO fails, with independent cleanup', ownRead => {
+  test.each(['creator', 'updater'] as const)('foreign %s metadata cannot acknowledge a new actor-owned row', create => {
+    const fixture = controlled({ create }), report = fixture.failed();
+    expect(report.cases.find((row: any) => row.name === 'adminA:write').status).toBe('failed');
+    expect(report.created[0].creatorId).toBe(fixture.foundation.actors.adminA.oid);
+    expect(report.cleanupVerified).toBe(false); expect(report.leftovers).toHaveLength(1);
+    expect(fixture.calls.some(row => row.method === 'DELETE')).toBe(false);
+  });
+  test('normal PostgreSQL create/read metadata binds the writer and retains a null updater', () => {
+    const fixture = controlled(), report = fixture.run();
+    expect(report.status).toBe('passed'); expect(report.created).toHaveLength(4);
+    for (const row of report.created) expect(row.creatorId).toBe(fixture.foundation.actors[row.creatorSlot].oid);
+    expect(report.cleanupVerified).toBe(true);
+  });
+  test.each(['tenant', 'type', 'nonce', 'version', 'creator', 'updater'] as const)('wrong %s in an allowed DTO fails, with independent cleanup', ownRead => {
     const fixture = controlled({ ownRead }); const report = fixture.failed();
     expect(report.cases.find((row: any) => row.name === 'adminA:read').status).toBe('failed');
     expect(report.cleanupVerified).toBe(true); expect(fixture.rows.size).toBe(0);

@@ -374,6 +374,7 @@ function authorizationReceiptsVerified(authorization, actors, tenants) {
     || !created.every(row => {
       const prefix = `cli-qa-${authorization.runId}-${row.creatorSlot}-`;
       return row.tenantId === tenants[SLOTS[row.creatorSlot]?.[0]] && uuid(row.resourceId) && uuid(row.idempotencyKey)
+        && uuid(row.creatorId) && row.creatorId === actors[row.creatorSlot]?.oid
         && typeof row.nonce === 'string' && row.nonce.startsWith(prefix) && uuid(row.nonce.slice(prefix.length))
         && row.creationDispatched === true && row.acknowledgedBound === true && row.phase === 'absent'
         && Number.isSafeInteger(row.version) && row.version >= 1;
@@ -415,7 +416,8 @@ function authorizationVerified(evidence, candidate, context) {
     && authorizationReceiptsVerified(authorization, actors, tenants);
 }
 function cycleReceiptVerified(row) {
-  return UUID.test(row.clientId || '') && UUID.test(row.tenantId || '') && /^eai-e2e-[a-z0-9-]+$/.test(row.appKey || '')
+  return row && typeof row === 'object' && !Array.isArray(row)
+    && UUID.test(row.clientId || '') && UUID.test(row.tenantId || '') && /^eai-e2e-[a-z0-9-]+$/.test(row.appKey || '')
     && row.status === 'passed' && row.rotationDispatches === 1 && row.credentialChanged === true && row.firstInventoryEmpty === true
     && row.recreatedSameKey === true && UUID.test(row.enrollmentId || '') && UUID.test(row.recreatedEnrollmentId || '')
     && row.recreatedEnrollmentId.toLowerCase() !== row.enrollmentId.toLowerCase()

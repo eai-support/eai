@@ -60,7 +60,9 @@ function ownedReportValid(report, foundation, candidate, preflight) {
   const created = report.created || {}, rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const leaf = report.cleanup?.find(row => row.artifact === 'child-tenant');
   return report.candidate?.gitSha === candidate.gitSha && report.candidate?.binarySha256 === candidate.binarySha256
-    && report.candidate?.runtimeSha256 === candidate.runtimeSha256 && report.profile === foundation.actors.adminA.profile
+    && report.candidate?.runtimeSha256 === candidate.runtimeSha256 && report.candidate.dirty === false
+    && report.candidate.version === candidate.version && report.candidate.runtimeFileCount === candidate.runtimeFileCount
+    && report.profile === foundation.actors.adminA.profile
     && report.environment === foundation.environment && report.expectedPublicApi === foundation.publicApiUrl
     && report.preflight?.publicApiGitSha === preflight.publicApiGitSha && report.preflight?.adminApiGitSha === preflight.adminApiGitSha
     && report.preflight?.observedAt === preflight.observedAt && report.preflight?.childDeleteRoute === preflight.childDeleteRoute
@@ -131,10 +133,16 @@ function runQualification(options, dependencies = {}) {
             EAI_E2E_EXPECTED_PUBLIC_API: foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: options.cleanupPreflight,
             EAI_E2E_CHILD_HOME_REGION: foundation.region, EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
             EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
+          requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight),
+            'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
         } catch (error) {
-          if (error?.report) {
-            receipt = { ...cycleReceipt({ ...error.report, summaryPath: error.summaryPath }), cycleNumber: index + 1,
-              status: error.report.status === 'blocked' ? 'blocked' : 'failed', runnerReportAvailable: true };
+          const failedReport = error?.report || result;
+          if (failedReport) {
+            const bindingVerified = ownedReportValid(failedReport, foundation, candidate, currentPreflight);
+            receipt = { ...cycleReceipt({ ...failedReport, summaryPath: error.summaryPath }), cycleNumber: index + 1,
+              status: failedReport.status === 'blocked' ? 'blocked' : 'failed', runnerReportAvailable: true,
+              runnerBindingVerified: bindingVerified };
+            if (!bindingVerified) receipt.cleanupVerified = false;
           } else {
             receipt = { cycleNumber: index + 1, status: 'failed', runnerReportAvailable: false, cleanupVerified: false,
               localProjectCleanupVerified: false, reason: 'Owned lifecycle failed without a structured runner receipt; remote outcome is unknown.' };
@@ -142,12 +150,11 @@ function runQualification(options, dependencies = {}) {
           report.cycles.push(receipt);
           throw error;
         } finally {
-          if (result) { receipt = cycleReceipt(result); report.cycles.push(receipt); }
+          if (result && !receipt) { receipt = cycleReceipt(result); report.cycles.push(receipt); }
           removeGeneratedProjects(workspaceRoot, workspaceParents);
           if (receipt) receipt.localProjectCleanupVerified = true;
         }
         save();
-        requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight), 'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
         requireCondition(qa.cycleReceiptVerified(receipt), 'Lifecycle lacks rotation, first-read, recreation or cleanup proof.');
         const after = candidateEvidence(options.cliPath);
         requireCondition(candidateValid(after) && after.gitSha === candidate.gitSha && after.runtimeSha256 === candidate.runtimeSha256

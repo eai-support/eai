@@ -125,9 +125,25 @@ function runBuildReceipt(options, dependencies = {}) {
       requireCondition(typeof receipt.nodeVersion === 'string' && NODE.test(receipt.nodeVersion), 'NODE_24_REQUIRED');
       requireCondition(cliPath === join(root, 'dist', 'index.js'), 'EXACT_CLI_PATH_REQUIRED'); unlinkedPath(cliPath);
       const before = sourceSnapshot(root, run); Object.assign(receipt, before); save();
-      const build = run(COMMAND[0], COMMAND.slice(1), { cwd: root, timeout: 300000,
-        env: { ...operational, npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false',
-          npm_config_audit: 'false', npm_config_fund: 'false' } });
+      // npm can restore lifecycle NODE_OPTIONS from files after the environment was filtered.
+      // Builds need no registry settings; project overrides require a separately reviewed policy.
+      let projectConfig;
+      try { projectConfig = fs.lstatSync(join(root, '.npmrc')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      requireCondition(!projectConfig, 'NPM_PROJECT_CONFIG_UNSUPPORTED');
+      const configRoot = fs.mkdtempSync(join(dirname(output), '.eai-npm-config-'));
+      const configParents = state.privateDirectory(configRoot);
+      let build;
+      try {
+        const userConfig = join(configRoot, 'user.npmrc'), globalConfig = join(configRoot, 'global.npmrc');
+        state.writePrivateText(userConfig, ''); state.writePrivateText(globalConfig, '');
+        build = run(COMMAND[0], COMMAND.slice(1), { cwd: root, timeout: 300000,
+          env: { ...operational, npm_config_userconfig: userConfig, npm_config_globalconfig: globalConfig,
+            npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false',
+            npm_config_audit: 'false', npm_config_fund: 'false' } });
+      } finally {
+        state.assertPrivateDirectory(configParents); fs.rmSync(configRoot, { recursive: true });
+      }
+      receipt.npmConfiguration = { user: 'empty-private', global: 'empty-private', project: 'absent-required' };
       receipt.exitCode = Number.isInteger(build?.status) ? build.status : null;
       requireCondition(build?.status === 0 && !build.error && !build.signal, 'BUILD_FAILED');
       const after = sourceSnapshot(root, run); requireCondition(sameSource(before, after), 'SOURCE_CHANGED_DURING_BUILD');
@@ -143,7 +159,7 @@ function runBuildReceipt(options, dependencies = {}) {
       receipt.failureCode = ['NODE_24_REQUIRED', 'EXACT_CLI_PATH_REQUIRED', 'GIT_ROOT_UNVERIFIED', 'GIT_ROOT_MISMATCH',
         'SOURCE_HEAD_UNVERIFIED', 'SOURCE_STATUS_UNVERIFIED', 'SOURCE_DIRTY', 'SOURCE_INVENTORY_UNVERIFIED', 'SOURCE_INVENTORY_EMPTY',
         'SOURCE_FILE_UNSUPPORTED', 'SOURCE_INVENTORY_DUPLICATE', 'LINKED_PATH', 'BUILD_FAILED', 'SOURCE_CHANGED_DURING_BUILD',
-        'BUILT_CANDIDATE_UNVERIFIED', 'SOURCE_CHANGED_DURING_MEASUREMENT'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
+        'BUILT_CANDIDATE_UNVERIFIED', 'SOURCE_CHANGED_DURING_MEASUREMENT', 'NPM_PROJECT_CONFIG_UNSUPPORTED'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
       receipt.observedAt = new Date(now()).toISOString(); save();
       const failure = new Error('CLI source build receipt failed: ' + receipt.failureCode + '.'); failure.receipt = receipt; throw failure;
     }

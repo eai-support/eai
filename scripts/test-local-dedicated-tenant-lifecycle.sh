@@ -131,10 +131,13 @@ PY
 }
 
 cleanup() {
+  local original_exit=$?
+  trap - EXIT
   set +e
+  local cleanup_failed=0
 
   if [[ -n "$TENANT_ID" ]]; then
-    node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || true
+    node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || cleanup_failed=1
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
 
     if [[ -n "$PG_ID" ]]; then
@@ -150,7 +153,25 @@ cleanup() {
       node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
     fi
 
-    node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+    local purge_json="" inventory_json="" offset=0
+    if [[ $cleanup_failed -eq 0 ]] && purge_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$TENANT_ID" \
+      --parent "$PARENT_TENANT_ID" --force --force-hard-purge --format json)" \
+      && printf '%s' "$purge_json" | node "$OWNERSHIP_HELPER" cleanup-purge "$TENANT_CREATE_JOURNAL"; then
+      while [[ $offset -lt 1000 ]]; do
+        if ! inventory_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" publicapi get \
+          "/v4/platform/tenants/$PARENT_TENANT_ID/children?limit=100&offset=$offset" \
+          --tenant-id "$PARENT_TENANT_ID" --format json)" \
+          || ! printf '%s' "$inventory_json" | node "$OWNERSHIP_HELPER" cleanup-page "$TENANT_CREATE_JOURNAL" "$offset"; then
+          cleanup_failed=1
+          break
+        fi
+        if node "$OWNERSHIP_HELPER" cleanup-finished "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1; then break; fi
+        offset=$((offset + 100))
+      done
+      node "$OWNERSHIP_HELPER" cleanup-finished "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || cleanup_failed=1
+    else
+      cleanup_failed=1
+    fi
     cleanup_storage
   fi
 
@@ -159,6 +180,14 @@ cleanup() {
   if [[ -n "$TENANT_CREATE_JOURNAL" ]]; then
     echo "Local child creation journal retained: $TENANT_CREATE_JOURNAL" >&2
   fi
+  if [[ $cleanup_failed -ne 0 ]]; then
+    echo "Local child cleanup is unverified; inspect the retained creation journal." >&2
+    exit 1
+  fi
+  if [[ $original_exit -eq 0 && -n "$TENANT_ID" ]]; then
+    echo "Local dedicated tenant lifecycle E2E passed for tenant $TENANT_ID; parent hard purge and absence verified."
+  fi
+  exit "$original_exit"
 }
 
 trap cleanup EXIT
@@ -501,5 +530,3 @@ node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-blob
 BLOB_ID=""
 node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
 SEARCH_ID=""
-
-echo "Local dedicated tenant lifecycle E2E passed for tenant $TENANT_ID"
