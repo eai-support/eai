@@ -159,6 +159,12 @@ describe('CLI backend audit evidence', () => {
     const report = buildAudit(input, decisions);
     expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
   });
+  test.each(['array', 'nested-array'])('a malformed %s actor OID refuses qualification without throwing', shape => {
+    const { input, decisions } = completeContractModel(), actor = input.evidence.authorizationEvidence.actors.adminA;
+    Object.assign(actor, { oid: shape === 'array' ? [actor.oid] : [[actor.oid]] });
+    const report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
 
   test('joins build, role, selected deployment and normalized option contracts without claiming missing cycles', () => {
     const { input, decisions } = completeContractModel(), report = buildAudit(input, decisions);

@@ -433,7 +433,8 @@ function authorizationVerified(evidence, candidate, context) {
     || !bindings || typeof bindings !== 'object' || Array.isArray(bindings)
     || !['a', 'b'].every(slot => bindings[slot] && typeof bindings[slot] === 'object' && !Array.isArray(bindings[slot])
       && bindings[slot].tenantId === tenants[slot] && bindings[slot].parentTenantId === parent)) return false;
-  if (Object.keys(actors).length !== 5 || !Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string'
+  if (Object.keys(actors).length !== 5 || !Object.keys(SLOTS).every(slot => typeof actors[slot]?.oid === 'string'
+    && UUID.test(actors[slot].oid) && typeof actors[slot]?.profile === 'string'
     && /^[A-Za-z0-9_.-]{1,100}$/.test(actors[slot].profile))
     || new Set(Object.values(actors).map(actor => actor.oid.toLowerCase())).size !== 5
     || new Set(Object.values(actors).map(actor => actor.profile.toLowerCase())).size !== 5) return false;
