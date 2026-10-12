@@ -83,6 +83,9 @@ function redactCredentialValues(text: string): string {
     } else nextDelimiter[index] = nextDelimiter[index + 1];
   }
 
+  const quoteStartsByEnd = new Map(quotes.map(quote => [quote.end, quote.start]));
+  const invalidKeyQuotes = new Uint8Array(text.length);
+  const invalidFieldStarts = new Set<number>();
   const fields: CredentialField[] = [];
   for (const match of text.matchAll(/[\w.\\-]+/g)) {
     const rawKey = match[0];
@@ -99,24 +102,33 @@ function redactCredentialValues(text: string): string {
     while (start < text.length && /\s/.test(text[start])) start++;
     if (text[start] === '=' || text[start] === ':') start++;
     else if (!key.startsWith('--') || start === separator) continue;
+    // SECURITY: an unpaired key closer cannot make a private value tail look like another field.
+    if (quotedKeyEnd) {
+      const opening = quoteStartsByEnd.get(match.index);
+      if (opening === undefined || closingEnds[opening] !== quotedKeyEnd) {
+        invalidKeyQuotes[keyEnd] = 1;
+        invalidFieldStarts.add(match.index);
+        if (opening !== undefined) { invalidKeyQuotes[opening] = 1; invalidFieldStarts.add(opening); }
+      }
+    }
     while (start < text.length && /\s/.test(text[start])) start++;
     fields.push({ key, start, tokenStart: match.index, quotedKeyEnd });
   }
-  const fieldStarts = new Set(fields.map(field => field.tokenStart));
+  // SECURITY: malformed sensitive assignments still need redaction, but cannot bound any other value.
+  const fieldStarts = new Set(fields.filter(field => !invalidFieldStarts.has(field.tokenStart)).map(field => field.tokenStart));
   const firstValueCharacter = new Uint32Array(text.length + 1);
   firstValueCharacter[text.length] = text.length;
   const stops = new Uint32Array(text.length + 1);
   stops[text.length] = text.length;
   for (let index = text.length - 1; index >= 0; index--) {
     firstValueCharacter[index] = !escaped[index] && /[&,;}]/.test(text[index]) ? firstValueCharacter[index + 1] : index;
-    if (quoteEnds[index]) stops[index] = stops[closingEnds[index]];
+    if (quoteEnds[index] && !invalidKeyQuotes[index]) stops[index] = stops[closingEnds[index]];
     else if (containerEnds[index]) stops[index] = stops[containerEnds[index]];
     else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
     else stops[index] = stops[index + 1];
   }
   // SECURITY: a placeholder is not proof that the rest of a credential value was already removed.
   const quotedFieldStarts = new Set(fieldStarts);
-  const quoteStartsByEnd = new Map(quotes.map(quote => [quote.end, quote.start]));
   for (const field of fields) {
     const quoteStart = quoteStartsByEnd.get(field.tokenStart);
     if (quoteStart !== undefined && field.quotedKeyEnd && closingEnds[quoteStart] === field.quotedKeyEnd) quotedFieldStarts.add(quoteStart);
@@ -130,8 +142,8 @@ function redactCredentialValues(text: string): string {
   markerTailEnds[text.length] = text.length;
   for (let index = text.length - 1; index >= 0; index--) {
     const content = markerContent[index];
-    if (content === text.length || quotedFieldStarts.has(content) || closingWrapper[content] || /[\r\n]/.test(text[content])) markerTailEnds[index] = index;
-    else if (quoteEnds[index]) markerTailEnds[index] = markerTailEnds[closingEnds[index]];
+    if (content === text.length || quotedFieldStarts.has(content) || (closingWrapper[content] && !invalidKeyQuotes[content]) || /[\r\n]/.test(text[content])) markerTailEnds[index] = index;
+    else if (quoteEnds[index] && !invalidKeyQuotes[index]) markerTailEnds[index] = markerTailEnds[closingEnds[index]];
     else if (containerEnds[index]) markerTailEnds[index] = markerTailEnds[containerEnds[index]];
     else markerTailEnds[index] = markerTailEnds[index + 1];
   }
@@ -146,13 +158,15 @@ function redactCredentialValues(text: string): string {
     const marker = markerLength > 0;
     const markerEnd = start + markerLength;
     const markerSuffix = marker ? markerContent[markerEnd] : start;
-    const stableMarker = marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]));
+    const stableMarker = marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && !invalidKeyQuotes[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]));
     const containerEnd = containerEnds[start];
-    const completeContainer = containerEnd && ((closingWrapper[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
+    const completeContainer = containerEnd && ((closingWrapper[containerEnd] && !invalidKeyQuotes[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
     const end = stableMarker ? start : marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
     cover(start, end);
+    const malformedContinuation = markerContent[end];
+    if (invalidFieldStarts.has(malformedContinuation)) cover(start, markerTailEnds[malformedContinuation]);
     const boundary = stableMarker ? markerEnd : end;
-    const enclosingWrapper = closingWrapper[boundary] && closingWrapper[boundary] <= tokenStart;
+    const enclosingWrapper = closingWrapper[boundary] && !invalidKeyQuotes[boundary] && closingWrapper[boundary] <= tokenStart;
     if (!enclosingWrapper && !completeContainer) continue;
     const continuation = markerContent[enclosingWrapper ? wrapperEnds[boundary] : boundary];
     // SECURITY: adjacent quoted text can be a private value continuation outside the enclosing wrapper.

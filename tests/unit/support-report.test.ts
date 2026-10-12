@@ -146,6 +146,52 @@ describe('local support report redaction', () => {
     }
   });
 
+  test('unpaired or mismatched key quotes never terminate private tails', () => {
+  for (const diagnostic of ['api_key"=PRIVATE_CANARY status=public-id', "'password\"=PRIVATE_CANARY status=public-id"]) {
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  for (const value of ['first', '[removed]', '[redacted]', '[first]', '{first:visible}']) {
+    for (const malformed of ['client_id"', "client_id'", "\"client_id'", '\\"client_id\\\\"']) {
+      let diagnostic = `api_key=${value} ${malformed}=PUBLIC PRIVATE_CANARY status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+  }
+  for (const depth of [0, 1, 2, 3, 4, 6, 7]) {
+    const quote = '\\'.repeat(depth) + '"';
+    const diagnostic = `api_key=[removed] ${quote}client_id${quote}=${quote}PUBLIC_IDENTIFIER${quote} status=public-id`;
+    const clean = redactSupportText(diagnostic);
+    expect(clean).toContain('PUBLIC_IDENTIFIER');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  for (let count = 1; count < 5; count++) {
+    const diagnostic = JSON.stringify({ api_key: 'PRIVATE_CANARY', ['client_id' + '\\'.repeat(count)]: 'PUBLIC_IDENTIFIER' + '\\'.repeat(count), status: 'public-id' });
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('PUBLIC_IDENTIFIER');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  const dense = Array.from({ length: 500 }, () => 'api_key=[removed] client_id"=PUBLIC PRIVATE_CANARY status=public-id').join(' ');
+  const long = 'api_key=first client_id' + '\\'.repeat(65536) + '"=PUBLIC PRIVATE_CANARY status=public-id';
+  const started = performance.now();
+  for (const diagnostic of [dense, long]) {
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('quoted private continuations after an enclosing credential wrapper stay private and stable', () => {
     for (const value of ['[first,PRIVATE_CANARY]', '{first:PRIVATE_CANARY}', '[removed]', '[redacted]']) {
       for (const quote of ['"', "'"]) {
