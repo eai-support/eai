@@ -1,15 +1,16 @@
-import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { Command } from 'commander';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 const fixture = vi.hoisted(() => ({
-  root: '', exec: vi.fn(async (_file: string, _args: string[]) => ({ stdout: '', stderr: '' })),
+  root: '', home: '', exec: vi.fn(async (_file: string, _args: string[]) => ({ stdout: '', stderr: '' })),
   pull: vi.fn(), store: vi.fn(() => 'fixture-store'),
   patch: vi.fn((_root: string, _patches: Record<string, string>) => {}), success: vi.fn(), info: vi.fn(), json: vi.fn(), warn: vi.fn(),
   spinner: { start: vi.fn(), succeed: vi.fn(), fail: vi.fn(), warn: vi.fn() },
 }));
+vi.mock('node:os', async original => ({ ...await original<typeof import('node:os')>(), homedir: () => fixture.home }));
 vi.mock('node:child_process', async (original) => {
   const actual = await original<typeof import('node:child_process')>();
   const { promisify } = await import('node:util');
@@ -44,6 +45,8 @@ describe('cloud environment command contracts', () => {
     fixture.exec.mockReset().mockResolvedValue({ stdout: '', stderr: '' });
     fixture.root = await mkdtemp(join(tmpdir(), 'eai-env-profile-'));
     await chmod(fixture.root, 0o700);
+    fixture.home = join(fixture.root, 'home');
+    await mkdir(join(fixture.home, '.eai'), { recursive: true, mode: 0o700 });
     await writeFile(join(fixture.root, '.env.local'), [
       '# Private workstation context', 'EAI_PROFILE=dev', 'NEXT_PUBLIC_APP_NAME=fixture-app',
       'PUBLIC_FLAG=local-value', 'AUTH_SECRET=<local-fixture-secret>', '',
@@ -53,7 +56,30 @@ describe('cloud environment command contracts', () => {
   });
   afterEach(async () => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     await rm(fixture.root, { recursive: true, force: true });
+  });
+
+  test.each([
+    { command: 'pull', profile: 'default' }, { command: 'push', profile: 'default' },
+    { command: 'pull', profile: 'unconfigured-azure-only' }, { command: 'push', profile: 'unconfigured-azure-only' },
+  ])('mounted Azure $command works with $profile without PublicAPI admission', async ({ command, profile }) => {
+    await writeFile(join(fixture.root, '.env.local'), `EAI_PROFILE=${profile}\nBASE_URL_PUBLIC_API=https://dev-api.au.myenterprise.ai/public\nNEXT_PUBLIC_APP_NAME=fixture-app\nPUBLIC_FLAG=local-value\n`, { mode: 0o600 });
+    const request = vi.fn(() => { throw new Error('No PublicAPI request is permitted'); });
+    vi.stubGlobal('fetch', request);
+    fixture.pull.mockResolvedValue({ patches: { PUBLIC_FLAG: 'cloud-value' }, secretRefs: [] });
+    const { envCommand } = await import('../../src/commands/env.js');
+    const { activateCommandProfile } = await import('../../src/lib/profile.js');
+    const root = new Command('eai');
+    root.hook('preAction', (_root, action) => activateCommandProfile(action, undefined, fixture.root));
+    root.addCommand(envCommand);
+    await root.parseAsync(['env', command, ...(command === 'push' ? ['--key', 'PUBLIC_FLAG'] : [])], { from: 'user' });
+    if (command === 'pull') {
+      expect(fixture.pull).toHaveBeenCalledOnce();
+      expect(await readFile(join(fixture.root, '.env.local'), 'utf8')).toContain('PUBLIC_FLAG=cloud-value');
+    } else expect(fixture.exec).toHaveBeenCalledWith(expect.any(String), expect.arrayContaining(['--key', 'PUBLIC_FLAG', '--value', 'local-value']));
+    expect(request).not.toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   test('push exports normal application keys while keeping EAI_PROFILE local', async () => {

@@ -1234,6 +1234,27 @@ describe('local CLI qualification', () => {
   }, 60000);
 });
 
+describe('unsupported smoke traceability', () => {
+  test('index-plan traceability supplies its required exact published Object Type', () => {
+    const plan = execFileSync(process.execPath, [scriptPath, '--plan', '--cli', cliPath], { encoding: 'utf8' });
+    const row = plan.split('\n').find(line => line.startsWith('| `eai resources indexes-plan` |'));
+    expect(row).toContain('--object-type <published-object-type-slug>');
+    expect(row).not.toContain('tenant-wide');
+    expect(row).not.toContain('Optional published Object Type');
+  });
+  test('actual smoke plan advertises indexes-apply only as unsupported inspection', () => {
+    const plan = execFileSync(process.execPath, [scriptPath, '--plan', '--cli', cliPath], { encoding: 'utf8' });
+    const row = plan.split('\n').find(line => line.startsWith('| `eai resources indexes-apply` |'));
+    expect(row).toBeDefined();
+    const columns = row!.split('|').map(value => value.trim());
+    expect(columns[4]).toBe('unsupported');
+    expect(columns[5]).toContain('No');
+    expect(columns[8]).not.toContain('--confirm');
+    expect(columns[8]).not.toContain('--tenant-id');
+    expect(columns[10]).toContain('exits nonzero before authentication or network');
+  });
+});
+
 describe('opt-in document lifecycle caller (controlled, no network)', () => {
   const env = {
     EAI_E2E_DOCS: '1',

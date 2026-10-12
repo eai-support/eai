@@ -20,6 +20,7 @@ import {
   realpath,
   lstat,
   open,
+  link,
   rename,
   unlink,
 } from "node:fs/promises";
@@ -2224,8 +2225,8 @@ async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {
   });
 }
 
-/** Replace an init-owned leaf without following linked credentials or unrelated project files. */
-async function updateInitProjectFile(
+/** Serialize init writers; existing-target rename is atomic, not a filesystem compare-and-swap. */
+export async function updateInitProjectFile(
   targetDir: string,
   name: ".gitignore" | ".env.local",
   update: (content: Buffer) => Buffer,
@@ -2233,6 +2234,38 @@ async function updateInitProjectFile(
 ): Promise<void> {
   const root = await realpath(targetDir);
   const parent = await lstat(root);
+  const lockPath = join(root, `${name}.eai-init.lock`);
+  const lock = await open(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  const ownedLock = await lock.stat();
+  const assertLock = async (): Promise<void> => {
+    const current = await lstat(lockPath);
+    if (!current.isFile() || current.nlink !== 1 || current.dev !== ownedLock.dev || current.ino !== ownedLock.ino) {
+      throw new Error(`Project ${name} initialization lock changed; inspect the project files before retrying.`);
+    }
+  };
+  const releaseOwnedLock = async (): Promise<void> => {
+    await lock.close();
+    try {
+      const current = await lstat(lockPath);
+      if (current.isFile() && current.nlink === 1 && current.dev === ownedLock.dev && current.ino === ownedLock.ino) await unlink(lockPath);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  };
+  try {
+    await assertLock();
+    await updateLockedInitProjectFile(root, parent, name, update, mode, assertLock);
+  } finally { await releaseOwnedLock(); }
+}
+
+async function updateLockedInitProjectFile(
+  root: string,
+  parent: Stats,
+  name: ".gitignore" | ".env.local",
+  update: (content: Buffer) => Buffer,
+  mode: number | undefined,
+  assertLock: () => Promise<void>,
+): Promise<void> {
   const path = join(root, name);
   const maxBytes = 1024 * 1024;
   const unsafe = () => new Error(`Project ${name} must be an unlinked regular file within 1 MiB.`);
@@ -2276,17 +2309,36 @@ async function updateInitProjectFile(
   const updated = update(content);
   const temporary = join(root, `${name}.eai-${randomBytes(16).toString("hex")}.tmp`);
   const file = await open(temporary, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  const ownedTemporary = await file.stat();
+  const removeOwnedTemporary = async (): Promise<void> => {
+    try {
+      const current = await lstat(temporary);
+      if (current.isFile() && current.dev === ownedTemporary.dev && current.ino === ownedTemporary.ino) await unlink(temporary);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  };
   try {
     await file.writeFile(updated);
     await file.chmod(mode ?? (original ? original.mode & 0o777 : 0o666 & ~process.umask()));
     await file.sync();
+    const written = await file.stat();
+    if (!sameFile(written, await lstat(temporary))) throw unsafe();
+    await assertLock();
     await assertUnchanged();
-    await rename(temporary, path);
+    // link publishes an absent target without replacing a concurrent occupant.
+    // Existing targets are rechecked under the cooperative lock, then renamed.
+    if (original) await rename(temporary, path);
+    else { await link(temporary, path); await removeOwnedTemporary(); }
+    const published = await statLeaf();
+    const parentAfter = await lstat(root);
+    if (!published || !sameFile(await file.stat(), published)
+      || parent.dev !== parentAfter.dev || parent.ino !== parentAfter.ino || !parentAfter.isDirectory()) {
+      throw new Error(`Project ${name} publication could not be verified; inspect the project files before retrying.`);
+    }
   } finally {
     await file.close();
-    await unlink(temporary).catch((error: NodeJS.ErrnoException) => {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    });
+    await removeOwnedTemporary();
   }
 }
 

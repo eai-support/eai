@@ -62,7 +62,7 @@ const TRACEABILITY_BASE = [
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
   ['eai resources performance-status', 'read', 'live', 'Reads bounded resource performance and schema readiness through the platform API.'],
   ['eai resources indexes-plan', 'read', 'live', 'Plans indexes for the exact run-published Object Type slugs.'],
-  ['eai resources indexes-apply', 'create/update', 'unsupported', 'PublicAPI exposes dry-run index planning only; the CLI rejects apply before auth or HTTP.'],
+  ['eai resources indexes-apply', 'check', 'unsupported', 'Explicit unsupported error is covered by owning CLI tests; it exits nonzero before authentication or network access.'],
   ['eai resources cache-refresh', 'create/update', 'covered-by-cli', 'Controlled command tests; platform-admin cache refresh is not executed by this runner.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app auth status', 'read', 'live-optional', 'Reads app-client authorization when the smoke provisions an Entra registration.'],
@@ -287,10 +287,11 @@ const SMOKE_CALLS = {
     'eai resources performance-status --tenant-id <workspace-id> --format json',
   ],
   'eai resources indexes-plan': [
-    'eai resources indexes-plan --tenant-id <workspace-id> --object-type <published-slug> --format json',
+    'eai resources indexes-plan --tenant-id <workspace-id> --object-type <published-object-type-slug> --format json',
   ],
   'eai resources indexes-apply': [
-    'eai resources indexes-apply --tenant-id <workspace-id> --confirm --format json',
+    'eai resources indexes-apply --help',
+    'eai resources indexes-apply --format json',
   ],
   'eai resources cache-refresh': [
     'eai resources cache-refresh --tenant-id <workspace-id> --reason <change-ticket> --confirm --format json',
@@ -604,7 +605,9 @@ const OPTION_DECISIONS = {
     '--object-type': 'Required explicit published Object Type slugs (1–1,000); the live smoke plans only its exact run-published set without applying changes.',
   },
   'eai resources indexes-apply': {
-    '--object-type': 'Retained for compatibility; index apply is unsupported and no selection is sent to the backend.',
+    '--object-type': 'Unsupported; owning CLI tests prove refusal before object-type resolution.',
+    '--tenant-id': 'Unsupported; no tenant lookup or mutation is performed.',
+    '--confirm': 'Unsupported; confirmation cannot enable a missing apply contract.',
   },
   'eai resources cache-refresh': {
     '--object-type': 'Optional Object Type scope; system-admin refresh is reasoned and disabled in default release smoke.',
@@ -844,9 +847,9 @@ const ARTIFACT_CLEANUP = {
     cleanupVerified: 'Yes - no mutation applied',
   },
   'eai resources indexes-apply': {
-    createsExternalArtifact: 'No - unsupported before auth or HTTP',
+    createsExternalArtifact: 'No - explicitly unsupported',
     cleanupMechanism: 'Not required',
-    cleanupVerified: 'Controlled tests verify no request or mutation occurs',
+    cleanupVerified: 'Yes - owning CLI tests prove no authenticated mutation',
   },
   'eai resources cache-refresh': {
     createsExternalArtifact: 'Yes - cache invalidation operation',

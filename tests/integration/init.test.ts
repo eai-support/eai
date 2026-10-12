@@ -13,6 +13,14 @@ import { promisify } from "node:util";
 import inquirer from "inquirer";
 import { parse as parseDotenv } from "dotenv";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
+const initPublication = vi.hoisted(() => ({ beforePublish: undefined as ((target: string) => Promise<void>) | undefined }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual,
+    rename: async (source: string, target: string) => { await initPublication.beforePublish?.(target); return actual.rename(source, target); },
+    link: async (source: string, target: string) => { await initPublication.beforePublish?.(target); return actual.link(source, target); },
+  };
+});
 import {
   describeAppCreationFailure,
   describeAppCreationTimeout,
@@ -25,6 +33,7 @@ import {
   parseTemplateVersionOverride,
   resolveTemplateClonePlan,
   selectExistingAppSelection,
+  updateInitProjectFile,
 } from "../../src/commands/init.js";
 import * as profile from "../../src/lib/profile.js";
 import * as auth from "../../src/lib/auth.js";
@@ -182,6 +191,7 @@ describe("eai init", () => {
   });
 
   afterEach(async () => {
+    initPublication.beforePublish = undefined;
     mockServer.stop();
     await cleanupTestTokens(ctx);
     await env.cleanup();
@@ -194,6 +204,37 @@ describe("eai init", () => {
     } else {
       process.env.BASE_URL_PUBLIC_API = originalPublicApiUrl;
     }
+  });
+
+  test.each([".gitignore", ".env.local"] as const)("an absent %s cannot overwrite a file created at publication", async name => {
+    const directory = join(env.dir, "publication-fixture"); await mkdir(directory);
+    const target = join(directory, name); const sentinel = "Unrelated concurrent bytes\n";
+    initPublication.beforePublish = async destination => {
+      if (destination === target) { initPublication.beforePublish = undefined; await writeFile(target, sentinel); }
+    };
+    let failure: unknown;
+    try { await updateInitProjectFile(directory, name, () => Buffer.from("Synthetic init bytes\n"), 0o600); }
+    catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    expect(await readFile(target, "utf8")).toBe(sentinel);
+  });
+
+  test('existing-leaf init writers fail on lock contention without stale takeover', async () => {
+    const directory = join(env.dir, "cooperative-publication-fixture"); await mkdir(directory);
+    const target = join(directory, ".gitignore"); await writeFile(target, "Original\n");
+    let entered!: () => void; const publishing = new Promise<void>(resolve => { entered = resolve; });
+    let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+    initPublication.beforePublish = async destination => {
+      if (destination === target) { initPublication.beforePublish = undefined; entered(); await held; }
+    };
+    const first = updateInitProjectFile(directory, ".gitignore", content => Buffer.concat([content, Buffer.from("First writer\n")]));
+    await publishing;
+    let failure: unknown;
+    try { await updateInitProjectFile(directory, ".gitignore", content => Buffer.concat([content, Buffer.from("Second writer\n")])); }
+    catch (error) { failure = error; }
+    finally { release(); await first; }
+    expect(failure).toMatchObject({ code: "EEXIST" });
+    expect(await readFile(target, "utf8")).toBe("Original\nFirst writer\n");
   });
 
   test.each(["symlink", "directory"])("init refuses an unsafe gitignore %s before generating credentials", async (kind) => {

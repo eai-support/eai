@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, readFile, rm, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
@@ -79,6 +79,28 @@ describe('test token home isolation', () => {
     await expect(userIsLoggedIn(context)).rejects.toThrow('must not contain links');
     expect(await readFile(join(ambient, '.eai', 'tokens.json'))).toEqual(sentinel);
   });
+
+  test.each(['default', 'dev'].flatMap(profile => ['symlink', 'hardlink', 'directory'].map(kind => ({ profile, kind }))))
+    ('rejects an unsafe $profile token leaf ($kind) before fixture cleanup or writing', async ({ profile, kind }) => {
+      setActiveProfile(profile);
+      const outside = join(ambient, '.eai', 'tokens.json');
+      const sentinel = await readFile(outside);
+      const leaf = profile === 'default' ? join(environment.dir, '.eai', 'tokens.json')
+        : join(environment.dir, '.eai', 'tokens', `${profile}.json`);
+      await mkdir(join(environment.dir, '.eai', 'tokens'), { recursive: true });
+      if (kind === 'symlink') await symlink(outside, leaf);
+      else if (kind === 'hardlink') await link(outside, leaf);
+      else await mkdir(leaf);
+      await expect(userIsLoggedIn(context)).rejects.toThrow('token leaves');
+      await expect(cleanupTestTokens(context)).rejects.toThrow('token leaves');
+      expect(await readFile(outside)).toEqual(sentinel);
+      const current = await lstat(leaf);
+      if (kind === 'symlink') expect(current.isSymbolicLink()).toBe(true);
+      if (kind === 'hardlink') expect(current.nlink).toBe(2);
+      if (kind === 'directory') expect(current.isDirectory()).toBe(true);
+      expect(getActiveProfile()).toBe(profile);
+      expect(process.env.HOME).toBe(ambient);
+    });
 
   test('logged-out arrangement clears the fixture cache without clearing ambient authentication', async () => {
     await userIsLoggedIn(context);

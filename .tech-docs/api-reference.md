@@ -448,7 +448,9 @@ the local generated file may already have been replaced. The command reads all
 pages in ID order with the
 same workspace filter and compares two complete scans before atomically replacing
 the generated file. Pagination drift, duplicate IDs, foreign workspace records,
-or an incomplete scan fail the command. Export bounds are 1,000 pages per scan,
+malformed present workspace markers, or an incomplete scan fail the command.
+Legacy documents may omit workspace metadata; present identifiers must match the
+selected workspace exactly. Export bounds are 1,000 pages per scan,
 64 MiB across both scans, and 120 seconds overall. This detects observed changes;
 the server does not provide a transactional snapshot token. Optional legacy arrays
 and unknown metadata are retained exactly; writable manifest rules remain separate.

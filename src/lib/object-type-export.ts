@@ -49,10 +49,16 @@ function parsePage(value: unknown, page: number, tenantId: string): ExportPage {
       || ['properties', 'linkTypes', 'actions'].some(key => doc[key] !== undefined && doc[key] !== null && !Array.isArray(doc[key]))) {
       throw new Error('Object Type pull returned an invalid Object Type read document. Existing output is preserved.');
     }
-    const tenant = typeof doc.tenant === 'string' ? doc.tenant
-      : isRecord(doc.tenant) && typeof doc.tenant.id === 'string' ? doc.tenant.id : undefined;
-    if ([tenant, doc.tenantId, doc.tenant_id].some(scope => typeof scope === 'string' && scope !== tenantId)) {
-      throw new Error('Object Type pull returned a document outside the selected workspace. Existing output is preserved.');
+    for (const key of ['tenant', 'tenantId', 'tenant_id']) {
+      if (!Object.hasOwn(doc, key)) continue; // Legacy read documents can omit scope metadata.
+      const marker = doc[key];
+      const scope = key === 'tenant' && isRecord(marker) ? marker.id : marker;
+      if (typeof scope !== 'string' || !scope.trim()) {
+        throw new Error('Object Type pull returned a malformed workspace marker. Existing output is preserved.');
+      }
+      if (scope !== tenantId) {
+        throw new Error('Object Type pull returned a document outside the selected workspace. Existing output is preserved.');
+      }
     }
     docs.push(doc);
   }
