@@ -1,4 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
+import { chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { Command } from 'commander';
 
 const fixture = vi.hoisted(() => ({
   exec: vi.fn(async (_file: string, _args: string[]) => ({ stdout: '', stderr: '' })),
@@ -118,5 +122,87 @@ describe('cloud environment secret resolution', () => {
     });
 
     expect(fixture.exec).toHaveBeenCalledOnce();
+  });
+
+  test.each([false, true])('local selector references are excluded before parsing or fetching, includeSecrets=%s', async (includeSecrets) => {
+    fixture.exec.mockResolvedValueOnce({ stdout: JSON.stringify([
+      { key: 'EAI_PROFILE', value: '{invalid-selector-reference', contentType: referenceType },
+      { key: 'PUBLIC_FLAG', value: 'ready' },
+    ]), stderr: '' });
+    const { pullCloudEnvValues } = await import('../../src/lib/cloud-env.js');
+    await expect(pullCloudEnvValues({ label: 'qa-app', includeSecrets })).resolves.toEqual({
+      store: 'fixture-store', patches: { PUBLIC_FLAG: 'ready' }, secretRefs: [],
+    });
+    expect(fixture.exec).toHaveBeenCalledOnce();
+  });
+
+  test.each([false, true])('valid local selector references never become cloud values or secret requests, includeSecrets=%s', async (includeSecrets) => {
+    fixture.exec.mockResolvedValueOnce({ stdout: JSON.stringify([
+      { key: 'EAI_PROFILE', value: JSON.stringify({ uri: vaultUri }), contentType: referenceType },
+      { key: 'PUBLIC_FLAG', value: 'ready' },
+    ]), stderr: '' });
+    fixture.exec.mockResolvedValueOnce({ stdout: '<unrequested-selector-secret>\n', stderr: '' });
+    const { pullCloudEnvValues } = await import('../../src/lib/cloud-env.js');
+    await expect(pullCloudEnvValues({ label: 'qa-app', includeSecrets })).resolves.toEqual({
+      store: 'fixture-store', patches: { PUBLIC_FLAG: 'ready' }, secretRefs: [],
+    });
+    expect(fixture.exec).toHaveBeenCalledOnce();
+  });
+
+  test('excluding a local selector retains the exact requested application secret contract', async () => {
+    fixture.exec.mockResolvedValueOnce({ stdout: JSON.stringify([
+      { key: 'EAI_PROFILE', value: '{invalid-selector-reference', contentType: referenceType },
+      { key: 'AUTH_SECRET', value: JSON.stringify({ uri: vaultUri }), contentType: referenceType },
+    ]), stderr: '' });
+    fixture.exec.mockResolvedValueOnce({ stdout: '<requested-application-secret>\n', stderr: '' });
+    const { pullCloudEnvValues } = await import('../../src/lib/cloud-env.js');
+    await expect(pullCloudEnvValues({ label: 'qa-app', includeSecrets: true })).resolves.toEqual({
+      store: 'fixture-store', patches: { AUTH_SECRET: '<requested-application-secret>' },
+      secretRefs: [{ key: 'AUTH_SECRET', vaultUri }],
+    });
+    expect(fixture.exec).toHaveBeenCalledTimes(2);
+    expect(fixture.exec).toHaveBeenLastCalledWith(expect.any(String), [
+      'keyvault', 'secret', 'show', '--id', vaultUri, '--query', 'value', '--output', 'tsv',
+    ]);
+  });
+
+  test('a plain local selector is also excluded from the shared pull result', async () => {
+    fixture.exec.mockResolvedValueOnce({ stdout: JSON.stringify([
+      { key: 'EAI_PROFILE', value: 'cloud-profile' }, { key: 'PUBLIC_FLAG', value: 'ready' },
+    ]), stderr: '' });
+    const { pullCloudEnvValues } = await import('../../src/lib/cloud-env.js');
+    await expect(pullCloudEnvValues({ label: 'qa-app' })).resolves.toEqual({
+      store: 'fixture-store', patches: { PUBLIC_FLAG: 'ready' }, secretRefs: [],
+    });
+    expect(fixture.exec).toHaveBeenCalledOnce();
+  });
+
+  test.each(['valid', 'malformed'])('real env pull skips a %s selector reference before any Key Vault request', async (kind) => {
+    const root = await mkdtemp(join(tmpdir(), 'eai-env-excluded-selector-'));
+    const file = join(root, '.env.local');
+    const before = 'EAI_PROFILE=dev\nNEXT_PUBLIC_APP_NAME=fixture-app\nPUBLIC_FLAG=local\n';
+    await writeFile(file, before, { mode: 0o600 });
+    await chmod(file, 0o600);
+    fixture.exec.mockResolvedValueOnce({ stdout: JSON.stringify([
+      { key: 'EAI_PROFILE', value: kind === 'valid' ? JSON.stringify({ uri: vaultUri }) : '{invalid-selector-reference', contentType: referenceType },
+      { key: 'PUBLIC_FLAG', value: 'cloud' },
+    ]), stderr: '' });
+    fixture.exec.mockResolvedValueOnce({ stdout: '<unrequested-selector-secret>\n', stderr: '' });
+    const config = await import('../../src/lib/config.js');
+    const discovery = vi.spyOn(config, 'findProjectRoot').mockResolvedValue(root);
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Unexpected pull exit'); }) as never);
+    try {
+      const { envCommand } = await import('../../src/commands/env.js');
+      await new Command('eai').addCommand(envCommand).parseAsync(['env', 'pull', '--include-secrets'], { from: 'user' });
+      expect(fixture.exec).toHaveBeenCalledOnce();
+      expect(exit).not.toHaveBeenCalled();
+      const after = await readFile(file, 'utf8');
+      expect(after).toContain('EAI_PROFILE=dev');
+      expect(after).toContain('PUBLIC_FLAG=cloud');
+      expect(after).not.toContain('unrequested-selector-secret');
+    } finally {
+      exit.mockRestore(); discovery.mockRestore();
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
