@@ -228,7 +228,7 @@ class FieldIssues {
   }
   unknownKeys(path: string, record: Record<string, unknown>, allowed: readonly string[]): void {
     for (const key of Object.keys(record)) {
-      if (!allowed.includes(key)) this.add(`${path}${path ? '.' : ''}${key} (unexpected)`);
+      if (!allowed.includes(key)) this.add(`${path || 'context'} (unexpected field)`);
     }
   }
 }

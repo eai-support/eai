@@ -80,7 +80,7 @@ const guide: AgentGuide = {
     {
       step: 2,
       title: 'Explain the error',
-      instruction: 'If an EAI code or reasonCode is present, check that eai --describe or the command catalog advertises eai errors explain, then query it at most once for the original failure. Never retry or explain a failed eai errors explain command; say guidance is unavailable and stop before mutating state. If unavailable, say the command is unavailable and offer "get help".',
+      instruction: 'If an EAI code or reasonCode is present, check that eai --describe or the command catalog advertises eai errors explain, then query it at most once for the original failure. Never retry or explain a failed eai errors explain command; say guidance is unavailable and stop before mutating state. If unavailable, say the command is unavailable, then stop and wait for the person to ask.',
       commands: [
         {
           command: 'eai errors explain <code-or-reason> --format json',

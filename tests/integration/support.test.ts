@@ -182,6 +182,27 @@ describe('eai support draft handoff', () => {
     }
   });
 
+  test('Quoted container-tail credentials stay out of actual preview and exact consented POST', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const diagnostic = 'api_key=[first,second]"CONTAINER_PRIVATE_CANARY" status=public-id';
+    const contextPath = join(home.dir, 'container-summary.json');
+    await writeFile(contextPath, JSON.stringify(harnessContextFixture({ request: diagnostic, goal: diagnostic, summary: diagnostic,
+      commands: [{ command: diagnostic, exitCode: 1 }], errors: [{ message: diagnostic }], attemptedFixes: [diagnostic] })));
+    const { preview, sent } = await previewThenApprove(home.dir,
+      ['--source', 'harness', '--tool', 'codex', '--context-file', contextPath, '--description', diagnostic], { EAI_WEBSITE_URL: server.origin });
+    expect(sent.code, sent.stdout + sent.stderr).toBe(0);
+    expect(parse(sent).status).toBe('created');
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+    for (const text of [preview.previewText!, JSON.stringify(preview.bundle), JSON.stringify(server.requests[0].body), sent.stdout]) {
+      expect(text).not.toContain('CONTAINER_PRIVATE_CANARY');
+      expect(text).not.toContain('PLACEHOLDER_TAIL_PRIVATE_CANARY');
+      expect(text).toContain('public-id');
+    }
+  });
+
   test('previews the harness report with zero POSTs, then sends exactly the approved bundle with the saved bearer', async () => {
     const home = await environment();
     const server = await fixture();
@@ -706,8 +727,8 @@ describe('eai support draft handoff', () => {
     await writeFile(contextPath, JSON.stringify(harnessContextFixture({
       requestedByPerson: false,
       filesTouched: ['src/ok.ts', `${home.dir}/.env.local`],
-      commands: [{ command: 'eai types seed', exitCode: 'one-private-value' }],
-      unexpectedField: 'unexpected-private-value',
+      commands: [{ command: 'eai types seed', exitCode: 'one-private-value', ['password=NESTED_KEY_PRIVATE_CANARY']: 'raw' }],
+      ['password=UNKNOWN_KEY_PRIVATE_CANARY']: 'unexpected-private-value',
     })));
     const result = await runSupportCli(home.dir, ['support', '--format', 'json', '--no-open', '--tool', 'codex', '--context-file', contextPath], { EAI_WEBSITE_URL: server.origin, ...(await isolatedTemp(home.dir)) });
     expect(result.code).toBe(1);
@@ -716,7 +737,10 @@ describe('eai support draft handoff', () => {
     expect(output.error!.message).toContain('requestedByPerson');
     expect(output.error!.message).toContain('filesTouched[1] (absolute path)');
     expect(output.error!.message).toContain('commands[0].exitCode');
-    expect(output.error!.message).toContain('unexpectedField (unexpected)');
+    expect(result.stdout + result.stderr).not.toContain('UNKNOWN_KEY_PRIVATE_CANARY');
+    expect(result.stdout + result.stderr).not.toContain('NESTED_KEY_PRIVATE_CANARY');
+    expect(output.error!.message).toContain('commands[0] (unexpected field)');
+    expect(output.error!.message).toContain('context (unexpected field)');
     expect(result.stdout).not.toContain('private-value');
     expect(result.stdout).not.toContain(home.dir);
     expect(server.requests).toHaveLength(0);

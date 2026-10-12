@@ -97,10 +97,22 @@ describe('local support report redaction', () => {
     expect(report).toContain('failed');
   });
 
-  test.each(['[redacted]PRIVATE_CANARY', '[first,second]PRIVATE_CANARY', '{first:second}PRIVATE_CANARY'])('redacts an opaque suffix after credential container %s', value => {
+  test.each(['[redacted]PRIVATE_CANARY', '[first,second]PRIVATE_CANARY', '{first:second}PRIVATE_CANARY', '[redacted]"PRIVATE_CANARY"', '[redacted]" PRIVATE_CANARY"', '[first,second]"PRIVATE_CANARY"', '{first:second}"PRIVATE_CANARY"'])('redacts an opaque suffix after credential container %s', value => {
     const clean = redactSupportText(`api_key=${value}`);
     expect(clean).not.toContain('PRIVATE_CANARY');
     expect(redactSupportText(clean)).toBe(clean);
+  });
+
+  test('retains actual enclosing serialized wrapper quotes around a complete credential container', () => {
+    let diagnostic = 'api_key=[PRIVATE_CANARY]';
+    for (let depth = 0; depth < 4; depth++) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('[redacted]');
+      expect(redactSupportText(clean)).toBe(clean);
+      diagnostic = JSON.stringify(diagnostic);
+    }
+    expect(redactSupportText(JSON.stringify('api_key=[]'))).toBe(JSON.stringify('api_key=[redacted]'));
   });
 
   test('complete credential containers remain private across nesting and serialized wrappers', () => {
@@ -277,7 +289,7 @@ describe('harness session summary schema', () => {
     ['command error code too long', { commands: [{ command: 'eai verify', exitCode: 1, errorCode: 'x'.repeat(41) }] }, 'commands[0].errorCode'],
     ['command reason code too long', { commands: [{ command: 'eai verify', exitCode: 1, reasonCode: 'x'.repeat(81) }] }, 'commands[0].reasonCode'],
     ['command time invalid', { commands: [{ command: 'eai verify', exitCode: 1, at: 'yesterday' }] }, 'commands[0].at'],
-    ['command unknown key', { commands: [{ command: 'eai verify', exitCode: 1, stdout: 'raw output' }] }, 'commands[0].stdout (unexpected)'],
+    ['command unknown key', { commands: [{ command: 'eai verify', exitCode: 1, stdout: 'raw output' }] }, 'commands[0] (unexpected field)'],
     ['errors too many', { errors: Array.from({ length: 51 }, () => ({ message: 'failed' })) }, 'errors'],
     ['error message missing', { errors: [{ code: 'E001' }] }, 'errors[0].message'],
     ['error message too long', { errors: [{ message: 'x'.repeat(1001) }] }, 'errors[0].message'],
@@ -292,7 +304,7 @@ describe('harness session summary schema', () => {
     ['file unc path', { filesTouched: ['\\\\server\\share\\index.ts'] }, 'filesTouched[0] (absolute path)'],
     ['file home relative', { filesTouched: ['~/app/src/index.ts'] }, 'filesTouched[0] (absolute path)'],
     ['truncated wrong type', { truncated: 'yes' }, 'truncated'],
-    ['unknown top-level key', { transcript: 'raw transcript text' }, 'transcript (unexpected)'],
+    ['unknown top-level key', { transcript: 'raw transcript text' }, 'context (unexpected field)'],
   ])('rejects %s and names only the field', (_name, overrides, field) => {
     let caught: unknown;
     try {

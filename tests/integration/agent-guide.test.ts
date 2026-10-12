@@ -43,6 +43,8 @@ describe('agent guide', () => {
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
     const explain = guide.recoveryLoop.find(step => step.title === 'Explain the error');
     expect(explain?.instruction).toContain('at most once for the original failure');
+    expect(explain?.instruction).not.toContain('offer "get help"');
+    expect(explain?.instruction).toContain('stop and wait for the person to ask');
     expect(explain?.instruction).toContain('Never retry or explain a failed eai errors explain command');
     expect(guide.operatingRules.join('\n')).toContain('reuse existing guidance across recovery steps');
 

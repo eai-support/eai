@@ -49,6 +49,23 @@ function redactCredentialValues(text: string): string {
     closingEnds[quote.start] = nearestQuoteEnd.get(quote.key) ?? text.length;
     nearestQuoteEnd.set(quote.key, quote.end);
   }
+  // SECURITY: a boundary quote must close an enclosing wrapper, not open an attached credential suffix.
+  const wrapperStarts = new Uint32Array(text.length);
+  const openWrappers = new Map<string, number>();
+  for (const quote of quotes) {
+    const opening = openWrappers.get(quote.key);
+    if (opening === undefined) openWrappers.set(quote.key, quote.start + 1);
+    else { wrapperStarts[quote.start] = opening; openWrappers.delete(quote.key); }
+  }
+  const closingWrapper = new Uint32Array(text.length + 1);
+  for (let index = text.length - 1; index >= 0; index--) {
+    const afterQuote = quoteEnds[index];
+    if (!wrapperStarts[index]) continue;
+    if (quoteEnds[afterQuote]) {
+      if (closingWrapper[afterQuote]) closingWrapper[index] = Math.max(wrapperStarts[index], closingWrapper[afterQuote]);
+    } else if (/^[\s&,;}\]]?$/.test(text[afterQuote] ?? '')) closingWrapper[index] = wrapperStarts[index];
+  }
+
   // SECURITY: every position is cached, including containers inside serialized outer quotes.
   const containerEnds = new Uint32Array(text.length);
   const nextDelimiter = new Uint32Array(text.length + 1);
@@ -94,12 +111,12 @@ function redactCredentialValues(text: string): string {
   }
   // SECURITY: independent spans include nested malformed assignments; union them before copying any text.
   const spans: { start: number; end: number }[] = [];
-  for (const { key, start } of fields) {
+  for (const { key, start, tokenStart } of fields) {
     if (!isSupportSensitiveKey(key)) continue;
     const markerEnd = start + '[redacted]'.length;
-    if (text.startsWith('[redacted]', start) && (quoteEnds[markerEnd] || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
+    if (text.startsWith('[redacted]', start) && ((closingWrapper[markerEnd] && closingWrapper[markerEnd] <= tokenStart) || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
     const containerEnd = containerEnds[start];
-    const completeContainer = containerEnd && (quoteEnds[containerEnd] || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
+    const completeContainer = containerEnd && ((closingWrapper[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
     const end = quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[start];
     if (end <= start) continue;
     const previous = spans.at(-1);

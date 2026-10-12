@@ -1091,6 +1091,8 @@ test.each([false, true])(
           file,
         ).toHaveLength(2);
         expect(content).not.toMatch(/After any .*eai.* command error/);
+        expect(content).not.toContain('offer "get help"');
+        expect(content).toContain("stop and wait for the person to ask");
       }
       const claude = await readFile(join(environment.dir, "CLAUDE.md"), "utf8");
       expect(claude).toContain(
