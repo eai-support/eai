@@ -141,6 +141,8 @@ within 1 MiB. The ignore file's content and permissions are preserved when the
 rule is appended atomically. The generated `.env.local` replaces an ordinary
 scaffold file atomically with private permissions; linked credential destinations
 are refused, including when initializing in the current directory.
+Temporary `.env.local.eai-*.tmp` credential files are ignored as well, so an
+interrupted initialization cannot leave them eligible for ordinary Git staging.
 
 Before authenticated commands run, a named profile's PublicAPI endpoint
 must agree with `BASE_URL_PUBLIC_API` and `ROUTING_BOOTSTRAP_PUBLIC_API_URL`

@@ -2220,7 +2220,7 @@ async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {
   await updateInitProjectFile(targetDir, ".gitignore", (content) => {
     // Last-match precedence also protects custom templates which unignore env files.
     const separator = content.length && content[content.length - 1] !== 10 ? "\n" : "";
-    return Buffer.concat([content, Buffer.from(`${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n`)]);
+    return Buffer.concat([content, Buffer.from(`${separator}\n# Local app credentials and EAI CLI profile selector\n/.env.local\n/.env.local.eai-*.tmp\n`)]);
   });
 }
 

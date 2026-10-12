@@ -1272,9 +1272,12 @@ describe("eai init", () => {
       expect((await stat(ignorePath)).mode & 0o777).toBe(0o600);
       expect((await stat(existingEnvPath)).mode & 0o777).toBe(0o600);
     }
-    const { stdout: ignoredEnv } = await exec("git", ["check-ignore", ".env.local"], { cwd: projectDir });
-    expect(ignoredEnv.trim()).toBe(".env.local");
-    const { stdout: trackedEnv } = await exec("git", ["ls-files", ".env.local"], { cwd: projectDir });
+    const orphanedCredentialTemp = `.env.local.eai-${"a".repeat(32)}.tmp`;
+    await writeFile(join(projectDir, orphanedCredentialTemp), "AUTH_SECRET=synthetic-interrupted-write-fixture\n", { mode: 0o600 });
+    const { stdout: ignoredEnv } = await exec("git", ["check-ignore", ".env.local", orphanedCredentialTemp], { cwd: projectDir });
+    expect(ignoredEnv.trim().split("\n")).toEqual([".env.local", orphanedCredentialTemp]);
+    await exec("git", ["add", "--all"], { cwd: projectDir });
+    const { stdout: trackedEnv } = await exec("git", ["ls-files", ".env.local", orphanedCredentialTemp], { cwd: projectDir });
     expect(trackedEnv).toBe("");
   }, 30_000);
 
