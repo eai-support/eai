@@ -23,7 +23,7 @@ const TRACEABILITY_BASE = [
   ['eai types validate', 'read', 'live', 'Validates local Object Types before publishing.'],
   ['eai types diff', 'read', 'live', 'Compares local and remote Object Types after seed.'],
   ['eai types pull', 'read', 'live', 'Downloads remote Object Types into the disposable workspace.'],
-  ['eai types define', 'create', 'help', 'Interactive builder is coming soon; help/contract only until it has a non-interactive path.'],
+  ['eai types define', 'create', 'unsupported', 'Explicit unsupported error is covered by owning CLI tests; it exits nonzero before authentication or network access.'],
   ['eai workspace storage list', 'read', 'live', 'Lists published storage bindings for the test workspace.'],
   ['eai workspace storage verify', 'read', 'live', 'Verifies workspace storage readiness after sync.'],
   ['eai workspace list', 'read', 'live', 'Resolves the dedicated parent test workspace.'],
@@ -59,7 +59,7 @@ const TRACEABILITY_BASE = [
   ['eai resources doctor', 'read', 'live', 'Runs active tenant storage readiness diagnostics.'],
   ['eai resources performance-status', 'read', 'live', 'Reads bounded resource performance and schema readiness through the platform API.'],
   ['eai resources indexes-plan', 'read', 'live-optional', 'Plans validated tenant-scoped index changes without applying storage mutations.'],
-  ['eai resources indexes-apply', 'create/update', 'live-optional', 'Applies validated tenant-scoped indexes only after explicit confirmation and server authorization.'],
+  ['eai resources indexes-apply', 'check', 'unsupported', 'Explicit unsupported error is covered by owning CLI tests; it exits nonzero before authentication or network access.'],
   ['eai resources cache-refresh', 'create/update', 'live-optional', 'Forces a signed, reasoned system-admin cache refresh; disabled in default smoke.'],
   ['eai app list', 'read', 'live', 'Lists apps before and after scaffold.'],
   ['eai app auth status', 'read', 'live-optional', 'Reads app-client authorization when the smoke provisions an Entra registration.'],
@@ -169,6 +169,7 @@ const SMOKE_CALLS = {
   ],
   'eai types define': [
     'eai types define --help',
+    'eai types define --format json',
   ],
   'eai workspace storage list': [
     'eai workspace storage list --format json',
@@ -192,7 +193,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
   ],
   'eai workspace delete': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --force --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace delete <child-tenant-id> --parent <workspace-id> --force-hard-purge --force --format json',
   ],
   'eai user invite': [
     'EAI_E2E_INVITE_TEST_USER=<email> eai user invite --email <email> --workspace <workspace-id> --role <role> --first-name <name> --last-name <name> --message <message> --redirect-uri <uri> --format json',
@@ -282,10 +283,11 @@ const SMOKE_CALLS = {
     'eai resources performance-status --tenant-id <workspace-id> --format json',
   ],
   'eai resources indexes-plan': [
-    'eai resources indexes-plan --tenant-id <workspace-id> --format json',
+    'eai resources indexes-plan --tenant-id <workspace-id> --object-type <published-object-type-slug> --format json',
   ],
   'eai resources indexes-apply': [
-    'eai resources indexes-apply --tenant-id <workspace-id> --confirm --format json',
+    'eai resources indexes-apply --help',
+    'eai resources indexes-apply --format json',
   ],
   'eai resources cache-refresh': [
     'eai resources cache-refresh --tenant-id <workspace-id> --reason <change-ticket> --confirm --format json',
@@ -579,7 +581,7 @@ const OPTION_DECISIONS = {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
   },
   'eai workspace delete': {
-    '--force-hard-purge': 'Permanent subtree purge; covered by command/API contract tests and intentionally excluded from release smoke cleanup.',
+    '--force-hard-purge': 'The parent-bound example purges one owned leaf child; without --parent, permanent subtree purge is covered by command/API contract tests and excluded from release smoke cleanup.',
   },
   'eai user invite': {
     '--workspace,': 'Preferred workspace selector; invite behavior is covered by user integration tests and optional dedicated-workspace smoke.',
@@ -599,10 +601,12 @@ const OPTION_DECISIONS = {
     '--cursor': 'Cursor is data-dependent; pagination is covered through page/limit and cursor remains contract-documented.',
   },
   'eai resources indexes-plan': {
-    '--object-type': 'Optional published Object Type scope; default smoke plans the tenant-wide validated set without applying changes.',
+    '--object-type': 'Required exact published Object Type slug; the plan remains read-only and tenant-scoped.',
   },
   'eai resources indexes-apply': {
-    '--object-type': 'Optional published Object Type scope; apply is confirmation-gated and disabled in default release smoke.',
+    '--object-type': 'Unsupported; owning CLI tests prove refusal before object-type resolution.',
+    '--tenant-id': 'Unsupported; no tenant lookup or mutation is performed.',
+    '--confirm': 'Unsupported; confirmation cannot enable a missing apply contract.',
   },
   'eai resources cache-refresh': {
     '--object-type': 'Optional Object Type scope; system-admin refresh is reasoned and disabled in default release smoke.',
@@ -838,9 +842,9 @@ const ARTIFACT_CLEANUP = {
     cleanupVerified: 'Yes - no mutation applied',
   },
   'eai resources indexes-apply': {
-    createsExternalArtifact: 'Yes - validated tenant-scoped storage indexes',
-    cleanupMechanism: 'Re-run the validated plan or revert the declared Object Type index metadata',
-    cleanupVerified: 'No - live mutation disabled in default smoke',
+    createsExternalArtifact: 'No - explicitly unsupported',
+    cleanupMechanism: 'Not required',
+    cleanupVerified: 'Yes - owning CLI tests prove no authenticated mutation',
   },
   'eai resources cache-refresh': {
     createsExternalArtifact: 'Yes - cache invalidation operation',
