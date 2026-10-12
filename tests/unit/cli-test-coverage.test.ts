@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 
 interface FeatureCoverage {
   id: string;
+  owned_paths: string[];
   required_repo_tests: string[];
   required_ci_checks: string[];
 }
@@ -23,6 +24,13 @@ const focusedSuites = focusedCommand.split(/\s+/).filter(argument => /^(?:tests\
 const focusedSuiteSet = new Set(focusedSuites);
 
 describe('focused CLI evidence ownership', () => {
+  test('the shared qualification environment and installed-Git helper has explicit owning suites', () => {
+    const feature = coverage.repositories.eai.features.find(row => row.id === 'eai-cli-owned-qualification');
+    expect(feature?.owned_paths).toContain('scripts/cli-qa-operational-env.cjs');
+    expect(feature?.owned_paths).toContain('scripts/cli-qa-npm-execution.cjs');
+    expect(feature?.required_repo_tests).toContain('tests/integration/cli-qa-build-receipt.test.ts');
+    expect(feature?.required_repo_tests).toContain('tests/integration/full-e2e-smoke.test.ts');
+  });
   test('the focused gate selects existing explicit suites without duplicates', () => {
     expect(focusedSuites.length).toBeGreaterThan(0);
     expect(focusedSuiteSet.size).toBe(focusedSuites.length);
@@ -93,5 +101,18 @@ describe('focused CLI evidence ownership', () => {
     expect(focusedJob).toContain('test-results/eai-cli-results.xml');
     expect(focusedJob).toContain('test-results/eai-cli-registry-results.xml');
     expect(focusedJob).toContain('test-results/eai-cli-evidence.json');
+  });
+
+  test('stacked pull requests receive the required check with read-only repository permissions', () => {
+    const workflow = readFileSync(join(root, '.github/workflows/ci.yml'), 'utf8');
+    const lines = workflow.split('\n');
+    const eventIndex = lines.indexOf('  pull_request:');
+    expect(eventIndex).toBeGreaterThan(-1);
+    const following = lines.slice(eventIndex + 1);
+    const nextBlock = following.findIndex(line => /^(?:\S|  \S)/.test(line));
+    const eventOptions = following.slice(0, nextBlock === -1 ? undefined : nextBlock).join('\n');
+    expect(eventOptions).not.toMatch(/^    (?:branches|branches-ignore|paths|paths-ignore):/m);
+    expect(workflow).toMatch(/^permissions:\n  contents: read\n/m);
+    expect(workflow).toMatch(/^  push:\n    branches: \[main\]\n/m);
   });
 });
