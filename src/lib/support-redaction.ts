@@ -5,6 +5,72 @@ export function isSupportSensitiveKey(key: string): boolean {
   return sensitiveKey.test(key);
 }
 
+interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number }
+
+function redactCredentialValues(text: string): string {
+  const escaped = new Uint8Array(text.length);
+  const quoteEnds = new Uint32Array(text.length);
+  const closingEnds = new Uint32Array(text.length);
+  const quotes: { start: number; end: number; key: string }[] = [];
+  let slashRun = 0;
+  for (let index = 0; index < text.length; index++) {
+    escaped[index] = slashRun % 2;
+    if (text[index] === '"' || text[index] === "'") {
+      const depth = slashRun % 2 ? slashRun : 0;
+      quotes.push({ start: index - depth, end: index + 1, key: `${text[index]}:${depth}` });
+    }
+    slashRun = text[index] === '\\' ? slashRun + 1 : 0;
+  }
+  // SECURITY: serialized wrappers close at their own escape depth; inner quotes cannot expose a value tail.
+  const nearestQuoteEnd = new Map<string, number>();
+  for (let index = quotes.length - 1; index >= 0; index--) {
+    const quote = quotes[index];
+    quoteEnds[quote.start] = quote.end;
+    closingEnds[quote.start] = nearestQuoteEnd.get(quote.key) ?? text.length;
+    nearestQuoteEnd.set(quote.key, quote.end);
+  }
+  const fields: CredentialField[] = [];
+  for (const match of text.matchAll(/[\w.-]+/g)) {
+    const key = match[0];
+    let start = match.index + key.length;
+    if (quoteEnds[start]) start = quoteEnds[start];
+    const separator = start;
+    while (start < text.length && /\s/.test(text[start])) start++;
+    if (text[start] === '=' || text[start] === ':') start++;
+    else if (!key.startsWith('--') || start === separator) continue;
+    while (start < text.length && /\s/.test(text[start])) start++;
+    fields.push({ key, start, tokenStart: match.index });
+  }
+  const fieldStarts = new Set(fields.map(field => field.tokenStart));
+  const stops = new Uint32Array(text.length + 1);
+  stops[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    if (quoteEnds[index]) stops[index] = stops[closingEnds[index]];
+    else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
+    else stops[index] = stops[index + 1];
+  }
+  // SECURITY: independent spans include nested malformed assignments; union them before copying any text.
+  const spans: { start: number; end: number }[] = [];
+  for (const { key, start } of fields) {
+    if (!isSupportSensitiveKey(key)) continue;
+    const markerEnd = start + '[redacted]'.length;
+    if (text.startsWith('[redacted]', start) && (quoteEnds[markerEnd] || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
+    const end = quoteEnds[start] ? closingEnds[start] : stops[start];
+    if (end <= start) continue;
+    const previous = spans.at(-1);
+    if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);
+    else spans.push({ start, end });
+  }
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { start, end } of spans) {
+    parts.push(text.slice(cursor, start), '[redacted]');
+    cursor = end;
+  }
+  parts.push(text.slice(cursor));
+  return parts.join('');
+}
+
 /**
  * Removes known credential values, credential-shaped text and unsafe terminal controls before review.
  * Supply values from every credential source: pattern matching alone cannot identify opaque secrets.
@@ -14,14 +80,13 @@ export function redactSupportText(text: string, sensitiveValues: readonly string
   for (const value of sensitiveValues) {
     if (value) safe = safe.split(value).join('[redacted]');
   }
+  safe = redactCredentialValues(safe);
   return safe
     .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[redacted-private-key]')
     .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted-jwt]')
     .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]{16,})\b/g, '[redacted-key]')
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[redacted]@')
-    .replace(/((?:["']?[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|authorization|connection[_-]?string|private[_-]?key)[\w.-]*["']?\s*[:=]\s*))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, '$1[redacted]')
-    .replace(/((?:--[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key)[\w-]*)\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, '$1[redacted]')
     .replace(/([?&](?:sig|signature|access_token|token|key|code)=)[^&#\s]*/gi, '$1[redacted]')
     .replace(/#draft=[^\s"']+/gi, '#draft=[redacted]')
     // eslint-disable-next-line no-control-regex -- Upstream terminal escapes must not execute during report review.

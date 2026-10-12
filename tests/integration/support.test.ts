@@ -114,6 +114,33 @@ describe('eai support draft handoff', () => {
     }
   });
 
+  test('removes serialized escaped credentials from the actual preview and exact consented POST', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const diagnostic = JSON.stringify({ ENTRA_CLIENT_SECRET: 'escaped fixture private value', status: 'failed' });
+    const escaped = JSON.stringify(diagnostic);
+    const command = String.raw`AWS_ACCESS_KEY_ID=\"escaped fixture private value\" status=failed`;
+    const contextPath = join(home.dir, 'escaped-summary.json');
+    await writeFile(contextPath, JSON.stringify(harnessContextFixture({
+      request: escaped, goal: command, summary: escaped, steps: [command],
+      commands: [{ command, exitCode: 1 }], errors: [{ message: escaped }], attemptedFixes: [command, 'oauth_token = "x\n api_key = "FIXTURE PRIVATE VALUE"'],
+    })));
+    const { preview, sent } = await previewThenApprove(home.dir,
+      ['--source', 'harness', '--tool', 'codex', '--context-file', contextPath, '--description', escaped],
+      { EAI_WEBSITE_URL: server.origin });
+    expect(sent.code, sent.stdout + sent.stderr).toBe(0);
+    expect(parse(sent).status).toBe('created');
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+    for (const text of [preview.previewText!, JSON.stringify(preview.bundle), JSON.stringify(server.requests[0].body), sent.stdout]) {
+      expect(text).not.toContain('escaped fixture');
+      expect(text).not.toContain('PRIVATE VALUE');
+      expect(text).not.toContain('private value');
+      expect(text).toContain('failed');
+    }
+  });
+
   test('previews the harness report with zero POSTs, then sends exactly the approved bundle with the saved bearer', async () => {
     const home = await environment();
     const server = await fixture();

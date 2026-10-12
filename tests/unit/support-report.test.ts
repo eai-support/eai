@@ -97,6 +97,60 @@ describe('local support report redaction', () => {
     expect(report).toContain('failed');
   });
 
+  test.each([0, 1, 3, 7])('redacts complete serialized credentials at quote escape depth %i', (depth) => {
+    const quote = '\\'.repeat(depth) + '"';
+    const inputs = [
+      `{${quote}ENTRA_CLIENT_SECRET${quote}:${quote}fixture private value${quote},${quote}status${quote}:${quote}failed${quote}}`,
+      `AWS_ACCESS_KEY_ID=${quote}fixture private value${quote} status=failed`,
+      `access_key=opaque:${quote}fixture private value${quote} status=failed`,
+      `--access-key ${quote}fixture private value${quote} --format json status=failed`,
+    ];
+    for (const input of inputs) {
+      const result = redactSupportText(input);
+      expect(result).not.toContain('fixture');
+      expect(result).not.toContain('private value');
+      expect(result).toContain('failed');
+      expect(result).toContain('[redacted]');
+      expect(redactSupportText(result)).toBe(result);
+    }
+  });
+
+  test('keeps escaped inner quotes inside the full serialized credential boundary', () => {
+    const diagnostic = String.raw`{"ENTRA_CLIENT_SECRET":"before \"fixture private value\" after","status":"failed"}`;
+    const serialized = JSON.stringify(diagnostic);
+    const result = redactSupportText(serialized);
+    expect(result).not.toContain('fixture');
+    expect(result).not.toContain('private value');
+    expect(result).toContain('failed');
+    expect(redactSupportText(result)).toBe(result);
+  });
+
+  test('redacts an unclosed escaped credential through its remaining text', () => {
+    const result = redactSupportText(String.raw`AWS_ACCESS_KEY_ID=\"fixture private value`);
+    expect(result).not.toContain('fixture');
+    expect(result).not.toContain('private value');
+    expect(redactSupportText(result)).toBe(result);
+  });
+
+  test('redacts overlapping malformed quoted credentials without exposing the inner multiword tail', () => {
+    const text = 'oauth_token = "x\n api_key = "FIXTURE PRIVATE VALUE"';
+    const clean = redactSupportText(text);
+    expect(clean).not.toContain('FIXTURE');
+    expect(clean).not.toContain('PRIVATE VALUE');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
+  test('redacts dense serialized assignments and leaves long harmless identifiers intact', () => {
+    const field = String.raw`{"ENTRA_CLIENT_SECRET":"dense fixture private value","status":"failed"}`;
+    const dense = Array.from({ length: 250 }, () => JSON.stringify(field)).join(' ');
+    const clean = redactSupportText(dense);
+    expect(clean).not.toContain('dense fixture');
+    expect(clean).not.toContain('private value');
+    expect(redactSupportText(clean)).toBe(clean);
+    const harmless = 'a'.repeat(64 * 1024);
+    expect(redactSupportText(harmless)).toBe(harmless);
+  });
+
   test('redacts nested secrets without losing report metadata or changing the input', () => {
     const input = {
       cli: { command: 'eai types push', exitCode: 1, errorCode: 'E001' },
