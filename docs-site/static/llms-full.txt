@@ -403,7 +403,7 @@ Options:
                                       locally
   --approved-digest <sha256>          bundleDigest of the previewed report the
                                       person approved; required with --yes in
-                                      JSON or noninteractive runs
+                                      every mode
   --organisation-location <location>  Where the organisation is based
                                       (apac|emea|americas) when the session has
                                       no active workspace

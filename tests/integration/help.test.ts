@@ -46,6 +46,14 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
   });
 
+  test('support help requires approved-digest with --yes in every mode', async () => {
+    const result = await runCommand(ctx, 'eai support --help');
+    expect(result.exitCode).toBe(0);
+    const help = result.stdout.replace(/\s+/g, ' ');
+    expect(help).toContain('required with --yes in every mode');
+    expect(help).not.toContain('required with --yes in JSON or noninteractive runs');
+  });
+
   test('login help explains the sign-in and tenant selection flow', async () => {
     const result = await runCommand(ctx, 'eai login --help');
 
