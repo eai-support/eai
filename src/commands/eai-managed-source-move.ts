@@ -78,7 +78,7 @@ eaiManagedSourceCommand.command("move")
       );
       if (source.status !== "completed"
         || !Number.isSafeInteger(source.repository.id) || (source.repository.id ?? 0) < 1
-        || !source.repository.nodeId || !/^[a-f0-9]{40}$/.test(source.review?.mergedSha || "")) {
+        || !source.repository.nodeId || !/^[a-f0-9]{40}$/.test(source.review?.mergedCommitSha || "")) {
         fail("SOURCE_MOVE_NOT_READY", "The exact source operation lacks completed review and immutable repository evidence.", "Finish the original EAI-managed deployment, then retry this exact source operation.");
       }
       const deployment = await readUnifiedExactOperation(
@@ -88,7 +88,7 @@ eaiManagedSourceCommand.command("move")
         || deployment.environment !== scope.environment
         || classifyManagedOperationStatus(deployment) !== "succeeded"
         || deployment.sourceRevision?.repositoryId !== source.repository.id
-        || deployment.sourceRevision?.sourceCommitSha !== source.review?.mergedSha) {
+        || deployment.sourceRevision?.sourceCommitSha !== source.review?.mergedCommitSha) {
         fail("SOURCE_MOVE_DEPLOYMENT_MISMATCH", "The exact CLI source is not the observed active deployment.", "Resolve the original deployment and read its current source receipt before moving ownership.");
       }
       const url = new URL(`/platform/apps/${encodeURIComponent(appKey)}/deployment`, cliManagedSourceMovePortalOrigin(context.publicApiUrl));
