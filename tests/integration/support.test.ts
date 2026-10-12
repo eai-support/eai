@@ -831,7 +831,9 @@ describe('CLI-owned context file lifecycle', () => {
     await writeSupportSession(home.dir);
     const directory = join(home.dir, '.eai', 'support', 'context');
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    const file = join(directory, 'review.json');
+    const allocated = await runSupportCli(home.dir, ['support', '--create-context-file', '--format', 'json']);
+    const file = JSON.parse(allocated.stdout).contextFile as string;
+    expect(JSON.parse(allocated.stdout)).toMatchObject({ status: 'context_created', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
     await writeFile(file, JSON.stringify(harnessContextFixture()), { mode: 0o600 });
     const args = ['--tool', 'codex', '--context-file', file];
     const env = { EAI_WEBSITE_URL: server.origin };
@@ -854,8 +856,13 @@ describe('CLI-owned context file lifecycle', () => {
     const directory = join(home.dir, '.eai', 'support', 'context');
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const outside = join(home.dir, 'outside.json');
-    const stale = join(directory, 'stale.json');
-    const owned = join(directory, 'owned.json');
+    const allocated = await runSupportCli(home.dir, ['support', '--create-context-file', '--format', 'json']);
+    const stale = JSON.parse(allocated.stdout).contextFile as string;
+    const unrelated = join(directory, 'unrelated.json');
+    await writeFile(unrelated, JSON.stringify(harnessContextFixture()));
+    await utimes(unrelated, new Date(0), new Date(0));
+    const ownedAllocation = await runSupportCli(home.dir, ['support', '--create-context-file', '--format', 'json']);
+    const owned = JSON.parse(ownedAllocation.stdout).contextFile as string;
     const alias = join(home.dir, 'alias.json');
     await writeFile(outside, JSON.stringify(harnessContextFixture()));
     await writeFile(stale, JSON.stringify(harnessContextFixture()));
@@ -865,6 +872,7 @@ describe('CLI-owned context file lifecycle', () => {
     await symlink(owned, alias);
     const result = await runSupportCli(home.dir, ['support', '--format', 'json', '--tool', 'codex', '--context-file', alias], { EAI_WEBSITE_URL: server.origin });
     expect(parse(result).status).toBe('consent_required');
+    await expect(access(unrelated)).resolves.toBeUndefined();
     await expect(access(stale)).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(access(outside)).resolves.toBeUndefined();
     await expect(access(owned)).resolves.toBeUndefined();

@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readSync, realpathSync, rmSync, statSync } from 'node:fs';
+import { createHash, randomUUID } from 'node:crypto';
+import { chmodSync, closeSync, existsSync, lstatSync, mkdirSync, openSync, readdirSync, readFileSync, readSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 import { redactSupportText } from './support-redaction.js';
@@ -89,13 +89,37 @@ export function ensureSupportContextDirectory(): string {
   return directory;
 }
 
+/** Allocates the only file transport eligible for automatic cleanup. */
+export function createHarnessContextFile(): string {
+  const directory = ensureSupportContextDirectory();
+  const file = join(directory, `context-${randomUUID()}.json`);
+  const descriptor = openSync(file, 'wx', 0o600);
+  closeSync(descriptor);
+  try {
+    const metadata = lstatSync(file);
+    writeFileSync(`${file}.owner`, JSON.stringify({ schema: 'eai-support-context.v1', dev: metadata.dev, ino: metadata.ino }), { flag: 'wx', mode: 0o600 });
+  } catch (error) {
+    rmSync(file, { force: true });
+    throw error;
+  }
+  return file;
+}
+
 function ownedContextFile(source: string): string | undefined {
   try {
     const directory = ensureSupportContextDirectory();
     const candidate = resolve(source);
     const lexicalDirectory = resolve(homedir(), '.eai', 'support', 'context');
     if (!candidate.startsWith(`${directory}${sep}`) && !candidate.startsWith(`${lexicalDirectory}${sep}`)) return undefined;
+    if (!/^context-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.json$/.test(candidate.slice(candidate.lastIndexOf(sep) + 1))) return undefined;
+    const marker = `${candidate}.owner`;
+    const markerMetadata = lstatSync(marker);
+    if (!markerMetadata.isFile() || markerMetadata.isSymbolicLink() || markerMetadata.size > 512) return undefined;
+    if (typeof process.getuid === 'function' && markerMetadata.uid !== process.getuid()) return undefined;
+    const ownership: unknown = JSON.parse(readFileSync(marker, 'utf8'));
+    if (!isRecord(ownership) || ownership.schema !== 'eai-support-context.v1') return undefined;
     const metadata = lstatSync(candidate);
+    if (ownership.dev !== metadata.dev || ownership.ino !== metadata.ino) return undefined;
     if (!metadata.isFile() || metadata.isSymbolicLink()) return undefined;
     if (typeof process.getuid === 'function' && metadata.uid !== process.getuid()) return undefined;
     const actual = realpathSync(candidate);
@@ -105,11 +129,12 @@ function ownedContextFile(source: string): string | undefined {
   }
 }
 
+/** SECURITY: Only the CLI-created marker and matching file identity authorize deletion. */
 export function discardOwnedHarnessContext(source: string | undefined): void {
   if (!source || source === '-') return;
   const file = ownedContextFile(source);
   if (!file) return;
-  try { rmSync(file, { force: true }); }
+  try { rmSync(file, { force: true }); rmSync(`${file}.owner`, { force: true }); }
   catch { process.stderr.write('The owned support context file could not be deleted; remove it yourself.\n'); }
 }
 
@@ -318,7 +343,7 @@ function replacePathPrefix(text: string, prefix: string, replacement: string): s
   const trimmed = prefix.replace(/[\\/]+$/, '');
   if (!trimmed) return text;
   const escaped = trimmed.split(/[\\/]/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('[\\\\/]');
-  return text.replace(new RegExp(`${escaped}(?=$|[\\\\/\\s"'\x60:),;])`, /^[a-z]:/i.test(trimmed) ? 'gi' : 'g'), replacement);
+  return text.replace(new RegExp(`${escaped}(?=$|[\\\\/\\s"'\x60:),;\\]}>?])`, /^[a-z]:/i.test(trimmed) ? 'gi' : 'g'), replacement);
 }
 
 /**

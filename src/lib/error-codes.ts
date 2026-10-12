@@ -217,7 +217,7 @@ export function formatErrorJSON(
   const suggestion = interpolate(def.suggestion, context);
   const guidance = findGuidanceByCode(code);
 
-  // `suggestion` stays actionable for an AI agent; `help` is for the person and is never a step to run.
+  // The deployed JSON contract pins these keys; the person-facing support hint belongs on text stderr.
   return {
     error: {
       code,

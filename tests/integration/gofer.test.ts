@@ -1002,3 +1002,18 @@ test('hand-kept support mirror blocks equal the canonical generator contract', a
     expect(await readFile(join(BUNDLED_GOFER_RESOURCES, file), 'utf8'), file).toContain(contract);
   }
 });
+
+
+test('active generated CLI instructions carry the canonical support producer contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['.gemini/commands/gofer/eai.md', '.github/prompts/eai.prompt.md',
+    '.agents/skills/eai/SKILL.md',
+    '.github/skills/eai/SKILL.md', '.grok/skills/eai/SKILL.md', '.system/skills/eai/SKILL.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, '../..', file), 'utf8'), file).toContain(contract);
+  }
+});

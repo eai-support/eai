@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { access, mkdir, symlink, writeFile } from 'node:fs/promises';
+import { access, mkdir, symlink, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
@@ -7,6 +7,9 @@ import { createSupportDraft, type SupportBundle } from '../../src/lib/support-re
 import {
   bundleDigest,
   canonicalJson,
+  createHarnessContextFile,
+  discardOwnedHarnessContext,
+  purgeStaleHarnessContexts,
   fitHarnessContext,
   HARNESS_BLOCK_MAX_BYTES,
   harnessBlockBytes,
@@ -377,7 +380,7 @@ describe('support consent and request limits', () => {
     });
     const directory = join(home.dir, '.eai', 'support', 'context');
     await mkdir(directory, { recursive: true, mode: 0o700 });
-    const contextFile = join(directory, 'declined.json');
+    const contextFile = createHarnessContextFile();
     await writeFile(contextFile, JSON.stringify(harnessContextFixture()), { mode: 0o600 });
     await runSupport({ format: 'text', open: false, source: 'harness', contextFile }, { confirm, isInteractive: true });
     await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -512,4 +515,94 @@ test('hides the shell PWD alias of a project reached through a symlink', async (
   expect(roots).toContain(alias);
   const context = validateHarnessContext({ ...harnessContextFixture(), summary: `${alias}/src/index.ts` });
   expect(redactHarnessContext(context, { sensitiveValues: [], homes: [], projectRoots: roots }).summary).toBe('./src/index.ts');
+});
+
+
+describe('support context ownership and closing path delimiters', () => {
+  test('preserves unrelated regular files inside the private directory during cleanup and stale purge', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    vi.stubEnv('HOME', home.dir);
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const unrelated = join(directory, 'unrelated.json');
+    await writeFile(unrelated, JSON.stringify(harnessContextFixture()));
+    await utimes(unrelated, new Date(0), new Date(0));
+    discardOwnedHarnessContext(unrelated);
+    purgeStaleHarnessContexts();
+    await expect(access(unrelated)).resolves.toBeUndefined();
+  });
+
+  test.each([']', '}', '>', '?'])('hides closed home/project prefixes in every text field for %s without hiding sibling paths', delimiter => {
+    const text = `/h${delimiter} /p${delimiter} /home /project`;
+    const context: HarnessContext = {
+      requestedByPerson: true, request: text, goal: text, summary: text, steps: [text],
+      commands: [{ command: text, exitCode: 1, errorCode: text, reasonCode: text }],
+      errors: [{ code: text, message: text }], attemptedFixes: [text], filesTouched: [text], truncated: false,
+    };
+    const safe = redactHarnessContext(context, { sensitiveValues: [], homes: ['/h'], projectRoots: ['/p'] });
+    const fields = [safe.request, safe.goal, safe.summary, ...safe.steps, safe.commands[0].command,
+      safe.commands[0].errorCode, safe.commands[0].reasonCode, safe.errors[0].code, safe.errors[0].message,
+      ...safe.attemptedFixes, ...safe.filesTouched];
+    for (const field of fields) expect(field).toBe(`~${delimiter} .${delimiter} /home /project`);
+  });
+});
+
+
+test('ownership markers do not authorize replacement files or symlinks', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const file = createHarnessContextFile();
+  const { rename, stat } = await import('node:fs/promises');
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  await rename(file, `${file}.original`);
+  await writeFile(file, 'unrelated');
+  discardOwnedHarnessContext(file);
+  await expect(access(file)).resolves.toBeUndefined();
+  const link = createHarnessContextFile();
+  const { unlink } = await import('node:fs/promises');
+  await unlink(link);
+  await symlink(file, link);
+  discardOwnedHarnessContext(link);
+  await expect(access(link)).resolves.toBeUndefined();
+});
+
+
+test.each([false, true])('preserves an untracked private-directory file after an interactive send decision %s', async consent => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  const server = await startDraftServer();
+  servers.push(server);
+  vi.stubEnv('HOME', home.dir);
+  vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+  vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+  vi.spyOn(auth, 'loadTokens').mockResolvedValue({ accessToken: SUPPORT_SESSION_TOKEN,
+    expiresAt: Date.now() + 60_000, tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture' });
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  const directory = join(home.dir, '.eai', 'support', 'context');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const contextFile = join(directory, 'user-notes.json');
+  await writeFile(contextFile, JSON.stringify(harnessContextFixture()));
+  await runSupport({ format: 'text', open: false, source: 'harness', contextFile }, { confirm: async () => consent, isInteractive: true });
+  expect(server.requests).toHaveLength(consent ? 1 : 0);
+  await expect(access(contextFile)).resolves.toBeUndefined();
+});
+
+test('allocates context without loading authentication or posting a report', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ createContextFile: true, format: 'json' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  const output = JSON.parse(String(write.mock.calls[0][0])) as { contextFile: string; status: string; url: string };
+  expect(output.status).toBe('context_created');
+  expect(output.url).toBe('https://www.enterpriseaigroup.com/support?chat=open');
+  await expect(access(output.contextFile)).resolves.toBeUndefined();
+  await expect(access(`${output.contextFile}.owner`)).resolves.toBeUndefined();
+  discardOwnedHarnessContext(output.contextFile);
+  await expect(access(output.contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${output.contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
 });

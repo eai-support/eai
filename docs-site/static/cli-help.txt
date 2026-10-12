@@ -379,6 +379,8 @@ Options:
   --error-code <code-or-reason>       Error code or reason from eai errors list
   --description <text>                Optional report description, redacted
                                       locally
+  --create-context-file               Allocate a private CLI-owned file for a
+                                      harness summary; no report is sent
   --context-file <path>               JSON session summary from the AI harness
                                       (- reads stdin); redacted and capped
                                       locally

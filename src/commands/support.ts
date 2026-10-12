@@ -5,6 +5,7 @@ import inquirer from 'inquirer';
 import { getBrowserOpenCommand, loadTokens } from '../lib/auth.js';
 import {
   bundleDigest,
+  createHarnessContextFile,
   discardOwnedHarnessContext,
   purgeStaleHarnessContexts,
   isOrganisationLocation,
@@ -86,6 +87,12 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
     }
   };
   try {
+    if (options.createContextFile) {
+      const contextFile = createHarnessContextFile();
+      emit({ ok: true, status: 'context_created', contextFile, url: chatUrl,
+        message: 'Write the JSON session summary into contextFile, then preview it with --context-file. Nothing was sent.' });
+      return;
+    }
     const website = await resolveSupportWebsite();
     purgeStaleHarnessContexts();
     chatUrl = supportChatUrl(website);
@@ -191,6 +198,7 @@ export const supportCommand = new Command('support')
   .option('--exit-code <code>', 'Failing command exit code')
   .option('--error-code <code-or-reason>', 'Error code or reason from eai errors list')
   .option('--description <text>', 'Optional report description, redacted locally')
+  .option('--create-context-file', 'Allocate a private CLI-owned file for a harness summary; no report is sent')
   .option('--context-file <path>', 'JSON session summary from the AI harness (- reads stdin); redacted and capped locally')
   .option('--approved-digest <sha256>', 'bundleDigest of the previewed report the person approved; required with --yes in JSON or noninteractive runs')
   .option('--organisation-location <location>', 'Where the organisation is based (apac|emea|americas) when the session has no active workspace')

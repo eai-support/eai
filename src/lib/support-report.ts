@@ -27,6 +27,7 @@ const MAX_RESPONSE_BYTES = 8_192;
 
 /** Report inputs; `yes` asserts the person approved the bundle whose digest is `approvedDigest`. */
 export interface SupportOptions {
+  readonly createContextFile?: boolean;
   readonly format?: string;
   readonly source?: string;
   readonly tool?: string;

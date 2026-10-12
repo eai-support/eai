@@ -343,7 +343,7 @@
         },
         {
           "id": "eai-cli-support-report",
-          "description": "Locally redacted consent-gated draft handoff from signed-in CLI and AI harness sessions, with plain Support link fallback.",
+          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback.",
           "owned_paths": [
             "src/commands/support.ts",
             "src/lib/support-report.ts",
@@ -359,6 +359,13 @@
             "resources/gofer/references/platform/eai-support.md",
             "resources/gofer/instruction-templates/**",
             "resources/gofer/node-scripts/generate-commands.mjs",
+            "resources/gofer/node-scripts/package-agent-plugin.mjs",
+            ".gemini/commands/gofer/eai.md",
+            ".github/prompts/eai.prompt.md",
+            ".agents/skills/eai/SKILL.md",
+            ".github/skills/eai/SKILL.md",
+            ".grok/skills/eai/SKILL.md",
+            ".system/skills/eai/SKILL.md",
             "resources/gofer/commands/0_gofer_start.md",
             "resources/gofer/commands/gofer_eai_first_run.md",
             "scripts/verify-error-guidance.cjs",

@@ -12,7 +12,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseStageCommand } from './parse-stage-command.mjs';
-import { buildAuthAccessDecisionContract, buildEaiHostingAndDeploymentContract, buildContinuationContractSection, buildDeliveryDisciplineContract, buildBlockerMediationContract, buildSupportReportContract } from './generate-commands.mjs';
+import { buildAuthAccessDecisionContract, buildEaiHostingAndDeploymentContract, buildContinuationContractSection, buildDeliveryDisciplineContract, buildBlockerMediationContract, buildSupportReportContract, ensureSupportReportContract } from './generate-commands.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -1314,7 +1314,7 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
   }
   const supportAgentsPath = path.join(pluginRoot, 'AGENTS.md');
   const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
-  await fs.writeFile(supportAgentsPath, `${supportAgents.trimEnd()}\n\n${buildSupportReportContract()}\n`, 'utf8');
+  await fs.writeFile(supportAgentsPath, ensureSupportReportContract(supportAgents), 'utf8');
   await writeJson(path.join(pluginRoot, '.gemini', 'extension.json'), geminiManifest);
   await copyIfExistsAs(root, '.claude/commands', 'commands', pluginRoot);
   await copyIfExistsAs(root, '.claude/agents', 'agents', pluginRoot);
