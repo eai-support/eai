@@ -401,9 +401,19 @@ function authorizationReceiptsVerified(authorization, actors, tenants) {
   if (!cleanup.every(row => {
     const owned = created.find(entry => entry.creatorSlot === row.creatorSlot);
     const admin = SLOTS[row.creatorSlot]?.[0] === 'a' ? 'adminA' : 'adminB';
+    const path = owned && `/v4/data/resources/${owned.tenantId}/${published[0].objectType}/${owned.resourceId}`;
+    const receiptMatches = (receipt, method, status) => record(receipt) && record(receipt.request)
+      && Number.isSafeInteger(receipt.exitCode) && (method === 'DELETE' ? receipt.exitCode === 0 : receipt.exitCode > 0)
+      && receipt.ok === (method === 'DELETE') && receipt.status === status
+      && receipt.request.method === method && receipt.request.path === path
+      && receipt.request.tenantId === owned.tenantId && receipt.request.publicApiUrl === authorization.publicApiUrl;
+    const deleted = row.deleteReceipt?.body;
     return owned && row.resourceId === owned.resourceId && row.tenantId === owned.tenantId && row.profile === actors[admin].profile
       && row.status === 'passed' && row.deleteAcknowledged === true && row.absenceVerified === true
-      && row.deleteHttpStatus === 200 && row.absenceHttpStatus === 404;
+      && row.deleteHttpStatus === 200 && row.absenceHttpStatus === 404
+      && receiptMatches(row.deleteReceipt, 'DELETE', 200) && receiptMatches(row.absenceReceipt, 'GET', 404)
+      && record(deleted) && deleted.id === owned.resourceId && deleted.deleted === true
+      && typeof deleted.deleted_at === 'string' && deleted.deleted_at.length <= 64 && Number.isFinite(Date.parse(deleted.deleted_at));
   })) return false;
   return authorization.cases.every(row => {
     const slot = row.name.split(':')[0], sibling = row.name.endsWith(':sibling-denied');

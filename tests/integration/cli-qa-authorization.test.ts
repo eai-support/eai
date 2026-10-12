@@ -259,6 +259,14 @@ describe('normal-profile authorization role probe', () => {
     expect(fixture.calls.filter(row => row.method === 'POST').map(row => row.slot)).toEqual(['adminA', 'builderA', 'adminB', 'builderB']);
     expect(fixture.calls.filter(row => row.method === 'DELETE').map(row => row.slot)).toEqual(['adminA', 'adminA', 'adminB', 'adminB']);
     expect(report.cleanup.every((row: any) => row.deleteHttpStatus === 200 && row.absenceHttpStatus === 404)).toBe(true);
+    for (const row of report.cleanup) {
+      const path = `/v4/data/resources/${row.tenantId}/${fixture.foundation.bindings.authorization.objectType}/${row.resourceId}`;
+      expect(row.deleteReceipt).toEqual({ exitCode: 0, ok: true, status: 200,
+        request: { method: 'DELETE', path, tenantId: row.tenantId, publicApiUrl: fixture.foundation.publicApiUrl },
+        body: { id: row.resourceId, deleted: true, deleted_at: timestamp } });
+      expect(row.absenceReceipt).toEqual({ exitCode: 1, ok: false, status: 404,
+        request: { method: 'GET', path, tenantId: row.tenantId, publicApiUrl: fixture.foundation.publicApiUrl } });
+    }
     expect(report.candidate).toEqual(candidate); expect(report.probeSourceSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(report.foundationSourceSha256).toMatch(/^[a-f0-9]{64}$/); expect(readFileSync(fixture.foundationPath, 'utf8')).toBe(before);
     expect(statSync(fixture.output).mode & 0o777).toBe(0o600); expect(existsSync(fixture.foundationPath + '.lease')).toBe(false);
@@ -274,6 +282,40 @@ describe('normal-profile authorization role probe', () => {
     expect(qa.authorizationVerified({ authorizationEvidence: model }, candidate,
       { ...fixture.foundation, now: Date.parse(timestamp) })).toBe(true);
     expect(report.qualification).toBe('controlled-fixtures'); expect(report.qualified).toBe(false);
+  });
+  test('persisted cleanup receipts omit provider text, arbitrary resource data and request credentials', () => {
+    const fixture = controlled(), execute = fixture.dependencies.execute;
+    fixture.dependencies.execute = (...args) => {
+      const response = execute(...args);
+      if (args[1][3] === 'delete') {
+        const wire = JSON.parse(response.stdout);
+        wire.body.privateProviderData = 'synthetic-private-provider-marker';
+        wire.request.authorization = 'synthetic-private-provider-marker';
+        wire.providerDebug = 'synthetic-private-provider-marker';
+        return { ...response, stdout: JSON.stringify(wire) };
+      }
+      return response;
+    };
+    const report = fixture.run(); expect(report.cleanupVerified).toBe(true);
+    expect(JSON.stringify(report)).not.toContain('synthetic-private-provider-marker');
+    expect(qa.readPrivate(fixture.output).cleanup[0].deleteReceipt.request.method).toBe('DELETE');
+  });
+  test.each(['DELETE', 'GET'])('a foreign actual %s cleanup request is retained as unverified, without expected-context substitution', method => {
+    const fixture = controlled(), execute = fixture.dependencies.execute; let changed = false;
+    fixture.dependencies.execute = (...args) => {
+      const response = execute(...args);
+      if (changed || args[1][3] !== method.toLowerCase() || !args[1][4]?.includes('/cli-qa-authorization-row/')) return response;
+      const wire = JSON.parse(response.stdout);
+      if (wire.status === (method === 'DELETE' ? 200 : 404)) {
+        changed = true; wire.request.publicApiUrl = 'https://foreign.example.invalid/public';
+        return { ...response, stdout: JSON.stringify(wire) };
+      }
+      return response;
+    };
+    const report = fixture.failed(), receiptName = method === 'DELETE' ? 'deleteReceipt' : 'absenceReceipt';
+    expect(changed).toBe(true); expect(report.cleanupVerified).toBe(false);
+    expect(report.cleanup[0][receiptName].request).toBeNull();
+    expect(report.cleanup.slice(1).every((row: any) => row.status === 'passed')).toBe(true);
   });
 
   test.each([401, 500, 503])('viewer PUT %s is failure rather than authorization denial', viewerStatus => {

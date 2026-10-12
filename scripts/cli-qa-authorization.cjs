@@ -122,6 +122,21 @@ function httpStatus(response) {
   const status = response?.body?.status;
   return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
 }
+/** Retain only observed cleanup fields; mismatched requests and private response data are omitted. */
+function cleanupReceipt(response, method, path, tenantId, foundation) {
+  const body = response?.body;
+  const request = exactWire(response, method, path, tenantId, foundation) ? body.request : null;
+  const deleted = record(body?.body) ? body.body : null;
+  return { exitCode: Number.isSafeInteger(response?.result?.status) && response.result.status >= 0 ? response.result.status : null,
+    ok: typeof body?.ok === 'boolean' ? body.ok : null, status: httpStatus(response),
+    request: request ? { method: request.method, path: request.path, tenantId: request.tenantId, publicApiUrl: request.publicApiUrl } : null,
+    ...(method === 'DELETE' ? { body: {
+      id: typeof deleted?.id === 'string' && UUID.test(deleted.id) ? deleted.id : null,
+      deleted: typeof deleted?.deleted === 'boolean' ? deleted.deleted : null,
+      deleted_at: typeof deleted?.deleted_at === 'string' && deleted.deleted_at.length <= 64
+        && Number.isFinite(Date.parse(deleted.deleted_at)) ? deleted.deleted_at : null,
+    } } : {}) };
+}
 function success(response, method, path, tenantId, foundation, httpStatus) {
   requireCondition(exactWire(response, method, path, tenantId, foundation) && response.result?.status === 0
     && response.body.ok === true && response.body.status === httpStatus, 'A role allow check lacks a successful exact PublicAPI envelope.');
@@ -282,15 +297,17 @@ function runAuthorizationProbe(options, dependencies = {}) {
             requireResource(current, row, binding, nonce);
             assertCandidate();
             const response = dispatch(call, profile, 'DELETE', path, row.tenantId);
+            cleanup.deleteReceipt = cleanupReceipt(response, 'DELETE', path, row.tenantId, foundation);
             cleanup.deleteHttpStatus = httpStatus(response);
             const deleted = success(response, 'DELETE', path, row.tenantId, foundation, 200);
-            requireCondition(deleted?.id === row.resourceId && deleted.deleted === true && typeof deleted.deleted_at === 'string'
+            requireCondition(deleted?.id === row.resourceId && deleted.deleted === true && typeof deleted.deleted_at === 'string' && deleted.deleted_at.length <= 64
               && Number.isFinite(Date.parse(deleted.deleted_at)), 'Deletion lacks its exact success receipt.');
             cleanup.deleteAcknowledged = true;
           } catch { cleanup.reason = 'Exact owned-row deletion did not return verified success.'; }
           // A failed deletion never stops the other rows or hides a subsequent absence observation.
           try {
             const response = dispatch(call, profile, 'GET', path, row.tenantId);
+            cleanup.absenceReceipt = cleanupReceipt(response, 'GET', path, row.tenantId, foundation);
             cleanup.absenceHttpStatus = httpStatus(response);
             denial(response, 'GET', path, row.tenantId, foundation, [404]); cleanup.absenceVerified = true;
           } catch { cleanup.reason = 'Deletion or exact authenticated GET 404 absence proof is incomplete.'; }

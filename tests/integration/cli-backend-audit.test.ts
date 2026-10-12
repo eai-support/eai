@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { cycleOwnershipModel, cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
+import { buildCreateResourceOutput } from '../../src/commands/resources.js';
 
 const require = createRequire(import.meta.url);
 const { buildAudit, markdown } = require('../../scripts/audit-cli-backend.cjs');
@@ -111,7 +112,14 @@ describe('CLI backend audit evidence', () => {
         publicationStatus: 'published', propertyFingerprintSha256: 'a'.repeat(64) })),
       created, cleanup: created.map(row => ({ creatorSlot: row.creatorSlot, tenantId: row.tenantId, resourceId: row.resourceId,
         profile: actors[qa.SLOTS[row.creatorSlot][0] === 'a' ? 'adminA' : 'adminB'].profile,
-        status: 'passed', deleteAcknowledged: true, absenceVerified: true, deleteHttpStatus: 200, absenceHttpStatus: 404 })), leftovers: [],
+        status: 'passed', deleteAcknowledged: true, absenceVerified: true, deleteHttpStatus: 200, absenceHttpStatus: 404,
+        deleteReceipt: { exitCode: 0, ok: true, status: 200,
+          request: { method: 'DELETE', path: `/v4/data/resources/${row.tenantId}/${objectType}/${row.resourceId}`,
+            tenantId: row.tenantId, publicApiUrl },
+          body: { id: row.resourceId, deleted: true, deleted_at: observedAt } },
+        absenceReceipt: { exitCode: 1, ok: false, status: 404,
+          request: { method: 'GET', path: `/v4/data/resources/${row.tenantId}/${objectType}/${row.resourceId}`,
+            tenantId: row.tenantId, publicApiUrl } } })), leftovers: [],
       cases: qa.ROLE_CASES.map((name: string) => { const slot = name.split(':')[0], workspace = qa.SLOTS[slot][0];
         const creator = name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'adminB' : 'adminA')
           : slot === 'viewerA' ? 'adminA' : slot;
@@ -326,6 +334,9 @@ describe('CLI backend audit evidence', () => {
       ? 'https://example.invalid/public' : scope === 'region' ? 'https://dev-api.eu.myenterprise.ai/public' : input.evidence.expectedPublicApi;
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const cleanup of input.evidence.authorizationEvidence.cleanup) {
+      cleanup.deleteReceipt.request.publicApiUrl = publicApiUrl; cleanup.absenceReceipt.request.publicApiUrl = publicApiUrl;
+    }
     for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
@@ -345,6 +356,9 @@ describe('CLI backend audit evidence', () => {
     const [environment, region] = value.split(':'), publicApiUrl = qa.publicApi(environment, region);
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const cleanup of input.evidence.authorizationEvidence.cleanup) {
+      cleanup.deleteReceipt.request.publicApiUrl = publicApiUrl; cleanup.absenceReceipt.request.publicApiUrl = publicApiUrl;
+    }
     for (const cycle of cycles.cycles) {
       for (const row of [cycle, cycle.stepEvidence, cycle.ownershipEvidence,
         ...cycle.stepEvidence.commands.flatMap(command => [command, ...command.assertions]),
@@ -480,6 +494,42 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(); input.evidence.authorizationEvidence.created[0].creatorId = '00000000-0000-4000-8000-000000000999';
     const report = buildAudit(input, decisions); expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
   });
+  test.each(['deleteReceipt', 'absenceReceipt'])('an imported %s requires its exact observed cleanup envelope', receiptName => {
+    const { input, decisions } = completeContractModel();
+    delete (input.evidence.authorizationEvidence.cleanup[0] as Record<string, unknown>)[receiptName];
+    const report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
+  test.each(['deleteReceipt', 'absenceReceipt'].flatMap(receiptName =>
+    ['exit', 'ok', 'status', 'method', 'path', 'tenant', 'gateway', 'array'].map(failure => ({ receiptName, failure }))))
+    ('an imported cleanup $receiptName $failure cannot be hidden by passing summary flags', ({ receiptName, failure }) => {
+        const { input, decisions } = completeContractModel();
+        const row = input.evidence.authorizationEvidence.cleanup[0] as Record<string, any>;
+        const receipt = row[receiptName];
+        if (failure === 'exit') receipt.exitCode = receiptName === 'deleteReceipt' ? 1 : 0;
+        if (failure === 'ok') receipt.ok = !receipt.ok;
+        if (failure === 'status') receipt.status = 503;
+        if (failure === 'method') receipt.request.method = 'POST';
+        if (failure === 'path') receipt.request.path += '-foreign';
+        if (failure === 'tenant') receipt.request.tenantId = '00000000-0000-4000-8000-000000000999';
+        if (failure === 'gateway') receipt.request.publicApiUrl = 'https://foreign.example.invalid/public';
+        if (failure === 'array') row[receiptName] = [];
+        const report = buildAudit(input, decisions);
+        expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+    });
+  test.each(['id', 'deleted', 'timestamp', 'missing-body', 'array-body', 'array-request'])
+    ('an imported DELETE %s must prove the exact deleted owned row', failure => {
+      const { input, decisions } = completeContractModel();
+      const receipt = input.evidence.authorizationEvidence.cleanup[0].deleteReceipt as Record<string, any>;
+      if (failure === 'id') receipt.body.id = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'deleted') receipt.body.deleted = false;
+      if (failure === 'timestamp') receipt.body.deleted_at = 'not-a-timestamp';
+      if (failure === 'missing-body') delete receipt.body;
+      if (failure === 'array-body') receipt.body = [];
+      if (failure === 'array-request') receipt.request = [];
+      const report = buildAudit(input, decisions);
+      expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+    });
   test.each([null, undefined].map(cycle => ({ cycle })))('a malformed retained cycle $cycle remains unqualified', ({ cycle }) => {
     const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
     Object.assign(cycles.cycles, { 0: cycle });
@@ -668,6 +718,29 @@ describe('local dedicated tenant harness ownership', () => {
   const directories: string[] = [];
   afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
+  function resourceJournal() {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-resource-type-'))); directories.push(root);
+    const path = join(root, 'creation.json'), id = '00000000-0000-4000-8000-000000000088';
+    qa.writePrivate(path, { phase: 'verified', reconciliationVerified: true, acknowledgmentBound: true,
+      childTenantId: '00000000-0000-4000-8000-000000000099', parentTenantId: 'parent-fixture',
+      publicApiUrl: 'http://localhost:8000', resources: [], resourceCleanupUnverified: false });
+    return { path, id, owner: require('../../scripts/cli-local-child-ownership.cjs') };
+  }
+  test.each(['missing', 'wrong'])('a %s acknowledged resource type cannot enter the ownership journal', failure => {
+    const { path, id, owner } = resourceJournal(), type = 'tenant-pg-note';
+    const body = { id, ...(failure === 'wrong' ? { type: 'tenant-search-note' } : {}) };
+    expect(() => owner.resourceObservation(path, 'resource-created', type, id, body, 0)).toThrow('unverified');
+    expect(qa.readPrivate(path).resources).toEqual([]);
+    expect(qa.readPrivate(path).resourceCleanupUnverified).toBe(true);
+  });
+  test.each(['tenant-pg-note', 'tenant-document-note', 'tenant-blob-note', 'tenant-search-note'])
+    ('the real create output for %s preserves its exact type before ownership', type => {
+      const { path, id, owner } = resourceJournal();
+      const body = buildCreateResourceOutput(type, { title: 'synthetic' }, { id, data: { title: 'synthetic' } });
+      expect(() => owner.resourceObservation(path, 'resource-created', type, id, body, 0)).not.toThrow();
+      expect(qa.readPrivate(path).resources).toEqual([expect.objectContaining({ type, id })]);
+    });
+
   function runFixture(mode: string, api = 'http://localhost:8000', ambient: Record<string, string> = {}, operatorConfig?: string) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-harness-test-')));
     directories.push(root);
@@ -715,7 +788,7 @@ if (lifecycle && args.includes('provision')) {
   const action = args[args.indexOf('resources')+1], type = args[args.indexOf('resources')+2];
   const mode = process.env.EAI_HARNESS_TEST_MODE;
   if (action === 'schema') console.log(JSON.stringify({objectTypes:['TenantPgNote','TenantDocumentNote','TenantBlobNote','TenantSearchNote'].map(name=>({name}))}));
-  else if (action === 'create') console.log(JSON.stringify({id:resourceId}));
+  else if (action === 'create') console.log(JSON.stringify({type,id:resourceId}));
   else if (action === 'get' || action === 'update') console.log(JSON.stringify({data:{title:type === 'tenant-pg-note' ? 'pg note'+(action === 'update'?' updated':'') : type === 'tenant-document-note' ? 'doc note'+(action === 'update'?' updated':'') : type === 'tenant-blob-note' ? 'blob note'+(action === 'update'?' updated':'') : 'search note'+(action === 'update'?' updated':'')}}));
   else if (action === 'search') console.log(JSON.stringify({results:[{id:resourceId}]}));
   else if (action === 'delete') {

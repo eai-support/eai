@@ -359,7 +359,10 @@ valid receipts from another foundation, actor or workspace cannot be combined
 to certify this run; older cycle receipts without that context cannot qualify.
 Permission evidence must also carry both matching published schema observations,
 four fresh acknowledged rows and their exact successful DELETE/404 cleanup
-records. Every allow/deny case names its scoped row; flags without those receipts
+records. Cleanup records retain bounded observed method/path/tenant/gateway and
+exit/HTTP status fields, plus the deleted row ID, marker and timestamp. The
+consumer validates those fields independently; summary flags alone cannot pass.
+Every allow/deny case names its scoped row; flags without those receipts
 cannot certify authorization. Candidate/deployment read failures after output
 validation leave a private blocked summary before any runtime mutation.
 Raw local/live smoke summaries prove selected command journeys and deliberately
@@ -385,7 +388,8 @@ including the exact returned child ID and creation exit status before inventory
 reconciliation. Missing or ambiguous inventory leaves that journal unresolved
 for manual reconciliation without guessed selection or cleanup. Cleanup uses
 the exact parent-authorized `--parent` and `--force-hard-purge` route. The journal
-only sets `cleanupVerified` after every created resource has an exact successful
+records ownership only after the create acknowledgment matches the requested
+resource type and ID. It only sets `cleanupVerified` after every created resource has an exact successful
 DELETE acknowledgment and a same-gateway, same-child GET404, followed by the exact
 child/parent hard-purge receipt and complete bounded parent inventory absence.
 Resource failures remain recorded and fail the run while cleanup still attempts

@@ -88,7 +88,7 @@ function resourceObservation(path, mode, type, id, body, exitCode) {
   let valid = owned && types.includes(type) && typeof id === 'string' && UUID.test(id) && Array.isArray(journal.resources);
   let row = valid && journal.resources.find(value => value.type === type && value.id === id);
   if (mode === 'resource-created') {
-    valid = valid && !row && !journal.resources.some(value => value.type === type) && body?.id === id && exitCode === 0;
+    valid = valid && !row && !journal.resources.some(value => value.type === type) && body?.id === id && body.type === type && exitCode === 0;
     if (valid) journal.resources.push({ type, id, tenantId: journal.childTenantId, deleteAcknowledged: false, absenceVerified: false, attempts: [] });
   } else {
     valid = valid && Boolean(row) && row.tenantId === journal.childTenantId && Array.isArray(row.attempts) && row.attempts.length < 16;
