@@ -103,6 +103,27 @@ describe('local support report redaction', () => {
     expect(redactSupportText(clean)).toBe(clean);
   });
 
+  test('literal slash-prefixed quoted tails stay private without changing JSON quote matching', () => {
+    for (let depth = 0; depth < 8; depth++) {
+      const quote = '\\'.repeat(depth) + '"';
+      const diagnostic = `${quote}api_key=[removed]${quote} ${quote}client_id=PRIVATE_CANARY${quote} ${quote}client_id${quote}=${quote}PUBLIC_IDENTIFIER${quote} status=public-id`;
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('PUBLIC_IDENTIFIER');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    for (let count = 1; count < 5; count++) {
+      const diagnostic = JSON.stringify({ api_key: 'PRIVATE_CANARY' + '\\'.repeat(count), client_id: 'PUBLIC_IDENTIFIER' });
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('PUBLIC_IDENTIFIER');
+      expect(redactSupportText(clean)).toBe(clean);
+      const publicText = JSON.stringify({ client_id: 'C:\\Program Files\\' + '\\'.repeat(count), status: 'public-id' });
+      expect(redactSupportText(publicText)).toBe(publicText);
+    }
+  });
+
   test('assignments inside quoted credential continuations are not next fields', () => {
     for (const value of ['api_key=[removed]', 'api_key=[first,PRIVATE_CANARY]', '"api_key=[removed]"']) {
       for (const quote of ['"', "'"]) {

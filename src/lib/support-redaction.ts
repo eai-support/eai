@@ -37,7 +37,7 @@ function redactCredentialValues(text: string): string {
     escaped[index] = slashRun % 2;
     if (text[index] === '"' || text[index] === "'") {
       const depth = slashRun % 2 ? slashRun : 0;
-      quotes.push({ start: index - depth, end: index + 1, key: `${text[index]}:${depth}` });
+      quotes.push({ start: index - slashRun, end: index + 1, key: `${text[index]}:${depth}` });
     }
     slashRun = text[index] === '\\' ? slashRun + 1 : 0;
   }
