@@ -1,7 +1,8 @@
 import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const require = createRequire(import.meta.url);
@@ -51,6 +52,12 @@ describe('retained CLI QA foundation authority', () => {
 });
 
 describe('private foundation and exclusive lease', () => {
+  test('journal-only helper processes avoid initializing the lifecycle compiler', () => {
+    const result = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(resolve('scripts/cli-local-child-ownership.cjs'))});
+      process.stdout.write(JSON.stringify({typescriptLoaded:Object.keys(require.cache).some(path=>path.includes('/typescript/'))}));`],
+    { encoding: 'utf8', env: qa.operationalEnvironment(process.env) });
+    expect(result.status).toBe(0); expect(JSON.parse(result.stdout).typescriptLoaded).toBe(false);
+  });
   test.each([0o777, 0o770])('private file operations refuse non-sticky writable ancestor mode %s', mode => {
     const { root, foundation } = privateFixture(), ancestor = join(root, 'shared'), leaf = join(ancestor, 'private');
     mkdirSync(ancestor, { mode: 0o700 }); mkdirSync(leaf, { mode: 0o700 });

@@ -4,7 +4,6 @@ const fs = require('node:fs');
 const { join, resolve, dirname, parse, sep } = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
-const smoke = require('./eai-full-e2e-smoke.cjs');
 const { operationalEnvironment } = require('./cli-qa-operational-env.cjs');
 
 const SCHEMA = 'eai.cli-qa-foundation.v1';
@@ -306,7 +305,8 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
     }
     verifyActors(call, foundation);
     foundation.state = 'verified'; foundation.verifiedAt = new Date((dependencies.now || Date.now)()).toISOString();
-    foundation.candidate = smoke.candidateEvidence(cliPath); save();
+    // Journal-only helper processes must not initialize the smoke compiler.
+    foundation.candidate = require('./eai-full-e2e-smoke.cjs').candidateEvidence(cliPath); save();
     return { fixtureId: foundation.fixtureId, state: foundation.state, workspaces: foundation.workspaces,
       authorizationVerified: false, explanation: 'Fresh identity/role baseline only; allow/deny and cross-tenant runtime probes still required.' };
   });

@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Filter once before any Node, build or CLI subprocess. Explicit --profile must
+# use its normal saved credentials, never an inherited token or app override.
+while IFS= read -r environment_key; do
+  case "$environment_key" in
+    HOME|USERPROFILE|APPDATA|LOCALAPPDATA|XDG_CONFIG_HOME|PATH|Path|PATHEXT|SystemRoot|SYSTEMROOT|WINDIR|windir|COMSPEC|ComSpec|TMPDIR|TMP|TEMP|LANG|LC_ALL|TERM|CI|NO_COLOR|FORCE_COLOR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|EAI_E2E_PROFILE|EAI_E2E_PUBLIC_API_URL|EAI_E2E_PARENT_TENANT_ID|EAI_E2E_SEARCH_SERVICE_NAME|EAI_E2E_SEARCH_RESOURCE_GROUP) ;;
+    *) unset "$environment_key" 2>/dev/null || export -n "$environment_key" ;;
+  esac
+done < <(compgen -e)
+unset environment_key
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$CLI_ROOT/.." && pwd)"

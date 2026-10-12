@@ -70,7 +70,11 @@ function controlled() {
   const liveReport = () => {
     const index = ++runs, child = uuid(100 + index), client = uuid(200 + index), enrollment = uuid(300 + index), recreated = uuid(400 + index);
     const appKey = 'eai-e2e-cycle-' + index;
-    return { candidate, preflight, profile: foundation.actors.adminA.profile, environment: 'DEV', expectedPublicApi: foundation.publicApiUrl,
+    return { candidate, preflight, fixtureId: foundation.fixtureId,
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
+      actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => {
+        const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];
+      })), profile: foundation.actors.adminA.profile, environment: 'DEV', expectedPublicApi: foundation.publicApiUrl,
       parentTenantId: uuid(30), status: 'passed', cleanupVerified: true, leftovers: [],
       created: { appKey, childTenantId: child, runtimeTenantId: child, entraClientId: client, enrollmentId: enrollment, recreatedEnrollmentId: recreated },
       rotationCycle: { clientId: client, tenantId: child, appKey, commandDispatches: 1, credentialChanged: true },
@@ -90,6 +94,60 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
+  test.each(['fixtureId', 'tenantIds.a', 'tenantIds.b',
+    ...Object.keys(qa.SLOTS).flatMap(slot => [`actors.${slot}.oid`, `actors.${slot}.profile`])])(
+    'rejects lifecycle evidence from another retained fixture field %s', field => {
+      const fixture = controlled();
+      const runLive = () => {
+        const report = fixture.liveReport();
+        const parts = field.split('.'); let target: any = report;
+        for (const part of parts.slice(0, -1)) target = target[part];
+        target[parts.at(-1)!] = field.endsWith('profile') ? 'foreign-profile' : uuid(999);
+        return report;
+      };
+      expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+      expect(fixture.runs()).toBe(1);
+      expect(qa.readPrivate(fixture.options.output)).toMatchObject({ qualified: false, status: 'failed' });
+    });
+  test('missing retained-fixture context cannot qualify a lifecycle', () => {
+    const fixture = controlled();
+    const runLive = () => { const { fixtureId: _fixture, tenantIds: _tenants, actors: _actors, ...report } = fixture.liveReport(); return report; };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+    expect(fixture.runs()).toBe(1);
+  });
+  test('the actual runner retains its explicit fixture context even when identity preflight blocks', () => {
+    const fixture = controlled(); const model = fixture.liveReport(); let report: any;
+    const expectedFixture = { fixtureId: model.fixtureId, tenantIds: model.tenantIds, actors: model.actors };
+    try {
+      require('../../scripts/eai-full-e2e-smoke.cjs').runLiveSmoke(fixture.options.cliPath, {
+        expectedFixture, env: { EAI_E2E_OUTPUT_ROOT: fixture.root, EAI_E2E_TEST_PROFILE: fixture.foundation.actors.adminA.profile,
+          EAI_E2E_TEST_USERNAME: fixture.foundation.actors.adminA.email, EAI_E2E_TEST_USER_OID: fixture.foundation.actors.adminA.oid,
+          EAI_E2E_PARENT_TENANT_ID: fixture.foundation.workspaces.a.id, EAI_E2E_EXPECTED_PUBLIC_API: fixture.foundation.publicApiUrl,
+          EAI_E2E_CLEANUP_PREFLIGHT: fixture.options.cleanupPreflight },
+        execute: () => ({ status: 1, stdout: '', stderr: 'controlled identity denial' }), log: () => {},
+      });
+    } catch (error) { report = (error as Error & { report: unknown }).report; }
+    expect(report).toMatchObject({ ...expectedFixture, status: 'blocked' });
+    expect(report.created.childTenantId).toBe('');
+  });
+  test.each(['profile', 'actor', 'parent'])('the actual runner rejects a %s inconsistent with its retained fixture before any CLI dispatch', mismatch => {
+    const fixture = controlled(); const model = fixture.liveReport(); let report: any; let dispatches = 0;
+    try {
+      require('../../scripts/eai-full-e2e-smoke.cjs').runLiveSmoke(fixture.options.cliPath, {
+        expectedFixture: { fixtureId: model.fixtureId, tenantIds: model.tenantIds, actors: model.actors },
+        env: { EAI_E2E_OUTPUT_ROOT: fixture.root,
+          EAI_E2E_TEST_PROFILE: mismatch === 'profile' ? 'foreign-profile' : fixture.foundation.actors.adminA.profile,
+          EAI_E2E_TEST_USERNAME: fixture.foundation.actors.adminA.email,
+          EAI_E2E_TEST_USER_OID: mismatch === 'actor' ? uuid(999) : fixture.foundation.actors.adminA.oid,
+          EAI_E2E_PARENT_TENANT_ID: mismatch === 'parent' ? uuid(998) : fixture.foundation.workspaces.a.id,
+          EAI_E2E_EXPECTED_PUBLIC_API: fixture.foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: fixture.options.cleanupPreflight },
+        execute: () => { dispatches++; return { status: 1, stdout: '', stderr: 'controlled identity denial' }; }, log: () => {},
+      });
+    } catch (error) { report = (error as Error & { report: unknown }).report; }
+    expect(report.status).toBe('blocked'); expect(dispatches).toBe(0);
+    expect(report.assertions[0]).toMatchObject({ name: 'retained-fixture-context', status: 'blocked' });
+    expect(report.created.childTenantId).toBe('');
+  });
   test('controller cleanup failure cannot retain a runner local-cleanup success claim', () => {
     const fixture = controlled();
     const runLive = (_cli: string, options: { env: Record<string, string> }) => {
@@ -147,10 +205,15 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const ambient = { GH_TOKEN: 'synthetic-gh', GITHUB_TOKEN: 'synthetic-github', AZURE_CLIENT_SECRET: 'synthetic-azure',
       NPM_TOKEN: 'synthetic-npm', NODE_OPTIONS: '--require=foreign.cjs', EAI_E2E_RUN_ID: 'foreign-run' };
     const report = cycles.runQualification(fixture.options, { ...fixture.dependencies,
-      env: { ...ambient, HOME: '/normal-home', PATH: '/normal-bin' }, runLive: (_cli: string, options: { env: Record<string, string> }) => {
+      env: { ...ambient, HOME: '/normal-home', PATH: '/normal-bin' }, runLive: (_cli: string, options: { env: Record<string, string>; expectedFixture: unknown }) => {
         for (const key of Object.keys(ambient)) expect(options.env[key]).toBeUndefined();
         expect(options.env.HOME).toBe('/normal-home'); expect(options.env.PATH).toBe('/normal-bin');
         expect(options.env.EAI_E2E_TEST_PROFILE).toBe(fixture.foundation.actors.adminA.profile);
+        expect(options.expectedFixture).toEqual({ fixtureId: fixture.foundation.fixtureId,
+          tenantIds: { a: fixture.foundation.workspaces.a.id, b: fixture.foundation.workspaces.b.id },
+          actors: Object.fromEntries(Object.entries(fixture.foundation.actors).map(([slot, actor]) => {
+            const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];
+          })) });
         return fixture.liveReport();
       } });
     expect(report.status).toBe('passed'); expect(report.cycles).toHaveLength(10);

@@ -59,7 +59,11 @@ function cleanupPreflightVerified(preflight, foundation, deployments, now) {
 function ownedReportValid(report, foundation, candidate, preflight) {
   const created = report.created || {}, rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const leaf = report.cleanup?.find(row => row.artifact === 'child-tenant');
-  return report.candidate?.gitSha === candidate.gitSha && report.candidate?.binarySha256 === candidate.binarySha256
+  return report.fixtureId === foundation.fixtureId
+    && report.tenantIds?.a === foundation.workspaces.a.id && report.tenantIds?.b === foundation.workspaces.b.id
+    && Object.keys(qa.SLOTS).every(slot => report.actors?.[slot]?.oid === foundation.actors[slot].oid
+      && report.actors[slot].profile === foundation.actors[slot].profile)
+    && report.candidate?.gitSha === candidate.gitSha && report.candidate?.binarySha256 === candidate.binarySha256
     && report.candidate?.runtimeSha256 === candidate.runtimeSha256 && report.candidate.dirty === false
     && report.candidate.version === candidate.version && report.candidate.runtimeFileCount === candidate.runtimeFileCount
     && report.profile === foundation.actors.adminA.profile
@@ -126,7 +130,10 @@ function runQualification(options, dependencies = {}) {
         const workspaceParents = qa.privateDirectory(workspaceRoot);
         let result, receipt;
         try {
-          result = runLive(options.cliPath, { ...dependencies, env: { ...cycleEnv,
+          result = runLive(options.cliPath, { ...dependencies, expectedFixture: {
+            fixtureId: foundation.fixtureId, tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
+            actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])) },
+          env: { ...cycleEnv,
             EAI_E2E_OUTPUT_ROOT: workspaceRoot,
             EAI_E2E_TEST_PROFILE: foundation.actors.adminA.profile, EAI_E2E_TEST_USERNAME: foundation.actors.adminA.email,
             EAI_E2E_TEST_USER_OID: foundation.actors.adminA.oid, EAI_E2E_PARENT_TENANT_ID: foundation.workspaces.a.id,

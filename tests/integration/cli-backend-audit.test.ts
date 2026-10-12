@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -474,7 +474,7 @@ describe('local dedicated tenant harness ownership', () => {
   const directories: string[] = [];
   afterEach(() => { for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true }); });
 
-  function runFixture(mode: string, api = 'http://localhost:8000') {
+  function runFixture(mode: string, api = 'http://localhost:8000', ambient: Record<string, string> = {}) {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-local-harness-test-')));
     directories.push(root);
     const bin = join(root, 'bin'); mkdirSync(bin, { mode: 0o700 });
@@ -482,10 +482,13 @@ describe('local dedicated tenant harness ownership', () => {
     writeFileSync(join(profileRoot, 'config.json'), JSON.stringify({ profiles: { local: {
       publicApiUrl: 'http://localhost:8000', authTenantName: 'fixture', authTenantId: 'fixture', authClientId: 'fixture',
     } } }), { mode: 0o600 });
-    const log = join(root, 'commands.jsonl');
+    const log = join(root, 'commands.jsonl'), envLog = join(root, 'environment.jsonl');
     const mock = join(root, 'mock.cjs');
     writeFileSync(mock, `const fs = require('node:fs');
 const args = process.argv.slice(2);
+fs.appendFileSync(${JSON.stringify(envLog)}, JSON.stringify({ source: 'cli', forbidden: Object.keys(process.env).filter(key =>
+  /^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),
+  home: process.env.HOME, profile: args[args.indexOf('--profile')+1] }) + '\\n');
 fs.appendFileSync(process.env.EAI_HARNESS_TEST_LOG, JSON.stringify(args) + '\\n');
 if (args.includes('list')) {
   const tenants = [{id:'parent-fixture',slug:'parent'},{id:'unrelated-fixture',slug:'coworker-workspace'}];
@@ -517,21 +520,35 @@ if (args.includes('list')) {
       ? [{id:'00000000-0000-4000-8000-000000000099'}] : [];
   console.log(JSON.stringify({ok:true,status:200,request:{method:'GET',path,tenantId,publicApiUrl:'http://localhost:8000'},body}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
-`);
-    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${EAI_HARNESS_TEST_MODE:-}" == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
-    writeFileSync(join(bin, 'npm'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o700 });
+`.replaceAll('process.env.EAI_HARNESS_TEST_LOG', JSON.stringify(log)).replaceAll('process.env.EAI_HARNESS_TEST_MODE', JSON.stringify(mode)));
+    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ '${mode}' == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
+    writeFileSync(join(bin, 'npm'), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'docker'), '#!/usr/bin/env bash\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n', { mode: 0o700 });
     const result = spawnSync('bash', [resolve('scripts/test-local-dedicated-tenant-lifecycle.sh')], {
       encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
+      env: { ...process.env, ...ambient, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
         EAI_E2E_PROFILE: 'local', EAI_E2E_PUBLIC_API_URL: api, EAI_E2E_PARENT_TENANT_ID: 'parent-fixture',
         EAI_HARNESS_TEST_LOG: log, EAI_HARNESS_TEST_MODE: mode },
     });
     let calls: string[][] = [];
     try { calls = readFileSync(log, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)); } catch { /* blocked before CLI calls */ }
     const journals = readdirSync(root).filter(name => name.startsWith('eai-local-e2e-creation-')).map(name => join(root, name, 'creation.json'));
-    return { ...result, calls, journals };
+    const environments = existsSync(envLog) ? readFileSync(envLog, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
+    return { ...result, calls, journals, environments, root };
   }
+
+  test('standalone CLI and build subprocesses ignore ambient credentials and routing', () => {
+    const result = runFixture('quota', 'http://localhost:8000', { EAI_ACCESS_TOKEN: 'synthetic-foreign-token',
+      NODE_OPTIONS: '--conditions=synthetic', NPM_TOKEN: 'synthetic-npm', GH_TOKEN: 'synthetic-gh',
+      AZURE_CLIENT_SECRET: 'synthetic-azure', BASE_URL_PUBLIC_API: 'https://foreign.example.invalid' });
+    expect(result.stderr).toContain('TENANT_QUOTA_EXCEEDED');
+    expect(result.environments.some(row => row.source === 'build')).toBe(true);
+    expect(result.environments.some(row => row.source === 'cli')).toBe(true);
+    for (const row of result.environments) {
+      expect(row.forbidden).toEqual([]); expect(row.home).toBe(result.root);
+      if (row.source === 'cli') expect(row.profile).toBe('local');
+    }
+  });
 
   test('quota exhaustion never deletes other visible tenants or retries creation', () => {
     const result = runFixture('quota');

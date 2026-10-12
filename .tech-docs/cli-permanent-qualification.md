@@ -206,6 +206,11 @@ on the first failed cycle. Source/build/deployment/cleanup proofs are rechecked
 between cycles and joined to each runner's receipt. Each runner must match the
 controller's complete candidate record: clean status,
 version, runtime file count, Git SHA, entry hash and full runtime hash.
+The controller also passes its retained fixture UUID, both workspace UUIDs and
+all five actor OID/profile pairs to the runner. The runner checks its selected
+administrator and parent against those references before any CLI dispatch and
+records the context in its private receipt. A missing or different fixture,
+workspace or actor reference cannot qualify a cycle.
 All ten registration IDs,
 child IDs and app keys must be distinct, and all twenty original/recreated
 enrollment IDs must be unique. Fixture-controlled cycles can pass

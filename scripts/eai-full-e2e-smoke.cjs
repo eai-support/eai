@@ -1694,6 +1694,21 @@ function runLocalSmoke(cliPath, dependencies = {}) {
 }
 
 /** Injectable caller: controlled tests exercise failure paths without network or credentials. */
+/** Normalize non-secret retained fixture references; selected admin/parent must agree. */
+function retainedFixtureContext(value, profile, actorId, parentTenantId) {
+  const uuid = input => typeof input === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input);
+  const slots = ['adminA', 'builderA', 'viewerA', 'adminB', 'builderB'];
+  if (!uuid(value?.fixtureId) || !uuid(value.tenantIds?.a) || !uuid(value.tenantIds?.b)
+    || value.tenantIds.a === value.tenantIds.b || value.tenantIds.a !== parentTenantId
+    || !slots.every(slot => uuid(value.actors?.[slot]?.oid) && typeof value.actors[slot].profile === 'string'
+      && /^[A-Za-z0-9_.-]{1,100}$/.test(value.actors[slot].profile))
+    || new Set(slots.map(slot => value.actors[slot].oid.toLowerCase())).size !== slots.length
+    || new Set(slots.map(slot => value.actors[slot].profile.toLowerCase())).size !== slots.length
+    || value.actors.adminA.oid !== actorId || value.actors.adminA.profile !== profile) return null;
+  return { fixtureId: value.fixtureId, tenantIds: { a: value.tenantIds.a, b: value.tenantIds.b },
+    actors: Object.fromEntries(slots.map(slot => [slot, { oid: value.actors[slot].oid, profile: value.actors[slot].profile }])) };
+}
+
 function runLiveSmoke(cliPath, dependencies = {}) {
   const env = dependencies.env || process.env;
   // Child processes use the owned scaffold and selected profile, never ambient app routing/auth overrides.
@@ -1840,6 +1855,11 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   }
 
   try {
+    if (dependencies.expectedFixture !== undefined) {
+      const context = retainedFixtureContext(dependencies.expectedFixture, profile, env.EAI_E2E_TEST_USER_OID, parentTenantId);
+      assertion('retained-fixture-context', Boolean(context), 'Retained fixture references must match the explicit administrator and parent.', true);
+      Object.assign(report, context); checkpoint();
+    }
     for (const key of ['EAI_E2E_TEST_PROFILE', 'EAI_E2E_TEST_USERNAME', 'EAI_E2E_PARENT_TENANT_ID'])
       assertion('prerequisite-' + key, Boolean(env[key]?.trim()), 'Live mode requires ' + key + '.', true);
     assertion('cleanup-preflight-file', Boolean(env.EAI_E2E_CLEANUP_PREFLIGHT) && existsSync(env.EAI_E2E_CLEANUP_PREFLIGHT),

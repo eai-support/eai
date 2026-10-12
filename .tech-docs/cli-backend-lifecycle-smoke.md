@@ -30,6 +30,13 @@ mutation stays in a fresh child of the explicitly supplied QA parent. The runner
 never adopts an existing active workspace and always attempts independent
 cleanup in `finally`. Login must already be complete through the normal CLI.
 
+The standalone local Bash harness filters its exported environment once before
+running any Node, CLI or build subprocess. It retains operational home, path,
+proxy and trust settings plus its explicit local profile, loopback gateway,
+parent and optional Search service settings. Inherited headless tokens,
+application routing, npm/GitHub/Azure credentials and Node options cannot replace
+the selected saved CLI profile.
+
 ## Required prerequisites
 
 Set these variables without committing their values:
