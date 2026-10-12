@@ -443,7 +443,9 @@ reserved in every directory; choose a generated filename. Linked output paths
 are refused, and parent identities are checked before the read and throughout
 atomic publication. These checks detect observed namespace changes; they do not
 provide isolation against an arbitrary concurrent writer with the same filesystem
-permissions. The command reads all pages in ID order with the
+permissions. An unverifiable publication exits with inspection guidance because
+the local generated file may already have been replaced. The command reads all
+pages in ID order with the
 same workspace filter and compares two complete scans before atomically replacing
 the generated file. Pagination drift, duplicate IDs, foreign workspace records,
 or an incomplete scan fail the command. Export bounds are 1,000 pages per scan,

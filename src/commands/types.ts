@@ -984,7 +984,7 @@ export async function pullObjectTypesToFile(
     }
     parentIdentities = await snapshotNoLinkDirectoryPath(existingParent);
   } catch {
-    throw new Error('Object Type pull could not replace the generated output. Existing output is preserved.');
+    throw new Error('Object Type pull could not publish or verify the generated output. Inspect the generated file before retrying.');
   }
   const docs = await readConsistentObjectTypes(client, tenantId);
   const modelRelative = relative(dirname(outputPath), modelPath).replace(/\\/g, "/");
@@ -1002,7 +1002,7 @@ export async function pullObjectTypesToFile(
   } catch (error) {
     if (error instanceof Error && error.message.startsWith('Choose a generated output')) throw error;
     // eslint-disable-next-line preserve-caught-error -- local I/O errors can reveal private paths; keep the public error static.
-    throw new Error('Object Type pull could not replace the generated output. Existing output is preserved.');
+    throw new Error('Object Type pull could not publish or verify the generated output. Inspect the generated file before retrying.');
   }
   return { count: docs.length, outputPath };
 }
