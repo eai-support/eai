@@ -11,6 +11,7 @@ const API_BASE = 'https://test-api.example.com';
 const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+const STORAGE_SYNC_TENANT_ID = '11111111-1111-4111-8111-111111111111';
 
 async function setupProject(dir: string): Promise<void> {
   await mkdir(join(dir, 'src', 'eai.config'), { recursive: true });
@@ -21,7 +22,7 @@ async function setupProject(dir: string): Promise<void> {
   );
 }
 
-async function storeTestTokens(dir: string): Promise<void> {
+async function storeTestTokens(dir: string, activeTenantId = 'test-tenant-id'): Promise<void> {
   process.env.HOME = dir;
   process.env.USERPROFILE = dir;
   process.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
@@ -34,7 +35,7 @@ async function storeTestTokens(dir: string): Promise<void> {
     tenantId: PROD_AUTH_TENANT_ID,
     tenantName: PROD_AUTH_TENANT_NAME,
     clientId: PROD_AUTH_CLIENT_ID,
-    activeTenantId: 'test-tenant-id',
+    activeTenantId,
     activeTenantName: 'Test Tenant',
     activeTenantSlug: 'test-tenant',
     publicApiUrl: API_BASE,
@@ -227,6 +228,48 @@ describe('eai resources command guidance', () => {
 
     expect(exit).not.toHaveBeenCalled();
     expect(log).toHaveBeenCalledWith(JSON.stringify(payload, null, 2) + '\n');
+  });
+
+  test.each(['json', 'text'].flatMap(format => [
+    'fixture-provider-detail', null, false, 7, {},
+    ['reconcile', 7], ['reconcile', null], ['reconcile', {}], [['reconcile']], [true],
+  ].map(actions => ({ format, actions }))))('sync-schema rejects malformed actions in $format: $actions', async ({ format, actions }) => {
+    await storeTestTokens(env.dir, STORAGE_SYNC_TENANT_ID);
+    const payload = { tenantId: STORAGE_SYNC_TENANT_ID, dryRun: true, results: [
+      { objectType: 'project', backend: 'documentdb', status: 'planned', routeSource: 'published', actions },
+    ] };
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/${STORAGE_SYNC_TENANT_ID}/storage/sync-schema`, () =>
+      HttpResponse.json(payload)));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await expect(resourcesCommand.parseAsync(['sync-schema', '--dry-run', '--format', format], { from: 'user' }))
+      .rejects.toThrow('process.exit called');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(write).not.toHaveBeenCalled();
+    expect(joinedConsoleOutput(error)).toContain('invalid results contract');
+    expect(joinedConsoleOutput(log)).not.toContain('planned');
+  });
+
+  test.each(['json', 'text'].flatMap(format => [undefined, [], ['create storage', 'reconcile indexes']]
+    .map(actions => ({ format, actions }))))('sync-schema preserves supported actions in $format: $actions', async ({ format, actions }) => {
+    await storeTestTokens(env.dir, STORAGE_SYNC_TENANT_ID);
+    const payload = { tenantId: STORAGE_SYNC_TENANT_ID, dryRun: true, results: [
+      { objectType: 'project', backend: 'documentdb', status: 'planned', routeSource: 'published', ...(actions === undefined ? {} : { actions }) },
+    ] };
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/${STORAGE_SYNC_TENANT_ID}/storage/sync-schema`, () =>
+      HttpResponse.json(payload)));
+    const exit = vi.spyOn(process, 'exit');
+    const write = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await resourcesCommand.parseAsync(['sync-schema', '--dry-run', '--format', format], { from: 'user' });
+    expect(exit).not.toHaveBeenCalled();
+    if (format === 'json') expect(JSON.parse(String(write.mock.calls[0][0]))).toEqual(payload);
+    else {
+      expect(joinedConsoleOutput(log)).toContain('planned');
+      if (actions?.length) expect(joinedConsoleOutput(log)).toContain('create storage, reconcile indexes');
+    }
   });
 
   test('prints semantic search recovery guidance when hybrid search lacks embeddings', async () => {

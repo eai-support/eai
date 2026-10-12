@@ -1348,7 +1348,9 @@ resourcesCommand
 
       if (!Array.isArray(payload.results) || payload.results.some(result =>
         !result || typeof result.objectType !== 'string' || typeof result.backend !== 'string'
-        || typeof result.status !== 'string')) {
+        || typeof result.status !== 'string'
+        || (result.actions !== undefined && (!Array.isArray(result.actions)
+          || result.actions.some(action => typeof action !== 'string'))))) {
         throw new Error('Storage schema sync returned an invalid results contract.');
       }
       const failedResults = payload.results.filter(result => result.status === 'failed');

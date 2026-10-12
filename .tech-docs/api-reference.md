@@ -661,6 +661,10 @@ Manage binary file properties on a resource.
 #### `eai resources storage status` · `storage doctor` · `doctor` · `sync-schema`
 Inspect and reconcile workspace storage.
 
+Schema sync refuses malformed result records before reporting success. Optional
+`actions` must be an array of strings when present; omitted or empty actions are
+supported in both JSON and text output.
+
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--backend <backend>` — (`sync-schema`) limit to `postgresql|documentdb|blob|search`
