@@ -59,7 +59,7 @@ describe('app-local CLI profile context', () => {
     await mkdir(join(fixture.home, '.eai'), { recursive: true, mode: 0o700 });
     await chmod(fixture.home, 0o700);
     await chmod(join(fixture.home, '.eai'), 0o700);
-    for (const key of ['EAI_PROFILE', 'BASE_URL_PUBLIC_API', 'EAI_AUTH_TENANT_NAME', 'EAI_AUTH_TENANT_ID',
+    for (const key of ['EAI_PROFILE', 'BASE_URL_PUBLIC_API', 'ROUTING_BOOTSTRAP_PUBLIC_API_URL', 'EAI_ACCESS_TOKEN', 'EAI_AUTH_TENANT_NAME', 'EAI_AUTH_TENANT_ID',
       'EAI_AUTH_SCOPE', 'EAI_PUBLIC_API_SCOPE', 'EAI_AUTH_CLIENT_ID', 'EAI_CLI_CLIENT_ID']) vi.stubEnv(key, undefined);
     vi.stubGlobal('fetch', vi.fn(() => { throw new Error('Profile context must not make provider calls'); }));
     setActiveProfile('default');
@@ -169,6 +169,26 @@ describe('app-local CLI profile context', () => {
     await expect(program().parseAsync(['probe'], { from: 'user' })).rejects.toThrow('does not match');
   });
 
+  test.each([prodApi, testApi])('named profile rejects mismatched shell bootstrap without project BASE: %s', async (bootstrap) => {
+    fixture.cwd = await project('app', 'EAI_PROFILE=dev\n');
+    vi.stubEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', bootstrap);
+    const action = vi.fn();
+    const tokens = vi.spyOn(auth, 'loadTokens');
+    await expect(program(action).parseAsync(['probe'], { from: 'user' })).rejects.toThrow('does not match');
+    expect(tokens).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test('named profile accepts an equivalent shell bootstrap without project BASE', async () => {
+    fixture.cwd = await project('app', 'EAI_PROFILE=dev\n');
+    vi.stubEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', ` ${devApi}/ `);
+    let observed: unknown;
+    await program(async () => { observed = await resolvePublicApiUrl(fixture.cwd); })
+      .parseAsync(['probe'], { from: 'user' });
+    expect(getActiveProfile()).toBe('dev');
+    expect(observed).toBe(devApi);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   test('equivalent normalized named endpoints agree', async () => {
     fixture.cwd = await project('app', 'EAI_PROFILE=dev\n', devApi + '/');
     await program().parseAsync(['probe'], { from: 'user' });
@@ -180,6 +200,48 @@ describe('app-local CLI profile context', () => {
     const action = vi.fn();
     await expect(program(action).parseAsync(['probe'], { from: 'user' })).rejects.toThrow('EAI_PROFILE');
     expect(action).not.toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test.each([devApi, testApi, 'https://test-api.au.myenterprise.ai/public', 'https://test-api.ca.myenterprise.ai/public'])('shell bootstrap without project BASE cannot receive default production tokens: %s', async (bootstrap) => {
+    fixture.cwd = await project('app');
+    vi.stubEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', bootstrap);
+    await auth.storeTokens({ accessToken: 'production-fixture', expiresAt: Date.now() + 600_000,
+      tenantName: 'enterpriseaiplatform', tenantId: 'production-authority', clientId: 'production-client' });
+    const request = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({
+      status: 'resolved', apiBaseUrl: prodApi, userId: 'fixture-user',
+      product: 'eai-cli', productAllowed: true, routingMode: 'api_only',
+    }), { status: 200 }));
+    vi.stubGlobal('fetch', request);
+    const action = vi.fn(async () => { await resolvePublicApiUrl(fixture.cwd); });
+    const tokens = vi.spyOn(auth, 'loadTokens');
+    await expect(program(action).parseAsync(['probe'], { from: 'user' }))
+      .rejects.toThrow('default profile uses production authentication');
+    expect(tokens).not.toHaveBeenCalled(); expect(action).not.toHaveBeenCalled(); expect(request).not.toHaveBeenCalled();
+  });
+
+  test('shell bootstrap preserves the complete explicit CLI auth override without project BASE', async () => {
+    fixture.cwd = await project('app');
+    vi.stubEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', devApi);
+    vi.stubEnv('EAI_AUTH_TENANT_NAME', dev.authTenantName);
+    vi.stubEnv('EAI_AUTH_TENANT_ID', dev.authTenantId);
+    vi.stubEnv('EAI_AUTH_SCOPE', 'openid profile api://fixture-dev/access_token');
+    const action = vi.fn();
+    await expect(program(action).parseAsync(['probe'], { from: 'user' })).rejects.toThrow('complete explicit CLI auth');
+    expect(action).not.toHaveBeenCalled();
+    vi.stubEnv('EAI_CLI_CLIENT_ID', dev.authClientId);
+    await program(action).parseAsync(['probe'], { from: 'user' });
+    expect(action).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  test.each([prodApi, 'http://127.0.0.1:18000/public', '  '])('default production and local shell bootstraps remain supported: %s', async (bootstrap) => {
+    fixture.cwd = await project('app');
+    vi.stubEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', bootstrap);
+    const action = vi.fn();
+    await program(action).parseAsync(['probe'], { from: 'user' });
+    expect(getActiveProfile()).toBe('default');
+    expect(action).toHaveBeenCalledOnce();
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   test('changing only the production CLI client does not opt production authentication into DEV', async () => {

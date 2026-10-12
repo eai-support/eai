@@ -147,7 +147,8 @@ function normalizeProfileApi(value: string): string {
 
 /** INVARIANT: a selected profile must not send its tokens to a differently configured app runtime. */
 async function assertProfileApiCoherence(profile: string, config: ProfileConfig | null, env: Record<string, string>): Promise<void> {
-  const endpoints = [env.BASE_URL_PUBLIC_API, env.ROUTING_BOOTSTRAP_PUBLIC_API_URL, process.env.BASE_URL_PUBLIC_API]
+  const endpoints = [env.BASE_URL_PUBLIC_API, env.ROUTING_BOOTSTRAP_PUBLIC_API_URL,
+    process.env.BASE_URL_PUBLIC_API, process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL]
     .filter((value): value is string => Boolean(value?.trim())).map(normalizeProfileApi);
   if (config) {
     const expected = normalizeProfileApi(config.publicApiUrl);
