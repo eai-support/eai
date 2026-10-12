@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Retained non-production fixtures; normal CLI identities and PublicAPI only.
 const fs = require('node:fs');
-const { join, resolve, dirname } = require('node:path');
+const { join, resolve, dirname, parse, sep } = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const smoke = require('./eai-full-e2e-smoke.cjs');
@@ -29,6 +29,13 @@ function rejectSecrets(value) {
     rejectSecrets(entry);
   }
 }
+function childCreationVerified(foundation, slot) {
+  const workspace = foundation.workspaces[slot], record = foundation.journal?.[slot], acknowledgment = record?.acknowledgment;
+  return record?.phase === 'created' && record.slug === workspace.slug && acknowledgment?.exitCode === 0
+    && acknowledgment.newChild === true && acknowledgment.fixtureId === foundation.fixtureId
+    && acknowledgment.actorId === foundation.owner.oid && acknowledgment.tenantId === workspace.id
+    && acknowledgment.slug === workspace.slug && acknowledgment.parentTenantId === foundation.parentTenantId;
+}
 function validateFoundation(value) {
   rejectSecrets(value);
   requireCondition(value?.schemaVersion === SCHEMA && UUID.test(value.fixtureId || ''), 'Invalid foundation schema or ownership identity.');
@@ -39,15 +46,17 @@ function validateFoundation(value) {
     && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(actor.email || '')), 'Owner and all five actors need explicit profile, OID and email references.');
   for (const field of ['oid', 'profile', 'email']) requireCondition(new Set(identities.map(actor => actor[field].toLowerCase())).size === identities.length,
     'Qualification actors and setup operator must use distinct identities and profiles.');
+  requireCondition(value.journal && typeof value.journal === 'object' && !Array.isArray(value.journal), 'An ownership journal is required.');
   for (const slot of ['a', 'b']) {
     const workspace = value.workspaces?.[slot];
     requireCondition(workspace && /^eai-cli-qa-[a-z0-9-]{1,60}$/.test(workspace.slug || '')
       && typeof workspace.name === 'string' && workspace.name.length > 0 && workspace.name.length <= 100, 'Each retained workspace needs a bounded owned QA name and slug.');
     requireCondition(workspace.id === null || (UUID.test(workspace.id || '') && workspace.id !== value.parentTenantId), 'Retained workspace IDs must be exact children, never the parent.');
+    requireCondition(workspace.id === null || childCreationVerified(value, slot),
+      'Saved child needs an exact successful creation acknowledgment for this fixture, operator and parent; reconcile unresolved ownership manually.');
   }
   requireCondition(value.workspaces.a.slug !== value.workspaces.b.slug
     && (!value.workspaces.a.id || value.workspaces.a.id !== value.workspaces.b.id), 'Sibling QA workspaces must be distinct.');
-  requireCondition(value.journal && typeof value.journal === 'object' && !Array.isArray(value.journal), 'An ownership journal is required.');
   requireCondition(['unprepared', 'partial', 'verified'].includes(value.state), 'Invalid foundation preparation state.');
   for (const [name, binding] of Object.entries(value.bindings || {})) {
     requireCondition(['provider', 'analyzer', 'classifier', 'documentWorkflow', 'github', 'authorization'].includes(name)
@@ -65,10 +74,48 @@ function initialize(spec, uuid = randomUUID) {
     workspaces: { a: { ...spec.workspaces.a, id: null }, b: { ...spec.workspaces.b, id: null } }, journal: {}, state: 'unprepared' });
 }
 function privateDirectory(path) {
-  fs.mkdirSync(path, { recursive: true, mode: 0o700 });
+  path = resolve(path);
+  const root = parse(path).root, identities = [];
+  const bind = current => {
+    const stat = fs.lstatSync(current);
+    const expectedTarget = process.platform === 'darwin' && dirname(current) === root
+      ? ({ '/tmp': '/private/tmp', '/var': '/private/var' })[current] : undefined;
+    let aliasTarget;
+    if (stat.isSymbolicLink() && expectedTarget && fs.realpathSync(current) === expectedTarget) {
+      const target = fs.lstatSync(expectedTarget);
+      requireCondition(target.isDirectory() && !target.isSymbolicLink(), 'Private directory ancestor must be a regular directory.');
+      aliasTarget = { path: expectedTarget, dev: target.dev, ino: target.ino };
+    }
+    requireCondition((stat.isDirectory() && !stat.isSymbolicLink()) || aliasTarget,
+      'Private directory ancestor must be a regular directory; caller-created links are refused.');
+    identities.push({ path: current, dev: stat.dev, ino: stat.ino, aliasTarget });
+  };
+  bind(root);
+  let current = root;
+  for (const component of path.slice(root.length).split(sep).filter(Boolean)) {
+    assertPrivateDirectory(identities); current = join(current, component);
+    try { fs.mkdirSync(current, { mode: 0o700 }); } catch (error) { if (error.code !== 'EEXIST') throw error; }
+    bind(current);
+  }
+  assertPrivateDirectory(identities);
   const stat = fs.lstatSync(path);
   requireCondition(stat.isDirectory() && !stat.isSymbolicLink() && !(stat.mode & 0o077)
     && (typeof process.getuid !== 'function' || stat.uid === process.getuid()), 'Foundation directory must be owned and private (0700).');
+  return identities;
+}
+function assertPrivateDirectory(identities) {
+  for (const identity of identities) {
+    const stat = fs.lstatSync(identity.path);
+    requireCondition(stat.dev === identity.dev && stat.ino === identity.ino
+      && (identity.aliasTarget ? stat.isSymbolicLink() : stat.isDirectory() && !stat.isSymbolicLink()),
+    'Private directory ancestor changed during the operation.');
+    if (identity.aliasTarget) {
+      const target = fs.lstatSync(identity.aliasTarget.path);
+      requireCondition(fs.realpathSync(identity.path) === identity.aliasTarget.path && target.isDirectory() && !target.isSymbolicLink()
+        && target.dev === identity.aliasTarget.dev && target.ino === identity.aliasTarget.ino,
+      'Private directory ancestor alias changed during the operation.');
+    }
+  }
 }
 function privateStat(path) {
   const stat = fs.lstatSync(path);
@@ -77,33 +124,42 @@ function privateStat(path) {
   return stat;
 }
 function readPrivate(path) {
-  privateDirectory(dirname(path)); const before = privateStat(path);
+  const parents = privateDirectory(dirname(path)); const before = privateStat(path);
+  assertPrivateDirectory(parents);
   const fd = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
   try {
     const opened = fs.fstatSync(fd);
     requireCondition(opened.dev === before.dev && opened.ino === before.ino && opened.isFile() && opened.nlink === 1
       && !(opened.mode & 0o077) && opened.size <= 1024 * 1024, 'Private evidence changed while opening.');
-    return JSON.parse(fs.readFileSync(fd, 'utf8'));
+    const value = JSON.parse(fs.readFileSync(fd, 'utf8')); assertPrivateDirectory(parents); return value;
   } finally { fs.closeSync(fd); }
 }
 function writePrivateText(path, content) {
   requireCondition(typeof content === 'string' && Buffer.byteLength(content) <= 1024 * 1024, 'Private evidence is bounded to 1 MiB.');
-  privateDirectory(dirname(path));
+  const parents = privateDirectory(dirname(path));
   if (fs.existsSync(path) || (() => { try { fs.lstatSync(path); return true; } catch { return false; } })()) privateStat(path);
   const temporary = join(dirname(path), '.' + randomUUID() + '.json');
+  assertPrivateDirectory(parents);
   const fd = fs.openSync(temporary, 'wx', 0o600);
   try {
     try { fs.writeFileSync(fd, content); fs.fsyncSync(fd); } finally { fs.closeSync(fd); }
-    fs.renameSync(temporary, path);
-  } finally { if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
+    assertPrivateDirectory(parents); fs.renameSync(temporary, path); assertPrivateDirectory(parents);
+  } finally { assertPrivateDirectory(parents); if (fs.existsSync(temporary)) fs.unlinkSync(temporary); }
 }
 function writePrivate(path, value) { return writePrivateText(path, JSON.stringify(value, null, 2) + '\n'); }
 function withLease(path, action) {
-  privateDirectory(dirname(path));
+  const parents = privateDirectory(dirname(path)); assertPrivateDirectory(parents);
   let fd;
   try { fd = fs.openSync(path + '.lease', 'wx', 0o600); } catch { throw new Error('Foundation is leased or a prior operation needs manual reconciliation.'); }
-  try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })); return action(); }
-  finally { fs.closeSync(fd); fs.unlinkSync(path + '.lease'); }
+  const identity = fs.fstatSync(fd);
+  try { fs.writeFileSync(fd, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() })); assertPrivateDirectory(parents); return action(); }
+  finally {
+    fs.closeSync(fd); assertPrivateDirectory(parents);
+    const current = fs.lstatSync(path + '.lease');
+    requireCondition(current.isFile() && !current.isSymbolicLink() && current.dev === identity.dev && current.ino === identity.ino,
+      'Foundation lease changed; manual reconciliation is required.');
+    fs.unlinkSync(path + '.lease');
+  }
 }
 function executeCli(cliPath, args, options) {
   return spawnSync(process.execPath, [resolve(cliPath), ...args], { ...options, encoding: 'utf8', timeout: options.timeout || 120000,
@@ -192,7 +248,10 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
         const tenant = body?.tenant;
         if (UUID.test(tenant?.id || '') && tenant.id !== foundation.parentTenantId && tenant.slug === workspace.slug
           && (tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant) === foundation.parentTenantId && tenant.reused !== true) {
-          workspace.id = tenant.id; foundation.journal[slot].phase = 'created'; save();
+          workspace.id = tenant.id;
+          foundation.journal[slot] = { phase: result.status === 0 ? 'created' : 'acknowledged', slug: workspace.slug,
+            acknowledgment: { fixtureId: foundation.fixtureId, actorId: foundation.owner.oid, tenantId: tenant.id,
+              slug: tenant.slug, parentTenantId: foundation.parentTenantId, newChild: true, exitCode: result.status } }; save();
         }
         requireCondition(result.status === 0 && workspace.id, 'QA child creation did not return a successful exact new-child acknowledgment; inspect the private journal.');
       }
@@ -299,7 +358,13 @@ function cycleReceiptVerified(row) {
     && row.status === 'passed' && row.rotationDispatches === 1 && row.credentialChanged === true && row.firstInventoryEmpty === true
     && row.recreatedSameKey === true && UUID.test(row.enrollmentId || '') && UUID.test(row.recreatedEnrollmentId || '')
     && row.recreatedEnrollmentId.toLowerCase() !== row.enrollmentId.toLowerCase()
-    && row.cleanupVerified === true && row.registrationAbsent === true && row.deletionVerified === true && row.appBuildVerified === true;
+    && row.cleanupVerified === true && row.localProjectCleanupVerified === true && row.registrationAbsent === true
+    && row.deletionVerified === true && row.appBuildVerified === true;
+}
+function cycleIdentitiesFresh(rows) {
+  return rows.length === 10 && new Set(rows.map(row => row.clientId.toLowerCase())).size === 10
+    && new Set(rows.map(row => row.tenantId.toLowerCase())).size === 10 && new Set(rows.map(row => row.appKey)).size === 10
+    && new Set(rows.flatMap(row => [row.enrollmentId.toLowerCase(), row.recreatedEnrollmentId.toLowerCase()])).size === 20;
 }
 function cyclesVerified(evidence, candidate, context) {
   const cycle = evidence?.cycleEvidence;
@@ -309,8 +374,7 @@ function cyclesVerified(evidence, candidate, context) {
     || cycle.candidate?.gitSha !== candidate.gitSha || cycle.candidate?.runtimeSha256 !== candidate.runtimeSha256
     || cycle.candidate?.binarySha256 !== candidate.binarySha256 || !Number.isFinite(age) || age < -60000 || age > 3600000
     || !Array.isArray(cycle.cycles) || cycle.cycles.length !== 10) return false;
-  return cycle.cycles.every(cycleReceiptVerified) && new Set(cycle.cycles.map(row => row.clientId.toLowerCase())).size === 10
-    && new Set(cycle.cycles.map(row => row.tenantId.toLowerCase())).size === 10 && new Set(cycle.cycles.map(row => row.appKey)).size === 10;
+  return cycle.cycles.every(cycleReceiptVerified) && cycleIdentitiesFresh(cycle.cycles);
 }
 
 function main() {
@@ -332,5 +396,6 @@ function main() {
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
 module.exports = { SCHEMA, SLOTS, SERVICES, ROLE_CASES, publicApi, initialize, validateFoundation, readPrivate, writePrivate, writePrivateText,
-  withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cyclesVerified,
+  withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cycleIdentitiesFresh, cyclesVerified,
+  privateDirectory, assertPrivateDirectory,
   cliCaller, getBody, verifyActors, verifyIdentity, verifyWorkspaces };

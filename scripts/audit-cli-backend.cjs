@@ -54,6 +54,13 @@ function backendContract(command, operation) {
     contractScope: 'Route families and dependencies; exact request contracts are covered by the owning integration tests.',
   };
 }
+function executionStatus(executions) {
+  if (!executions.length) return 'not-run';
+  if (executions.some(item => item.status === 'failed')) return 'failed';
+  if (executions.some(item => item.status === 'blocked')) return 'blocked';
+  return executions.every(item => item.status === 'passed' && item.coverageComplete === true
+    && Array.isArray(item.assertions) && item.assertions.length > 0) ? 'passed' : 'incomplete';
+}
 
 function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [], environment, publicApiUrl, now = Date.now() }, traceability = smoke.TRACEABILITY || smoke.COMMAND_TRACEABILITY) {
   const entries = (smoke.leafEntries || smoke.collectLeafCommands)(schema);
@@ -68,18 +75,14 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     const row = decisions.get(entry.command);
     const contract = backendContract(entry.command, row.crud);
     const executions = (evidence?.commands || []).filter(item => item.command === entry.command);
-    const status = UNSUPPORTED.has(entry.command) ? 'unsupported'
-      : executions.some(item => item.status === 'failed') ? 'failed'
-        : executions.some(item => item.status === 'blocked') ? 'blocked'
-          : executions.length && executions.every(item => item.status === 'passed' && item.coverageComplete === true
-            && Array.isArray(item.assertions) && item.assertions.length > 0) ? 'passed' : 'not-run';
+    const status = UNSUPPORTED.has(entry.command) ? 'unsupported' : executionStatus(executions);
     return { ...entry, operation: row.crud, ...contract, status, executions: executions.length,
       observedSuccesses: executions.filter(item => item.status === 'passed').length,
       plannedCoverage: row.coverage, prerequisite: row.notes,
       cleanupMechanism: row.cleanupMechanism, cleanupVerification: row.cleanupVerified,
       ...(UNSUPPORTED.has(entry.command) ? { reason: UNSUPPORTED.get(entry.command) } : {}) };
   });
-  const summary = Object.fromEntries(['passed', 'failed', 'blocked', 'unsupported', 'not-run'].map(status => [status, commands.filter(row => row.status === status).length]));
+  const summary = Object.fromEntries(['passed', 'failed', 'blocked', 'incomplete', 'unsupported', 'not-run'].map(status => [status, commands.filter(row => row.status === status).length]));
   const backendCommands = commands.filter(row => row.requiresProtectedBackend);
   const context = { environment: environment || evidence?.environment, publicApiUrl: publicApiUrl || evidence?.expectedPublicApi, now };
   const parityComplete = qualification.deploymentParity(deployments, { ...context, now,
@@ -88,15 +91,11 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const candidateVerified = sourceBuildVerified(buildReceipt, candidate, { now });
   const aliasEvidence = commands.flatMap(row => row.aliases.map(alias => {
     const executions = (evidence?.aliases || []).filter(item => item.alias === alias && item.command === row.command);
-    return { alias, command: row.command, status: executions.some(item => item.status === 'failed') ? 'failed'
-      : executions.some(item => item.status === 'blocked') ? 'blocked'
-        : executions.length > 0 && executions.every(item => item.status === 'passed' && item.coverageComplete === true
-          && Array.isArray(item.assertions) && item.assertions.length > 0) ? 'passed' : 'not-run' };
+    return { alias, command: row.command, status: executionStatus(executions) };
   }));
   const optionEvidence = commands.flatMap(row => row.options.map(option => ({ command: row.command, option: option.name.replace(/,$/, ''),
-    status: (evidence?.commands || []).some(item => item.command === row.command && item.status === 'passed'
-      && item.coverageComplete === true && Array.isArray(item.assertions) && item.assertions.length > 0
-      && (item.options || []).includes(option.name.replace(/,$/, ''))) ? 'passed' : 'not-run' })));
+    status: executionStatus((evidence?.commands || []).filter(item => item.command === row.command
+      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, '')))) })));
   const aliasCoverageComplete = aliasEvidence.every(row => row.status === 'passed');
   const optionCoverageComplete = optionEvidence.every(row => row.status === 'passed');
   const unsupportedVerified = [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {
@@ -118,7 +117,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     fullCapabilityQualified: backendCertified && commands.every(row => row.status === 'passed' || row.status === 'unsupported')
       && aliasCoverageComplete && optionCoverageComplete && unsupportedVerified && qualification.cyclesVerified(evidence, candidate, context),
     limitations: ['Help, mocked tests and HTTP health do not prove live backend capability.',
-      'An omitted or unfinished execution remains not-run.',
+      'Omitted evidence remains not-run; attempted unfinished evidence remains incomplete and cannot pass.',
       'Role denial and cross-tenant isolation require separate authenticated role fixtures.',
       'All required service revisions must be observed in the same environment within one hour; partial parity is not complete.',
       'Alias and option execution need their own candidate-bound assertions; planned rows do not satisfy them.',

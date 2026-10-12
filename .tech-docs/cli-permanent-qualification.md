@@ -28,6 +28,11 @@ dirty, linked, changed or unverified source cannot qualify. Build evidence expir
 after one hour; rebuild and rerun observations when it expires. Dependency
 overrides in tests are marked `controlled-fixtures` and never qualify a live run.
 These are private operator observations, not signed server attestations.
+Private state and leases refuse caller-created links in every ancestor and
+recheck the observed directory identities before file operations. The fixed
+macOS `/tmp` and `/var` aliases are allowed only with their exact system targets.
+These checks do not provide descriptor-relative isolation from arbitrary
+concurrent filesystem changes by another process using the same OS account.
 
 ## Retained foundation
 
@@ -70,6 +75,11 @@ unexpected user or changed membership requires reconciliation from exact
 acknowledgements and fresh reads. Never delete the journal to retry an unknown
 creation or guess its ownership. A deployment runner spanning multiple hosts
 needs an external exclusive lease before invoking these scripts.
+Every saved child ID must match its journaled successful creation acknowledgment,
+including the fixture, operator, parent, slug and returned child. An ID returned
+with a nonzero exit remains saved for diagnosis and requires manual
+reconciliation before any later child mutation. Older journals without that
+exact ownership record cannot automatically adopt an existing child.
 
 ## Permission probe
 
@@ -147,7 +157,8 @@ No failed rotation or ambiguous recreation is automatically replayed. Each
 runner still attempts independent cleanup in `finally`; the controller stops
 on the first failed cycle. Source/build/deployment/cleanup proofs are rechecked
 between cycles and joined to each runner's receipt. All ten registration IDs,
-child IDs and app keys must be distinct. Fixture-controlled cycles can pass
+child IDs and app keys must be distinct, and all twenty original/recreated
+enrollment IDs must be unique. Fixture-controlled cycles can pass
 their structural assertions but remain `qualified: false`.
 
 The controller requires a successful consultant build and removes ambient
@@ -155,6 +166,11 @@ optional lane flags; deployment, chat and provider journeys need separate
 approved runs. CLI/build subprocesses retain the normal profile home while
 removing inherited app routing and headless authentication overrides. Cycle
 output must be new and separate from every fixture, proof and CLI input.
+The controller owns a fresh private output root for each cycle. Its `finally`
+cleanup removes the generated app folders, including `.env.local` credentials,
+on success or failure while retaining the private summary and command receipts.
+Reported paths outside that owned root never authorize deletion. A cleanup
+failure stops qualification and leaves its receipt marked unverified.
 Deployment observations are operator snapshots. Coordinate with the release
 owner to avoid overlapping rollouts while collecting and using them; the
 controller validates their identity and age but does not lock cloud releases.
@@ -172,7 +188,10 @@ incomplete entries when joining matching reports. An executed subset cannot
 claim `coverageComplete`; every command, alias and option needs its own named
 assertions. `types define` and `resources indexes-apply` intentionally return
 unsupported before auth/network and need explicit exit-1/no-network evidence.
-Absent evidence remains `not-run`. A passing selected run never means the full
+Absent evidence remains `not-run`; attempted unfinished observations remain
+`incomplete`. Command, alias and option failures take precedence over blocked
+or incomplete observations, and one success cannot erase another attempt for
+the same option. A passing selected run never means the full
 inventory is qualified.
 
 Provider, analyzer, classifier, documentWorkflow and GitHub bindings hold

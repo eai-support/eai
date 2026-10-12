@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 // Executes ten fresh owned lifecycles. This is an opt-in DEV/TEST qualification.
-const { resolve, join } = require('node:path');
+const { resolve, join, dirname } = require('node:path');
 const { randomUUID } = require('node:crypto');
-const { existsSync } = require('node:fs');
+const { existsSync, mkdtempSync, readdirSync, lstatSync, rmSync, rmdirSync } = require('node:fs');
 const qa = require('./cli-qa-foundation.cjs');
 const smoke = require('./eai-full-e2e-smoke.cjs');
 const { sourceBuildVerified } = require('./cli-qa-build-receipt.cjs');
@@ -24,7 +24,27 @@ function cycleReceipt(report) {
     appBuildVerified: builds.length === 1 && builds[0].status === 'passed' && builds[0].exitCode === 0
       && builds[0].scopeTenantId === report.created?.runtimeTenantId,
     registrationAbsent: registration?.status === 'passed' && registration.evidence?.registrationAbsenceVerified === true,
-    cleanupVerified: report.cleanupVerified === true, summaryPath: report.summaryPath };
+    cleanupVerified: report.cleanupVerified === true, localProjectCleanupVerified: report.localProjectCleanupVerified === true,
+    summaryPath: report.summaryPath };
+}
+/** Remove only app folders inside this controller's fresh private output root. */
+function removeGeneratedProjects(root, parents) {
+  qa.assertPrivateDirectory(parents);
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    requireCondition(/^eai-full-e2e-[A-Za-z0-9-]+$/.test(entry.name) && entry.isDirectory() && !entry.isSymbolicLink(),
+      'Unexpected private cycle output requires manual reconciliation.');
+    const runRoot = join(root, entry.name), runParents = qa.privateDirectory(runRoot);
+    qa.assertPrivateDirectory(parents); qa.assertPrivateDirectory(runParents);
+    const project = join(runRoot, 'app');
+    // rm removes a leaf symlink itself; it never follows it into another project.
+    try { lstatSync(project); rmSync(project, { recursive: true, force: true }); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    qa.assertPrivateDirectory(parents); qa.assertPrivateDirectory(runParents);
+    let absent = false;
+    try { lstatSync(project); } catch (error) { if (error.code === 'ENOENT') absent = true; else throw error; }
+    requireCondition(absent, 'Generated local project cleanup could not be verified.');
+  }
+  if (!readdirSync(root).length) rmdirSync(root);
 }
 function cleanupPreflightVerified(preflight, foundation, deployments, now) {
   const age = now - Date.parse(preflight?.observedAt);
@@ -98,19 +118,26 @@ function runQualification(options, dependencies = {}) {
         requireCondition(candidateValid(current) && current.gitSha === candidate.gitSha && current.runtimeSha256 === candidate.runtimeSha256
           && current.binarySha256 === candidate.binarySha256, 'CLI candidate changed during qualification.');
         requireCondition(sourceBuildVerified(qa.readPrivate(options.buildReceiptPath), current, { now: now() }), 'Source build receipt expired or changed before this cycle.');
-        let result;
+        const workspaceRoot = mkdtempSync(join(dirname(output), '.cycle-' + (index + 1) + '-'));
+        const workspaceParents = qa.privateDirectory(workspaceRoot);
+        let result, receipt;
         try {
           result = runLive(options.cliPath, { ...dependencies, env: { ...cycleEnv,
+            EAI_E2E_OUTPUT_ROOT: workspaceRoot,
             EAI_E2E_TEST_PROFILE: foundation.actors.adminA.profile, EAI_E2E_TEST_USERNAME: foundation.actors.adminA.email,
             EAI_E2E_TEST_USER_OID: foundation.actors.adminA.oid, EAI_E2E_PARENT_TENANT_ID: foundation.workspaces.a.id,
             EAI_E2E_EXPECTED_PUBLIC_API: foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: options.cleanupPreflight,
             EAI_E2E_CHILD_HOME_REGION: foundation.region, EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
             EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
         } catch (error) {
-          if (error.report) report.cycles.push(cycleReceipt({ ...error.report, summaryPath: error.summaryPath }));
+          if (error.report) { receipt = cycleReceipt({ ...error.report, summaryPath: error.summaryPath }); report.cycles.push(receipt); }
           throw error;
+        } finally {
+          if (result) { receipt = cycleReceipt(result); report.cycles.push(receipt); }
+          removeGeneratedProjects(workspaceRoot, workspaceParents);
+          if (receipt) receipt.localProjectCleanupVerified = true;
         }
-        const receipt = cycleReceipt(result); report.cycles.push(receipt); save();
+        save();
         requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight), 'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
         requireCondition(qa.cycleReceiptVerified(receipt), 'Lifecycle lacks rotation, first-read, recreation or cleanup proof.');
         const after = candidateEvidence(options.cliPath);
@@ -123,10 +150,7 @@ function runQualification(options, dependencies = {}) {
         requireCondition(cleanupPreflightVerified(afterPreflight, foundation, deployments, now())
           && afterPreflight.observedAt === preflight.observedAt, 'Cleanup observation changed or expired during the lifecycle.');
       }
-      const structurallyVerified = report.cycles.every(qa.cycleReceiptVerified)
-        && new Set(report.cycles.map(row => row.clientId.toLowerCase())).size === 10
-        && new Set(report.cycles.map(row => row.tenantId.toLowerCase())).size === 10
-        && new Set(report.cycles.map(row => row.appKey)).size === 10;
+      const structurallyVerified = report.cycles.every(qa.cycleReceiptVerified) && qa.cycleIdentitiesFresh(report.cycles);
       requireCondition(structurallyVerified, 'Cycles reused a registration/app or lack exact fresh identity proof.');
       report.contractsVerified = true; report.qualified = report.qualification === 'normal-cli-profiles';
       report.status = 'passed';

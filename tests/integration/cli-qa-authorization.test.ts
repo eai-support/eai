@@ -37,6 +37,9 @@ function controlled(faults: Faults = {}) {
     actors: Object.fromEntries(slots.map((slot, index) => [slot, actor(index + 3)])),
     workspaces: { a: { name: 'CLI QA A', slug: 'eai-cli-qa-a' }, b: { name: 'CLI QA B', slug: 'eai-cli-qa-b' } }, bindings: {} }, () => uuid(20));
   foundation.workspaces.a.id = uuid(30); foundation.workspaces.b.id = uuid(31); foundation.state = 'verified';
+  for (const slot of ['a', 'b']) foundation.journal[slot] = { phase: 'created', slug: foundation.workspaces[slot].slug,
+    acknowledgment: { fixtureId: foundation.fixtureId, actorId: foundation.owner.oid, tenantId: foundation.workspaces[slot].id,
+      slug: foundation.workspaces[slot].slug, parentTenantId: foundation.parentTenantId, newChild: true, exitCode: 0 } };
   foundation.bindings.authorization = { workspaceSlot: 'a', tenantId: uuid(30), objectType: 'cli-qa-authorization-row',
     nonceField: 'qaNonce', data: { label: 'cli-qa-synthetic', status: 'draft', count: 1, enabled: true } };
   const foundationPath = join(root, 'foundation.json'), output = join(root, 'authorization.json');

@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -19,6 +19,9 @@ function controlled() {
     actors: Object.fromEntries(Object.keys(qa.SLOTS).map((slot, index) => [slot, actor(index + 3)])),
     workspaces: { a: { name: 'QA A', slug: 'eai-cli-qa-a' }, b: { name: 'QA B', slug: 'eai-cli-qa-b' } }, bindings: {} });
   foundation.workspaces.a.id = uuid(30); foundation.workspaces.b.id = uuid(31); foundation.state = 'verified';
+  for (const slot of ['a', 'b']) foundation.journal[slot] = { phase: 'created', slug: foundation.workspaces[slot].slug,
+    acknowledgment: { fixtureId: foundation.fixtureId, actorId: foundation.owner.oid, tenantId: foundation.workspaces[slot].id,
+      slug: foundation.workspaces[slot].slug, parentTenantId: foundation.parentTenantId, newChild: true, exitCode: 0 } };
   const foundationPath = join(root, 'foundation.json'), deploymentsPath = join(root, 'deployments.json');
   const now = Date.parse('2026-10-09T06:00:00Z'); qa.writePrivate(foundationPath, foundation);
   const deploymentContext = { environment: 'DEV', publicApiUrl: foundation.publicApiUrl, observedAt: new Date(now).toISOString() };
@@ -125,6 +128,54 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const runLive = () => { const report = fixture.liveReport(); report.created.entraClientId = client; report.rotationCycle.clientId = client; return report; };
     expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
     expect(qa.readPrivate(fixture.options.output).qualified).toBe(false);
+  });
+  test('cross-cycle original/recreated enrollment reuse cannot qualify the driver', () => {
+    const fixture = controlled(), reused = uuid(301);
+    const runLive = () => { const report = fixture.liveReport();
+      if (fixture.runs() === 2) { report.created.recreatedEnrollmentId = reused; report.deletionCycle.recreatedEnrollmentId = reused; }
+      return report; };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+    expect(qa.readPrivate(fixture.options.output).qualified).toBe(false);
+  });
+  test('the receipt consumer independently rejects cross-cycle enrollment reuse', () => {
+    const fixture = controlled();
+    const receipts = Array.from({ length: 10 }, () => cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true }));
+    const cycleEvidence = { schemaVersion: 'eai.cli-permanent-cycles.v1', qualified: true, qualification: 'normal-cli-profiles', status: 'passed',
+      fixtureId: fixture.foundation.fixtureId, environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+      candidate, completedAt: new Date(fixture.dependencies.now()).toISOString(), cycles: receipts };
+    expect(qa.cyclesVerified({ cycleEvidence }, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+      now: fixture.dependencies.now() })).toBe(true);
+    receipts[1].recreatedEnrollmentId = receipts[0].enrollmentId;
+    expect(qa.cyclesVerified({ cycleEvidence }, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+      now: fixture.dependencies.now() })).toBe(false);
+  });
+  test.each(['success', 'failure'])('removes generated local credentials on cycle %s while retaining private receipts', outcome => {
+    const fixture = controlled(), projects: string[] = [], summaries: string[] = [];
+    const sentinel = join(fixture.root, 'unrelated.txt'); writeFileSync(sentinel, 'outside sentinel', { mode: 0o600 });
+    const runLive = (_cli: string, dependencies: { env: Record<string, string> }) => {
+      const report = fixture.liveReport();
+      const runRoot = join(dependencies.env.EAI_E2E_OUTPUT_ROOT || fixture.root, 'eai-full-e2e-' + fixture.runs());
+      const projectRoot = join(runRoot, 'app'), summaryPath = join(runRoot, 'summary.json');
+      mkdirSync(projectRoot, { recursive: true, mode: 0o700 });
+      writeFileSync(join(projectRoot, '.env.local'), 'ENTRA_CLIENT_SECRET=synthetic-test-only\n', { mode: 0o600 });
+      qa.writePrivate(summaryPath, report); projects.push(projectRoot); summaries.push(summaryPath);
+      if (outcome === 'failure') throw Object.assign(new Error('controlled transport failure'), { report, summaryPath });
+      return { ...report, summaryPath, projectRoot };
+    };
+    if (outcome === 'failure') expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
+    else expect(cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive }).status).toBe('passed');
+    expect(projects.length).toBe(outcome === 'failure' ? 1 : 10);
+    expect(projects.every(path => !existsSync(path))).toBe(true);
+    expect(summaries.every(path => existsSync(path))).toBe(true);
+    expect(readFileSync(sentinel, 'utf8')).toBe('outside sentinel');
+    expect(qa.readPrivate(fixture.options.output).cycles.every((row: { localProjectCleanupVerified: boolean }) => row.localProjectCleanupVerified)).toBe(true);
+  });
+  test('a runner cannot authorize deletion of its reported unrelated project path', () => {
+    const fixture = controlled(), outside = join(fixture.root, 'unrelated-app'); mkdirSync(outside, { mode: 0o700 });
+    const sentinel = join(outside, '.env.local'); writeFileSync(sentinel, 'outside sentinel', { mode: 0o600 });
+    const runLive = () => ({ ...fixture.liveReport(), projectRoot: outside });
+    expect(cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive }).status).toBe('passed');
+    expect(readFileSync(sentinel, 'utf8')).toBe('outside sentinel');
   });
   test('another actor, runtime scope or candidate can never provide qualified cycle evidence', () => {
     const fixture = controlled();

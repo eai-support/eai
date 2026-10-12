@@ -1,5 +1,5 @@
 import { createRequire } from 'node:module';
-import { chmodSync, existsSync, linkSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
@@ -51,6 +51,24 @@ describe('retained CLI QA foundation authority', () => {
 });
 
 describe('private foundation and exclusive lease', () => {
+  test('private operations accept the operating system temporary-directory path, including fixed macOS aliases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eai-qa-system-temp-')); directories.push(realpathSync(root));
+    const path = join(root, 'state.json'), value = qa.initialize(fixtureSpec());
+    qa.writePrivate(path, value); expect(qa.readPrivate(path).fixtureId).toBe(value.fixtureId);
+    expect(qa.withLease(path, () => 'owned')).toBe('owned'); expect(existsSync(path + '.lease')).toBe(false);
+  });
+  test.each(['read', 'write', 'lease'])('%s refuses a linked ancestor without entering its outside target', operation => {
+    const { root, foundation } = privateFixture();
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'eai-qa-outside-'))); directories.push(outside);
+    mkdirSync(join(outside, 'private'), { mode: 0o700 });
+    const sentinel = join(outside, 'private', 'state.json'); qa.writePrivate(sentinel, foundation);
+    const linked = join(root, 'linked'); symlinkSync(outside, linked, 'dir');
+    const path = join(linked, 'private', 'state.json'); const before = readFileSync(sentinel); let entered = false;
+    expect(() => operation === 'read' ? qa.readPrivate(path) : operation === 'write' ? qa.writePrivate(path, {})
+      : qa.withLease(path, () => { entered = true; })).toThrow('ancestor');
+    expect(readFileSync(sentinel)).toEqual(before); expect(entered).toBe(false);
+    expect(existsSync(sentinel + '.lease')).toBe(false);
+  });
   test('atomic updates preserve private permissions and release the lease on failure', () => {
     const { path, foundation } = privateFixture();
     expect(() => qa.withLease(path, () => { throw new Error('fixture failure'); })).toThrow('fixture failure');
@@ -191,6 +209,28 @@ describe('normal CLI retained fixture preparation', () => {
     const fixture = controlled('ack-before-failure');
     expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
     expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
+  });
+  test('saved child IDs without exact creation ownership cannot reach any CLI dispatch', () => {
+    const fixture = controlled(), retained = qa.readPrivate(fixture.path);
+    retained.workspaces.a.id = uuid(30); retained.workspaces.b.id = uuid(31);
+    qa.writePrivate(fixture.path, retained);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(0);
+  });
+  test.each(['fixtureId', 'actorId', 'tenantId', 'slug', 'parentTenantId', 'exitCode', 'newChild'])('saved child ownership refuses a mismatched %s before dispatch', field => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const retained = qa.readPrivate(fixture.path), calls = fixture.calls.length;
+    retained.journal.a.acknowledgment[field] = field === 'exitCode' ? 1 : field === 'newChild' ? false : 'foreign';
+    qa.writePrivate(fixture.path, retained);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(calls);
+  });
+  test('a nonzero creation acknowledgment retains the ID but cannot automatically resume child mutations', () => {
+    const fixture = controlled('ack-before-failure');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
+    const calls = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(calls); expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
   });
   test('lost invitation acknowledgment reconciles through the exact actor self-read without replay', () => {
     const fixture = controlled('lost-invite-ack');

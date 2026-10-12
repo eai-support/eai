@@ -33,7 +33,7 @@ describe('CLI backend audit evidence', () => {
     const report = buildAudit({ schema, candidate }, decisions);
     expect(report.commands.map((row: { command: string }) => row.command)).toContain('eai verify');
     expect(report.commands.find((row: { command: string }) => row.command === 'eai workspace list').aliases).toContain('eai tenant list');
-    expect(report.summary).toEqual({ passed: 0, failed: 0, blocked: 0, unsupported: 1, 'not-run': 3 });
+    expect(report.summary).toEqual({ passed: 0, failed: 0, blocked: 0, incomplete: 0, unsupported: 1, 'not-run': 3 });
     expect(report.backendCertified).toBe(false);
   });
   test('keeps index apply unsupported even when supplied evidence claims a success', () => {
@@ -54,6 +54,13 @@ describe('CLI backend audit evidence', () => {
     expect(buildAudit({ schema, candidate, evidence }, decisions).summary.passed).toBe(0);
     expect(() => buildAudit({ schema, candidate, evidence: { ...evidence, candidate: { ...candidate, binarySha256: 'other-build' } } }, decisions)).toThrow('exact CLI candidate');
     expect(() => buildAudit({ schema, candidate, evidence: { ...evidence, candidate: { ...candidate, runtimeSha256: 'other-libraries' } } }, decisions)).toThrow('exact CLI candidate');
+  });
+  test.each(['running', 'incomplete'])('retains attempted %s observations separately from commands never run', status => {
+    const evidence = { candidate, commands: [{ command: 'eai verify', status }] };
+    const report = buildAudit({ schema, candidate, evidence }, decisions);
+    expect(report.commands.find((row: { command: string }) => row.command === 'eai verify').status).toBe('incomplete');
+    expect(report.commands.find((row: { command: string }) => row.command === 'eai verify calls').status).toBe('not-run');
+    expect(report.summary.incomplete).toBe(1); expect(report.summary['not-run']).toBe(2);
   });
   test('does not pass a partial command contract even when its executed subset passed', () => {
     const evidence = { candidate, commands: [{ command: 'eai verify', status: 'passed', coverageComplete: false }] };
@@ -133,7 +140,16 @@ describe('CLI backend audit evidence', () => {
     input.evidence.aliases.unshift({ ...input.evidence.aliases[0], status });
     const report = buildAudit(input, decisions);
     expect(report.aliasCoverageComplete).toBe(false);
-    expect(report.aliasEvidence[0].status).toBe(status === 'running' ? 'not-run' : status);
+    expect(report.aliasEvidence[0].status).toBe(status === 'running' ? 'incomplete' : status);
+  });
+  test.each(['failed', 'blocked', 'running', 'incomplete'])('option success cannot mask a retained %s attempt for that option', status => {
+    const { input, decisions } = completeContractModel();
+    input.evidence.commands.push({ ...input.evidence.commands[0], status, options: ['--format'] });
+    const report = buildAudit(input, decisions);
+    expect(report.optionEvidence.find((row: { option: string }) => row.option === '--format').status)
+      .toBe(['running', 'incomplete'].includes(status) ? 'incomplete' : status);
+    expect(report.optionEvidence.find((row: { option: string }) => row.option === '--workspace').status).toBe('passed');
+    expect(report.optionCoverageComplete).toBe(false);
   });
 });
 
