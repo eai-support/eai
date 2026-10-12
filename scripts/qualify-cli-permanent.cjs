@@ -132,7 +132,14 @@ function runQualification(options, dependencies = {}) {
             EAI_E2E_CHILD_HOME_REGION: foundation.region, EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
             EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
         } catch (error) {
-          if (error.report) { receipt = cycleReceipt({ ...error.report, summaryPath: error.summaryPath }); report.cycles.push(receipt); }
+          if (error?.report) {
+            receipt = { ...cycleReceipt({ ...error.report, summaryPath: error.summaryPath }), cycleNumber: index + 1,
+              status: error.report.status === 'blocked' ? 'blocked' : 'failed', runnerReportAvailable: true };
+          } else {
+            receipt = { cycleNumber: index + 1, status: 'failed', runnerReportAvailable: false, cleanupVerified: false,
+              localProjectCleanupVerified: false, reason: 'Owned lifecycle failed without a structured runner receipt; remote outcome is unknown.' };
+          }
+          report.cycles.push(receipt);
           throw error;
         } finally {
           if (result) { receipt = cycleReceipt(result); report.cycles.push(receipt); }

@@ -54,12 +54,30 @@ function backendContract(command, operation) {
     contractScope: 'Route families and dependencies; exact request contracts are covered by the owning integration tests.',
   };
 }
-function executionStatus(executions) {
+/** Qualified assertions name their exact execution and command/alias/option scope. */
+function executionAssertions(item, option) {
+  const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+  if (typeof item.executionId !== 'string' || !uuid.test(item.executionId)
+    || !Array.isArray(item.assertions) || item.assertions.length === 0) return null;
+  if (!item.assertions.every(row => row && typeof row === 'object' && !Array.isArray(row)
+    && typeof row.name === 'string' && row.name.trim() === row.name && row.name.length > 0 && row.name.length <= 200
+    && row.command === item.command && row.executionId === item.executionId
+    && ['passed', 'failed', 'blocked', 'incomplete'].includes(row.status)
+    && (item.alias ? row.alias === item.alias : row.alias === undefined)
+    && (row.option === undefined || (typeof row.option === 'string' && Array.isArray(item.options)
+      && item.options.includes(row.option))))) return null;
+  return option ? item.assertions.filter(row => row.option === undefined || row.option === option) : item.assertions;
+}
+function executionStatus(executions, option) {
   if (!executions.length) return 'not-run';
   if (executions.some(item => item.status === 'failed')) return 'failed';
   if (executions.some(item => item.status === 'blocked')) return 'blocked';
-  return executions.every(item => item.status === 'passed' && item.coverageComplete === true
-    && Array.isArray(item.assertions) && item.assertions.length > 0) ? 'passed' : 'incomplete';
+  const assertions = executions.map(item => executionAssertions(item, option));
+  if (assertions.some(rows => rows?.some(row => row.status === 'failed'))) return 'failed';
+  if (assertions.some(rows => rows?.some(row => row.status === 'blocked'))) return 'blocked';
+  return executions.every((item, index) => item.status === 'passed' && item.coverageComplete === true
+    && assertions[index]?.length > 0 && assertions[index].every(row => row.status === 'passed')
+    && (!option || assertions[index].some(row => row.option === option))) ? 'passed' : 'incomplete';
 }
 
 function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [], environment, publicApiUrl, now = Date.now() }, traceability = smoke.TRACEABILITY || smoke.COMMAND_TRACEABILITY) {
@@ -96,7 +114,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   }));
   const optionEvidence = commands.flatMap(row => row.options.map(option => ({ command: row.command, option: option.name.replace(/,$/, ''),
     status: executionStatus((evidence?.commands || []).filter(item => item.command === row.command
-      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, '')))) })));
+      && Array.isArray(item.options) && item.options.includes(option.name.replace(/,$/, ''))), option.name.replace(/,$/, '')) })));
   const aliasCoverageComplete = aliasEvidence.every(row => row.status === 'passed');
   const optionCoverageComplete = optionEvidence.every(row => row.status === 'passed');
   const unsupportedVerified = [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {

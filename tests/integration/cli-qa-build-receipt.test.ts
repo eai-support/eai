@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, test } from 'vitest';
+import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const build = require('../../scripts/cli-qa-build-receipt.cjs');
@@ -66,9 +66,34 @@ function fixture() {
   const dependencies = { root, execute, candidateEvidence, now: () => now };
   return { root, head, cliPath, output, options: { cliPath, output }, dependencies, execute, candidateEvidence, calls, builds: () => builds };
 }
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test('canonical build and source Git reads exclude ambient credentials, code injection and npm overrides', () => {
+    const value = fixture();
+    const forbidden = { NODE_OPTIONS: '--no-warnings', NPM_TOKEN: 'synthetic-npm', GH_TOKEN: 'synthetic-gh',
+      AZURE_CLIENT_SECRET: 'synthetic-azure', npm_config_userconfig: '/foreign/npmrc', npm_config_ignore_scripts: 'true' };
+    for (const [key, entry] of Object.entries(forbidden)) vi.stubEnv(key, entry);
+    build.runBuildReceipt(value.options, value.dependencies);
+    const npm = value.calls.find(row => row.command === 'npm')!;
+    for (const key of Object.keys(forbidden).filter(key => key !== 'npm_config_ignore_scripts')) expect(npm.options.env?.[key]).toBeUndefined();
+    expect(npm.options.env?.npm_config_ignore_scripts).toBe('false');
+    for (const call of value.calls.filter(row => row.command === 'git')) {
+      expect(call.options.env).toBeDefined();
+      for (const key of Object.keys(forbidden)) expect(call.options.env?.[key]).toBeUndefined();
+    }
+    expect(npm.options.env?.PATH).toBe(process.env.PATH); expect(npm.options.env?.HOME).toBe(process.env.HOME);
+  });
+  test('an actual miniature npm build cannot observe an ambient credential in its hooks', () => {
+    const value = fixture();
+    writeFileSync(join(value.root, 'scripts/build.cjs'), readFileSync(join(value.root, 'scripts/build.cjs'), 'utf8')
+      + "fs.writeFileSync('dist/environment.json', JSON.stringify({ambientCredentialPresent: Boolean(process.env.NPM_TOKEN)}));\n");
+    commit(value.root); vi.stubEnv('NPM_TOKEN', 'synthetic-ambient-marker');
+    const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
+    expect(JSON.parse(readFileSync(join(value.root, 'dist/environment.json'), 'utf8')).ambientCredentialPresent).toBe(false);
+    expect(receipt.status).toBe('passed'); expect(receipt.qualification).toBe('controlled-fixtures'); expect(receipt.qualified).toBe(false);
+    expect(readFileSync(value.output, 'utf8')).not.toContain('synthetic-ambient-marker');
+  });
   test('builds missing dist through canonical npm argv and fingerprints every tracked source and runtime file', () => {
     const value = fixture(); expect(existsSync(value.cliPath)).toBe(false);
     // Only this miniature owned package runs npm. The shared CLI dist remains untouched.

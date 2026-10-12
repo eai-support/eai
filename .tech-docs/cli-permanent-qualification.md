@@ -41,6 +41,10 @@ Normal-profile calls and lifecycle subprocesses receive only allowlisted OS,
 profile-home and network settings plus the harness's explicit tenant/profile
 settings. Ambient GitHub, Azure, npm and headless credential variables, injected
 Node options and operator lifecycle overrides are excluded.
+The canonical build and its source Git reads use the same restricted operational
+environment. The build explicitly enables committed lifecycle scripts and fixes
+its audit/fund/update-notifier settings; ambient npm configuration cannot alter
+those settings or inject credentials or Node startup code into the child build.
 
 ## Retained foundation
 
@@ -217,6 +221,13 @@ Absent evidence remains `not-run`; attempted unfinished observations remain
 or incomplete observations, and one success cannot erase another attempt for
 the same option. A passing selected run never means the full
 inventory is qualified.
+Qualifying executions have an exact UUID `executionId`. Each assertion is a
+record with a bounded `name`, that exact `executionId`, matching `command`, and
+an explicit `status: passed`. Alias assertions also name the exact `alias`.
+Each option needs its own assertion naming the exact `option`; a generic command
+assertion cannot qualify every listed flag. Failed or blocked scoped assertions
+remain non-passing, and missing/malformed/foreign records remain incomplete.
+Legacy assertion-name arrays alone cannot certify a command or option.
 Full qualification also joins role and cycle evidence to the same `fixtureId`,
 both retained workspace IDs and all five actors' exact OIDs/profiles. The cycle
 controller records those references from its verified foundation. Independently

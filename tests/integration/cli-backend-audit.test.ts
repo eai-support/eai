@@ -16,6 +16,7 @@ const schema = { command: 'eai', subcommands: [
 const commands = ['eai verify', 'eai verify calls', 'eai workspace list', 'eai types define'];
 const decisions = commands.map(command => ({ command, crud: 'read', coverage: 'live', notes: 'fixture', cleanupMechanism: 'none', cleanupVerified: 'read only' }));
 const candidate = { gitSha: 'candidate-sha', binarySha256: 'entry-sha', runtimeSha256: 'runtime-sha', version: '3.19.1' };
+interface AuditAssertion { name: string; command: string; executionId: string; status: string; option?: string; alias?: string }
 
 describe('CLI backend audit evidence', () => {
   test.each([
@@ -123,9 +124,16 @@ describe('CLI backend audit evidence', () => {
     const schema = { command: 'eai', subcommands: [{ command: 'workspace', aliases: ['tenant'],
       subcommands: [{ command: 'list', options: [{ name: '--format' }, { name: '--workspace,' }] }] }] };
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
+    const executionId = id(90), aliasExecutionId = id(91);
+    const assertions: AuditAssertion[] = [
+      { name: 'exact inventory', command: 'eai workspace list', executionId, status: 'passed' },
+      ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed' })),
+    ];
     const evidence = { candidate, environment: 'DEV', expectedPublicApi: publicApiUrl, cleanupVerified: true, authorizationEvidence,
-      commands: [{ command: 'eai workspace list', status: 'passed', coverageComplete: true, assertions: ['exact inventory'], options: ['--format', '--workspace'] }],
-      aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', status: 'passed', coverageComplete: true, assertions: ['exact alias inventory'] }] };
+      commands: [{ command: 'eai workspace list', executionId, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'] }],
+      aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, status: 'passed', coverageComplete: true,
+        assertions: [{ name: 'exact alias inventory', command: 'eai workspace list', alias: 'eai tenant list',
+          executionId: aliasExecutionId, status: 'passed' } as AuditAssertion] }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
   }
 
@@ -153,6 +161,40 @@ describe('CLI backend audit evidence', () => {
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['failed', 'blocked', 'missing-status', 'missing-name', 'foreign-command', 'foreign-execution', 'legacy-string', 'null', 'foreign-alias'])('a %s assertion cannot certify its execution', failure => {
+    const { input, decisions } = completeContractModel();
+    if (failure === 'foreign-alias') input.evidence.aliases[0].assertions[0].alias = 'eai other list';
+    else {
+      const assertion = input.evidence.commands[0].assertions[0];
+      if (failure === 'failed' || failure === 'blocked') assertion.status = failure;
+      if (failure === 'missing-status') Object.assign(assertion, { status: undefined });
+      if (failure === 'missing-name') assertion.name = '';
+      if (failure === 'foreign-command') assertion.command = 'eai user list';
+      if (failure === 'foreign-execution') assertion.executionId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'legacy-string') Object.assign(input.evidence.commands[0], { assertions: ['named but unverified'] });
+      if (failure === 'null') Object.assign(input.evidence.commands[0], { assertions: [null] });
+    }
+    const report = buildAudit(input, decisions);
+    expect(report.fullCapabilityQualified).toBe(false);
+    if (failure === 'foreign-alias') expect(report.aliasCoverageComplete).toBe(false);
+    else { expect(report.backendCertified).toBe(false); expect(report.commands[0].status).not.toBe('passed'); }
+  });
+  test('one generic passing assertion cannot certify every listed option', () => {
+    const { input, decisions } = completeContractModel();
+    input.evidence.commands[0].assertions = input.evidence.commands[0].assertions.filter(row => row.option !== '--workspace');
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe('passed'); expect(report.backendCertified).toBe(false);
+    expect(report.optionEvidence.find((row: any) => row.option === '--format').status).toBe('passed');
+    expect(report.optionEvidence.find((row: any) => row.option === '--workspace').status).toBe('incomplete');
+  });
+  test('a failed option assertion is retained without erasing another independently checked option', () => {
+    const { input, decisions } = completeContractModel();
+    input.evidence.commands[0].assertions.find(row => row.option === '--format')!.status = 'failed';
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe('failed'); expect(report.backendCertified).toBe(false);
+    expect(report.optionEvidence.find((row: any) => row.option === '--format').status).toBe('failed');
+    expect(report.optionEvidence.find((row: any) => row.option === '--workspace').status).toBe('passed');
   });
   test.each(['published-missing', 'published-duplicate', 'published-tenant', 'published-fingerprint', 'published-draft',
     'created-missing', 'created-duplicate', 'created-tenant', 'created-unacknowledged', 'created-not-dispatched',
@@ -266,6 +308,8 @@ if (args.includes('list')) {
   if (process.env.EAI_HARNESS_TEST_MODE === 'quota') { console.error('TENANT_QUOTA_EXCEEDED'); process.exit(1); }
   fs.writeFileSync(process.env.EAI_HARNESS_TEST_LOG + '.create', JSON.stringify({slug:args[args.indexOf('--slug')+1],parent:args[args.indexOf('--parent')+1]}), {mode:0o600});
   console.log(JSON.stringify({tenant:{id:'00000000-0000-4000-8000-000000000099',slug:args[args.indexOf('--slug')+1],parentTenantId:args[args.indexOf('--parent')+1]}}));
+} else if (process.env.EAI_HARNESS_TEST_MODE === 'parent-valid' && args.includes('delete')) {
+  console.log(JSON.stringify({deleted:true,tenantId:args[args.indexOf('delete')+1]}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `);
     writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
@@ -306,6 +350,13 @@ if (args.includes('list')) {
     // The mock stops at selection; no real Docker, storage or network mutation occurs.
     expect(result.status).not.toBe(0);
     expect(result.calls.some(args => args.includes('select') && args.includes('00000000-0000-4000-8000-000000000099'))).toBe(true);
+    expect(result.calls.filter(args => args.includes('delete'))).toEqual([
+      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099', '--force', '--format', 'json'],
+    ]);
+    expect(result.journals).toHaveLength(1);
+    expect(JSON.parse(readFileSync(result.journals[0], 'utf8'))).toMatchObject({ phase: 'verified',
+      reconciliationVerified: true, acknowledgmentBound: true, cleanupAttempted: true,
+      childTenantId: '00000000-0000-4000-8000-000000000099' });
   });
   test.each(['ack-absent', 'ack-ambiguous'] as const)('retains an exact create acknowledgment when list reconciliation is %s without guessing cleanup', mode => {
     const result = runFixture(mode);

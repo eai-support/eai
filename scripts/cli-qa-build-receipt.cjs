@@ -98,7 +98,9 @@ function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
 
 /** Run only the canonical build in this checkout and retain a private source/artifact join. */
 function runBuildReceipt(options, dependencies = {}) {
-  const run = dependencies.execute || execute, now = dependencies.now || Date.now;
+  const state = privateState(), executor = dependencies.execute || execute, now = dependencies.now || Date.now;
+  const operational = state.operationalEnvironment(process.env);
+  const run = (command, args, settings) => executor(command, args, { ...settings, env: settings.env || operational });
   const root = fs.realpathSync(dependencies.root || ROOT), cliPath = resolve(options.cliPath || ''), output = resolve(options.output || '');
   const qualification = Object.keys(dependencies).length ? 'controlled-fixtures' : 'normal-build';
   const receipt = { schemaVersion: SCHEMA, qualification, qualified: false, status: 'running', command: [...COMMAND],
@@ -112,7 +114,6 @@ function runBuildReceipt(options, dependencies = {}) {
     const ignored = run('git', ['check-ignore', '--quiet', '--', relative(root, output)], { cwd: root, timeout: 10000 });
     requireCondition(ignored?.status === 0 && !ignored.error && !ignored.signal, 'OUTPUT_NOT_IGNORED');
   }
-  const state = privateState();
   let existing;
   try { fs.lstatSync(output); existing = state.readPrivate(output); } catch (error) { if (error.code !== 'ENOENT') throw error; }
   requireCondition(!existing || existing.schemaVersion === SCHEMA, 'OUTPUT_NOT_BUILD_RECEIPT');
@@ -125,7 +126,8 @@ function runBuildReceipt(options, dependencies = {}) {
       requireCondition(cliPath === join(root, 'dist', 'index.js'), 'EXACT_CLI_PATH_REQUIRED'); unlinkedPath(cliPath);
       const before = sourceSnapshot(root, run); Object.assign(receipt, before); save();
       const build = run(COMMAND[0], COMMAND.slice(1), { cwd: root, timeout: 300000,
-        env: { ...process.env, npm_config_update_notifier: 'false', npm_config_audit: 'false', npm_config_fund: 'false' } });
+        env: { ...operational, npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false',
+          npm_config_audit: 'false', npm_config_fund: 'false' } });
       receipt.exitCode = Number.isInteger(build?.status) ? build.status : null;
       requireCondition(build?.status === 0 && !build.error && !build.signal, 'BUILD_FAILED');
       const after = sourceSnapshot(root, run); requireCondition(sameSource(before, after), 'SOURCE_CHANGED_DURING_BUILD');

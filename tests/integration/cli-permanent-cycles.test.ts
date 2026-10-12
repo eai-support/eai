@@ -87,6 +87,21 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
+  test.each(['throw-before-report', 'throw-primitive', 'summary-without-report'])('retains a sanitized failed attempt for %s', failure => {
+    const fixture = controlled(); let dispatches = 0;
+    const runLive = () => { dispatches++;
+      if (failure === 'throw-primitive') throw 'synthetic-private-provider-marker';
+      throw Object.assign(new Error('synthetic-private-provider-marker'), failure === 'summary-without-report'
+        ? { summaryPath: join(fixture.root, 'untrusted-summary.json') } : {});
+    };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow('qualification stopped');
+    const report = qa.readPrivate(fixture.options.output);
+    expect(dispatches).toBe(1); expect(report.status).toBe('failed'); expect(report.qualified).toBe(false);
+    expect(report.cycles).toHaveLength(1); expect(report.cycles[0]).toMatchObject({ cycleNumber: 1, status: 'failed',
+      runnerReportAvailable: false, cleanupVerified: false, localProjectCleanupVerified: true });
+    expect(report.cycles[0]).not.toHaveProperty('clientId'); expect(report.cycles[0]).not.toHaveProperty('summaryPath');
+    expect(readFileSync(fixture.options.output, 'utf8')).not.toContain('synthetic-private-provider-marker');
+  });
   test.each(['missing-deployments', 'malformed-deployments', 'public-deployments', 'candidate-read'])('retains %s preflight failure in a blocked summary', failure => {
     const fixture = controlled();
     if (failure === 'missing-deployments') rmSync(fixture.options.deploymentsPath);
