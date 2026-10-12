@@ -5,6 +5,26 @@ export function isSupportSensitiveKey(key: string): boolean {
   return sensitiveKey.test(key);
 }
 
+// SECURITY: decode only candidate key spelling for recognition; reviewed text and value boundaries remain literal.
+function decodeCredentialKey(key: string): string {
+  const parts: string[] = [];
+  let copiedUntil = 0;
+  let index = 0;
+  while (index < key.length) {
+    if (key[index] !== '\\') { index++; continue; }
+    const runStart = index;
+    while (key[index] === '\\') index++;
+    const code = key.slice(index + 1, index + 5);
+    if (key[index] === 'u' && /^[0-9a-f]{4}$/i.test(code)) {
+      parts.push(key.slice(copiedUntil, runStart), String.fromCharCode(Number.parseInt(code, 16)));
+      index += 5;
+      copiedUntil = index;
+    }
+  }
+  parts.push(key.slice(copiedUntil));
+  return parts.join('');
+}
+
 interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number }
 
 function redactCredentialValues(text: string): string {
@@ -30,10 +50,17 @@ function redactCredentialValues(text: string): string {
     nearestQuoteEnd.set(quote.key, quote.end);
   }
   const fields: CredentialField[] = [];
-  for (const match of text.matchAll(/[\w.-]+/g)) {
-    const key = match[0];
-    let start = match.index + key.length;
+  for (const match of text.matchAll(/[\w.\\-]+/g)) {
+    const rawKey = match[0];
+    const fullEnd = match.index + rawKey.length;
+    let keyEnd = fullEnd;
+    if (text[fullEnd] === '"' || text[fullEnd] === "'") {
+      while (keyEnd > match.index && text[keyEnd - 1] === '\\') keyEnd--;
+    }
+    const key = decodeCredentialKey(text.slice(match.index, keyEnd));
+    let start = keyEnd;
     if (quoteEnds[start]) start = quoteEnds[start];
+    else if (keyEnd < fullEnd && quoteEnds[fullEnd]) start = quoteEnds[fullEnd];
     const separator = start;
     while (start < text.length && /\s/.test(text[start])) start++;
     if (text[start] === '=' || text[start] === ':') start++;

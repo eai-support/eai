@@ -132,6 +132,29 @@ describe('local support report redaction', () => {
     expect(redactSupportText(result)).toBe(result);
   });
 
+  test.each([String.raw`ENTRA_CLIENT_\u0053ECRET`, String.raw`\u0061pi\u005fkey`, String.raw`AWS\u005fACCESS\u005fKEY\u005fID`, String.raw`client\u0053ecret`])('recognizes Unicode-escaped credential key %s without decoding reviewed text', (key) => {
+    let diagnostic = String.raw`{"fixtureKey":"unicode fixture private value","ENTRA_CLIENT_\u0049D":"public-id"}`.replace('fixtureKey', key);
+    for (let depth = 0; depth < 4; depth++) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('unicode fixture');
+      expect(clean).not.toContain('private value');
+      expect(clean).toContain('public-id');
+      expect(clean).not.toContain('ENTRA_CLIENT_ID');
+      expect(redactSupportText(clean)).toBe(clean);
+      diagnostic = JSON.stringify(diagnostic);
+    }
+  });
+
+  test('Unicode key recognition preserves benign escapes and handles malformed and adversarial runs', () => {
+    for (const benign of [String.raw`{"ENTRA_CLIENT_\u0049D":"public-id"}`, String.raw`metadata=example_\u0063ode`, String.raw`client_\u00ZZid=public-id`, '\\'.repeat(65536) + 'u000G']) {
+      expect(redactSupportText(benign)).toBe(benign);
+    }
+    const field = JSON.stringify(String.raw`{"ENTRA_CLIENT_\u0053ECRET":"DENSE_UNICODE_PRIVATE_CANARY"}`);
+    const clean = redactSupportText(Array.from({ length: 500 }, () => field).join(' '));
+    expect(clean).not.toContain('DENSE_UNICODE_PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
   test('redacts overlapping malformed quoted credentials without exposing the inner multiword tail', () => {
     const text = 'oauth_token = "x\n api_key = "FIXTURE PRIVATE VALUE"';
     const clean = redactSupportText(text);
