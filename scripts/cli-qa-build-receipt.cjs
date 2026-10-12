@@ -73,6 +73,22 @@ function sourceSnapshot(root, run) {
   }
   return { sourceSha, sourceSha256: hash.digest('hex'), sourceFileCount: files.length, sourceFingerprintVersion: SOURCE_FINGERPRINT };
 }
+/** npm run build needs no project overrides; retain only the repository's harmless installation pins. */
+function projectConfigPins(path) {
+  const descriptor = fs.openSync(path, fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW);
+  try {
+    const stat = fs.fstatSync(descriptor);
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 4096) return false;
+    const lines = fs.readFileSync(descriptor, 'utf8').split(/\r?\n/).map(line => line.trim())
+      .filter(line => line && !line.startsWith('#') && !line.startsWith(';'));
+    const seen = new Set();
+    return lines.every(line => {
+      const match = /^(save-exact|package-lock)\s*=\s*true$/.exec(line);
+      if (!match || seen.has(match[1])) return false;
+      seen.add(match[1]); return true;
+    });
+  } finally { fs.closeSync(descriptor); }
+}
 function candidateValid(candidate) {
   return candidate && typeof candidate === 'object' && !Array.isArray(candidate) && typeof candidate.gitSha === 'string' && SHA.test(candidate.gitSha)
     && ['binarySha256', 'runtimeSha256'].every(field => typeof candidate[field] === 'string' && HASH.test(candidate[field]))
@@ -129,7 +145,7 @@ function runBuildReceipt(options, dependencies = {}) {
       // Builds need no registry settings; project overrides require a separately reviewed policy.
       let projectConfig;
       try { projectConfig = fs.lstatSync(join(root, '.npmrc')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
-      requireCondition(!projectConfig, 'NPM_PROJECT_CONFIG_UNSUPPORTED');
+      requireCondition(!projectConfig || projectConfigPins(join(root, '.npmrc')), 'NPM_PROJECT_CONFIG_UNSUPPORTED');
       const configRoot = fs.mkdtempSync(join(dirname(output), '.eai-npm-config-'));
       const configParents = state.privateDirectory(configRoot);
       let build;
@@ -143,7 +159,7 @@ function runBuildReceipt(options, dependencies = {}) {
       } finally {
         state.assertPrivateDirectory(configParents); fs.rmSync(configRoot, { recursive: true });
       }
-      receipt.npmConfiguration = { user: 'empty-private', global: 'empty-private', project: 'absent-required' };
+      receipt.npmConfiguration = { user: 'empty-private', global: 'empty-private', project: projectConfig ? 'installation-pins-only' : 'absent' };
       receipt.exitCode = Number.isInteger(build?.status) ? build.status : null;
       requireCondition(build?.status === 0 && !build.error && !build.signal, 'BUILD_FAILED');
       const after = sourceSnapshot(root, run); requireCondition(sameSource(before, after), 'SOURCE_CHANGED_DURING_BUILD');

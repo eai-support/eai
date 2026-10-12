@@ -69,6 +69,21 @@ function fixture() {
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test.each(['exact-tracked', 'with-comments'])('only installation pins in %s project npm config remain supported', variant => {
+    const value = fixture(); const pins = readFileSync(join(process.cwd(), '.npmrc'), 'utf8');
+    expect(Buffer.byteLength(pins)).toBe(34);
+    writeFileSync(join(value.root, '.npmrc'), pins + (variant === 'with-comments' ? '\n# owned fixture comment\n' : '')); commit(value.root);
+    const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
+    expect(receipt.status).toBe('passed'); expect(receipt.qualified).toBe(false); expect(receipt.sourceUnchanged).toBe(true);
+    expect(receipt.sourceFileCount).toBe(6); expect(receipt.candidate.dirty).toBe(false);
+  });
+  test.each(['//registry.npmjs.org/:_authToken=synthetic-only-config-token', 'prefix=/synthetic/override',
+    'node-options=--conditions=synthetic-project-config', 'save-exact=false'])('unsupported project config %s never dispatches build', config => {
+    const value = fixture(); writeFileSync(join(value.root, '.npmrc'), config + '\n'); commit(value.root);
+    expect(() => build.runBuildReceipt(value.options, value.dependencies)).toThrow('NPM_PROJECT_CONFIG_UNSUPPORTED');
+    expect(value.builds()).toBe(0); expect(qa.readPrivate(value.output)).toMatchObject({ qualified: false, status: 'failed' });
+    expect(readFileSync(value.output, 'utf8')).not.toContain('synthetic-only-config-token');
+  });
   test.each(['user', 'global'])('an actual npm build cannot restore NODE_OPTIONS from %s config', configSource => {
     const value = fixture(), operator = realpathSync(mkdtempSync(join(tmpdir(), 'eai-build-operator-'))); roots.push(operator);
     const globalConfig = join(operator, 'global.npmrc');

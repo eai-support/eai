@@ -42,8 +42,11 @@ profile-home and network settings plus the harness's explicit tenant/profile
 settings. Ambient GitHub, Azure, npm and headless credential variables, injected
 Node options and operator lifecycle overrides are excluded.
 The canonical build and its source Git reads use the same restricted operational
-environment. npm receives fresh empty private user/global configuration files;
-a project `.npmrc` blocks qualification until its policy is explicitly reviewed.
+environment. npm receives fresh empty private user/global configuration files.
+A project `.npmrc` may contain only `save-exact=true` and `package-lock=true`
+installation pins, blank lines and comments in a bounded regular file. Unknown,
+credential or Node-option settings block qualification; no operator override is
+silently adopted.
 The build enables committed lifecycle scripts and fixes its audit/fund/update
 settings. This prevents npm from restoring lifecycle `NODE_OPTIONS` from an
 operator configuration file. Standard registry token keys are not exported by
