@@ -6,7 +6,7 @@ import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 
 const require = createRequire(import.meta.url);
-const { buildAudit } = require('../../scripts/audit-cli-backend.cjs');
+const { buildAudit, markdown } = require('../../scripts/audit-cli-backend.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 const schema = { command: 'eai', subcommands: [
   { command: 'verify', hasAction: true, subcommands: [{ command: 'calls' }] },
@@ -18,6 +18,17 @@ const decisions = commands.map(command => ({ command, crud: 'read', coverage: 'l
 const candidate = { gitSha: 'candidate-sha', binarySha256: 'entry-sha', runtimeSha256: 'runtime-sha', version: '3.19.1' };
 
 describe('CLI backend audit evidence', () => {
+  test.each([
+    { note: 'permission required', encoded: 'permission required' },
+    { note: String.raw`C:\qa\|first | second`, encoded: String.raw`C:\\qa\\\|first \| second` },
+    { note: String.raw`one\|two\\|three\end`, encoded: String.raw`one\\\|two\\\\\|three\\end` },
+  ])('keeps prerequisite $note inside its original GFM table cell', ({ note, encoded }) => {
+    const report = buildAudit({ schema, candidate }, decisions.map(row => ({ ...row, notes: note })));
+    const rendered = markdown(report);
+    const row = rendered.split('\n').find((line: string) => line.startsWith('| eai verify |'));
+    expect(row).toBe(`| eai verify |  | read | not-run | PublicAPI, Authz, ResourceAPI, AICore | ${encoded} |`);
+  });
+
   test('inventories executable parents and alias paths, without treating the plan as proof', () => {
     const report = buildAudit({ schema, candidate }, decisions);
     expect(report.commands.map((row: { command: string }) => row.command)).toContain('eai verify');
