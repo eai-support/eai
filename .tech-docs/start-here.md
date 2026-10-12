@@ -63,4 +63,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.19.3** (2026-10-09): Preserve platform Entra sign-in scopes during app initialization.
+The current CLI release is **v3.19.4** (2026-10-12): Adopt App Template v1.0.13 producer.

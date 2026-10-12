@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.3 |
-| Released | 2026-10-09 |
-| Last Material Change | Preserve platform Entra sign-in scopes during app initialization |
-| Source Commit | `ebb746c17cd15883309ca20f0d0d3c7203e9da9b` |
+| Version | 3.19.4 |
+| Released | 2026-10-12 |
+| Last Material Change | Adopt App Template v1.0.13 producer |
+| Source Commit | `49c77181b5dc42cd3d3de2513d4566f481fad73f` |
 
 
 ## Install
