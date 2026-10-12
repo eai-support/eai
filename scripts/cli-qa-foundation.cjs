@@ -80,7 +80,7 @@ function safePrivateAncestor(stat) {
   return (uid === undefined || stat.uid === uid || stat.uid === 0)
     && (!(stat.mode & 0o022) || Boolean(stat.mode & 0o1000));
 }
-function privateDirectory(path) {
+function privateDirectory(path, { allowSystemTemporaryRoot = false } = {}) {
   path = resolve(path);
   const root = parse(path).root, identities = [];
   const bind = current => {
@@ -107,9 +107,12 @@ function privateDirectory(path) {
     bind(current);
   }
   assertPrivateDirectory(identities);
-  const stat = fs.lstatSync(path);
-  requireCondition(stat.isDirectory() && !stat.isSymbolicLink() && !(stat.mode & 0o077)
-    && (typeof process.getuid !== 'function' || stat.uid === process.getuid()), 'Foundation directory must be owned and private (0700).');
+  const stat = fs.lstatSync(identities.at(-1)?.aliasTarget?.path || path);
+  const privateLeaf = !(stat.mode & 0o077) && (typeof process.getuid !== 'function' || stat.uid === process.getuid());
+  const sharedSystemTemporary = allowSystemTemporaryRoot === true && path === resolve(require('node:os').tmpdir())
+    && Boolean(stat.mode & 0o1000) && safePrivateAncestor(stat);
+  requireCondition(stat.isDirectory() && !stat.isSymbolicLink() && (privateLeaf || sharedSystemTemporary),
+    'Foundation directory must be owned and private (0700); only the default trusted sticky system temporary root is shared.');
   return identities;
 }
 function assertPrivateDirectory(identities) {
@@ -373,6 +376,11 @@ function deploymentParity(deployments, context = {}) {
 function authorizationReceiptsVerified(authorization, actors, tenants) {
   const record = value => value && typeof value === 'object' && !Array.isArray(value);
   const uuid = value => typeof value === 'string' && UUID.test(value);
+  const wireMatches = (receipt, method, path, tenantId, status, denied) => record(receipt) && record(receipt.request)
+    && Number.isSafeInteger(receipt.exitCode) && (denied ? receipt.exitCode > 0 : receipt.exitCode === 0)
+    && receipt.ok === !denied && receipt.status === status
+    && receipt.request.method === method && receipt.request.path === path
+    && receipt.request.tenantId === tenantId && receipt.request.publicApiUrl === authorization.publicApiUrl;
   const published = authorization.publishedFixture, created = authorization.created, cleanup = authorization.cleanup;
   const writers = Object.keys(SLOTS).filter(slot => SLOTS[slot][1] !== 'tenant-viewer');
   if (!uuid(authorization.runId) || authorization.localCleanupVerified !== true
@@ -402,23 +410,23 @@ function authorizationReceiptsVerified(authorization, actors, tenants) {
     const owned = created.find(entry => entry.creatorSlot === row.creatorSlot);
     const admin = SLOTS[row.creatorSlot]?.[0] === 'a' ? 'adminA' : 'adminB';
     const path = owned && `/v4/data/resources/${owned.tenantId}/${published[0].objectType}/${owned.resourceId}`;
-    const receiptMatches = (receipt, method, status) => record(receipt) && record(receipt.request)
-      && Number.isSafeInteger(receipt.exitCode) && (method === 'DELETE' ? receipt.exitCode === 0 : receipt.exitCode > 0)
-      && receipt.ok === (method === 'DELETE') && receipt.status === status
-      && receipt.request.method === method && receipt.request.path === path
-      && receipt.request.tenantId === owned.tenantId && receipt.request.publicApiUrl === authorization.publicApiUrl;
     const deleted = row.deleteReceipt?.body;
     return owned && row.resourceId === owned.resourceId && row.tenantId === owned.tenantId && row.profile === actors[admin].profile
       && row.status === 'passed' && row.deleteAcknowledged === true && row.absenceVerified === true
       && row.deleteHttpStatus === 200 && row.absenceHttpStatus === 404
-      && receiptMatches(row.deleteReceipt, 'DELETE', 200) && receiptMatches(row.absenceReceipt, 'GET', 404)
+      && wireMatches(row.deleteReceipt, 'DELETE', path, owned.tenantId, 200, false)
+      && wireMatches(row.absenceReceipt, 'GET', path, owned.tenantId, 404, true)
       && record(deleted) && deleted.id === owned.resourceId && deleted.deleted === true
       && typeof deleted.deleted_at === 'string' && deleted.deleted_at.length <= 64 && Number.isFinite(Date.parse(deleted.deleted_at));
   })) return false;
   return authorization.cases.every(row => {
     const slot = row.name.split(':')[0], sibling = row.name.endsWith(':sibling-denied');
     const creator = sibling ? (SLOTS[slot][0] === 'a' ? 'adminB' : 'adminA') : slot === 'viewerA' ? 'adminA' : slot;
-    return row.resourceId === created.find(entry => entry.creatorSlot === creator)?.resourceId;
+    const resourceId = created.find(entry => entry.creatorSlot === creator)?.resourceId;
+    const method = row.name.endsWith(':write') ? 'POST' : row.name === 'viewerA:write-denied' ? 'PUT' : 'GET';
+    const path = `/v4/data/resources/${row.scopeTenantId}/${published[0].objectType}${method === 'POST' ? '' : '/' + resourceId}`;
+    return row.resourceId === resourceId && wireMatches(row.wireReceipt, method, path, row.scopeTenantId,
+      row.httpStatus, row.name.endsWith('-denied'));
   });
 }
 function authorizationVerified(evidence, candidate, context) {

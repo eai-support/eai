@@ -17,7 +17,7 @@ interface ResourceDTO {
 }
 interface Invocation { slot: Slot | 'owner'; method: string; path: string; tenantId: string; data?: Record<string, unknown> }
 interface Faults {
-  create?: 'unknown' | 'nonzero-ack' | 'foreign-scope' | 'missing-nonce' | 'replay' | 'creator' | 'updater';
+  create?: 'unknown' | 'nonzero-ack' | 'foreign-scope' | 'missing-nonce' | 'replay' | 'creator' | 'updater' | 'missing-wire' | 'foreign-wire';
   baseline?: 'global' | 'wrong-oid' | 'builder-admin' | 'viewer-builder' | 'sibling-access' | 'wrong-parent' | 'admin-context-only'
     | 'empty-inventory' | 'foreign-inventory' | 'unrelated-membership';
   schema?: 'missing-b' | 'wrong-tenant' | 'wrong-request' | 'duplicate' | 'required' | 'nonce-type' | 'wrong-data-type' | 'dropped'
@@ -145,7 +145,13 @@ function controlled(faults: Faults = {}) {
       if (createNumber === 1 && faults.create === 'replay') returned.idempotentReplay = true;
       if (createNumber === 1 && faults.create === 'creator') returned.created_by = uuid(99);
       if (createNumber === 1 && faults.create === 'updater') returned.updated_by = uuid(99);
-      return wire(201, returned, createNumber === 1 && faults.create === 'nonzero-ack' ? 1 : 0);
+      const response = wire(201, returned, createNumber === 1 && faults.create === 'nonzero-ack' ? 1 : 0,
+        !(createNumber === 1 && faults.create === 'missing-wire'));
+      if (createNumber === 1 && faults.create === 'foreign-wire') {
+        const body = JSON.parse(response.stdout); body.request.publicApiUrl = 'https://foreign.example.invalid/public';
+        return { ...response, stdout: JSON.stringify(body) };
+      }
+      return response;
     }
     const id = match[2], key = rowKey(tenantId, id), row = rows.get(key);
     if (method === 'GET') {
@@ -252,6 +258,14 @@ describe('normal-profile authorization role probe', () => {
     const fixture = controlled(); const before = readFileSync(fixture.foundationPath, 'utf8'); const report = fixture.run();
     expect(report.cases.map((row: { name: string }) => row.name)).toEqual(qa.ROLE_CASES);
     expect(report.cases).toHaveLength(15); expect(report.cases.every((row: { status: string }) => row.status === 'passed')).toBe(true);
+    for (const row of report.cases) {
+      const method = row.name.endsWith(':write') ? 'POST' : row.name === 'viewerA:write-denied' ? 'PUT' : 'GET';
+      const path = `/v4/data/resources/${row.scopeTenantId}/${fixture.foundation.bindings.authorization.objectType}`
+        + (method === 'POST' ? '' : '/' + row.resourceId);
+      expect(row.wireReceipt).toEqual({ exitCode: row.name.endsWith('-denied') ? 1 : 0,
+        ok: !row.name.endsWith('-denied'), status: row.httpStatus,
+        request: { method, path, tenantId: row.scopeTenantId, publicApiUrl: fixture.foundation.publicApiUrl } });
+    }
     expect(report.foundationVerified).toBe(true); expect(report.status).toBe('passed');
     expect(report.qualification).toBe('controlled-fixtures'); expect(report.qualified).toBe(false);
     expect(report.cleanupVerified).toBe(true); expect(report.cleanup).toHaveLength(4); expect(report.leftovers).toEqual([]);
@@ -347,6 +361,12 @@ describe('normal-profile authorization role probe', () => {
     expect(report.cases.find((row: any) => row.name === 'adminA:write').status).toBe('failed');
     expect(report.created[0].creatorId).toBe(fixture.foundation.actors.adminA.oid);
     expect(report.cleanupVerified).toBe(false); expect(report.leftovers).toHaveLength(1);
+    expect(fixture.calls.some(row => row.method === 'DELETE')).toBe(false);
+  });
+  test.each(['missing-wire', 'foreign-wire'] as const)('a correct DTO with %s cannot authorize cleanup DELETE', create => {
+    const fixture = controlled({ create }), report = fixture.failed();
+    expect(report.created[0].resourceId).toBeDefined(); expect(report.created[0].acknowledgedBound).toBe(false);
+    expect(report.created[0].phase).toBe('outcome-unknown'); expect(report.leftovers).toHaveLength(1);
     expect(fixture.calls.some(row => row.method === 'DELETE')).toBe(false);
   });
   test('normal PostgreSQL create/read metadata binds the writer and retains a null updater', () => {

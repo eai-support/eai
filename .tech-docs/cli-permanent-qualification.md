@@ -362,6 +362,11 @@ four fresh acknowledged rows and their exact successful DELETE/404 cleanup
 records. Cleanup records retain bounded observed method/path/tenant/gateway and
 exit/HTTP status fields, plus the deleted row ID, marker and timestamp. The
 consumer validates those fields independently; summary flags alone cannot pass.
+Every allow/denial case also retains its observed method/path/tenant/gateway and
+exit/HTTP status. The importer derives the expected collection or item operation
+from the selected actor and owned row. A create DTO without its exact POST wire
+does not authorize cleanup; an exact owned acknowledgment with a nonzero exit
+remains reconcilable but cannot certify the role case.
 Every allow/deny case names its scoped row; flags without those receipts
 cannot certify authorization. Candidate/deployment read failures after output
 validation leave a private blocked summary before any runtime mutation.
@@ -397,6 +402,15 @@ the independently owned child purge. External Docker storage cleanup starts only
 after that exact child purge and parent absence pass. A failed, malformed,
 partial or nonempty observation cannot pass; the harness reports success only
 after cleanup. This child receipt does not certify an external provider teardown.
+Before any resource DELETE or absence GET, the helper rechecks the accepted
+creation row against the current child, profile, parent and gateway. A cached
+shell ID cannot authorize cleanup by itself; refusal remains in the private
+journal while independently verified child purge can still proceed.
+Local and live output roots reject caller links, nonprivate roots and unsafe
+ancestors before creating run files or dispatching commands. The default trusted
+sticky system temporary directory creates a private run; supplied roots require
+owner-controlled private permissions. Directory identities are rechecked under
+the trusted OS/operator boundary, with no hostile same-user namespace guarantee.
 
 Provider, analyzer, classifier, documentWorkflow and GitHub bindings hold
 references to approved retained fixtures. No provider material, third-party

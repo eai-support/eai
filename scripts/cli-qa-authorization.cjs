@@ -122,8 +122,8 @@ function httpStatus(response) {
   const status = response?.body?.status;
   return Number.isInteger(status) && status >= 100 && status <= 599 ? status : null;
 }
-/** Retain only observed cleanup fields; mismatched requests and private response data are omitted. */
-function cleanupReceipt(response, method, path, tenantId, foundation) {
+/** Retain bounded observed wire fields; mismatched requests and private response data are omitted. */
+function wireReceipt(response, method, path, tenantId, foundation) {
   const body = response?.body;
   const request = exactWire(response, method, path, tenantId, foundation) ? body.request : null;
   const deleted = record(body?.body) ? body.body : null;
@@ -227,11 +227,13 @@ function runAuthorizationProbe(options, dependencies = {}) {
             { data: { ...binding.data, [binding.nonceField]: row.nonce }, idempotencyKey: row.idempotencyKey });
           const dto = response.body?.body;
           if (UUID.test(dto?.id || '')) row.resourceId = dto.id;
-          row.acknowledgedBound = resourceMatches(dto, row, binding) && dto.idempotentReplay === false
-            && !report.created.some(other => other !== row && other.resourceId === row.resourceId);
+          row.acknowledgedBound = Boolean(exactWire(response, 'POST', path, tenantId, foundation)
+            && resourceMatches(dto, row, binding) && dto.idempotentReplay === false
+            && !report.created.some(other => other !== row && other.resourceId === row.resourceId));
           row.phase = row.acknowledgedBound ? 'acknowledged' : 'outcome-unknown';
           save(); // Never lose a returned ID because of the following exit/status checks.
           entry.httpStatus = httpStatus(response);
+          entry.wireReceipt = wireReceipt(response, 'POST', path, tenantId, foundation);
           requireResource(success(response, 'POST', path, tenantId, foundation, 201), row, binding);
           requireCondition(dto.idempotentReplay !== true && !report.created.some(other => other !== row && other.resourceId === row.resourceId),
             'A create must acknowledge a distinct new row, not an idempotent replay.');
@@ -244,6 +246,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
         runCase(slot + ':read', entry => {
           const path = rowPath(row), response = dispatch(call, foundation.actors[slot], 'GET', path, row.tenantId);
           entry.httpStatus = httpStatus(response);
+          entry.wireReceipt = wireReceipt(response, 'GET', path, row.tenantId, foundation);
           const dto = requireResource(success(response, 'GET', path, row.tenantId, foundation, 200), row, binding);
           requireCondition(dto.version === row.version, 'Owned read must preserve the acknowledged row version.');
           entry.resourceId = row.resourceId;
@@ -253,6 +256,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
       runCase('viewerA:read', entry => {
         const path = rowPath(viewerRow), response = dispatch(call, foundation.actors.viewerA, 'GET', path, viewerRow.tenantId);
         entry.httpStatus = httpStatus(response);
+        entry.wireReceipt = wireReceipt(response, 'GET', path, viewerRow.tenantId, foundation);
         const dto = requireResource(success(response, 'GET', path, viewerRow.tenantId, foundation, 200), viewerRow, binding);
         requireCondition(dto.version === viewerRow.version, 'Viewer read must preserve the exact owned version.'); entry.resourceId = viewerRow.resourceId;
       });
@@ -263,14 +267,18 @@ function runAuthorizationProbe(options, dependencies = {}) {
         viewerRow.attemptedUpdates.push({ nonce: attemptNonce, actorId: foundation.actors.viewerA.oid }); save();
         const response = dispatch(call, foundation.actors.viewerA, 'PUT', path, viewerRow.tenantId,
           { data: { ...binding.data, [binding.nonceField]: attemptNonce }, version: viewerRow.version });
-        entry.httpStatus = httpStatus(response); denial(response, 'PUT', path, viewerRow.tenantId, foundation);
+        entry.httpStatus = httpStatus(response);
+        entry.wireReceipt = wireReceipt(response, 'PUT', path, viewerRow.tenantId, foundation);
+        denial(response, 'PUT', path, viewerRow.tenantId, foundation);
       });
       for (const slot of Object.keys(qa.SLOTS)) {
         const other = qa.SLOTS[slot][0] === 'a' ? 'adminB' : 'adminA', row = report.created.find(item => item.creatorSlot === other);
         runCase(slot + ':sibling-denied', entry => {
           entry.resourceId = row.resourceId;
           const path = rowPath(row), response = dispatch(call, foundation.actors[slot], 'GET', path, row.tenantId);
-          entry.httpStatus = httpStatus(response); denial(response, 'GET', path, row.tenantId, foundation);
+          entry.httpStatus = httpStatus(response);
+          entry.wireReceipt = wireReceipt(response, 'GET', path, row.tenantId, foundation);
+          denial(response, 'GET', path, row.tenantId, foundation);
         });
       }
     } catch {
@@ -297,7 +305,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
             requireResource(current, row, binding, nonce);
             assertCandidate();
             const response = dispatch(call, profile, 'DELETE', path, row.tenantId);
-            cleanup.deleteReceipt = cleanupReceipt(response, 'DELETE', path, row.tenantId, foundation);
+            cleanup.deleteReceipt = wireReceipt(response, 'DELETE', path, row.tenantId, foundation);
             cleanup.deleteHttpStatus = httpStatus(response);
             const deleted = success(response, 'DELETE', path, row.tenantId, foundation, 200);
             requireCondition(deleted?.id === row.resourceId && deleted.deleted === true && typeof deleted.deleted_at === 'string' && deleted.deleted_at.length <= 64
@@ -307,7 +315,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
           // A failed deletion never stops the other rows or hides a subsequent absence observation.
           try {
             const response = dispatch(call, profile, 'GET', path, row.tenantId);
-            cleanup.absenceReceipt = cleanupReceipt(response, 'GET', path, row.tenantId, foundation);
+            cleanup.absenceReceipt = wireReceipt(response, 'GET', path, row.tenantId, foundation);
             cleanup.absenceHttpStatus = httpStatus(response);
             denial(response, 'GET', path, row.tenantId, foundation, [404]); cleanup.absenceVerified = true;
           } catch { cleanup.reason = 'Deletion or exact authenticated GET 404 absence proof is incomplete.'; }

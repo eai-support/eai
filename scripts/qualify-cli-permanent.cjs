@@ -84,7 +84,9 @@ function ownedReportValid(report, foundation, candidate, preflight) {
     && report.preflight.publicApiUrl === foundation.publicApiUrl && report.preflight.parentTenantId === foundation.workspaces.a.id
     && report.preflight.actorId === foundation.actors.adminA.oid && report.preflight.childDeleteVerified === true
     && report.parentTenantId === foundation.workspaces.a.id
-    && ![foundation.parentTenantId, foundation.workspaces.a.id, foundation.workspaces.b.id].includes(created.childTenantId)
+    && typeof created.childTenantId === 'string'
+    && ![foundation.parentTenantId, foundation.workspaces.a.id, foundation.workspaces.b.id]
+      .some(id => id.toLowerCase() === created.childTenantId.toLowerCase())
     && created.runtimeTenantId === created.childTenantId && created.entraClientId === rotation.clientId
     && rotation.tenantId === created.childTenantId && deletion.tenantId === created.childTenantId
     && rotation.appKey === created.appKey && deletion.appKey === created.appKey

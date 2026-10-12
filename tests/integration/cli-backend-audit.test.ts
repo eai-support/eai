@@ -123,10 +123,16 @@ describe('CLI backend audit evidence', () => {
       cases: qa.ROLE_CASES.map((name: string) => { const slot = name.split(':')[0], workspace = qa.SLOTS[slot][0];
         const creator = name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'adminB' : 'adminA')
           : slot === 'viewerA' ? 'adminA' : slot;
+        const scopeTenantId = tenantIds[name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'b' : 'a') : workspace as 'a' | 'b'];
+        const method = name.endsWith(':write') ? 'POST' : name === 'viewerA:write-denied' ? 'PUT' : 'GET';
+        const resourceId = created.find(row => row.creatorSlot === creator)!.resourceId;
+        const httpStatus = name.endsWith('-denied') ? 403 : name.endsWith(':write') ? 201 : 200;
         return { name, actorId: actors[slot].oid, profile: actors[slot].profile, status: 'passed',
           resourceId: created.find(row => row.creatorSlot === creator)!.resourceId,
-          scopeTenantId: tenantIds[name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'b' : 'a') : workspace as 'a' | 'b'],
-          httpStatus: name.endsWith('-denied') ? 403 : name.endsWith(':write') ? 201 : 200 }; }) };
+          scopeTenantId, httpStatus,
+          wireReceipt: { exitCode: name.endsWith('-denied') ? 1 : 0, ok: !name.endsWith('-denied'), status: httpStatus,
+            request: { method, path: `/v4/data/resources/${scopeTenantId}/${objectType}${method === 'POST' ? '' : '/' + resourceId}`,
+              tenantId: scopeTenantId, publicApiUrl } } }; }) };
     const deployments = qa.SERVICES.map((service: string) => service === 'CIAM' ? { service, environment: 'DEV', publicApiUrl, observedAt,
       source: 'oidc-discovery', sourceReference: `https://qa.ciamlogin.com/${id(40)}/v2.0/.well-known/openid-configuration`,
       identity: { tenantId: id(40), clientId: id(41), verified: true, issuer: `https://qa.ciamlogin.com/${id(40)}/v2.0`,
@@ -337,6 +343,7 @@ describe('CLI backend audit evidence', () => {
     for (const cleanup of input.evidence.authorizationEvidence.cleanup) {
       cleanup.deleteReceipt.request.publicApiUrl = publicApiUrl; cleanup.absenceReceipt.request.publicApiUrl = publicApiUrl;
     }
+    for (const roleCase of input.evidence.authorizationEvidence.cases) Object.assign(roleCase.wireReceipt.request, { publicApiUrl });
     for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
@@ -359,6 +366,7 @@ describe('CLI backend audit evidence', () => {
     for (const cleanup of input.evidence.authorizationEvidence.cleanup) {
       cleanup.deleteReceipt.request.publicApiUrl = publicApiUrl; cleanup.absenceReceipt.request.publicApiUrl = publicApiUrl;
     }
+    for (const roleCase of input.evidence.authorizationEvidence.cases) Object.assign(roleCase.wireReceipt.request, { publicApiUrl });
     for (const cycle of cycles.cycles) {
       for (const row of [cycle, cycle.stepEvidence, cycle.ownershipEvidence,
         ...cycle.stepEvidence.commands.flatMap(command => [command, ...command.assertions]),
@@ -500,6 +508,24 @@ describe('CLI backend audit evidence', () => {
     const report = buildAudit(input, decisions);
     expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
   });
+  test.each(['adminA:write', 'adminA:read', 'viewerA:read', 'viewerA:write-denied', 'builderA:sibling-denied'].flatMap(name =>
+    ['missing', 'exit', 'ok', 'status', 'method', 'path', 'tenant', 'gateway', 'array'].map(failure => ({ name, failure }))))
+    ('an imported role case $name $failure cannot qualify without its observed wire', ({ name, failure }) => {
+      const { input, decisions } = completeContractModel();
+      const row = input.evidence.authorizationEvidence.cases.find(row => row.name === name)! as Record<string, any>;
+      const wire = row.wireReceipt;
+      if (failure === 'missing') delete row.wireReceipt;
+      if (failure === 'exit') wire.exitCode = name.endsWith('-denied') ? 0 : 1;
+      if (failure === 'ok') wire.ok = !wire.ok;
+      if (failure === 'status') wire.status = 503;
+      if (failure === 'method') wire.request.method = 'PATCH';
+      if (failure === 'path') wire.request.path += '-foreign';
+      if (failure === 'tenant') wire.request.tenantId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'gateway') wire.request.publicApiUrl = 'https://foreign.example.invalid/public';
+      if (failure === 'array') row.wireReceipt = [];
+      const report = buildAudit(input, decisions);
+      expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+    });
   test.each(['deleteReceipt', 'absenceReceipt'].flatMap(receiptName =>
     ['exit', 'ok', 'status', 'method', 'path', 'tenant', 'gateway', 'array'].map(failure => ({ receiptName, failure }))))
     ('an imported cleanup $receiptName $failure cannot be hidden by passing summary flags', ({ receiptName, failure }) => {
@@ -726,6 +752,62 @@ describe('local dedicated tenant harness ownership', () => {
       publicApiUrl: 'http://localhost:8000', resources: [], resourceCleanupUnverified: false });
     return { path, id, owner: require('../../scripts/cli-local-child-ownership.cjs') };
   }
+  const parentUuid = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const childUuid = 'fedcbafe-dcba-4fed-8cba-fedcbafedcba';
+  function localCaseJournal(child = childUuid) {
+    const { path, id, owner } = resourceJournal();
+    qa.writePrivate(path, { schemaVersion: 'eai.cli-local-child-creation.v1', phase: 'verified',
+      reconciliationVerified: true, acknowledgmentBound: true, childTenantId: child, parentTenantId: parentUuid,
+      publicApiUrl: 'http://localhost:8000', profile: 'local', slug: 'e2e-local-case-control',
+      resources: [{ type: 'tenant-pg-note', id, tenantId: child, creationAcknowledged: true, creationExitCode: 0,
+        deleteAcknowledged: false, absenceVerified: false, attempts: [] }], resourceCleanupUnverified: false });
+    return { path, id, owner };
+  }
+  test('a local uppercase UUID alias of the parent cannot acknowledge a child', () => {
+    const { path, owner } = localCaseJournal();
+    owner.initialize(path, 'http://localhost:8000', 'local', parentUuid, 'e2e-local-case-control');
+    owner.acknowledge(path, { tenant: { id: parentUuid.toUpperCase(), slug: 'e2e-local-case-control', parentTenantId: parentUuid } }, 0);
+    expect(qa.readPrivate(path)).toMatchObject({ acknowledgmentBound: false, phase: 'unresolved' });
+  });
+  test('a local uppercase UUID alias from before inventory is not newly created', () => {
+    const { path, owner } = localCaseJournal();
+    owner.initialize(path, 'http://localhost:8000', 'local', parentUuid, 'e2e-local-case-control');
+    owner.acknowledge(path, { tenant: { id: childUuid.toUpperCase(), slug: 'e2e-local-case-control', parentTenantId: parentUuid } }, 0);
+    expect(() => owner.reconcile(path, { before: { tenants: [{ id: childUuid, slug: 'old-slug' }] },
+      after: { tenants: [{ id: childUuid.toUpperCase(), slug: 'e2e-local-case-control', parentId: parentUuid }] } })).toThrow('unresolved');
+    expect(qa.readPrivate(path).reconciliationVerified).toBe(false);
+  });
+  test.each(['cleanup-id', 'cleanup-attempted', 'resource-created', 'resource-cleanup-owned'])
+    ('a local parent UUID alias cannot authorize %s', mode => {
+      const { path, id, owner } = localCaseJournal(parentUuid.toUpperCase());
+      const action = () => {
+        if (mode === 'cleanup-id') owner.cleanupChildId(path, 'http://localhost:8000', 'local', parentUuid);
+        else if (mode === 'cleanup-attempted') owner.cleanupObservation(path, mode);
+        else if (mode === 'resource-created') {
+          const journal = qa.readPrivate(path); journal.resources = []; qa.writePrivate(path, journal);
+          owner.resourceObservation(path, mode, 'tenant-pg-note', id, { type: 'tenant-pg-note', id }, 0);
+        } else owner.resourceCleanupOwned(path, 'http://localhost:8000', 'local', parentUuid,
+          parentUuid.toUpperCase(), 'tenant-pg-note', id);
+      };
+      expect(action).toThrow();
+    });
+  test('a local uppercase UUID alias in parent inventory cannot certify child absence', () => {
+    const { path, owner } = localCaseJournal();
+    const journal = qa.readPrivate(path); journal.hardPurgeVerified = true; journal.cleanupOffset = 0; qa.writePrivate(path, journal);
+    expect(() => owner.cleanupObservation(path, 'cleanup-page', { ok: true, status: 200,
+      request: { method: 'GET', path: `/v4/platform/tenants/${parentUuid}/children?limit=100&offset=0`,
+        tenantId: parentUuid, publicApiUrl: 'http://localhost:8000' }, body: [{ id: childUuid.toUpperCase() }] }, 0)).toThrow('unverified');
+    expect(qa.readPrivate(path).absenceVerified).toBe(false);
+  });
+  test('a distinct local UUID child still acknowledges and reconciles to the exact parent', () => {
+    const { path, owner } = localCaseJournal();
+    owner.initialize(path, 'http://localhost:8000', 'local', parentUuid, 'e2e-local-case-control');
+    owner.acknowledge(path, { tenant: { id: childUuid, slug: 'e2e-local-case-control', parentTenantId: parentUuid } }, 0);
+    expect(owner.reconcile(path, { before: { tenants: [{ id: parentUuid }] },
+      after: { tenants: [{ id: childUuid, slug: 'e2e-local-case-control', parentId: parentUuid }] } }))
+      .toEqual({ tenant: { id: childUuid, slug: 'e2e-local-case-control', parentId: parentUuid } });
+    expect(owner.cleanupChildId(path, 'http://localhost:8000', 'local', parentUuid)).toBe(childUuid);
+  });
   test.each(['missing', 'wrong'])('a %s acknowledged resource type cannot enter the ownership journal', failure => {
     const { path, id, owner } = resourceJournal(), type = 'tenant-pg-note';
     const body = { id, ...(failure === 'wrong' ? { type: 'tenant-search-note' } : {}) };
@@ -788,7 +870,8 @@ if (lifecycle && args.includes('provision')) {
   const action = args[args.indexOf('resources')+1], type = args[args.indexOf('resources')+2];
   const mode = process.env.EAI_HARNESS_TEST_MODE;
   if (action === 'schema') console.log(JSON.stringify({objectTypes:['TenantPgNote','TenantDocumentNote','TenantBlobNote','TenantSearchNote'].map(name=>({name}))}));
-  else if (action === 'create') console.log(JSON.stringify({type,id:resourceId}));
+  else if (action === 'create') console.log(JSON.stringify({id:resourceId,
+    ...(mode === 'parent-resource-unowned-missing-type' ? {} : {type:mode === 'parent-resource-unowned-wrong-type' ? 'foreign-type' : type})}));
   else if (action === 'get' || action === 'update') console.log(JSON.stringify({data:{title:type === 'tenant-pg-note' ? 'pg note'+(action === 'update'?' updated':'') : type === 'tenant-document-note' ? 'doc note'+(action === 'update'?' updated':'') : type === 'tenant-blob-note' ? 'blob note'+(action === 'update'?' updated':'') : 'search note'+(action === 'update'?' updated':'')}}));
   else if (action === 'search') console.log(JSON.stringify({results:[{id:resourceId}]}));
   else if (action === 'delete') {
@@ -908,6 +991,15 @@ if (lifecycle && args.includes('provision')) {
     expect(journal.hardPurgeVerified).toBe(true); expect(journal.absenceVerified).toBe(true);
     expect(result.calls.some(args => args.includes('tenant') && args.includes('delete') && args.includes('--force-hard-purge'))).toBe(true);
     if (failure === 'main-delete-failed') expect(result.calls.filter(args => args.includes('resources') && args.includes('delete')).length).toBeGreaterThan(0);
+  });
+  test.each(['missing-type', 'wrong-type'])('an unaccepted %s resource acknowledgment never authorizes trap DELETE or absence GET', failure => {
+    const result = runFixture('parent-resource-unowned-' + failure);
+    expect(result.status).not.toBe(0); expect(result.stdout).not.toContain('lifecycle E2E passed');
+    expect(result.calls.filter(args => args.includes('resources') && args.includes('delete'))).toEqual([]);
+    expect(result.calls.filter(args => args.includes('publicapi') && args.some(value => value.startsWith('/v4/data/resources/')))).toEqual([]);
+    const journal = qa.readPrivate(result.journals[0]); expect(journal.resources).toEqual([]);
+    expect(journal.resourceCleanupUnverified).toBe(true);
+    expect(result.calls.some(args => args.includes('tenant') && args.includes('delete') && args.includes('--force-hard-purge'))).toBe(true);
   });
 
   test('standalone CLI and build subprocesses ignore ambient credentials and routing', () => {

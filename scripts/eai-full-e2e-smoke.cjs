@@ -8,6 +8,7 @@ const { tmpdir } = require('node:os');
 const { basename, dirname, join, relative, resolve, sep } = require('node:path');
 const ts = require('typescript');
 const { operationalEnvironment, installedGitExecution } = require('./cli-qa-operational-env.cjs');
+const qa = require('./cli-qa-foundation.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
@@ -1558,21 +1559,30 @@ function candidateEvidence(cliPath) {
   };
 }
 
+/** Bind an owned private run before fixtures or subprocesses; trust the OS/operator namespace. */
+function privateRunDirectory(outputRoot, prefix, defaultSystemTemporary) {
+  const parents = qa.privateDirectory(outputRoot, { allowSystemTemporaryRoot: defaultSystemTemporary });
+  qa.assertPrivateDirectory(parents);
+  const runRoot = mkdtempSync(join(outputRoot, prefix));
+  qa.assertPrivateDirectory(parents);
+  const runParents = qa.privateDirectory(runRoot);
+  qa.assertPrivateDirectory(parents); qa.assertPrivateDirectory(runParents);
+  return { runRoot, runParents };
+}
 /** Execute the built candidate's local surfaces without accessing a real token home. */
 function runLocalSmoke(cliPath, dependencies = {}) {
   const env = dependencies.env || process.env;
   const execute = dependencies.execute || runCommand;
   const log = dependencies.log || console.log;
   const outputRoot = resolve(env.EAI_E2E_OUTPUT_ROOT || tmpdir());
-  mkdirSync(outputRoot, { recursive: true, mode: 0o700 });
-  const runRoot = mkdtempSync(join(outputRoot, 'eai-local-qualification-'));
+  const { runRoot, runParents } = privateRunDirectory(outputRoot, 'eai-local-qualification-', !env.EAI_E2E_OUTPUT_ROOT);
   const projectRoot = join(runRoot, 'app'), isolatedHome = join(runRoot, 'isolated-home'), templateRoot = join(runRoot, 'template');
   const summaryPath = join(runRoot, 'summary.json');
   const command = cliInvocation(cliPath);
   const report = { schemaVersion: 'eai.cli-lifecycle-smoke.v2', qualification: 'local-fixtures',
     candidate: candidateEvidence(cliPath), status: 'running', coverageComplete: false, commands: [], assertions: [],
     created: {}, cleanup: [], leftovers: [], cleanupVerified: false, cleanupStatus: 'not-needed', localCleanupVerified: false };
-  const checkpoint = () => writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
+  const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 }); };
   // Override child-process HOME only. Never load, copy or change the operator's auth files.
   const childEnv = operationalEnvironment({ ...process.env, ...env });
   Object.assign(childEnv, { HOME: isolatedHome, USERPROFILE: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, '.config'),
@@ -1699,8 +1709,9 @@ function retainedFixtureContext(value, profile, actorId, parentTenantId) {
   const uuid = input => typeof input === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input);
   const slots = ['adminA', 'builderA', 'viewerA', 'adminB', 'builderB'];
   if (!uuid(value?.fixtureId) || !uuid(value.tenantIds?.a) || !uuid(value.tenantIds?.b)
-    || value.tenantIds.a === value.tenantIds.b || value.tenantIds.a !== parentTenantId
-    || !uuid(value.foundationParentTenantId) || [value.tenantIds.a, value.tenantIds.b].includes(value.foundationParentTenantId)
+    || typeof parentTenantId !== 'string' || value.tenantIds.a.toLowerCase() !== parentTenantId.toLowerCase()
+    || !uuid(value.foundationParentTenantId)
+    || new Set([value.tenantIds.a, value.tenantIds.b, value.foundationParentTenantId].map(id => id.toLowerCase())).size !== 3
     || !slots.every(slot => uuid(value.actors?.[slot]?.oid) && typeof value.actors[slot].profile === 'string'
       && /^[A-Za-z0-9_.-]{1,100}$/.test(value.actors[slot].profile))
     || new Set(slots.map(slot => value.actors[slot].oid.toLowerCase())).size !== slots.length
@@ -1728,8 +1739,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   const appName = ('eai-e2e-' + runId + '-' + nonce).toLowerCase();
   const command = cliInvocation(cliPath);
   const outputRoot = resolve(env.EAI_E2E_OUTPUT_ROOT || tmpdir());
-  mkdirSync(outputRoot, { recursive: true, mode: 0o700 });
-  const runRoot = mkdtempSync(join(outputRoot, 'eai-full-e2e-'));
+  const { runRoot, runParents } = privateRunDirectory(outputRoot, 'eai-full-e2e-', !env.EAI_E2E_OUTPUT_ROOT);
   const projectRoot = join(runRoot, 'app');
   const controlRoot = join(runRoot, 'control');
   mkdirSync(projectRoot, { mode: 0o700 });
@@ -1749,11 +1759,11 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   let appOwned = false;
   let runtimeOwned = false;
   let entraAttempted = false;
-  const reservedTenantIds = new Set([parentTenantId]);
+  const reservedTenantIds = new Set([parentTenantId.toLowerCase()]);
   const batchIds = [];
   const child = () => report.created.childTenantId;
   const runtime = () => report.created.runtimeTenantId;
-  const checkpoint = () => writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
+  const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 }); };
 
   function assertion(name, condition, message, blocked = false) {
     const last = report.commands.at(-1);
@@ -1868,7 +1878,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       const context = retainedFixtureContext(dependencies.expectedFixture, profile, env.EAI_E2E_TEST_USER_OID, parentTenantId);
       assertion('retained-fixture-context', Boolean(context), 'Retained fixture references must match the explicit administrator and parent.', true);
       Object.assign(report, context); checkpoint();
-      for (const id of [context.foundationParentTenantId, context.tenantIds.a, context.tenantIds.b]) reservedTenantIds.add(id);
+      for (const id of [context.foundationParentTenantId, context.tenantIds.a, context.tenantIds.b]) reservedTenantIds.add(id.toLowerCase());
     }
     for (const key of ['EAI_E2E_TEST_PROFILE', 'EAI_E2E_TEST_USERNAME', 'EAI_E2E_PARENT_TENANT_ID'])
       assertion('prerequisite-' + key, Boolean(env[key]?.trim()), 'Live mode requires ' + key + '.', true);
@@ -1981,7 +1991,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const tenant = payload.tenant;
         if (tenant?.reused === true) childAttempted = false;
         const immediateParent = tenant?.parentTenantId ?? tenant?.parentTenant?.id ?? tenant?.parentTenant;
-        if (tenant && typeof tenant.id === 'string' && !reservedTenantIds.has(tenant.id) && tenant.slug === appName
+        if (tenant && typeof tenant.id === 'string' && !reservedTenantIds.has(tenant.id.toLowerCase()) && tenant.slug === appName
           && immediateParent === parentTenantId && tenant.reused !== true) {
           report.created.childTenantId = tenant.id;
           report.created.childCreation = { tenantId: tenant.id, parentTenantId: immediateParent, slug: tenant.slug,

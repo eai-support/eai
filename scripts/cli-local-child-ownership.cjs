@@ -3,6 +3,9 @@
 const fs = require('node:fs');
 const qa = require('./cli-qa-foundation.cjs');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
+function sameTenantId(left, right) {
+  return typeof left === 'string' && typeof right === 'string' && left.toLowerCase() === right.toLowerCase();
+}
 function input() {
   const raw = fs.readFileSync(0, 'utf8');
   if (Buffer.byteLength(raw) > 1024 * 1024) throw new Error('Local creation response is too large.');
@@ -26,7 +29,7 @@ function acknowledge(path, body, exitCode) {
   const parents = [tenant?.parentTenantId, tenant?.parentTenant?.id || tenant?.parentTenant]
     .filter(value => value !== undefined && value !== null);
   journal.creationExitCode = exitCode;
-  journal.acknowledgmentBound = exitCode === 0 && typeof id === 'string' && UUID.test(id) && id !== journal.parentTenantId
+  journal.acknowledgmentBound = exitCode === 0 && typeof id === 'string' && UUID.test(id) && !sameTenantId(id, journal.parentTenantId)
     && tenant.slug === journal.slug && parents.length > 0 && parents.every(value => value === journal.parentTenantId)
     && markers.every(value => value.reused === false);
   journal.phase = journal.acknowledgmentBound ? 'acknowledged' : 'unresolved'; qa.writePrivate(path, journal);
@@ -34,10 +37,13 @@ function acknowledge(path, body, exitCode) {
 function reconcile(path, observations) {
   const journal = qa.readPrivate(path);
   const before = observations?.before?.tenants, after = observations?.after?.tenants;
-  const beforeIds = new Set(Array.isArray(before) ? before.map(tenant => tenant.id) : []);
-  const matches = Array.isArray(after) ? after.filter(tenant => tenant.slug === journal.slug && !beforeIds.has(tenant.id)) : [];
+  const beforeValid = Array.isArray(before) && before.every(tenant => typeof tenant?.id === 'string' && tenant.id.length > 0);
+  const beforeIds = new Set(beforeValid ? before.map(tenant => tenant.id.toLowerCase()) : []);
+  const matches = Array.isArray(after) ? after.filter(tenant => typeof tenant?.id === 'string'
+    && tenant.slug === journal.slug && !beforeIds.has(tenant.id.toLowerCase())) : [];
   const created = matches.length === 1 ? matches[0] : undefined;
-  const verified = journal.acknowledgmentBound && Array.isArray(before) && Array.isArray(after)
+  const verified = journal.acknowledgmentBound && beforeValid && Array.isArray(after)
+    && !sameTenantId(journal.childTenantId, journal.parentTenantId)
     && created?.id === journal.childTenantId && created.parentId === journal.parentTenantId;
   journal.phase = verified ? 'verified' : 'unresolved'; journal.reconciliationVerified = Boolean(verified); qa.writePrivate(path, journal);
   if (!verified) throw new Error('Local child acknowledgment or inventory ownership is unresolved.');
@@ -46,7 +52,8 @@ function reconcile(path, observations) {
 function cleanupObservation(path, mode, body, offset) {
   const journal = qa.readPrivate(path);
   const owned = journal.phase === 'verified' && journal.reconciliationVerified === true && journal.acknowledgmentBound === true
-    && UUID.test(journal.childTenantId || '') && journal.childTenantId !== journal.parentTenantId;
+    && typeof journal.childTenantId === 'string' && UUID.test(journal.childTenantId)
+    && !sameTenantId(journal.childTenantId, journal.parentTenantId);
   let valid = owned;
   if (mode === 'cleanup-attempted') {
     journal.cleanupAttempted = true; journal.cleanupVerified = false; journal.hardPurgeVerified = false;
@@ -64,7 +71,7 @@ function cleanupObservation(path, mode, body, offset) {
       && typeof body.request.publicApiUrl === 'string'
       && body.request.publicApiUrl.replace(/\/+$/, '') === journal.publicApiUrl.replace(/\/+$/, '')
       && Array.isArray(body.body) && body.body.length <= 100
-      && body.body.every(row => typeof row?.id === 'string' && row.id.length > 0 && row.id !== journal.childTenantId);
+      && body.body.every(row => typeof row?.id === 'string' && row.id.length > 0 && !sameTenantId(row.id, journal.childTenantId));
     journal.absenceVerified = Boolean(valid && body.body.length < 100);
     if (valid) journal.cleanupOffset += 100;
   } else if (mode === 'cleanup-child-finished' || mode === 'cleanup-finished') {
@@ -83,13 +90,15 @@ function cleanupObservation(path, mode, body, offset) {
 function resourceObservation(path, mode, type, id, body, exitCode) {
   const journal = qa.readPrivate(path);
   const owned = journal.phase === 'verified' && journal.reconciliationVerified === true && journal.acknowledgmentBound === true
-    && UUID.test(journal.childTenantId || '') && journal.childTenantId !== journal.parentTenantId;
+    && typeof journal.childTenantId === 'string' && UUID.test(journal.childTenantId)
+    && !sameTenantId(journal.childTenantId, journal.parentTenantId);
   const types = ['tenant-pg-note', 'tenant-document-note', 'tenant-blob-note', 'tenant-search-note'];
   let valid = owned && types.includes(type) && typeof id === 'string' && UUID.test(id) && Array.isArray(journal.resources);
   let row = valid && journal.resources.find(value => value.type === type && value.id === id);
   if (mode === 'resource-created') {
     valid = valid && !row && !journal.resources.some(value => value.type === type) && body?.id === id && body.type === type && exitCode === 0;
-    if (valid) journal.resources.push({ type, id, tenantId: journal.childTenantId, deleteAcknowledged: false, absenceVerified: false, attempts: [] });
+    if (valid) journal.resources.push({ type, id, tenantId: journal.childTenantId, creationAcknowledged: true,
+      creationExitCode: exitCode, deleteAcknowledged: false, absenceVerified: false, attempts: [] });
   } else {
     valid = valid && Boolean(row) && row.tenantId === journal.childTenantId && Array.isArray(row.attempts) && row.attempts.length < 16;
     if (mode === 'resource-delete') {
@@ -118,10 +127,30 @@ function cleanupChildId(path, publicApiUrl, profile, parentTenantId) {
   if (journal.schemaVersion !== 'eai.cli-local-child-creation.v1' || journal.phase !== 'verified'
     || journal.reconciliationVerified !== true || journal.acknowledgmentBound !== true
     || journal.publicApiUrl !== publicApiUrl || journal.profile !== profile || journal.parentTenantId !== parentTenantId
-    || !UUID.test(journal.childTenantId || '') || journal.childTenantId === parentTenantId) {
+    || typeof journal.childTenantId !== 'string' || !UUID.test(journal.childTenantId)
+    || sameTenantId(journal.childTenantId, parentTenantId)) {
     throw new Error('Local child ownership is unresolved.');
   }
   return journal.childTenantId;
+}
+/** Admit only a journal-accepted resource in the exact current child/profile/gateway before dispatch. */
+function resourceCleanupOwned(path, publicApiUrl, profile, parentTenantId, childTenantId, type, id) {
+  const journal = qa.readPrivate(path);
+  const types = ['tenant-pg-note', 'tenant-document-note', 'tenant-blob-note', 'tenant-search-note'];
+  const owned = journal.schemaVersion === 'eai.cli-local-child-creation.v1' && journal.phase === 'verified'
+    && journal.reconciliationVerified === true && journal.acknowledgmentBound === true
+    && journal.publicApiUrl === publicApiUrl && journal.profile === profile && journal.parentTenantId === parentTenantId
+    && typeof childTenantId === 'string' && UUID.test(childTenantId) && journal.childTenantId === childTenantId
+    && !sameTenantId(childTenantId, parentTenantId) && types.includes(type) && typeof id === 'string' && UUID.test(id);
+  const rows = owned && Array.isArray(journal.resources)
+    ? journal.resources.filter(row => row && row.type === type && row.id === id && row.tenantId === childTenantId) : [];
+  if (rows.length !== 1 || rows[0].creationAcknowledged !== true || rows[0].creationExitCode !== 0) {
+    journal.resourceCleanupUnverified = true; journal.resourcesCleanupVerified = false; journal.cleanupVerified = false;
+    if (!Array.isArray(journal.resourceCleanupRefusals)) journal.resourceCleanupRefusals = [];
+    if (journal.resourceCleanupRefusals.length < 16) journal.resourceCleanupRefusals.push({ operation: 'pre-dispatch',
+      type: types.includes(type) ? type : null, id: typeof id === 'string' && UUID.test(id) ? id : null, status: 'unverified' });
+    qa.writePrivate(path, journal); throw new Error('Resource cleanup ownership is unverified.');
+  }
 }
 function main(args) {
   const [mode, path, ...values] = args;
@@ -133,6 +162,7 @@ function main(args) {
     acknowledge(path, body, exitCode);
   } else if (mode === 'reconcile' && values.length === 0) process.stdout.write(JSON.stringify(reconcile(path, input())));
   else if (mode === 'cleanup-id' && values.length === 3) process.stdout.write(cleanupChildId(path, ...values));
+  else if (mode === 'resource-cleanup-owned' && values.length === 6) resourceCleanupOwned(path, ...values);
   else if (['cleanup-attempted', 'cleanup-child-finished', 'cleanup-finished'].includes(mode) && values.length === 0) cleanupObservation(path, mode);
   else if (mode === 'cleanup-purge' && values.length === 0) cleanupObservation(path, mode, input());
   else if (mode === 'cleanup-page' && values.length === 1) cleanupObservation(path, mode, input(), Number(values[0]));
@@ -148,4 +178,4 @@ if (require.main === module) {
   try { main(process.argv.slice(2)); }
   catch { console.error('Local child creation ownership is unresolved; inspect the retained private journal.'); process.exitCode = 1; }
 }
-module.exports = { initialize, acknowledge, reconcile, cleanupObservation, cleanupChildId, resourceObservation };
+module.exports = { initialize, acknowledge, reconcile, cleanupObservation, cleanupChildId, resourceObservation, resourceCleanupOwned };

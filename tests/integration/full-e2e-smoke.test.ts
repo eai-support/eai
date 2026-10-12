@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -32,6 +32,7 @@ type ControlledOptions = { cwd: string; allowFailure: boolean; timeout: number; 
   executedFile?: string; executedArgs?: string[] };
 type ControlledCall = { args: string[]; cwd: string };
 type HarnessOptions = {
+  parentTenantId?: string; actorId?: string; childTenantId?: string; expectedFixture?: Record<string, unknown>;
   runtime?: string;
   superAdmin?: boolean;
   parentRoles?: string[];
@@ -195,6 +196,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   });
 
   function harness(settings: HarnessOptions = {}) {
+    const parentTenantId = settings.parentTenantId || 'qa-parent', actorId = settings.actorId || 'qa-actor';
+    const createdTenantId = settings.childTenantId || 'run-child';
     const dir = realpathSync(mkdtempSync(join(tmpdir(), 'eai-smoke-controlled-')));
     fixtureRoots.push(dir);
     const preflight = join(dir, 'preflight.json');
@@ -202,16 +205,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     writeFileSync(preflight, JSON.stringify({
       schemaVersion: 'eai.cli-child-cleanup-preflight.v1',
       publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
-      parentTenantId: 'qa-parent', actorId: 'qa-actor', observedAt,
+      parentTenantId: parentTenantId, actorId: actorId, observedAt,
       publicApiGitSha: 'a'.repeat(40), adminApiGitSha: 'b'.repeat(40),
       childDeleteRoute: '/v4/platform/tenants/{parent}/children/{child}/delete', childDeleteVerified: true,
     }), { mode: 0o600 });
     const env: Record<string, string> = {
       EAI_E2E_TEST_PROFILE: 'dev-qa', EAI_E2E_TEST_USERNAME: 'qa@example.invalid',
-      EAI_E2E_PARENT_TENANT_ID: 'qa-parent', EAI_E2E_TEST_USER_OID: 'qa-actor',
+      EAI_E2E_PARENT_TENANT_ID: parentTenantId, EAI_E2E_TEST_USER_OID: actorId,
       EAI_E2E_CLEANUP_PREFLIGHT: preflight, EAI_E2E_OUTPUT_ROOT: dir, EAI_E2E_RUN_ID: '20261008123456',
     };
-    const runtime = settings.runtime || 'run-child';
+    const runtime = settings.runtime || createdTenantId;
     let appKey = '';
     let appExists = false;
     let appCreations = 0;
@@ -253,9 +256,9 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       }
       if (matches(args, ['whoami'])) return { status: 0,
         stdout: 'Logged in as qa@example.invalid\nPublicAPI  https://dev-api.au.myenterprise.ai/public\n', stderr: '' };
-      if (matches(args, ['tenant', 'list'])) return ok({ tenants: [{ id: 'qa-parent' }] });
+      if (matches(args, ['tenant', 'list'])) return ok({ tenants: [{ id: parentTenantId }] });
       if (matches(args, ['tenant', 'info'])) return ok({ id: args[2] });
-      if (matches(args, ['tenant', 'create'])) return ok({ tenant: { id: 'run-child', slug: flag(args, '--slug'), parentTenantId: 'qa-parent' } });
+      if (matches(args, ['tenant', 'create'])) return ok({ tenant: { id: createdTenantId, slug: flag(args, '--slug'), parentTenantId: parentTenantId } });
       if (matches(args, ['tenant', 'bootstrap-admin'])) return ok({ parentTenantId: flag(args, '--parent'),
         childTenantId: flag(args, '--child'), userOid: flag(args, '--user-oid'), usable: true,
         membershipCreated: false, adminAssigned: false, status: 'already-usable' });
@@ -267,11 +270,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       if (matches(args, ['app', 'create'])) {
         appKey = flag(args, '--key'); appExists = true; appCreations++;
         enrollmentId = appCreations === 1 ? 'run-enrollment' : 'recreated-enrollment';
-        return ok({ tenantId: 'run-child', appKey,
-          response: { tenantId: 'run-child', appKey, verticalKey: appKey,
-            app: { id: enrollmentId, tenantId: 'run-child', parentTenantId: 'run-child', verticalKey: appKey,
-              ...(appCreations === 1 || runtime !== 'run-child' ? { childTenantId: runtime } : {}) }, childTenant: { id: runtime },
-            created: { app: true, childTenant: runtime !== 'run-child' } } });
+        return ok({ tenantId: createdTenantId, appKey,
+          response: { tenantId: createdTenantId, appKey, verticalKey: appKey,
+            app: { id: enrollmentId, tenantId: createdTenantId, parentTenantId: createdTenantId, verticalKey: appKey,
+              ...(appCreations === 1 || runtime !== createdTenantId ? { childTenantId: runtime } : {}) }, childTenant: { id: runtime },
+            created: { app: true, childTenant: runtime !== createdTenantId } } });
       }
       if (matches(args, ['init'])) {
         mkdirSync(join(options.cwd, 'src', 'eai.config'), { recursive: true, mode: 0o700 });
@@ -285,21 +288,21 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         return ok({ initialized: true });
       }
       if (matches(args, ['app', 'list'])) return ok({ apps: appExists ? [{ id: enrollmentId, data: { verticalKey: appKey } }] : [] });
-      if (matches(args, ['app', 'provision'])) return ok({ tenantId: 'run-child', targetTenantId: runtime, appKey,
-        provisioning: { tenantId: 'run-child', appKey, jobId: 'app-prov-owned', status: 'ready', enrollment: { childTenantId: runtime } } });
+      if (matches(args, ['app', 'provision'])) return ok({ tenantId: createdTenantId, targetTenantId: runtime, appKey,
+        provisioning: { tenantId: createdTenantId, appKey, jobId: 'app-prov-owned', status: 'ready', enrollment: { childTenantId: runtime } } });
       if (matches(args, ['app', 'delete'])) {
         appExists = false;
-        return ok({ schemaVersion: 'eai.app-deletion-receipt.v1', tenantId: 'run-child', appKey, status: 'deleted',
-          operationId: 'run-app-deletion', verified: true, runtimeTenantIds: [...new Set(['run-child', runtime])] });
+        return ok({ schemaVersion: 'eai.app-deletion-receipt.v1', tenantId: createdTenantId, appKey, status: 'deleted',
+          operationId: 'run-app-deletion', verified: true, runtimeTenantIds: [...new Set([createdTenantId, runtime])] });
       }
       if (matches(args, ['user', 'list'])) {
         if (!existsSync(join(options.cwd, 'eai.config.ts')) && !existsSync(join(options.cwd, 'eai.runtime.json'))
           && !existsSync(join(options.cwd, 'src', 'eai.config', 'object-types.ts')))
           return { status: 1, stdout: JSON.stringify({ error: { code: 'E001' } }), stderr: '' };
         const fixture = flag(args, '--search') === 'fixture@example.invalid';
-        return ok({ data: fixture ? (flag(args, '--tenant') === 'qa-parent' || invited
+        return ok({ data: fixture ? (flag(args, '--tenant') === parentTenantId || invited
           ? [{ email: 'fixture@example.invalid', userId: 'existing-user' }] : [])
-          : [{ email: 'qa@example.invalid', userId: 'qa-actor' }] });
+          : [{ email: 'qa@example.invalid', userId: actorId }] });
       }
       if (matches(args, ['user', 'invite']) || matches(args, ['user', 'role', 'set'])) {
         if (flag(args, '--email') === 'not-an-email') return denied;
@@ -390,7 +393,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         return { status: 0, stdout: 'client_secret=' + privateSecret, stderr: '' };
       }
       if (matches(args, ['app', 'auth', 'status'])) return ok({ tenantAuthorizedApps: { status: 'authorized' } });
-      if (matches(args, ['deploy', 'app'])) return ok({ tenantId: 'run-child', targetTenantId: runtime, appKey,
+      if (matches(args, ['deploy', 'app'])) return ok({ tenantId: createdTenantId, targetTenantId: runtime, appKey,
         classification: 'succeeded', operationId: 'run-deploy', activeUrl: 'https://fixture.example.invalid', deploymentId: 'run-deployment' });
       if (matches(args, ['deploy', 'doctor'])) return ok({ status: 'pass' });
       if (matches(args, ['publicapi', 'post', '/v4/platform/capabilities/evaluate']))
@@ -400,20 +403,20 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
           appRegistrationDeleted: false, appRegistrationAlreadyAbsent: true, appRegistrationAbsenceVerified: true } });
       if (matches(args, ['publicapi', 'get'])) {
         const path = args[2];
-        if (path === '/v4/identity/me') return ok({ ok: true, status: 200, body: { oid: 'qa-actor', email: 'qa@example.invalid' } });
-        if (path.includes('/users/qa-actor/memberships')) return ok({ ok: true, status: 200, body: {
-          superAdmin: settings.superAdmin ?? false, tenants: [{ id: 'qa-parent', roles: settings.parentRoles ?? ['tenant-admin'], isActive: true }],
+        if (path === '/v4/identity/me') return ok({ ok: true, status: 200, body: { oid: actorId, email: 'qa@example.invalid' } });
+        if (path.includes('/users/' + actorId + '/memberships')) return ok({ ok: true, status: 200, body: {
+          superAdmin: settings.superAdmin ?? false, tenants: [{ id: parentTenantId, roles: settings.parentRoles ?? ['tenant-admin'], isActive: true }],
         } });
-        if (path.endsWith('/deletion-plan')) return ok({ ok: true, status: 200, body: { tenantId: 'run-child', appKey,
-          cleanupContract: 'eai.app-scoped-cleanup.v2', runtimeTenantIds: [...new Set(['run-child', runtime])] } });
+        if (path.endsWith('/deletion-plan')) return ok({ ok: true, status: 200, body: { tenantId: createdTenantId, appKey,
+          cleanupContract: 'eai.app-scoped-cleanup.v2', runtimeTenantIds: [...new Set([createdTenantId, runtime])] } });
         if (path.includes('/children?')) {
           const id = path.split('/').at(-2) || '';
-          const children = id === 'qa-parent' ? ['run-child'] : id === 'run-child' && runtime !== 'run-child' ? [runtime] : [];
+          const children = id === parentTenantId ? [createdTenantId] : id === createdTenantId && runtime !== createdTenantId ? [runtime] : [];
           return ok({ ok: true, status: 200, body: children.filter(child => !deletedTenants.has(child)).map(child => ({ id: child })) });
         }
         if (path.endsWith('/management')) {
           const id = path.split('/').at(-2) || '';
-          return deletedTenants.has(id) ? gone : ok({ ok: true, status: 200, body: { id, parentTenantId: id === runtime ? 'run-child' : 'qa-parent' } });
+          return deletedTenants.has(id) ? gone : ok({ ok: true, status: 200, body: { id, parentTenantId: id === runtime ? createdTenantId : parentTenantId } });
         }
         if (path.startsWith('/v4/data/resources/')) {
           const id = decodeURIComponent(path.split('/').at(-1) || '');
@@ -436,7 +439,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     return { env, calls, dir, preflight, resources,
       run: (overrides: Record<string, string> = {}): SmokeReport => runLiveSmoke(cliPath, {
         env: { ...env, ...overrides }, execute, log: () => {}, wait: () => {},
-        uuid: () => '12345678-1234-4234-8234-123456789abc',
+        uuid: () => '12345678-1234-4234-8234-123456789abc', expectedFixture: settings.expectedFixture,
       }) };
   }
 
@@ -447,6 +450,34 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     }
     throw new Error('Expected controlled lifecycle failure');
   }
+
+  function retainedContext() {
+    const tenantIds = { a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' };
+    const actors = Object.fromEntries(['adminA', 'builderA', 'viewerA', 'adminB', 'builderB'].map((slot, index) =>
+      [slot, { oid: `00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`, profile: index === 0 ? 'dev-qa' : 'qa-' + slot }]));
+    return { fixtureId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+      foundationParentTenantId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', tenantIds, actors };
+  }
+  test.each(['a', 'b', 'root'])('a mixed-case retained %s UUID acknowledgment never authorizes bootstrap or deletion', slot => {
+    const expectedFixture = retainedContext();
+    const reserved = slot === 'root' ? expectedFixture.foundationParentTenantId : expectedFixture.tenantIds[slot as 'a' | 'b'];
+    expect(reserved.toUpperCase()).not.toBe(reserved);
+    const controlled = harness({ parentTenantId: expectedFixture.tenantIds.a,
+      actorId: expectedFixture.actors.adminA.oid, childTenantId: reserved.toUpperCase(), expectedFixture });
+    const report = failure(controlled).report;
+    expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(true);
+    expect(controlled.calls.some(call => matches(call.args, ['app', 'create']) || matches(call.args, ['init'])
+      || matches(call.args, ['tenant', 'delete']))).toBe(false);
+    expect(report.created.childTenantId).toBe('');
+  });
+  test.each(['b', 'root'])('case-equivalent retained %s context cannot dispatch a new child', slot => {
+    const expectedFixture = retainedContext();
+    if (slot === 'b') expectedFixture.tenantIds.b = expectedFixture.tenantIds.a.toUpperCase();
+    else expectedFixture.foundationParentTenantId = expectedFixture.tenantIds.a.toUpperCase();
+    const controlled = harness({ parentTenantId: expectedFixture.tenantIds.a, actorId: expectedFixture.actors.adminA.oid, expectedFixture });
+    expect(failure(controlled).report.status).toBe('blocked');
+    expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
+  });
 
   test('Entra idempotent cleanup proves exact runtime deauthorization plus authoritative registration absence', () => {
     const controlled = harness();
@@ -488,6 +519,18 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       expect(error.report.status).toBe('blocked'); expect(controlled.calls).toEqual([]);
       expect(error.report.coverage.every(row => ['not-run', 'unsupported'].includes(row.status))).toBe(true);
     });
+  test.each(['link', 'linked-ancestor', 'writable-root', 'writable-ancestor'])('live output rejects %s before fixtures or CLI dispatch', kind => {
+    const controlled = harness(), outside = join(controlled.dir, 'outside'); mkdirSync(outside, { mode: 0o700 });
+    let output = outside;
+    if (kind === 'link' || kind === 'linked-ancestor') {
+      const linked = join(controlled.dir, 'linked'); symlinkSync(outside, linked, 'dir');
+      output = kind === 'link' ? linked : join(linked, 'nested');
+    } else if (kind === 'writable-root') chmodSync(outside, 0o770);
+    else { chmodSync(outside, 0o770); output = join(outside, 'nested'); mkdirSync(output, { mode: 0o700 }); }
+    expect(() => controlled.run({ EAI_E2E_OUTPUT_ROOT: output })).toThrow(/Private|private|ancestor/);
+    expect(controlled.calls).toEqual([]);
+    expect(readdirSync(kind === 'writable-ancestor' ? output : outside)).toEqual([]);
+  });
 
   test.each([{ EAI_E2E_CLEANUP: '0' }, { EAI_E2E_CREATE_CHILD_TENANT: '0' }, { EAI_E2E_DOCS: '1' },
     { EAI_E2E_INDEXES_APPLY: '1' },
@@ -955,6 +998,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
     const steps = require('../../scripts/cli-qa-cycle-steps.cjs');
     const projected = steps.cycleStepEvidence(report);
+    expect(report.commands.filter(row => row.command === 'eai app create').map(row => row.phase)).toEqual(['app', 'cleanup']);
+    expect(projected).not.toBeNull();
     for (const row of projected.commands) {
       expect(row.environment).toBe(report.environment); expect(row.publicApiUrl).toBe(report.expectedPublicApi);
       for (const assertion of row.assertions) expect(assertion).toMatchObject({ environment: report.environment,
@@ -1290,6 +1335,21 @@ describe('local CLI qualification', () => {
       return ok({ ok: true });
     };
   }
+  test.each(['link', 'linked-ancestor', 'writable-root', 'writable-ancestor'])('local output rejects %s before generated fixture writes', kind => {
+    const dir = outputRoot(), outside = join(dir, 'outside'); mkdirSync(outside, { mode: 0o700 }); let output = outside;
+    if (kind === 'link' || kind === 'linked-ancestor') {
+      const linked = join(dir, 'linked'); symlinkSync(outside, linked, 'dir'); output = kind === 'link' ? linked : join(linked, 'nested');
+    } else if (kind === 'writable-root') chmodSync(outside, 0o770);
+    else { chmodSync(outside, 0o770); output = join(outside, 'nested'); mkdirSync(output, { mode: 0o700 }); }
+    expect(() => runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: output }, execute: controlledExecute(), log: () => {} }))
+      .toThrow(/Private|private|ancestor/);
+    expect(readdirSync(kind === 'writable-ancestor' ? output : outside)).toEqual([]);
+  });
+  test('the normal default system temporary root creates a private local run', () => {
+    const report: LocalReport = runLocalSmoke(cliPath, { env: {}, execute: controlledExecute(), log: () => {} });
+    fixtureRoots.push(dirname(report.summaryPath)); expect(report.status).toBe('passed');
+    expect(statSync(dirname(report.summaryPath)).mode & 0o777).toBe(0o700);
+  });
 
   test('controlled local execution pins disposable identity state and never promotes negative-only login or local cleanup to backend proof', () => {
     const report: LocalReport = runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: outputRoot(),

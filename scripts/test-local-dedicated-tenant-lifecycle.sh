@@ -181,6 +181,8 @@ PY
 
 cleanup_resource() {
   local type="$1" id="$2" delete_json="" absence_json="" delete_exit=0 absence_exit=0 failed=0
+  if ! "$QA_NODE" "$OWNERSHIP_HELPER" resource-cleanup-owned "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" \
+    "$PARENT_TENANT_ID" "$TENANT_ID" "$type" "$id"; then return 1; fi
   if delete_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete "$type" "$id" \
     --tenant-id "$TENANT_ID" --force --format json)"; then delete_exit=0; else delete_exit=$?; fi
   printf '%s' "$delete_json" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-delete "$TENANT_CREATE_JOURNAL" "$type" "$id" "$delete_exit" || failed=1
