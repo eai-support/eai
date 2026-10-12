@@ -90,6 +90,10 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
   test('records exactly ten fresh proven lifecycles and releases the single-host lease', () => {
     const fixture = controlled(); const report = cycles.runQualification(fixture.options, fixture.dependencies);
     expect(report.status).toBe('passed'); expect(report.contractsVerified).toBe(true); expect(report.qualified).toBe(false); expect(report.cycles).toHaveLength(10);
+    expect(report.tenantIds).toEqual({ a: fixture.foundation.workspaces.a.id, b: fixture.foundation.workspaces.b.id });
+    expect(report.actors).toEqual(Object.fromEntries(Object.entries(fixture.foundation.actors).map(([slot, actor]) => {
+      const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];
+    })));
     expect(fixture.runs()).toBe(10); expect(existsSync(fixture.options.foundationPath + '.lease')).toBe(false);
     expect(qa.readPrivate(fixture.options.output).qualification).toBe('controlled-fixtures');
   });

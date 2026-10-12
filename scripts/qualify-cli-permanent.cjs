@@ -90,6 +90,8 @@ function runQualification(options, dependencies = {}) {
     for (const key of Object.keys(cycleEnv)) if (key.startsWith('EAI_E2E_')) delete cycleEnv[key];
     const report = { schemaVersion: 'eai.cli-permanent-cycles.v1', fixtureId: foundation.fixtureId,
       environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, candidate,
+      actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])),
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
       qualification: Object.keys(dependencies).some(key => !['env', 'log'].includes(key)) ? 'controlled-fixtures' : 'normal-cli-profiles',
       startedAt: new Date(now()).toISOString(), status: 'running', qualified: false, cycles: [] };
     const save = () => qa.writePrivate(output, report);

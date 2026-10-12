@@ -378,6 +378,18 @@ function cyclesVerified(evidence, candidate, context) {
     || !Array.isArray(cycle.cycles) || cycle.cycles.length !== 10) return false;
   return cycle.cycles.every(cycleReceiptVerified) && cycleIdentitiesFresh(cycle.cycles);
 }
+/** Separate valid receipts must still name the same retained foundation. */
+function foundationEvidenceBound(evidence) {
+  const authorization = evidence?.authorizationEvidence, cycles = evidence?.cycleEvidence;
+  if (!UUID.test(authorization?.fixtureId || '') || authorization.fixtureId !== cycles?.fixtureId) return false;
+  if (!['a', 'b'].every(slot => UUID.test(authorization.tenantIds?.[slot] || '')
+    && authorization.tenantIds[slot] === cycles.tenantIds?.[slot])) return false;
+  return Object.keys(SLOTS).every(slot => {
+    const actor = authorization.actors?.[slot], cycleActor = cycles.actors?.[slot];
+    return UUID.test(actor?.oid || '') && actor.oid === cycleActor?.oid
+      && typeof actor.profile === 'string' && actor.profile.length > 0 && actor.profile === cycleActor?.profile;
+  });
+}
 
 function main() {
   const args = process.argv.slice(2), argument = name => args[args.indexOf(name) + 1];
@@ -398,6 +410,6 @@ function main() {
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
 module.exports = { SCHEMA, SLOTS, SERVICES, ROLE_CASES, publicApi, initialize, validateFoundation, readPrivate, writePrivate, writePrivateText,
-  withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cycleIdentitiesFresh, cyclesVerified,
+  withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cycleIdentitiesFresh, cyclesVerified, foundationEvidenceBound,
   privateDirectory, assertPrivateDirectory,
   cliCaller, getBody, verifyActors, verifyIdentity, verifyWorkspaces };

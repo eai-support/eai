@@ -120,6 +120,40 @@ describe('CLI backend audit evidence', () => {
     expect(report.optionCoverageComplete).toBe(true); expect(report.aliasCoverageComplete).toBe(true); expect(report.backendCertified).toBe(true);
     expect(report.fullCapabilityQualified).toBe(false);
   });
+  function addCompleteCycleModel(input: ReturnType<typeof completeContractModel>['input']) {
+    // A synthetic consumer DTO model, never a live qualification observation.
+    const id = (number: number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
+    const authorization = input.evidence.authorizationEvidence;
+    const cycleEvidence = { schemaVersion: 'eai.cli-permanent-cycles.v1', qualified: true, qualification: 'normal-cli-profiles', status: 'passed',
+      fixtureId: authorization.fixtureId, environment: authorization.environment, publicApiUrl: authorization.publicApiUrl,
+      candidate: input.candidate, actors: structuredClone(authorization.actors), tenantIds: structuredClone(authorization.tenantIds),
+      completedAt: authorization.completedAt, cycles: Array.from({ length: 10 }, (_, index) => ({
+        clientId: id(100 + index), tenantId: id(200 + index), appKey: 'eai-e2e-fixture-' + index, status: 'passed',
+        enrollmentId: id(300 + index), recreatedEnrollmentId: id(400 + index), rotationDispatches: 1,
+        credentialChanged: true, firstInventoryEmpty: true, recreatedSameKey: true, cleanupVerified: true,
+        localProjectCleanupVerified: true, registrationAbsent: true, deletionVerified: true, appBuildVerified: true,
+      })) };
+    Object.assign(input.evidence, { cycleEvidence }); return cycleEvidence;
+  }
+  test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
+    const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
+    expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['fixtureId', 'workspace-a', 'workspace-b', 'actor-oid', 'actor-profile', 'missing-context'])('separately valid %s cycle evidence cannot borrow another role foundation', field => {
+    const { input, decisions } = completeContractModel(), cycle = addCompleteCycleModel(input);
+    if (field === 'fixtureId') cycle.fixtureId = '00000000-0000-4000-8000-000000000999';
+    if (field === 'workspace-a') cycle.tenantIds.a = '00000000-0000-4000-8000-000000000998';
+    if (field === 'workspace-b') cycle.tenantIds.b = '00000000-0000-4000-8000-000000000997';
+    if (field === 'actor-oid') cycle.actors.adminA.oid = '00000000-0000-4000-8000-000000000996';
+    if (field === 'actor-profile') cycle.actors.adminA.profile = 'other-normal-profile';
+    if (field === 'missing-context') Object.assign(cycle, { actors: undefined, tenantIds: undefined });
+    expect(qa.authorizationVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(true);
+    expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(true);
+    expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(false);
+  });
+  function authorizationUrl(input: ReturnType<typeof completeContractModel>['input']): string {
+    return input.evidence.authorizationEvidence.publicApiUrl;
+  }
 
   test.each(['build', 'dirty', 'untracked-status', 'body-only-pass', 'assertions', 'option', 'actor', 'role-age', 'not-ready', 'workflow-head'])('%s cannot certify a backend', reason => {
     const { input, decisions } = completeContractModel();

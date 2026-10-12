@@ -88,6 +88,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const parityComplete = qualification.deploymentParity(deployments, { ...context, now,
     requiredServices: [...qualification.SERVICES, ...(backendCommands.some(row => row.command === 'eai support') ? ['Website'] : [])] });
   const authorizationVerified = qualification.authorizationVerified(evidence, candidate, context);
+  const foundationEvidenceBound = qualification.foundationEvidenceBound(evidence);
   const candidateVerified = sourceBuildVerified(buildReceipt, candidate, { now });
   const aliasEvidence = commands.flatMap(row => row.aliases.map(alias => {
     const executions = (evidence?.aliases || []).filter(item => item.alias === alias && item.command === row.command);
@@ -111,11 +112,12 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     commands, deployments, summary, environment: context.environment, publicApiUrl: context.publicApiUrl,
     aliasEvidence, optionEvidence, aliasCoverageComplete, optionCoverageComplete, unsupportedVerified, candidateVerified,
     cleanupVerified: evidence?.cleanupVerified === true,
-    parityComplete,
+    parityComplete, foundationEvidenceBound,
     authorizationVerified,
     backendCertified,
     fullCapabilityQualified: backendCertified && commands.every(row => row.status === 'passed' || row.status === 'unsupported')
-      && aliasCoverageComplete && optionCoverageComplete && unsupportedVerified && qualification.cyclesVerified(evidence, candidate, context),
+      && aliasCoverageComplete && optionCoverageComplete && unsupportedVerified && qualification.cyclesVerified(evidence, candidate, context)
+      && foundationEvidenceBound,
     limitations: ['Help, mocked tests and HTTP health do not prove live backend capability.',
       'Omitted evidence remains not-run; attempted unfinished evidence remains incomplete and cannot pass.',
       'Role denial and cross-tenant isolation require separate authenticated role fixtures.',

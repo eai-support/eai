@@ -206,6 +206,11 @@ Absent evidence remains `not-run`; attempted unfinished observations remain
 or incomplete observations, and one success cannot erase another attempt for
 the same option. A passing selected run never means the full
 inventory is qualified.
+Full qualification also joins role and cycle evidence to the same `fixtureId`,
+both retained workspace IDs and all five actors' exact OIDs/profiles. The cycle
+controller records those references from its verified foundation. Independently
+valid receipts from another foundation, actor or workspace cannot be combined
+to certify this run; older cycle receipts without that context cannot qualify.
 Raw local/live smoke summaries prove selected command journeys and deliberately
 omit full per-command completion evidence. The audit preserves their observed
 success counts while classifying those partial observations as `incomplete`.
