@@ -523,8 +523,10 @@ contains only the catalog suggestion.
 Re-run `eai init --tool <tool>` to refresh instructions in projects created with older CLI versions.
 `eai gofer refresh` preserves their CLAUDE.md and AGENTS.md.
 
-An AI harness starts a report only when you ask for help ("get help" or
-`eai support`). It passes its bounded session summary (what you asked, the goal,
+An AI harness starts a report only when you ask for EAI Support ("get help" or
+`eai support`). Generic coding help, command failures, failed fixes and error hints do not authorize any eai support call, including allocation, preview, sending or decline.
+Write a short summary of the chat problem, attempts and results, without raw transcripts, environment values or file contents.
+It passes its bounded session summary (what you asked, the goal,
 steps, commands, errors, attempted fixes and project-relative files) through `--context-file`.
 For a file, run `eai support --create-context-file --format json`, then write the summary into the returned `contextFile` without replacing it. The CLI allocates it in `~/.eai/support/context/` (directory 0700, file 0600) and records its identity. Preview keeps it; an approved send deletes it. On a declined preview, run `eai support --decline --context-file <path> --format json` to clean it up without sending. Marked files older than 24 hours are removed on the next support run. Untracked files and files elsewhere are never deleted.
 

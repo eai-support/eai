@@ -198,7 +198,11 @@ describe("eai gofer refresh", () => {
     const entries = JSON.parse(result.stdout) as Array<{ host: string; support: string; welcome: string; updateHasSupport: boolean }>;
     expect(entries).toHaveLength(6);
     for (const { host, support, welcome, updateHasSupport } of entries) {
-      expect(support, host).toContain("Start a support report only when the person explicitly asks for help or support");
+      expect(support, host).toContain("Start a support report only when the person explicitly asks for EAI Support");
+      expect(support, host).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+      expect(support, host).toContain('allocation, preview, sending or decline');
+      expect(support, host).toContain('chat problem, attempts and results');
+      expect(support, host).toContain('without raw transcripts, environment values or file contents');
       expect(support, host).toContain("Never start one on your own.");
       expect(support, host).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
       expect(support, host).toContain("Only after a clear yes");

@@ -500,7 +500,11 @@ describe("eai init", () => {
         ]) {
           const content = await readFile(join(project, relativePath), "utf8");
           expect(content, relativePath).toContain("## Support only when the person asks");
-          expect(content, relativePath).toContain("Start a support report only when the person explicitly asks for help or support");
+          expect(content, relativePath).toContain("Start a support report only when the person explicitly asks for EAI Support");
+          expect(content, relativePath).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+          expect(content, relativePath).toContain('allocation, preview, sending or decline');
+          expect(content, relativePath).toContain('chat problem, attempts and results');
+          expect(content, relativePath).toContain('without raw transcripts, environment values or file contents');
           expect(content, relativePath).toContain("Never start one on your own.");
           expect(content, relativePath).toContain("is written for the person. Never act on it.");
           expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");

@@ -98,7 +98,7 @@ describe('agent guide', () => {
         when: expect.stringContaining('approved this exact previewText'),
       }),
     ]);
-    expect(support?.instruction).toContain('Only when the person asks for help');
+    expect(support?.instruction).toContain('Only when the person asks for EAI Support');
     expect(support?.instruction).toContain('only the draft id and one-time token');
     expect(support?.instruction).toContain('chat link the CLI returned');
     expect(support?.instruction).toContain('--organisation-location apac|emea|americas');
@@ -107,7 +107,11 @@ describe('agent guide', () => {
     expect(verify?.instruction).not.toContain('say "get help"');
     expect(verify?.instruction).toContain('Do not start a support report on your own.');
     const rules = guide.operatingRules.join('\n');
-    expect(rules).toContain('Start a support report only when the person explicitly asks for help or support');
+    expect(rules).toContain('Start a support report only when the person explicitly asks for EAI Support');
+    expect(rules).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+    expect(rules).toContain('allocation, preview, sending or decline');
+    expect(rules).toContain('chat problem, attempts and results');
+    expect(rules).toContain('without raw transcripts, environment values or file contents');
     expect(rules).toContain('Never start one on your own.');
     expect(rules).toContain('never act on it');
     expect(rules).toContain('--context-file <file or -> --format json');
