@@ -2183,6 +2183,11 @@ an existing local CLI profile; a missing profile fails before platform requests.
 `eai env push` excludes this selector, and `eai env pull` preserves its local
 value. Profile credentials and CLI tokens remain outside the app repository.
 
+Before authenticated commands run, a named profile's PublicAPI endpoint
+must agree with `BASE_URL_PUBLIC_API` and `ROUTING_BOOTSTRAP_PUBLIC_API_URL`
+where configured in the app-root `.env.local` or your shell. The shell bootstrap
+is checked even when the project has no `BASE_URL_PUBLIC_API`.
+
 `eai env pull` and `eai env push` use Azure CLI authorization independently of
 your platform workspace role. For an App Configuration identity with data-plane
 permissions, use Azure CLI's login mode for the command:
