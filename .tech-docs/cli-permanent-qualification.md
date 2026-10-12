@@ -239,6 +239,12 @@ package version and `dirty: false`.
 The audit's schema subprocess retains normal home, path, locale and network
 settings through the same operational allowlist as the qualification commands;
 it excludes ambient credentials, Node injection options and EAI routing context.
+Canonical command receipts cannot carry alias metadata; alias invocations remain
+in their separately bound `aliases` collection. Qualification requires explicit
+DEV AU or TEST AU/CA/EU scope with its canonical PublicAPI gateway in every
+deployment, role and cycle receipt. Matching missing or invalid scope is never
+proof. Malformed permission-case entries remain unqualified without discarding
+the command inventory.
 Absent evidence remains `not-run`; attempted unfinished observations remain
 `incomplete`. Command, alias and option failures take precedence over blocked
 or incomplete observations, and one success cannot erase another attempt for

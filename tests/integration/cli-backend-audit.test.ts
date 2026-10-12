@@ -163,6 +163,51 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
   });
+  test('an alias-scoped command receipt cannot replace the canonical invocation or its options', () => {
+    const { input, decisions } = completeContractModel(), row = input.evidence.commands[0];
+    Object.assign(row, { alias: 'eai tenant list' });
+    for (const assertion of row.assertions) assertion.alias = 'eai tenant list';
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).not.toBe('passed'); expect(report.optionCoverageComplete).toBe(false);
+    expect(report.aliasCoverageComplete).toBe(false); expect(report.backendCertified).toBe(false);
+    expect(report.evidenceValidation).toMatchObject({ valid: false, malformedAttempts: [{ collection: 'commands', index: 0 }] });
+  });
+  test('separate canonical and alias receipts retain independent successful spelling evidence', () => {
+    const { input, decisions } = completeContractModel(), report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe('passed'); expect(report.aliasCoverageComplete).toBe(true);
+    expect(report.optionCoverageComplete).toBe(true); expect(report.backendCertified).toBe(true);
+  });
+  test.each(['missing', 'empty', 'unsupported', 'gateway', 'region'])('matching %s scopes cannot certify deployment, role or cycle evidence', scope => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+    const environment = scope === 'missing' ? undefined : scope === 'empty' ? '' : scope === 'unsupported' ? 'PROD' : 'DEV';
+    const publicApiUrl = scope === 'missing' ? undefined : scope === 'empty' ? '' : scope === 'gateway'
+      ? 'https://example.invalid/public' : scope === 'region' ? 'https://dev-api.eu.myenterprise.ai/public' : input.evidence.expectedPublicApi;
+    Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
+    Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
+    const context = { environment, publicApiUrl, now: input.now };
+    expect(qa.deploymentParity(input.deployments, context)).toBe(false);
+    expect(qa.authorizationVerified(input.evidence, input.candidate, context)).toBe(false);
+    expect(qa.cyclesVerified(input.evidence, input.candidate, context)).toBe(false);
+    const report = buildAudit(input, decisions);
+    expect(report.parityComplete).toBe(false); expect(report.authorizationVerified).toBe(false);
+    expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['DEV:au', 'TEST:au', 'TEST:ca', 'TEST:eu'])('canonical %s scope preserves complete receipt qualification', value => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+    const [environment, region] = value.split(':'), publicApiUrl = qa.publicApi(environment, region);
+    Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
+    Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
+    expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each([null, 42, [], 'unexpected'].map(caseRow => ({ caseRow })))('a malformed permission case $caseRow remains unqualified without dropping the inventory', ({ caseRow }) => {
+    const { input, decisions } = completeContractModel(); Object.assign(input.evidence.authorizationEvidence.cases, { 0: caseRow });
+    const context = { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now };
+    expect(qa.authorizationVerified(input.evidence, input.candidate, context)).toBe(false);
+    const report = buildAudit(input, decisions); expect(report.commands[0].status).toBe('passed');
+    expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
   test.each(['dirty', 'version', 'runtimeFileCount'])('top-level evidence rejects a different candidate %s', field => {
     const { input, decisions } = completeContractModel();
     input.evidence.candidate = { ...input.evidence.candidate, [field]: field === 'dirty' ? true : field === 'version' ? '3.19.99' : 201 };
@@ -191,6 +236,13 @@ describe('CLI backend audit evidence', () => {
   test('unsupported completion accepts a complete execution-bound denial observation', () => {
     const { schema, evidence, decisions } = unsupportedModel();
     expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
+  });
+  test('an alias-scoped unsupported denial cannot qualify canonical unsupported completion', () => {
+    const { schema, evidence, decisions } = unsupportedModel(), row = evidence.unsupported[0];
+    Object.assign(row, { alias: 'eai unsupported alias' }); Object.assign(row.assertions[0], { alias: 'eai unsupported alias' });
+    const report = buildAudit({ schema, candidate, evidence }, decisions);
+    expect(report.unsupportedVerified).toBe(false);
+    expect(report.evidenceValidation).toMatchObject({ valid: false, malformedAttempts: [{ collection: 'unsupported', index: 0 }] });
   });
   test.each(['bare', 'execution', 'complete', 'missing-assertions', 'malformed-assertion', 'failed-assertion', 'foreign-command', 'foreign-execution'])
     ('unsupported completion rejects a %s denial claim', failure => {

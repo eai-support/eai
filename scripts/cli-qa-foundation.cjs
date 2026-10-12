@@ -318,7 +318,16 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
       authorizationVerified: false, explanation: 'Fresh identity/role baseline only; allow/deny and cross-tenant runtime probes still required.' };
   });
 }
-function deploymentParity(deployments, { environment, publicApiUrl, now = Date.now(), requiredServices = SERVICES }) {
+/** Qualification scope must use the same canonical non-production gateway as its foundation. */
+function qualificationScopeVerified(context) {
+  if (!context || typeof context !== 'object' || Array.isArray(context)) return false;
+  const { environment, publicApiUrl } = context;
+  return ['DEV', 'TEST'].includes(environment) && ['au', 'ca', 'eu'].some(region =>
+    (environment === 'TEST' || region === 'au') && publicApiUrl === publicApi(environment, region));
+}
+function deploymentParity(deployments, context = {}) {
+  if (!qualificationScopeVerified(context)) return false;
+  const { environment, publicApiUrl, now = Date.now(), requiredServices = SERVICES } = context;
   if (!Array.isArray(deployments) || !deployments.length || new Set(deployments.map(row => row.service)).size !== deployments.length) return false;
   return requiredServices.every(service => deployments.some(row => row.service === service)) && deployments.every(row => {
     const age = now - Date.parse(row.observedAt);
@@ -394,6 +403,7 @@ function authorizationReceiptsVerified(authorization, actors, tenants) {
   });
 }
 function authorizationVerified(evidence, candidate, context) {
+  if (!qualificationScopeVerified(context)) return false;
   const authorization = evidence?.authorizationEvidence;
   const age = (context.now ?? Date.now()) - Date.parse(authorization?.completedAt);
   if (!authorization || authorization.schemaVersion !== 'eai.cli-authorization-evidence.v1' || !UUID.test(authorization.fixtureId || '')
@@ -402,7 +412,11 @@ function authorizationVerified(evidence, candidate, context) {
     || !require('./cli-qa-build-receipt.cjs').candidateMatches(authorization.candidate, candidate)
     || !Number.isFinite(age) || age < -60000 || age > 3600000
     || !authorization.foundationVerified || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)
-    || authorization.cases.length !== ROLE_CASES.length) return false;
+    || authorization.cases.length !== ROLE_CASES.length
+    || !authorization.cases.every(row => row && typeof row === 'object' && !Array.isArray(row)
+      && ROLE_CASES.includes(row.name) && row.status === 'passed' && typeof row.profile === 'string'
+      && UUID.test(row.actorId || '') && UUID.test(row.scopeTenantId || '') && UUID.test(row.resourceId || '')
+      && Number.isSafeInteger(row.httpStatus))) return false;
   const actors = authorization.actors || {}, tenants = authorization.tenantIds || {};
   if (!UUID.test(tenants.a || '') || !UUID.test(tenants.b || '') || tenants.a === tenants.b) return false;
   if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string')
@@ -430,6 +444,7 @@ function cycleIdentitiesFresh(rows) {
     && new Set(rows.flatMap(row => [row.enrollmentId.toLowerCase(), row.recreatedEnrollmentId.toLowerCase()])).size === 20;
 }
 function cyclesVerified(evidence, candidate, context) {
+  if (!qualificationScopeVerified(context)) return false;
   const cycle = evidence?.cycleEvidence;
   const age = (context.now ?? Date.now()) - Date.parse(cycle?.completedAt);
   if (cycle?.schemaVersion !== 'eai.cli-permanent-cycles.v1' || cycle.qualified !== true || cycle.qualification !== 'normal-cli-profiles' || cycle.status !== 'passed'

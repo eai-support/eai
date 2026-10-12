@@ -100,6 +100,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     return values.filter((row, index) => {
       const valid = row && typeof row === 'object' && !Array.isArray(row) && knownCommands.has(row.command)
         && ['passed', 'failed', 'blocked', 'running', 'incomplete', 'not-run', 'skipped', 'unsupported'].includes(row.status)
+        && (name === 'aliases' || row.alias === undefined)
         && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
       if (!valid) malformedAttempts.push({ collection: name, index });
