@@ -7,7 +7,8 @@
 
 import { constants } from 'node:fs';
 import { chmod, lstat, open, writeFile, mkdir, unlink } from 'node:fs/promises';
-import { join } from 'node:path';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { PublicAPIMock } from './mock-server.js';
 import { resolveIsolatedTestHome } from './test-env.js';
 
@@ -21,6 +22,15 @@ export interface TestContext {
 const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+
+async function fixtureTokenFile(home: string, profile: string): Promise<string> {
+  const { getProfileTokensFile } = await import('../../src/lib/profile.js');
+  const suffix = relative(homedir(), getProfileTokensFile(profile));
+  if (isAbsolute(suffix) || suffix === '..' || suffix.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) {
+    throw new Error('Auth fixture token path must remain inside its disposable home.');
+  }
+  return join(home, suffix);
+}
 
 async function resolveTestHome(ctx: TestContext): Promise<string> {
   const home = await resolveIsolatedTestHome(ctx.env.HOME || ctx.env.USERPROFILE || ctx.workingDir);
@@ -36,8 +46,8 @@ async function resolveTestHome(ctx: TestContext): Promise<string> {
   }
   const { getActiveProfile } = await import('../../src/lib/profile.js');
   const profile = getActiveProfile();
-  const leaves = [join(home, '.eai', 'tokens.json')];
-  if (profile !== 'default') leaves.push(join(home, '.eai', 'tokens', `${profile}.json`));
+  const leaves = [await fixtureTokenFile(home, 'default')];
+  if (profile !== 'default') leaves.push(await fixtureTokenFile(home, profile));
   for (const path of leaves) {
     try {
       const info = await lstat(path);
@@ -94,8 +104,10 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
   ctx.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
   // Also write tokens file to home directory for full integration
   const homedir = await resolveTestHome(ctx);
+  const { getActiveProfile } = await import('../../src/lib/profile.js');
+  const tokensFile = await fixtureTokenFile(homedir, getActiveProfile());
   await clearIsolatedTokens(homedir);
-  const tokensDir = join(homedir, '.eai');
+  const tokensDir = dirname(tokensFile);
   await mkdir(tokensDir, { recursive: true, mode: 0o700 });
   await chmod(tokensDir, 0o700);
 
@@ -125,7 +137,7 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 
   // Cleanup removed the old fixture leaf. Exclusive creation refuses a new
   // occupant, including a link introduced between validation and publication.
-  const file = await open(join(tokensDir, 'tokens.json'),
+  const file = await open(tokensFile,
     constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
   try { await file.writeFile(encryptedData, 'utf8'); await file.chmod(0o600); }
   finally { await file.close(); }

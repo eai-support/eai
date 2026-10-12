@@ -56,6 +56,23 @@ describe('test token home isolation', () => {
     expect(process.env.HOME).toBe(ambient); expect(process.env.USERPROFILE).toBe(ambient);
   });
 
+  test.each(['default', 'dev'])('logged-in arrangement writes the selected %s fixture namespace', async selected => {
+    setActiveProfile(selected);
+    const sentinel = await readFile(join(ambient, '.eai', 'tokens.json'));
+    await userIsLoggedIn(context, { email: 'selected-fixture@example.test' });
+    process.env.HOME = environment.dir; process.env.USERPROFILE = environment.dir;
+    try {
+      expect((await auth.loadTokens())?.upn).toBe('selected-fixture@example.test');
+      const target = selected === 'default' ? join(environment.dir, '.eai', 'tokens.json')
+        : join(environment.dir, '.eai', 'tokens', `${selected}.json`);
+      expect((await lstat(target)).isFile()).toBe(true);
+      if (selected !== 'default') await expect(lstat(join(environment.dir, '.eai', 'tokens.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { process.env.HOME = ambient; process.env.USERPROFILE = ambient; }
+    await cleanupTestTokens(context);
+    expect(getActiveProfile()).toBe(selected);
+    expect(await readFile(join(ambient, '.eai', 'tokens.json'))).toEqual(sentinel);
+  });
+
   test('missing context after failed setup never falls back to ambient home', async () => {
     const sentinel = await readFile(join(ambient, '.eai', 'tokens.json'));
     const clear = vi.spyOn(auth, 'clearTokens');

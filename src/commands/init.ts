@@ -59,7 +59,7 @@ import {
   type CapabilityDecision,
   type ParsedApiError,
 } from "../lib/api.js";
-import { entraScopeEnvPatch, findProjectRoot, patchEnvFile } from "../lib/config.js";
+import { entraScopeEnvPatch, findProjectRoot, patchEnvContent } from "../lib/config.js";
 import { pullCloudEnvValues } from "../lib/cloud-env.js";
 import { findGuidance } from "../lib/error-guidance/match.js";
 import { formatGuidanceText } from "../lib/error-guidance/render.js";
@@ -1605,7 +1605,7 @@ async function provisionEntraInline(
     const scopeEnv = entraScopeEnvPatch(result.scopes);
 
     if (result.clientSecret) {
-      await patchEnvFile(targetDir, {
+      await patchInitEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         ENTRA_CLIENT_SECRET: result.clientSecret,
         AUTH_URL: authEndpointUrl,
@@ -1623,7 +1623,7 @@ async function provisionEntraInline(
     }
 
     if (result.existing) {
-      await patchEnvFile(targetDir, {
+      await patchInitEnvFile(targetDir, {
         ENTRA_CLIENT_ID: result.clientId,
         AUTH_URL: authEndpointUrl,
         NEXTAUTH_URL: authSiteUrl,
@@ -1674,7 +1674,7 @@ async function hydrateCloudSecret(
     if (!secret) {
       return false;
     }
-    await patchEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
+    await patchInitEnvFile(targetDir, { ENTRA_CLIENT_SECRET: secret });
     return true;
   } catch {
     return false;
@@ -2213,8 +2213,13 @@ async function hydrateEnvFromLoginContext(
   }
 
   if (Object.keys(patches).length > 0) {
-    await patchEnvFile(targetDir, patches);
+    await patchInitEnvFile(targetDir, patches);
   }
+}
+
+/** Apply every init hydration/provisioning patch through the protected credential writer. */
+async function patchInitEnvFile(targetDir: string, patches: Record<string, string>): Promise<void> {
+  await updateInitProjectFile(targetDir, ".env.local", content => Buffer.from(patchEnvContent(content.toString("utf8"), patches)), 0o600);
 }
 
 async function ensureLocalEnvIgnored(targetDir: string): Promise<void> {

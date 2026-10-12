@@ -141,6 +141,8 @@ within 1 MiB. The ignore file's content and permissions are preserved when the
 rule is appended atomically. The generated `.env.local` replaces an ordinary
 scaffold file atomically with private permissions; linked credential destinations
 are refused, including when initializing in the current directory.
+All subsequent init hydration and provisioning patches use that same protected
+writer, including client secrets and cloud-secret hydration.
 Temporary `.env.local.eai-*.tmp` credential files are ignored as well, so an
 interrupted initialization cannot leave them eligible for ordinary Git staging.
 Init file writers use an exclusive lock with no stale-lock takeover. New leaves

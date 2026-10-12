@@ -672,6 +672,9 @@ Inspect and reconcile workspace storage.
 Schema sync refuses malformed result records before reporting success. Optional
 `actions` must be an array of strings when present; omitted or empty actions are
 supported in both JSON and text output.
+Supported producer states are `planned`, `provisioned`, `skipped`, `applied`, and
+`already_applied`. A `failed` result exits nonzero, and any unknown state is
+refused rather than reported as a successful schema sync.
 
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
