@@ -248,6 +248,7 @@ describe('eai deploy app --target eai', () => {
       if (url.includes(`/cli-managed-source/operations/${sourceOperationId}?`)) return jsonResponse({
         ...completedManagedPublication(),
         repository: { owner: 'eai-generated-apps', name: 'app', id: 123, nodeId: 'R_fixture' },
+        review: { mergedCommitSha: 'a'.repeat(40) },
       });
       if (url.includes(`/managed-deployments/operations/${sourceOperationId}?`)) return jsonResponse(completeUnifiedOperation({
         operationId: sourceOperationId, sourceMode: 'eai-cli-generated', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
@@ -276,6 +277,7 @@ describe('eai deploy app --target eai', () => {
       if (url.includes(`/cli-managed-source/operations/${sourceOperationId}?`)) return jsonResponse({
         ...completedManagedPublication(), githubLinkSessionId: 'github-link-123',
         repository: { owner: 'eai-generated-apps', name: 'app', id: 123, nodeId: 'R_fixture' },
+        review: { mergedCommitSha: 'a'.repeat(40) },
       });
       if (url.includes(`/managed-deployments/operations/${sourceOperationId}?`)) return jsonResponse(completeUnifiedOperation({
         operationId: sourceOperationId, sourceMode: 'source-unknown', repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,

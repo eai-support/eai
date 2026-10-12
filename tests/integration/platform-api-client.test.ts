@@ -1538,6 +1538,23 @@ describe('PlatformAPIClient', () => {
     )
   })
 
+  test('binds a parent app provisioning job to the runtime child and reads its exact job', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}', { status: 200 }))
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+
+    await client.createAppProvisioningJob('planning-portal', 'tenant-child')
+    await client.getAppProvisioningJob('planning-portal', 'job-123', 'tenant-child')
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1,
+      'https://example.test/v4/platform/tenants/tenant-parent/apps/planning-portal/provisioning-jobs',
+      expect.objectContaining({ method: 'POST', body: JSON.stringify({ targetTenantId: 'tenant-child' }) }),
+    )
+    expect(fetchMock).toHaveBeenNthCalledWith(2,
+      'https://example.test/v4/platform/tenants/tenant-parent/apps/planning-portal/provisioning-jobs/job-123?targetTenantId=tenant-child',
+      expect.objectContaining({ method: 'GET', signal: expect.any(AbortSignal) }),
+    )
+  })
+
   test('posts capability evaluation requests to the public capability router', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
