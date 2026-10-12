@@ -8,6 +8,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 const require = createRequire(import.meta.url);
 const { buildAudit, markdown } = require('../../scripts/audit-cli-backend.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
+const canonicalExecutionModel = { ...require('../../scripts/cli-qa-build-receipt.cjs').canonicalBuildExecution(),
+  exitCode: 0, executablesUnchanged: true };
 const schema = { command: 'eai', subcommands: [
   { command: 'verify', hasAction: true, subcommands: [{ command: 'calls' }] },
   { command: 'workspace', aliases: ['tenant'], subcommands: [{ command: 'list' }] },
@@ -121,7 +123,7 @@ describe('CLI backend audit evidence', () => {
     const buildReceipt = { schemaVersion: 'eai.cli-source-build.v1', status: 'passed', qualification: 'normal-build', qualified: true,
       candidate, sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
       sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
-      exitCode: 0, nodeVersion: 'v24.12.0', observedAt };
+      exitCode: 0, nodeVersion: process.version, observedAt, canonicalExecution: canonicalExecutionModel };
     const schema = { command: 'eai', subcommands: [{ command: 'workspace', aliases: ['tenant'],
       subcommands: [{ command: 'list', options: [{ name: '--format' }, { name: '--workspace,' }] }] }] };
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
@@ -516,7 +518,7 @@ if (args.includes('list')) {
   console.log(JSON.stringify({ok:true,status:200,request:{method:'GET',path,tenantId,publicApiUrl:'http://localhost:8000'},body}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `);
-    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
+    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ "\${EAI_HARNESS_TEST_MODE:-}" == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'npm'), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o700 });
     writeFileSync(join(bin, 'docker'), '#!/usr/bin/env bash\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n', { mode: 0o700 });
     const result = spawnSync('bash', [resolve('scripts/test-local-dedicated-tenant-lifecycle.sh')], {
@@ -565,6 +567,17 @@ if (args.includes('list')) {
       childTenantId: '00000000-0000-4000-8000-000000000099', cleanupVerified: true, hardPurgeVerified: true, absenceVerified: true });
     expect(result.calls.some(args => args.includes('/v4/platform/tenants/parent-fixture/children?limit=100&offset=0'))).toBe(true);
     expect(result.stdout).not.toContain('lifecycle E2E passed');
+  });
+  test('an acknowledged reconciled child is purged from its journal when tenant ID parsing fails', () => {
+    const result = runFixture('parent-parse-failed');
+    expect(result.status).not.toBe(0); expect(result.calls.some(args => args.includes('provision'))).toBe(false);
+    expect(result.calls.filter(args => args.includes('delete'))).toEqual([
+      [resolve('dist/index.js'), '--profile', 'local', 'tenant', 'delete', '00000000-0000-4000-8000-000000000099',
+        '--parent', 'parent-fixture', '--force', '--force-hard-purge', '--format', 'json'],
+    ]);
+    expect(result.journals).toHaveLength(1);
+    expect(JSON.parse(readFileSync(result.journals[0], 'utf8'))).toMatchObject({ phase: 'verified',
+      reconciliationVerified: true, acknowledgmentBound: true, cleanupVerified: true, hardPurgeVerified: true, absenceVerified: true });
   });
   test.each(['parent-delete-failed', 'parent-delete-soft', 'parent-delete-wrong-id', 'parent-still-present',
     'parent-inventory-malformed', 'parent-inventory-overflow'])('%s cannot certify standalone child cleanup', mode => {

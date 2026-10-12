@@ -6,6 +6,8 @@ import { afterEach, describe, expect, test } from 'vitest';
 const require = createRequire(import.meta.url);
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 const cycles = require('../../scripts/qualify-cli-permanent.cjs');
+const canonicalExecutionModel = { ...require('../../scripts/cli-qa-build-receipt.cjs').canonicalBuildExecution(),
+  exitCode: 0, executablesUnchanged: true };
 const uuid = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
 const candidate = { gitSha: 'a'.repeat(40), binarySha256: 'b'.repeat(64), runtimeSha256: 'c'.repeat(64),
   runtimeFileCount: 200, version: '3.19.2', dirty: false };
@@ -45,7 +47,8 @@ function controlled() {
   const buildReceipt = { schemaVersion: 'eai.cli-source-build.v1', status: 'passed', qualification: 'normal-build', qualified: true,
     sourceSha: candidate.gitSha, sourceSha256: 'f'.repeat(64), sourceFileCount: 1000,
     sourceFingerprintVersion: 'eai.cli-tracked-source-sha256.v1', sourceUnchanged: true, command: ['npm', 'run', 'build'],
-    exitCode: 0, nodeVersion: 'v24.12.0', observedAt: new Date(now).toISOString(), candidate };
+    exitCode: 0, nodeVersion: process.version, observedAt: new Date(now).toISOString(), candidate,
+    canonicalExecution: canonicalExecutionModel };
   qa.writePrivate(options.buildReceiptPath, buildReceipt);
   const execute = (_cli: string, args: string[]) => {
     const profile = args[1], command = args.slice(2), scope = command[command.indexOf('--tenant-id') + 1];
@@ -87,6 +90,17 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
+  test('controller cleanup failure cannot retain a runner local-cleanup success claim', () => {
+    const fixture = controlled();
+    const runLive = (_cli: string, options: { env: Record<string, string> }) => {
+      writeFileSync(join(options.env.EAI_E2E_OUTPUT_ROOT, 'unexpected-output'), 'synthetic-control');
+      return { ...fixture.liveReport(), localProjectCleanupVerified: true };
+    };
+    expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow('qualification stopped');
+    const report = qa.readPrivate(fixture.options.output);
+    expect(report.status).toBe('failed'); expect(report.qualified).toBe(false); expect(report.cycles).toHaveLength(1);
+    expect(report.cycles[0].localProjectCleanupVerified).toBe(false);
+  });
   test.each(['dirty', 'version', 'runtimeFileCount', 'missing-count'])('a runner with mismatched %s cannot contribute a successful cycle', field => {
     const fixture = controlled();
     const runLive = () => { const report = fixture.liveReport(); report.candidate = { ...candidate,

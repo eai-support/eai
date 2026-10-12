@@ -43,6 +43,13 @@ settings. Ambient GitHub, Azure, npm and headless credential variables, injected
 Node options and operator lifecycle overrides are excluded.
 The canonical build and its source Git reads use the same restricted operational
 environment. npm receives fresh empty private user/global configuration files.
+Normal builds execute `npm-cli.js` directly through the active Node installation,
+without selecting npm from `PATH`. The required `canonicalExecution` record
+binds the executable paths and hashes, exact invocation, successful exit and
+unchanged executables. Older receipts without this record cannot qualify; rerun
+the canonical builder. The Node/npm installation, committed scripts and operator
+filesystem remain trusted; this receipt is not a filesystem sandbox or signed
+server attestation.
 A project `.npmrc` may contain only `save-exact=true` and `package-lock=true`
 installation pins, blank lines and comments in a bounded regular file. Unknown,
 credential or Node-option settings block qualification; no operator override is
@@ -203,6 +210,10 @@ All ten registration IDs,
 child IDs and app keys must be distinct, and all twenty original/recreated
 enrollment IDs must be unique. Fixture-controlled cycles can pass
 their structural assertions but remain `qualified: false`.
+Candidate Git reads use the shared operational environment, excluding ambient
+Git directory, worktree and index overrides. Controller local-project cleanup
+starts unverified and passes only after its own removal and absence checks; a
+runner's cleanup flag cannot survive a controller cleanup failure.
 
 The controller requires a successful consultant build and removes ambient
 optional lane flags; deployment, chat and provider journeys need separate
@@ -283,6 +294,10 @@ The local Docker lifecycle harness also requires its single newly visible
 matching-slug child to carry the exact requested `parentId` before selection,
 storage provisioning or cleanup. Missing or mismatched parent metadata fails
 without adopting that workspace.
+If ID parsing fails after acknowledgment and reconciliation, the EXIT trap
+recovers only a verified journal child matching the current gateway, profile and
+parent. Unresolved journals require manual reconciliation and never authorize
+guessed deletion.
 It preserves a minimal private creation journal outside the disposable app,
 including the exact returned child ID and creation exit status before inventory
 reconciliation. Missing or ambiguous inventory leaves that journal unresolved

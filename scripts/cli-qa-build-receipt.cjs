@@ -15,6 +15,7 @@ const HASH = /^[a-f0-9]{64}$/;
 const VERSION = /^[0-9]+\.[0-9]+\.[0-9]+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?$/;
 const NODE = /^v24\.[0-9]+\.[0-9]+$/;
 const CANDIDATE_FIELDS = ['gitSha', 'binarySha256', 'runtimeSha256', 'runtimeFileCount', 'version', 'dirty'];
+const CANONICAL_EXECUTION = 'eai.cli-canonical-npm-execution.v1';
 
 function requireCondition(condition, code) {
   if (!condition) { const error = new Error('CLI source build receipt failed: ' + code + '.'); error.code = code; throw error; }
@@ -103,11 +104,35 @@ function candidateMatches(left, right) {
 function sameSource(left, right) {
   return left.sourceSha === right.sourceSha && left.sourceSha256 === right.sourceSha256 && left.sourceFileCount === right.sourceFileCount;
 }
+/** Select npm beside the active Node installation, independently of PATH. Trusted installation/scripts are not sandboxed. */
+function canonicalBuildExecution() {
+  const nodePath = fs.realpathSync(process.execPath);
+  const possible = [resolve(dirname(nodePath), '../lib/node_modules/npm/bin/npm-cli.js'),
+    join(dirname(nodePath), 'node_modules/npm/bin/npm-cli.js')];
+  const selected = possible.find(path => fs.existsSync(path));
+  requireCondition(selected, 'CANONICAL_NPM_UNVERIFIED');
+  const npmCliPath = fs.realpathSync(selected);
+  requireCondition(fs.statSync(nodePath).isFile() && fs.statSync(npmCliPath).isFile(), 'CANONICAL_NPM_UNVERIFIED');
+  return { schemaVersion: CANONICAL_EXECUTION, selection: 'node-installation', nodePath, npmCliPath,
+    nodeVersion: process.version, nodeSha256: createHash('sha256').update(fs.readFileSync(nodePath)).digest('hex'),
+    npmCliSha256: createHash('sha256').update(fs.readFileSync(npmCliPath)).digest('hex'),
+    argv: [nodePath, npmCliPath, 'run', 'build'] };
+}
+function canonicalExecutionVerified(record, nodeVersion) {
+  return record && typeof record === 'object' && !Array.isArray(record)
+    && record.schemaVersion === CANONICAL_EXECUTION && record.selection === 'node-installation'
+    && record.nodeVersion === nodeVersion && record.executablesUnchanged === true && record.exitCode === 0
+    && ['nodePath', 'npmCliPath'].every(field => typeof record[field] === 'string' && record[field].length <= 4096 && isAbsolute(record[field]))
+    && ['nodeSha256', 'npmCliSha256'].every(field => typeof record[field] === 'string' && HASH.test(record[field]))
+    && Array.isArray(record.argv) && record.argv.length === 4
+    && [record.nodePath, record.npmCliPath, 'run', 'build'].every((value, index) => record.argv[index] === value);
+}
 function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
   if (!receipt || typeof receipt !== 'object' || Array.isArray(receipt) || !candidateValid(candidate)
     || receipt.schemaVersion !== SCHEMA || receipt.qualification !== 'normal-build' || receipt.qualified !== true
     || receipt.status !== 'passed' || receipt.sourceUnchanged !== true || receipt.exitCode !== 0
     || typeof receipt.nodeVersion !== 'string' || !NODE.test(receipt.nodeVersion)
+    || !canonicalExecutionVerified(receipt.canonicalExecution, receipt.nodeVersion)
     || receipt.sourceFingerprintVersion !== SOURCE_FINGERPRINT || typeof receipt.sourceSha256 !== 'string' || !HASH.test(receipt.sourceSha256)
     || !Number.isSafeInteger(receipt.sourceFileCount) || receipt.sourceFileCount <= 0 || receipt.sourceSha !== candidate.gitSha
     || !Array.isArray(receipt.command) || receipt.command.length !== COMMAND.length || !COMMAND.every((part, index) => receipt.command[index] === part)
@@ -151,13 +176,15 @@ function runBuildReceipt(options, dependencies = {}) {
       let projectConfig;
       try { projectConfig = fs.lstatSync(join(root, '.npmrc')); } catch (error) { if (error.code !== 'ENOENT') throw error; }
       requireCondition(!projectConfig || projectConfigPins(join(root, '.npmrc')), 'NPM_PROJECT_CONFIG_UNSUPPORTED');
+      const selectedExecution = qualification === 'normal-build' ? canonicalBuildExecution() : null;
       const configRoot = fs.mkdtempSync(join(dirname(output), '.eai-npm-config-'));
       const configParents = state.privateDirectory(configRoot);
       let build;
       try {
         const userConfig = join(configRoot, 'user.npmrc'), globalConfig = join(configRoot, 'global.npmrc');
         state.writePrivateText(userConfig, ''); state.writePrivateText(globalConfig, '');
-        build = run(COMMAND[0], COMMAND.slice(1), { cwd: root, timeout: 300000,
+        build = run(selectedExecution ? selectedExecution.nodePath : COMMAND[0],
+          selectedExecution ? [selectedExecution.npmCliPath, ...COMMAND.slice(1)] : COMMAND.slice(1), { cwd: root, timeout: 300000,
           env: { ...operational, npm_config_userconfig: userConfig, npm_config_globalconfig: globalConfig,
             npm_config_ignore_scripts: 'false', npm_config_update_notifier: 'false',
             npm_config_audit: 'false', npm_config_fund: 'false' } });
@@ -166,6 +193,12 @@ function runBuildReceipt(options, dependencies = {}) {
       }
       receipt.npmConfiguration = { user: 'empty-private', global: 'empty-private', project: projectConfig ? 'installation-pins-only' : 'absent' };
       receipt.exitCode = Number.isInteger(build?.status) ? build.status : null;
+      if (selectedExecution) {
+        const observedExecution = canonicalBuildExecution();
+        receipt.canonicalExecution = { ...selectedExecution, exitCode: receipt.exitCode,
+          executablesUnchanged: JSON.stringify(observedExecution) === JSON.stringify(selectedExecution) };
+        requireCondition(receipt.canonicalExecution.executablesUnchanged, 'CANONICAL_NPM_UNVERIFIED');
+      }
       requireCondition(build?.status === 0 && !build.error && !build.signal, 'BUILD_FAILED');
       const after = sourceSnapshot(root, run); requireCondition(sameSource(before, after), 'SOURCE_CHANGED_DURING_BUILD');
       unlinkedPath(cliPath);
@@ -180,7 +213,8 @@ function runBuildReceipt(options, dependencies = {}) {
       receipt.failureCode = ['NODE_24_REQUIRED', 'EXACT_CLI_PATH_REQUIRED', 'GIT_ROOT_UNVERIFIED', 'GIT_ROOT_MISMATCH',
         'SOURCE_HEAD_UNVERIFIED', 'SOURCE_STATUS_UNVERIFIED', 'SOURCE_DIRTY', 'SOURCE_INVENTORY_UNVERIFIED', 'SOURCE_INVENTORY_EMPTY',
         'SOURCE_FILE_UNSUPPORTED', 'SOURCE_INVENTORY_DUPLICATE', 'LINKED_PATH', 'BUILD_FAILED', 'SOURCE_CHANGED_DURING_BUILD',
-        'BUILT_CANDIDATE_UNVERIFIED', 'SOURCE_CHANGED_DURING_MEASUREMENT', 'NPM_PROJECT_CONFIG_UNSUPPORTED'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
+        'BUILT_CANDIDATE_UNVERIFIED', 'SOURCE_CHANGED_DURING_MEASUREMENT', 'NPM_PROJECT_CONFIG_UNSUPPORTED',
+        'CANONICAL_NPM_UNVERIFIED'].includes(error.code) ? error.code : 'BUILD_RECEIPT_UNVERIFIED';
       receipt.observedAt = new Date(now()).toISOString(); save();
       const failure = new Error('CLI source build receipt failed: ' + receipt.failureCode + '.'); failure.receipt = receipt; throw failure;
     }
@@ -197,4 +231,4 @@ function main() {
     sourceSha: receipt.sourceSha, runtimeSha256: receipt.candidate.runtimeSha256, observedAt: receipt.observedAt }));
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
-module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified, candidateMatches };
+module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified, candidateMatches, canonicalBuildExecution };

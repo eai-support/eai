@@ -151,6 +151,7 @@ function runQualification(options, dependencies = {}) {
           throw error;
         } finally {
           if (result && !receipt) { receipt = cycleReceipt(result); report.cycles.push(receipt); }
+          if (receipt) receipt.localProjectCleanupVerified = false;
           removeGeneratedProjects(workspaceRoot, workspaceParents);
           if (receipt) receipt.localProjectCleanupVerified = true;
         }

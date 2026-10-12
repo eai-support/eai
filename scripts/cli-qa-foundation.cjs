@@ -5,6 +5,7 @@ const { join, resolve, dirname, parse, sep } = require('node:path');
 const { spawnSync } = require('node:child_process');
 const { randomUUID } = require('node:crypto');
 const smoke = require('./eai-full-e2e-smoke.cjs');
+const { operationalEnvironment } = require('./cli-qa-operational-env.cjs');
 
 const SCHEMA = 'eai.cli-qa-foundation.v1';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
@@ -178,14 +179,6 @@ function context(root, foundation, tenantId) {
   privateDirectory(root);
   writePrivateText(join(root, 'eai.config.ts'), 'export default {};\n');
   writePrivateText(join(root, '.env.local'), `BASE_URL_PUBLIC_API=${foundation.publicApiUrl}\nEAI_TENANT_ID=${tenantId}\n`);
-}
-/** Preserve normal profile homes and OS/network settings, never ambient credentials or code injection. */
-function operationalEnvironment(environment) {
-  const allowed = new Set(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'PATH', 'Path', 'PATHEXT',
-    'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'windir', 'COMSPEC', 'ComSpec', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL',
-    'TERM', 'CI', 'NO_COLOR', 'FORCE_COLOR', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
-    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR']);
-  return Object.fromEntries(Object.entries(environment).filter(([key, value]) => allowed.has(key) && typeof value === 'string'));
 }
 function cliCaller(cliPath, foundation, root, dependencies) {
   const execute = dependencies.execute || executeCli;

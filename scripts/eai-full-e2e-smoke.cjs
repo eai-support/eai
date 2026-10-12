@@ -7,6 +7,7 @@ const { createHash, randomUUID } = require('node:crypto');
 const { tmpdir } = require('node:os');
 const { basename, dirname, join, relative, resolve, sep } = require('node:path');
 const ts = require('typescript');
+const { operationalEnvironment } = require('./cli-qa-operational-env.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
@@ -1543,8 +1544,9 @@ function candidateEvidence(cliPath) {
   }
   const pkg = JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'));
   const localCandidate = realpathSync(packageRoot) === realpathSync(ROOT);
-  const head = localCandidate ? spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8', timeout: 10000 }) : null;
-  const dirty = localCandidate ? spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: ROOT, encoding: 'utf8', timeout: 10000 }) : null;
+  const gitEnvironment = operationalEnvironment(process.env);
+  const head = localCandidate ? spawnSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
+  const dirty = localCandidate ? spawnSync('git', ['status', '--porcelain', '--untracked-files=all'], { cwd: ROOT, env: gitEnvironment, encoding: 'utf8', timeout: 10000 }) : null;
   return {
     gitSha: localCandidate ? (head.status === 0 ? head.stdout.trim() : null) : (/^[a-f0-9]{40}$/.test(pkg.gitHead || '') ? pkg.gitHead : null),
     binarySha256: createHash('sha256').update(readFileSync(binary)).digest('hex'),

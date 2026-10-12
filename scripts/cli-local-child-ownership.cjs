@@ -74,6 +74,17 @@ function cleanupObservation(path, mode, body, offset) {
   qa.writePrivate(path, journal);
   if (!valid) throw new Error('Exact local child purge or complete parent absence is unverified.');
 }
+/** Recover only a reconciled journal child in this exact current cleanup context. */
+function cleanupChildId(path, publicApiUrl, profile, parentTenantId) {
+  const journal = qa.readPrivate(path);
+  if (journal.schemaVersion !== 'eai.cli-local-child-creation.v1' || journal.phase !== 'verified'
+    || journal.reconciliationVerified !== true || journal.acknowledgmentBound !== true
+    || journal.publicApiUrl !== publicApiUrl || journal.profile !== profile || journal.parentTenantId !== parentTenantId
+    || !UUID.test(journal.childTenantId || '') || journal.childTenantId === parentTenantId) {
+    throw new Error('Local child ownership is unresolved.');
+  }
+  return journal.childTenantId;
+}
 function main(args) {
   const [mode, path, ...values] = args;
   if (mode === 'init' && values.length === 4) initialize(path, ...values);
@@ -83,6 +94,7 @@ function main(args) {
     let body; try { body = input(); } catch { body = null; }
     acknowledge(path, body, exitCode);
   } else if (mode === 'reconcile' && values.length === 0) process.stdout.write(JSON.stringify(reconcile(path, input())));
+  else if (mode === 'cleanup-id' && values.length === 3) process.stdout.write(cleanupChildId(path, ...values));
   else if (['cleanup-attempted', 'cleanup-finished'].includes(mode) && values.length === 0) cleanupObservation(path, mode);
   else if (mode === 'cleanup-purge' && values.length === 0) cleanupObservation(path, mode, input());
   else if (mode === 'cleanup-page' && values.length === 1) cleanupObservation(path, mode, input(), Number(values[0]));
@@ -92,4 +104,4 @@ if (require.main === module) {
   try { main(process.argv.slice(2)); }
   catch { console.error('Local child creation ownership is unresolved; inspect the retained private journal.'); process.exitCode = 1; }
 }
-module.exports = { initialize, acknowledge, reconcile, cleanupObservation };
+module.exports = { initialize, acknowledge, reconcile, cleanupObservation, cleanupChildId };

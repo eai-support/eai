@@ -2,13 +2,15 @@ import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 
 const require = createRequire(import.meta.url);
 const build = require('../../scripts/cli-qa-build-receipt.cjs');
 const smoke = require('../../scripts/eai-full-e2e-smoke.cjs');
 const qa = require('../../scripts/cli-qa-foundation.cjs');
+// Real toolchain identity inside a synthetic consumer DTO, not executed qualification evidence.
+const canonicalExecutionModel = { ...build.canonicalBuildExecution(), exitCode: 0, executablesUnchanged: true };
 const roots: string[] = [];
 const observedAt = '2026-10-09T06:00:00.000Z';
 const now = Date.parse(observedAt);
@@ -66,9 +68,43 @@ function fixture() {
   const dependencies = { root, execute, candidateEvidence, now: () => now };
   return { root, head, cliPath, output, options: { cliPath, output }, dependencies, execute, candidateEvidence, calls, builds: () => builds };
 }
+function normalFixture() {
+  const value = fixture();
+  for (const name of ['cli-qa-build-receipt.cjs', 'cli-qa-foundation.cjs', 'eai-full-e2e-smoke.cjs', 'cli-qa-operational-env.cjs']) {
+    const path = resolve('scripts', name);
+    if (existsSync(path)) writeFileSync(join(value.root, 'scripts', name), readFileSync(path));
+  }
+  commit(value.root);
+  return value;
+}
 afterEach(() => { vi.unstubAllEnvs(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 
 describe('actual source/build/runtime binding with explicitly controlled fixture provenance', () => {
+  test('the actual normal builder cannot use a PATH-shadowed npm instead of the installed canonical executable', () => {
+    const value = normalFixture(), bin = join(value.root, '.private', 'bin'); mkdirSync(bin, { recursive: true, mode: 0o700 });
+    mkdirSync(join(value.root, 'dist'), { recursive: true }); writeFileSync(value.cliPath, 'stale compiled output');
+    const shadow = join(value.root, '.private', 'shadow-invoked');
+    writeFileSync(join(bin, 'npm'), `#!/usr/bin/env bash\nprintf shadow > '${shadow}'\nexit 0\n`, { mode: 0o700 });
+    const result = spawnSync(process.execPath, [join(value.root, 'scripts/cli-qa-build-receipt.cjs'),
+      '--cli', value.cliPath, '--output', value.output], { cwd: value.root, encoding: 'utf8', timeout: 20000,
+      env: { ...process.env, NODE_PATH: resolve('node_modules'), PATH: bin + ':' + process.env.PATH } });
+    expect(result.status).toBe(0);
+    expect(existsSync(shadow)).toBe(false); expect(readFileSync(value.cliPath, 'utf8')).toBe(readFileSync(join(value.root, 'src/main.js'), 'utf8'));
+    expect(qa.readPrivate(value.output)).toMatchObject({ status: 'passed', qualification: 'normal-build', qualified: true });
+  });
+  test.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'])('shared actual candidate collection excludes ambient %s override', key => {
+    const value = normalFixture(), foreign = fixture();
+    expect(actual(process.execPath, ['scripts/build.cjs'], { cwd: value.root }).status).toBe(0);
+    const expectedHead = git(value.root, ['rev-parse', 'HEAD']);
+    const foreignValue = key === 'GIT_DIR' ? join(foreign.root, '.git') : key === 'GIT_WORK_TREE'
+      ? foreign.root : join(foreign.root, '.git', 'index');
+    const result = spawnSync(process.execPath, ['-e', `console.log(JSON.stringify(require(${JSON.stringify(join(value.root, 'scripts/eai-full-e2e-smoke.cjs'))}).candidateEvidence(${JSON.stringify(value.cliPath)})))`], {
+      cwd: value.root, encoding: 'utf8', timeout: 10000,
+      env: { ...process.env, NODE_PATH: resolve('node_modules'), [key]: foreignValue },
+    });
+    expect(result.status).toBe(0); const candidate = JSON.parse(result.stdout);
+    expect(candidate.gitSha).toBe(expectedHead); expect(candidate.dirty).toBe(false);
+  });
   test.each(['exact-tracked', 'with-comments'])('only installation pins in %s project npm config remain supported', variant => {
     const value = fixture(); const pins = readFileSync(join(process.cwd(), '.npmrc'), 'utf8');
     expect(Buffer.byteLength(pins)).toBe(34);
@@ -283,7 +319,19 @@ describe('fresh normal-build receipt validation', () => {
   const receipt = { schemaVersion: build.SCHEMA, status: 'passed', qualification: 'normal-build', qualified: true,
     sourceSha: candidate.gitSha, sourceSha256: 'd'.repeat(64), sourceFileCount: 900,
     sourceFingerprintVersion: build.SOURCE_FINGERPRINT, sourceUnchanged: true, command: ['npm', 'run', 'build'], exitCode: 0,
-    nodeVersion: 'v24.12.0', observedAt, candidate };
+    nodeVersion: process.version, observedAt, candidate, canonicalExecution: canonicalExecutionModel };
+  test('legacy PATH-selected normal-build receipts lack qualifying canonical execution proof', () => {
+    expect(build.sourceBuildVerified({ ...receipt, canonicalExecution: undefined }, candidate, { now })).toBe(false);
+  });
+  test.each(['selection', 'digest', 'argv', 'changed', 'exit'])('invalid canonical executor %s cannot qualify a normal build', failure => {
+    const canonicalExecution = structuredClone(canonicalExecutionModel);
+    if (failure === 'selection') canonicalExecution.selection = 'PATH';
+    if (failure === 'digest') canonicalExecution.npmCliSha256 = 'unknown';
+    if (failure === 'argv') canonicalExecution.argv[1] = '/foreign/npm-cli.js';
+    if (failure === 'changed') canonicalExecution.executablesUnchanged = false;
+    if (failure === 'exit') canonicalExecution.exitCode = 1;
+    expect(build.sourceBuildVerified({ ...receipt, canonicalExecution }, candidate, { now })).toBe(false);
+  });
   test('matches the complete candidate and inclusive one-hour observation boundary', () => {
     expect(build.sourceBuildVerified(receipt, candidate, { now })).toBe(true);
     expect(build.sourceBuildVerified(receipt, candidate, { now: now + 3600000 })).toBe(true);

@@ -136,6 +136,10 @@ cleanup() {
   set +e
   local cleanup_failed=0
 
+  if [[ -z "$TENANT_ID" && -n "$TENANT_CREATE_JOURNAL" ]]; then
+    TENANT_ID="$(node "$OWNERSHIP_HELPER" cleanup-id "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID")" || cleanup_failed=1
+  fi
+
   if [[ -n "$TENANT_ID" ]]; then
     node "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || cleanup_failed=1
     node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
