@@ -58,12 +58,14 @@ function redactCredentialValues(text: string): string {
     else { wrapperStarts[quote.start] = opening; openWrappers.delete(quote.key); }
   }
   const closingWrapper = new Uint32Array(text.length + 1);
+  const wrapperEnds = new Uint32Array(text.length + 1);
   for (let index = text.length - 1; index >= 0; index--) {
     const afterQuote = quoteEnds[index];
     if (!wrapperStarts[index]) continue;
     if (quoteEnds[afterQuote]) {
       if (closingWrapper[afterQuote]) closingWrapper[index] = Math.max(wrapperStarts[index], closingWrapper[afterQuote]);
     } else if (/^[\s&,;}\]]?$/.test(text[afterQuote] ?? '')) closingWrapper[index] = wrapperStarts[index];
+    if (closingWrapper[index]) wrapperEnds[index] = quoteEnds[afterQuote] ? wrapperEnds[afterQuote] : afterQuote;
   }
 
   // SECURITY: every position is cached, including containers inside serialized outer quotes.
@@ -133,28 +135,38 @@ function redactCredentialValues(text: string): string {
     else if (containerEnds[index]) markerTailEnds[index] = markerTailEnds[containerEnds[index]];
     else markerTailEnds[index] = markerTailEnds[index + 1];
   }
-  // SECURITY: independent spans include nested malformed assignments; union them before copying any text.
-  const spans: { start: number; end: number }[] = [];
+  // SECURITY: independently discovered value and continuation spans may overlap in any order.
+  const coverage = new Int32Array(text.length + 1);
+  function cover(start: number, end: number): void {
+    if (end > start) { coverage[start]++; coverage[end]--; }
+  }
   for (const { key, start, tokenStart } of fields) {
     if (!isSupportSensitiveKey(key)) continue;
     const markerLength = text.startsWith('[redacted]', start) ? '[redacted]'.length : text.startsWith('[removed]', start) ? '[removed]'.length : 0;
     const marker = markerLength > 0;
     const markerEnd = start + markerLength;
     const markerSuffix = marker ? markerContent[markerEnd] : start;
-    if (marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]))) continue;
+    const stableMarker = marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]));
     const containerEnd = containerEnds[start];
     const completeContainer = containerEnd && ((closingWrapper[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
-    const end = marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
-    if (end <= start) continue;
-    const previous = spans.at(-1);
-    if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);
-    else spans.push({ start, end });
+    const end = stableMarker ? start : marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
+    cover(start, end);
+    const boundary = stableMarker ? markerEnd : end;
+    if (!closingWrapper[boundary] || closingWrapper[boundary] > tokenStart) continue;
+    const continuation = markerContent[wrapperEnds[boundary]];
+    // SECURITY: adjacent quoted text can be a private value continuation outside the enclosing wrapper.
+    if (quoteEnds[continuation] && !quotedFieldStarts.has(continuation) && !(closingWrapper[continuation] && closingWrapper[continuation] <= tokenStart)) {
+      cover(continuation, markerTailEnds[continuation]);
+    }
   }
   const parts: string[] = [];
   let cursor = 0;
-  for (const { start, end } of spans) {
-    parts.push(text.slice(cursor, start), '[redacted]');
-    cursor = end;
+  let active = 0;
+  for (let index = 0; index <= text.length; index++) {
+    const previous = active;
+    active += coverage[index];
+    if (!previous && active) parts.push(text.slice(cursor, index), '[redacted]');
+    if (previous && !active) cursor = index;
   }
   parts.push(text.slice(cursor));
   return parts.join('');

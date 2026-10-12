@@ -103,6 +103,35 @@ describe('local support report redaction', () => {
     expect(redactSupportText(clean)).toBe(clean);
   });
 
+  test('quoted private continuations after an enclosing credential wrapper stay private and stable', () => {
+    for (const value of ['[first,PRIVATE_CANARY]', '{first:PRIVATE_CANARY}', '[removed]', '[redacted]']) {
+      for (const quote of ['"', "'"]) {
+        let diagnostic = `${quote}api_key=${value}${quote} ${quote}PRIVATE_CANARY extra private words${quote} status=public-id`;
+        for (let depth = 0; depth < 4; depth++) {
+          const clean = redactSupportText(diagnostic);
+          expect(clean).not.toContain('PRIVATE_CANARY');
+          expect(clean).not.toContain('extra private words');
+          expect(clean).toContain('public-id');
+          expect(redactSupportText(clean)).toBe(clean);
+          diagnostic = JSON.stringify(diagnostic);
+        }
+      }
+    }
+    expect(redactSupportText('"api_key=[]" "client_id"="public-id"')).toBe('"api_key=[redacted]" "client_id"="public-id"');
+    expect(redactSupportText('"api_key=[]" done safely')).toBe('"api_key=[redacted]" done safely');
+    expect(redactSupportText('"client_id=[]" "public-id"')).toBe('"client_id=[]" "public-id"');
+    const dense = Array.from({ length: 500 }, () => '"api_key=[removed]" "PRIVATE_CANARY" status=public-id').join(' ');
+    const chain = '"api_key=[]" ' + '"PRIVATE_CANARY" '.repeat(4096) + 'status=public-id';
+    const started = performance.now();
+    for (const input of [dense, chain]) {
+      const clean = redactSupportText(input);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('placeholder tails consume private words and delimiters while retaining fields and serialized wrappers', () => {
     for (const suffix of [' ', '\t', ',', ';', '&', '}', ']', '};, & ']) {
       let diagnostic = `api_key=[redacted]${suffix}PRIVATE_CANARY extra private words status=public-id`;
