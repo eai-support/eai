@@ -22,9 +22,9 @@ export function cycleStepModel(identity: CycleIdentity) {
     ['eai publicapi delete', 'cleanup', 'entra-cleanup-receipt', 2],
   ] as const;
   return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity, ...scope,
-    commands: definitions.map(([command, phase, name, sequence], index) => ({ command, phase, sequence: sequence + 1, status: 'passed', exitCode: 0,
+    commands: definitions.map(([command, phase, name, sequence], index) => ({ command, phase, sequence: sequence + 1, executionSequence: sequence + 1, status: 'passed', exitCode: 0,
       ...scope, options: index === 0 ? ['--rotate-secret'] : [],
-      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, status: 'passed', ...scope }] })),
+      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, executionSequence: sequence + 1, status: 'passed', ...scope }] })),
     registration: { status: 'passed', clientId: identity.clientId, tenantId: identity.tenantId,
       authorizationAbsent: true, registrationAbsent: true, registrationAbsenceVerified: true } };
 }
@@ -38,8 +38,8 @@ export function cycleOwnershipModel(identity: CycleIdentity, foundation: CycleFo
   const parentTenantId = foundation.tenantIds.a;
   const scope = { environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, scopeTenantId: parentTenantId };
   const command = (name: string, phase: string, sequence: number, assertion: string, options: string[]) => ({
-    command: name, phase, sequence, status: 'passed', exitCode: 0, ...scope, options,
-    assertion: { name: assertion, phase, status: 'passed', ...scope },
+    command: name, phase, sequence, executionSequence: sequence, status: 'passed', exitCode: 0, ...scope, options,
+    assertion: { name: assertion, phase, executionSequence: sequence, status: 'passed', ...scope },
   });
   return { schemaVersion: 'eai.cli-cycle-ownership.v1', fixtureId: foundation.fixtureId,
     foundationParentTenantId: foundation.foundationParentTenantId, tenantIds: { ...foundation.tenantIds },

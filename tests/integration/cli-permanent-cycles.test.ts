@@ -174,6 +174,23 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const receipt = cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true });
     expect(qa.cycleReceiptVerified(receipt)).toBe(false);
   });
+  test.each(['step', 'creation', 'purge'].flatMap(family => ['command', 'assertion'].flatMap(target =>
+    ['missing', 'foreign'].map(failure => ({ family, target, failure })))))('a $family $target $failure invocation cannot reuse a selected guard', ({ family, target, failure }) => {
+    const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+    const command = family === 'step' ? receipt.stepEvidence.commands[0]
+      : family === 'creation' ? receipt.ownershipEvidence.creation.command : receipt.ownershipEvidence.cleanup.command;
+    const row = target === 'command' ? command : family === 'step' ? command.assertions[0] : command.assertion;
+    row.executionSequence = failure === 'missing' ? undefined : command.sequence + 100;
+    expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+  });
+  test.each(['step', 'creation', 'purge'])('a raw $family guard from a different invocation cannot enter the cycle projection', family => {
+    const fixture = controlled(), report = fixture.liveReport();
+    const name = family === 'step' ? 'rotation-changed-local-credential'
+      : family === 'creation' ? 'created-child-ownership' : 'child-hard-purge-receipt';
+    const guard = report.assertions.find(row => row.name === name)!; guard.executionSequence += 100;
+    expect(qa.cycleReceiptVerified(cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true }))).toBe(false);
+  });
   test.each(['legacy', 'controlled', 'PATH', 'wrong-script', 'missing-config', 'user-config', 'global-config', 'node-policy'])('serialized app build %s cannot qualify retained cycles', failure => {
     const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
     expect(qa.cycleReceiptVerified(receipt)).toBe(true);

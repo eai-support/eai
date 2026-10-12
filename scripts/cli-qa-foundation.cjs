@@ -71,7 +71,9 @@ function validateFoundation(value) {
 function initialize(spec, uuid = randomUUID) {
   requireCondition(!spec.workspaces?.a?.id && !spec.workspaces?.b?.id, 'Initialization cannot adopt pre-existing workspaces.');
   return validateFoundation({ ...spec, schemaVersion: SCHEMA, fixtureId: uuid(), publicApiUrl: publicApi(spec.environment, spec.region),
-    workspaces: { a: { ...spec.workspaces.a, id: null }, b: { ...spec.workspaces.b, id: null } }, journal: {}, state: 'unprepared' });
+    workspaces: { a: { ...spec.workspaces.a, id: null }, b: { ...spec.workspaces.b, id: null } },
+    journal: Object.fromEntries(Object.entries(SLOTS).map(([slot, [workspaceSlot, role]]) =>
+      [slot, { phase: 'never-invited', workspaceSlot, role, oid: spec.actors[slot].oid }])), state: 'unprepared' });
 }
 function safePrivateAncestor(stat) {
   const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
@@ -239,6 +241,16 @@ function verifyActors(call, foundation) {
 function prepareFoundation(path, cliPath, dependencies = {}) {
   return withLease(path, () => {
     const foundation = validateFoundation(readPrivate(path));
+    // Missing history is an unknown outcome, never evidence that an invitation was not sent.
+    for (const [slot, [workspaceSlot, role]] of Object.entries(SLOTS)) {
+      const prior = foundation.journal[slot], actor = foundation.actors[slot];
+      requireCondition(prior && prior.oid === actor.oid && prior.role === role
+        && (prior.phase === 'never-invited'
+          ? foundation.state !== 'verified' && prior.workspaceSlot === workspaceSlot && prior.tenantId === undefined
+          : ['inviting', 'membership-acknowledged'].includes(prior.phase)
+            && prior.tenantId === foundation.workspaces[workspaceSlot].id),
+      'Actor invitation history is missing or contradictory; reconcile the exact saved fixture manually.');
+    }
     const root = path + '.contexts', call = cliCaller(cliPath, foundation, root, dependencies);
     const save = () => writePrivate(path, foundation);
     verifyIdentity(call, foundation.owner, foundation);
@@ -284,7 +296,7 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
     for (const [slot, [workspaceSlot, role]] of Object.entries(SLOTS)) {
       const actor = foundation.actors[slot], tenantId = foundation.workspaces[workspaceSlot].id;
       const prior = foundation.journal[slot];
-      if (prior) {
+      if (prior.phase !== 'never-invited') {
         requireCondition(!prior.unexpectedDirectoryResult, 'An unexpected directory identity result requires manual reconciliation.');
         requireCondition(prior.tenantId === tenantId && prior.oid === actor.oid && prior.role === role,
           'Membership journal identity changed; reconcile the original exact fixture first.');
@@ -421,9 +433,10 @@ function authorizationVerified(evidence, candidate, context) {
     || !bindings || typeof bindings !== 'object' || Array.isArray(bindings)
     || !['a', 'b'].every(slot => bindings[slot] && typeof bindings[slot] === 'object' && !Array.isArray(bindings[slot])
       && bindings[slot].tenantId === tenants[slot] && bindings[slot].parentTenantId === parent)) return false;
-  if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string'
+  if (Object.keys(actors).length !== 5 || !Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string'
     && /^[A-Za-z0-9_.-]{1,100}$/.test(actors[slot].profile))
-    || new Set(Object.values(actors).map(actor => actor.oid)).size !== 5 || new Set(Object.values(actors).map(actor => actor.profile)).size !== 5) return false;
+    || new Set(Object.values(actors).map(actor => actor.oid.toLowerCase())).size !== 5
+    || new Set(Object.values(actors).map(actor => actor.profile.toLowerCase())).size !== 5) return false;
   return ROLE_CASES.every(name => authorization.cases.filter(row => row.name === name).length === 1
     && authorization.cases.some(row => row.name === name && row.status === 'passed'
       && row.profile === actors[name.split(':')[0]].profile && row.actorId === actors[name.split(':')[0]].oid

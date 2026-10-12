@@ -1,8 +1,8 @@
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
 import { cycleOwnershipModel, cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
 
@@ -149,6 +149,16 @@ describe('CLI backend audit evidence', () => {
           executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], ...scope }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
   }
+
+  test.each(['oid', 'profile'])('case-folded duplicate actor %s cannot certify independent normal roles', field => {
+    const { input, decisions } = completeContractModel(), authorization = input.evidence.authorizationEvidence;
+    const first = authorization.actors.adminA[field], second = authorization.actors.builderA[field];
+    const normalized = field === 'oid' ? 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' : 'same-normal-profile';
+    const text = JSON.stringify(authorization).replaceAll(first, normalized).replaceAll(second, normalized.toUpperCase());
+    input.evidence.authorizationEvidence = JSON.parse(text);
+    const report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
 
   test('joins build, role, selected deployment and normalized option contracts without claiming missing cycles', () => {
     const { input, decisions } = completeContractModel(), report = buildAudit(input, decisions);
@@ -679,16 +689,39 @@ describe('local dedicated tenant harness ownership', () => {
     writeFileSync(join(fixtureCli, 'package.json'), JSON.stringify({ name: 'owned-bash-build-fixture', type: 'module',
       scripts: { build: 'node build.cjs' } }));
     writeFileSync(join(fixtureCli, 'build.cjs'), `require('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`);
-    writeFileSync(join(fixtureCli, 'dist', 'index.js'), '// Controlled CLI dispatch is replaced by the owned Node wrapper.\n');
-    writeFileSync(join(fixtureCli, 'dist', 'lib', 'profile.js'), `import fs from 'node:fs'; export const captureProfileConfig = name => JSON.parse(fs.readFileSync(process.env.HOME+'/.eai/config.json','utf8')).profiles[name];\n`);
+    writeFileSync(join(fixtureCli, 'dist', 'index.js'), `import ${JSON.stringify(join(root, 'mock.cjs'))};\n`);
+    writeFileSync(join(fixtureCli, 'dist', 'lib', 'profile.js'), `import fs from 'node:fs'; export const setActiveProfile = () => {}; export const captureProfileConfig = name => JSON.parse(fs.readFileSync(process.env.HOME+'/.eai/config.json','utf8')).profiles[name];\n`);
+    writeFileSync(join(fixtureCli, 'dist', 'lib', 'auth.js'), `export const getAccessToken = async () => { globalThis.fetch = async () => ({ text: async () => JSON.stringify({ docs: ['TenantPgNote','TenantDocumentNote','TenantBlobNote','TenantSearchNote'].map(name => ({name})) }) }); return 'synthetic'; };\n`);
     const mock = join(root, 'mock.cjs');
     writeFileSync(mock, `const fs = require('node:fs');
-const args = process.argv.slice(2);
+const args = process.argv[1] === ${JSON.stringify(mock)} ? process.argv.slice(2) : [process.argv[1], ...process.argv.slice(2)];
 fs.appendFileSync(${JSON.stringify(envLog)}, JSON.stringify({ source: 'cli', forbidden: Object.keys(process.env).filter(key =>
   /^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),
   home: process.env.HOME, profile: args[args.indexOf('--profile')+1] }) + '\\n');
 fs.appendFileSync(process.env.EAI_HARNESS_TEST_LOG, JSON.stringify(args) + '\\n');
-if (args.includes('list')) {
+const lifecycle = process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-resource-') || process.env.EAI_HARNESS_TEST_MODE === 'parent-lifecycle-success';
+const resourceId = '00000000-0000-4000-8000-000000000088';
+if (lifecycle && args.includes('provision')) {
+  console.log(JSON.stringify({results:['tenant-postgresql-base','tenant-documentdb-base','tenant-blob-base','tenant-search-base','tenant-platform-metadata'].map(objectType=>({objectType,status:'provisioned'}))}));
+} else if (lifecycle && args.includes('types') && args.includes('seed')) {
+  console.log(JSON.stringify({tenants:[{failed:0}]}));
+} else if (lifecycle && args.includes('resources')) {
+  const action = args[args.indexOf('resources')+1], type = args[args.indexOf('resources')+2];
+  const mode = process.env.EAI_HARNESS_TEST_MODE;
+  if (action === 'schema') console.log(JSON.stringify({objectTypes:['TenantPgNote','TenantDocumentNote','TenantBlobNote','TenantSearchNote'].map(name=>({name}))}));
+  else if (action === 'create') console.log(JSON.stringify({id:resourceId}));
+  else if (action === 'get' || action === 'update') console.log(JSON.stringify({data:{title:type === 'tenant-pg-note' ? 'pg note'+(action === 'update'?' updated':'') : type === 'tenant-document-note' ? 'doc note'+(action === 'update'?' updated':'') : type === 'tenant-blob-note' ? 'blob note'+(action === 'update'?' updated':'') : 'search note'+(action === 'update'?' updated':'')}}));
+  else if (action === 'search') console.log(JSON.stringify({results:[{id:resourceId}]}));
+  else if (action === 'delete') {
+    if (mode === 'parent-resource-main-delete-failed') process.exit(75);
+    console.log(JSON.stringify({type,id:mode === 'parent-resource-malformed-delete' ? 'foreign-id' : args[args.indexOf('delete')+2],deleted:true}));
+  } else process.exit(76);
+} else if (lifecycle && args.includes('publicapi') && args.includes('get') && args.some(value=>value.startsWith('/v4/data/resources/'))) {
+  const path = args[args.indexOf('get')+1], tenantId = args[args.indexOf('--tenant-id')+1], mode = process.env.EAI_HARNESS_TEST_MODE;
+  const status = mode === 'parent-resource-missing-absence' ? 200 : 404;
+  console.log(JSON.stringify({ok:status===200,status,request:{method:'GET',path,tenantId:mode === 'parent-resource-absence-foreign' ? 'foreign-child' : tenantId,publicApiUrl:'http://localhost:8000'},body:status===404?{error:{code:'NOT_FOUND'}}:{id:resourceId}}));
+  if (status === 404) process.exit(1);
+} else if (args.includes('list')) {
   const tenants = [{id:'parent-fixture',slug:'parent'},{id:'unrelated-fixture',slug:'coworker-workspace'}];
   const acknowledgment = process.env.EAI_HARNESS_TEST_LOG + '.create';
   if ((process.env.EAI_HARNESS_TEST_MODE.startsWith('parent-') || process.env.EAI_HARNESS_TEST_MODE === 'ack-ambiguous') && fs.existsSync(acknowledgment)) {
@@ -724,13 +757,41 @@ if (args.includes('list')) {
   console.log(JSON.stringify({ok:true,status:200,request:{method:'GET',path,tenantId,publicApiUrl:'http://localhost:8000'},body}));
 } else { console.error('Unexpected tenant/storage mutation'); process.exit(75); }
 `.replaceAll('process.env.EAI_HARNESS_TEST_LOG', JSON.stringify(log)).replaceAll('process.env.EAI_HARNESS_TEST_MODE', JSON.stringify(mode)));
-    writeFileSync(join(bin, 'node'), `#!/usr/bin/env bash\nif [[ '${mode}' == 'parent-parse-failed' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then exit 74; fi\nif [[ '${mode}' == 'parent-cleanup-cached' && "\${1:-}" == '-e' && "\${2:-}" == *'data.tenant.doc?.id ?? data.tenant.id'* ]]; then printf '00000000-0000-4000-8000-000000000098'; exit 0; fi\nif [[ '${mode}' == 'parent-cleanup-stamp' && "\${1:-}" == */cli-local-child-ownership.cjs && "\${2:-}" == 'cleanup-attempted' ]]; then exit 74; fi\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
+    // Controlled parse/stamp faults live only in owned fixture copies; runtime selection is real.
+    const bashPath = join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh');
+    if (mode === 'parent-parse-failed' || mode === 'parent-cleanup-cached') {
+      const assignment = 'TENANT_ID="$(json_field "$CREATE_JSON" "data.tenant.doc?.id ?? data.tenant.id")"';
+      writeFileSync(bashPath, readFileSync(bashPath, 'utf8').replace(assignment,
+        mode === 'parent-parse-failed' ? 'TENANT_ID="$(false)"' : 'TENANT_ID="00000000-0000-4000-8000-000000000098"'));
+    }
+    if (mode === 'parent-cleanup-stamp') {
+      const path = join(fixtureScripts, 'cli-local-child-ownership.cjs');
+      writeFileSync(path, readFileSync(path, 'utf8').replace("if (mode === 'cleanup-attempted') {", "if (mode === 'cleanup-attempted') { throw new Error('Controlled stamp refusal');"));
+    }
+    // A trusted operator HOME installation points to the real current Node; foreign hints do not.
+    const nodeVersion = process.version;
+    const ownedNode = join(root, '.nvm', 'versions', 'node', nodeVersion, 'bin', 'node');
+    mkdirSync(dirname(ownedNode), { recursive: true, mode: 0o700 }); symlinkSync(process.execPath, ownedNode);
+    const nodeLog = join(root, 'path-node.log');
+    const hintEnv: Record<string, string> = {};
+    if (mode.startsWith('node-hint-')) {
+      const hostile = mode === 'node-hint-traversal'
+        ? join(root, '.nvm', 'versions', 'node') + '/' + nodeVersion + '/../../../injected/bin/node'
+        : join(root, 'other-home', '.nvm', 'versions', 'node', nodeVersion, 'bin', 'node');
+      mkdirSync(dirname(resolve(hostile)), { recursive: true, mode: 0o700 });
+      writeFileSync(resolve(hostile), `#!/usr/bin/env bash\nprintf 'hint-intercepted\\n' >> '${nodeLog}'\nif [[ "\${1:-}" == '--version' ]]; then printf '${nodeVersion}\\n'; fi\nexit 0\n`, { mode: 0o700 });
+      Object.assign(hintEnv, mode === 'node-hint-nvm' ? { npm_node_execpath: '', NVM_BIN: dirname(hostile) }
+        : { npm_node_execpath: hostile, NVM_BIN: '' });
+    }
+    writeFileSync(join(bin, 'node'), mode === 'node-shadow'
+      ? `#!/usr/bin/env bash\nprintf 'intercepted\\n' >> '${nodeLog}'\nexit 0\n`
+      : `#!/usr/bin/env bash\nif [[ "\${1:-}" == */dist/index.js ]]; then exec '${process.execPath}' '${mock}' "$@"; fi\nexec '${process.execPath}' "$@"\n`, { mode: 0o700 });
     writeFileSync(join(bin, 'npm'), `#!${process.execPath}\nrequire('node:fs').appendFileSync(${JSON.stringify(envLog)},JSON.stringify({source:'build',forbidden:Object.keys(process.env).filter(key=>/^(EAI_ACCESS_TOKEN|NODE_OPTIONS|NPM_TOKEN|GH_TOKEN|AZURE_CLIENT_SECRET|BASE_URL_PUBLIC_API)$/.test(key)),home:process.env.HOME})+'\\n');\n`, { mode: 0o700 });
     const dockerLog = join(root, 'docker.log');
     writeFileSync(join(bin, 'docker'), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> '${dockerLog}'\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n`, { mode: 0o700 });
     const result = spawnSync('bash', [join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh')], {
       encoding: 'utf8', timeout: 10000,
-      env: { ...process.env, ...ambient, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
+      env: { ...process.env, ...ambient, ...hintEnv, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
         EAI_E2E_PROFILE: 'local', EAI_E2E_PUBLIC_API_URL: api, EAI_E2E_PARENT_TENANT_ID: 'parent-fixture',
         EAI_HARNESS_TEST_LOG: log, EAI_HARNESS_TEST_MODE: mode },
     });
@@ -739,8 +800,36 @@ if (args.includes('list')) {
     const journals = readdirSync(root).filter(name => name.startsWith('eai-local-e2e-creation-')).map(name => join(root, name, 'creation.json'));
     const environments = existsSync(envLog) ? readFileSync(envLog, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line)) : [];
     const dockerCalls = existsSync(dockerLog) ? readFileSync(dockerLog, 'utf8').split('\n').filter(Boolean) : [];
-    return { ...result, calls, journals, environments, dockerCalls, root, cliPath: join(fixtureCli, 'dist', 'index.js') };
+    return { ...result, calls, journals, environments, dockerCalls, nodeIntercepted: existsSync(nodeLog), root, cliPath: join(fixtureCli, 'dist', 'index.js') };
   }
+
+  test.each(['other-home', 'nvm', 'traversal'])('a hostile %s Node installation hint never runs before preflight', failure => {
+    const result = runFixture('node-hint-' + failure, 'https://dev-api.au.myenterprise.ai/public');
+    expect(result.nodeIntercepted).toBe(false); expect(result.stderr).toContain('HTTP loopback');
+    expect(result.calls).toEqual([]); expect(result.dockerCalls).toEqual([]);
+  });
+  test('the standalone harness pins installed Node before loopback, profile, journal or build helpers', () => {
+    const result = runFixture('node-shadow', 'https://dev-api.au.myenterprise.ai/public');
+    expect(result.nodeIntercepted).toBe(false); expect(result.stderr).toContain('HTTP loopback');
+    expect(result.calls).toEqual([]); expect(result.dockerCalls).toEqual([]);
+  });
+  test('a complete controlled local lifecycle retains four exact resource deletion and absence receipts', () => {
+    const result = runFixture('parent-lifecycle-success');
+    expect(result.status).toBe(0); expect(result.stdout).toContain('lifecycle E2E passed');
+    const journal = qa.readPrivate(result.journals[0]);
+    expect(journal.resources).toHaveLength(4); expect(journal.resourcesCleanupVerified).toBe(true);
+    expect(journal.resources.every((row: any) => row.deleteAcknowledged === true && row.absenceVerified === true
+      && row.deleteExitCode === 0 && row.absenceHttpStatus === 404)).toBe(true);
+  });
+  test.each(['missing-absence', 'malformed-delete', 'absence-foreign', 'main-delete-failed'])('resource %s remains unverified while owned child purge is still attempted', failure => {
+    const result = runFixture('parent-resource-' + failure);
+    expect(result.status).not.toBe(0); expect(result.stdout).not.toContain('lifecycle E2E passed');
+    const journal = qa.readPrivate(result.journals[0]);
+    expect(journal.resourcesCleanupVerified).toBe(false); expect(journal.cleanupVerified).toBe(false);
+    expect(journal.hardPurgeVerified).toBe(true); expect(journal.absenceVerified).toBe(true);
+    expect(result.calls.some(args => args.includes('tenant') && args.includes('delete') && args.includes('--force-hard-purge'))).toBe(true);
+    if (failure === 'main-delete-failed') expect(result.calls.filter(args => args.includes('resources') && args.includes('delete')).length).toBeGreaterThan(0);
+  });
 
   test('standalone CLI and build subprocesses ignore ambient credentials and routing', () => {
     const result = runFixture('quota', 'http://localhost:8000', { EAI_ACCESS_TOKEN: 'synthetic-foreign-token',
@@ -819,6 +908,7 @@ if (args.includes('list')) {
     'parent-inventory-malformed', 'parent-inventory-overflow'])('%s cannot certify standalone child cleanup', mode => {
     const result = runFixture(mode); expect(result.status).not.toBe(0); expect(result.stdout).not.toContain('lifecycle E2E passed');
     expect(result.calls.filter(args => args.includes('delete'))).toHaveLength(1);
+    expect(result.dockerCalls.filter(args => /DELETE FROM|DROP DATABASE|dropDatabase|python -/.test(args))).toEqual([]);
     expect(JSON.parse(readFileSync(result.journals[0], 'utf8'))).toMatchObject({ cleanupAttempted: true, cleanupVerified: false });
   });
   test.each(['ack-absent', 'ack-ambiguous'] as const)('retains an exact create acknowledgment when list reconciliation is %s without guessing cleanup', mode => {

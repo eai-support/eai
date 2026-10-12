@@ -854,6 +854,10 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       receiptStatus: 'hard_purged', hardPurged: true, absenceVerified: true,
       command: { command: 'eai workspace delete', phase: 'cleanup', status: 'passed', exitCode: 0,
         scopeTenantId: 'qa-parent', assertion: { name: 'child-hard-purge-receipt', phase: 'cleanup', status: 'passed' } } });
+    for (const command of [ownership.creation.command, ownership.cleanup.command]) {
+      expect(command.executionSequence).toBe(command.sequence);
+      expect(command.assertion.executionSequence).toBe(command.executionSequence);
+    }
     expect(controlled.resources.size).toBe(0);
     expect(controlled.calls.filter(call => matches(call.args, ['resources', 'delete']))).toHaveLength(4);
   });

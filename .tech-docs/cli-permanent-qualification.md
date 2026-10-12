@@ -136,6 +136,11 @@ unexpected user or changed membership requires reconciliation from exact
 acknowledgements and fresh reads. Never delete the journal to retry an unknown
 creation or guess its ownership. A deployment runner spanning multiple hosts
 needs an external exclusive lease before invoking these scripts.
+New foundations record each actor as `never-invited` before the first membership
+write. Resume refuses missing or contradictory invitation history before any
+bootstrap or invitation; an observed invitation is reconciled by fresh membership
+reads rather than replayed. Independent role OIDs and profiles are distinct after
+case folding, as in normal foundation identity validation.
 Every saved child ID must match its journaled successful creation acknowledgment,
 including the fixture, operator, parent, slug and returned child. An ID returned
 with a nonzero exit remains saved for diagnosis and requires manual
@@ -267,7 +272,9 @@ runtime scope, expected guard outcomes and their recorded order; success flags
 alone cannot qualify a cycle. Both selected steps and child create/purge guards
 retain their actual environment, PublicAPI URL and tenant scope. Each assertion
 must match its command and the expected runtime child or cleanup parent; a
-matching top-level header cannot replace these observations. Assertion-name
+matching top-level header cannot replace these observations. Each selected
+command and guard also carries the producer's same observed invocation sequence;
+a guard from another invocation cannot prove that selected step. Assertion-name
 lists must be arrays. This selected lifecycle proof does not implement
 the complete per-command producer-to-audit mapping tracked in issue #384.
 
@@ -365,6 +372,10 @@ The local Docker lifecycle harness also requires its single newly visible
 matching-slug child to carry the exact requested `parentId` before selection,
 storage provisioning or cleanup. Missing or mismatched parent metadata fails
 without adopting that workspace.
+Before its first subprocess, the local Bash harness selects a compatible Node
+from a conventional installation rather than PATH. All profile, journal, build
+and CLI subprocesses use that absolute executable. The operator, OS installation
+and owned scripts remain trusted; this does not sandbox those inputs.
 If ID parsing fails after acknowledgment and reconciliation, the EXIT trap
 recovers only a verified journal child matching the current gateway, profile and
 parent. Unresolved journals require manual reconciliation and never authorize
@@ -374,8 +385,12 @@ including the exact returned child ID and creation exit status before inventory
 reconciliation. Missing or ambiguous inventory leaves that journal unresolved
 for manual reconciliation without guessed selection or cleanup. Cleanup uses
 the exact parent-authorized `--parent` and `--force-hard-purge` route. The journal
-only sets `cleanupVerified` after the exact child/parent hard-purge receipt and
-all bounded parent child-inventory pages prove absence. A failed, malformed,
+only sets `cleanupVerified` after every created resource has an exact successful
+DELETE acknowledgment and a same-gateway, same-child GET404, followed by the exact
+child/parent hard-purge receipt and complete bounded parent inventory absence.
+Resource failures remain recorded and fail the run while cleanup still attempts
+the independently owned child purge. External Docker storage cleanup starts only
+after that exact child purge and parent absence pass. A failed, malformed,
 partial or nonempty observation cannot pass; the harness reports success only
 after cleanup. This child receipt does not certify an external provider teardown.
 

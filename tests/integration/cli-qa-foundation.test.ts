@@ -27,6 +27,9 @@ describe('retained CLI QA foundation authority', () => {
     const value = qa.initialize(fixtureSpec(), () => uuid(20));
     expect(value.state).toBe('unprepared'); expect(value.workspaces.a.id).toBeNull();
     expect(Object.keys(value.actors)).toEqual(['adminA', 'builderA', 'viewerA', 'adminB', 'builderB']);
+    for (const [slot, [workspaceSlot, role]] of Object.entries(qa.SLOTS) as Array<[string, [string, string]]>) {
+      expect(value.journal[slot]).toEqual({ phase: 'never-invited', workspaceSlot, role, oid: value.actors[slot].oid });
+    }
     expect(qa.publicApi('TEST', 'eu')).toBe('https://test-api.eu.myenterprise.ai/public');
   });
   test.each(['PROD', 'production', 'local'])('rejects environment %s', environment => {
@@ -314,6 +317,21 @@ describe('normal CLI retained fixture preparation', () => {
     expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('Membership setup');
     expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('manual reconciliation');
     expect(fixture.calls.filter(args => args.includes('invite'))).toHaveLength(1);
+  });
+  test.each(['verified', 'partial'])('missing %s actor invitation history cannot replay a membership write', state => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const foundation = qa.readPrivate(fixture.path); delete foundation.journal.builderA; foundation.state = state;
+    qa.writePrivate(fixture.path, foundation); const before = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(fixture.calls.slice(before).some(args => args.includes('invite') || args.includes('bootstrap-admin'))).toBe(false);
+  });
+  test('a verified foundation cannot reset an actor to never-invited', () => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const foundation = qa.readPrivate(fixture.path);
+    foundation.journal.builderA = { phase: 'never-invited', oid: foundation.actors.builderA.oid, role: 'tenant-builder', workspaceSlot: 'a' };
+    qa.writePrivate(fixture.path, foundation); const before = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(fixture.calls.slice(before).some(args => args.includes('invite') || args.includes('bootstrap-admin'))).toBe(false);
   });
   test.each(['extra-role', 'duplicate-member', 'inactive-member'])('rejects %s as an independent fixture authority', mode => {
     const fixture = controlled(mode);
