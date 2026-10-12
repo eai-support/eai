@@ -203,6 +203,27 @@ describe('eai support draft handoff', () => {
     }
   });
 
+  test('Delimiter-leading credentials stay out of actual preview and exact consented POST', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const diagnostic = 'api_key=})CONTAINER_PRIVATE_CANARY status=public-id';
+    const contextPath = join(home.dir, 'container-summary.json');
+    await writeFile(contextPath, JSON.stringify(harnessContextFixture({ request: diagnostic, goal: diagnostic, summary: diagnostic,
+      commands: [{ command: diagnostic, exitCode: 1 }], errors: [{ message: diagnostic }], attemptedFixes: [diagnostic] })));
+    const { preview, sent } = await previewThenApprove(home.dir,
+      ['--source', 'harness', '--tool', 'codex', '--context-file', contextPath, '--description', diagnostic], { EAI_WEBSITE_URL: server.origin });
+    expect(sent.code, sent.stdout + sent.stderr).toBe(0);
+    expect(parse(sent).status).toBe('created');
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+    for (const text of [preview.previewText!, JSON.stringify(preview.bundle), JSON.stringify(server.requests[0].body), sent.stdout]) {
+      expect(text).not.toContain('CONTAINER_PRIVATE_CANARY');
+      expect(text).not.toContain('PLACEHOLDER_TAIL_PRIVATE_CANARY');
+      expect(text).toContain('public-id');
+    }
+  });
+
   test('previews the harness report with zero POSTs, then sends exactly the approved bundle with the saved bearer', async () => {
     const home = await environment();
     const server = await fixture();

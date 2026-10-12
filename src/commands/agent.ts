@@ -72,7 +72,9 @@ Examples:
 Notes:
   - Use this before improvising eai commands.
   - Prefer read-only diagnostics before commands marked [changes state].
-  - On failure, run eai errors explain <code-or-reason> --format json.
+  - If advertised, query eai errors explain <code-or-reason> --format json at most once for the original failure.
+  - Never retry or explain a failed eai errors explain command; report unavailable guidance, then stop and wait.
+  - Follow read-only diagnostics automatically; ask before changes, stop at the retry limit, then stop and wait.
   `)
   .action((options: { format?: string; json?: boolean }) => {
     const jsonOutput = options.json || options.format === 'json';

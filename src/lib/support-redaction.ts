@@ -101,9 +101,12 @@ function redactCredentialValues(text: string): string {
     fields.push({ key, start, tokenStart: match.index });
   }
   const fieldStarts = new Set(fields.map(field => field.tokenStart));
+  const firstValueCharacter = new Uint32Array(text.length + 1);
+  firstValueCharacter[text.length] = text.length;
   const stops = new Uint32Array(text.length + 1);
   stops[text.length] = text.length;
   for (let index = text.length - 1; index >= 0; index--) {
+    firstValueCharacter[index] = !escaped[index] && /[&,;}]/.test(text[index]) ? firstValueCharacter[index + 1] : index;
     if (quoteEnds[index]) stops[index] = stops[closingEnds[index]];
     else if (containerEnds[index]) stops[index] = stops[containerEnds[index]];
     else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
@@ -117,7 +120,7 @@ function redactCredentialValues(text: string): string {
     if (text.startsWith('[redacted]', start) && ((closingWrapper[markerEnd] && closingWrapper[markerEnd] <= tokenStart) || fieldStarts.has(markerEnd) || /^[\s&,;}\]]?$/.test(text[markerEnd] ?? ''))) continue;
     const containerEnd = containerEnds[start];
     const completeContainer = containerEnd && ((closingWrapper[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
-    const end = quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[start];
+    const end = quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
     if (end <= start) continue;
     const previous = spans.at(-1);
     if (previous && previous.end >= start) previous.end = Math.max(previous.end, end);

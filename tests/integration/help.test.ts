@@ -178,6 +178,10 @@ describe('CLI help output', () => {
     expect(agentResult.exitCode).toBe(0);
     expect(agentResult.stdout).toContain('eai agent guide --format json');
     expect(agentResult.stdout).toContain('eai errors explain <code-or-reason> --format json');
+    expect(agentResult.stdout).not.toContain('On failure, run eai errors explain');
+    expect(agentResult.stdout).toContain('at most once for the original failure');
+    expect(agentResult.stdout).toContain('Never retry or explain a failed eai errors explain');
+    expect(agentResult.stdout).toContain('then stop and wait');
   }, 30_000);
 
   test('managed deploy help exposes exact EAI target, resume, retry, and JSON controls', async () => {

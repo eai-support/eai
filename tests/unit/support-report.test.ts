@@ -103,6 +103,26 @@ describe('local support report redaction', () => {
     expect(redactSupportText(clean)).toBe(clean);
   });
 
+  test('redacts delimiter-leading credential values without rescanning long prefixes', () => {
+    for (const prefix of ['}', ';', ',', '&', '};;,&']) {
+      let diagnostic = `api_key=${prefix})PRIVATE_CANARY status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+    expect(redactSupportText('client_id=})public-id')).toBe('client_id=})public-id');
+    const long = 'api_key=' + '};,&'.repeat(16384) + 'PRIVATE_CANARY';
+    const started = performance.now();
+    const clean = redactSupportText(long);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
   test('retains actual enclosing serialized wrapper quotes around a complete credential container', () => {
     let diagnostic = 'api_key=[PRIVATE_CANARY]';
     for (let depth = 0; depth < 4; depth++) {
