@@ -30,7 +30,7 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
+> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access. The local CLI selector `EAI_PROFILE` is excluded from cloud synchronization.
 
 ---
 
@@ -58,6 +58,7 @@ Scaffold a new application from the EAI app template.
 2. Installs Gofer AI assets (unless `--no-gofer`)
 3. Initializes git repository and installs npm dependencies
 4. Records the company/child workspace boundary and package profile in the project manifest
+5. Stores the local CLI profile selector in ignored `.env.local` for reopened workspaces
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
 can scaffold into the current folder when selected, and automation can use
@@ -190,17 +191,23 @@ Create a new workspace and bootstrap admin access.
 ---
 
 #### `eai workspace delete <id>`
-Soft-delete a tenant.
+Delete a workspace. A parent workspace admin can permanently remove one immediate
+leaf child with `--parent <parent-id> --force-hard-purge`; the backend rejects
+children that still have descendants. The JSON success receipt confirms the exact
+child ID, parent ID, and `hard_purged` status.
 
 **Arguments**:
 - `<id>` — Tenant ID
 
 **Options**:
 - `--force` — Skip confirmation
+- `--force-hard-purge` — Permanently purge the workspace (without `--parent`, uses the existing system-admin subtree purge contract)
+- `--parent <id>` — Authorize one leaf child hard purge through its immediate parent; requires `--force-hard-purge` and a parent different from the child
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{tenantId}/delete`
+- `POST /v4/platform/tenants/{parentId}/children/{childId}/delete` — parent-authorized leaf hard purge; sends the parent as `X-Tenant-Id`
 
 ---
 
@@ -428,7 +435,25 @@ Compare local definitions with remote state.
 ---
 
 #### `eai types pull`
-Download remote types to local TypeScript.
+Download remote types to local TypeScript. Stored identifiers and platform
+metadata are preserved through a serialized JSON data boundary. The generated
+file imports the project model relative to its output location. Failed or malformed
+responses preserve existing output. The model filename `object-types.ts` is
+reserved in every directory; choose a generated filename. Linked output paths
+are refused, and parent identities are checked before the read and throughout
+atomic publication. These checks detect observed namespace changes; they do not
+provide isolation against an arbitrary concurrent writer with the same filesystem
+permissions. An unverifiable publication exits with inspection guidance because
+the local generated file may already have been replaced. The command reads all
+pages in ID order with the
+same workspace filter and compares two complete scans before atomically replacing
+the generated file. Pagination drift, duplicate IDs, foreign workspace records,
+malformed present workspace markers, or an incomplete scan fail the command.
+Legacy documents may omit workspace metadata; present identifiers must match the
+selected workspace exactly. Export bounds are 1,000 pages per scan,
+64 MiB across both scans, and 120 seconds overall. This detects observed changes;
+the server does not provide a transactional snapshot token. Optional legacy arrays
+and unknown metadata are retained exactly; writable manifest rules remain separate.
 
 **Options**:
 - `--tenant-id <id>` — Platform tenant ID
@@ -436,6 +461,14 @@ Download remote types to local TypeScript.
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
+
+---
+
+#### `eai types define`
+Interactive definition is currently unsupported. The command exits nonzero before
+authentication or network access. `--format json` returns the stable
+`TYPES_DEFINE_UNSUPPORTED` error. Edit the project definitions, then use
+`eai types validate` and `eai types seed`.
 
 ---
 
@@ -636,6 +669,13 @@ Manage binary file properties on a resource.
 #### `eai resources storage status` · `storage doctor` · `doctor` · `sync-schema`
 Inspect and reconcile workspace storage.
 
+Schema sync refuses malformed result records before reporting success. Optional
+`actions` must be an array of strings when present; omitted or empty actions are
+supported in both JSON and text output.
+Supported producer states are `planned`, `provisioned`, `skipped`, `applied`, and
+`already_applied`. A `failed` result exits nonzero, and any unknown state is
+refused rather than reported as a successful schema sync.
+
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--backend <backend>` — (`sync-schema`) limit to `postgresql|documentdb|blob|search`
@@ -646,6 +686,25 @@ Inspect and reconcile workspace storage.
 - `GET /v4/data/resources/{tenantId}/storage` — storage routing/provisioning status (`storage status`)
 - `GET /v4/data/resources/{tenantId}/storage/doctor` — diagnostics (`storage doctor`, `doctor`)
 - `POST /v4/data/resources/{tenantId}/storage/sync-schema` — reconcile storage from Object Type metadata (`sync-schema`)
+
+---
+
+#### `eai resources indexes-plan`
+Preview validated storage/index changes for an explicit published Object Type selection.
+
+**Options**:
+- `--tenant-id <id>` — Target workspace (default: active workspace)
+- `--object-type <slug...>` — Required exact published Object Type slugs; 1 to 1,000 entries, each at most 255 characters. Model names and non-canonical slugs are rejected without normalization.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoint Used**:
+- `POST /v4/platform/tenants/{tenantId}/resourceapi/index-plan` — body `{ objectTypes: ["exact-published-slug"] }`. PublicAPI enforces a dry run; the client does not send `apply` or `dryRun`.
+
+`eai resources indexes-apply` is currently **unsupported**. PublicAPI does not
+expose an apply operation. The compatibility command accepts its existing options
+and exits nonzero before authentication or HTTP; `--format json` emits
+`RESOURCE_INDEX_APPLY_UNSUPPORTED`. Applying changes requires a supported platform
+operator workflow.
 
 ---
 
@@ -845,8 +904,17 @@ advanced V4-only access layer for authorized users and operators when a route
 family does not yet have a polished command.
 
 #### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
-Call an authorized PublicAPI V4 path using the current login and active workspace
-context.
+Call an authorized PublicAPI V4 path using the current login and workspace
+context. An explicit `--tenant-id` must be an exact workspace UUID. It sends
+that tenant as request context using the selected login and PublicAPI gateway;
+PublicAPI decides whether the user can perform the requested operation. This
+also supports tenant builders and viewers without a local tenant-admin
+membership check. It does not change the saved active workspace.
+
+When `--tenant-id` is omitted, the existing interactive active-workspace
+resolver applies. For tenant-scoped routes, use the same tenant UUID in the
+path and `--tenant-id`. Authentication and authorization failures retain their
+actual HTTP status in JSON output and exit unsuccessfully.
 
 **Arguments**:
 - `<path>` — PublicAPI path. It must start with `/v4/`.
@@ -1021,6 +1089,12 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 
 #### `eai app provision <key>`
 Run the parent-owned app provisioning job and write local storage bindings only after that exact job is ready. For an app with a separate runtime child tenant, specify both tenant IDs. A failed or incomplete job does not write local bindings.
+
+With `--app-tenant-id`, the parent owns the enrollment and `--tenant-id` pins the
+runtime child. Without an explicit parent, the selected workspace owns the
+enrollment and its exact `childTenantId`, when present, selects the runtime.
+Conflicting child bindings fail before storage or local writes. A dry run
+preserves local configuration, including when `--select` is supplied.
 
 **Arguments**: `<key>`
 

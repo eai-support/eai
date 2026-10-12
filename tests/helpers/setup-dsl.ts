@@ -5,9 +5,12 @@
  * Used to set up the environment before executing commands.
  */
 
-import { writeFile, mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { constants } from 'node:fs';
+import { chmod, lstat, open, writeFile, mkdir, unlink } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative } from 'node:path';
 import type { PublicAPIMock } from './mock-server.js';
+import { resolveIsolatedTestHome } from './test-env.js';
 
 export interface TestContext {
   workingDir: string;
@@ -20,12 +23,65 @@ const PROD_AUTH_TENANT_NAME = 'enterpriseaiplatform';
 const PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
 const PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
 
-function resolveTestHome(ctx?: TestContext): string {
-  return ctx?.env.HOME || ctx?.workingDir || requireCurrentHome();
+async function fixtureTokenFile(home: string, profile: string): Promise<string> {
+  const { getProfileTokensFile } = await import('../../src/lib/profile.js');
+  const suffix = relative(homedir(), getProfileTokensFile(profile));
+  if (isAbsolute(suffix) || suffix === '..' || suffix.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`)) {
+    throw new Error('Auth fixture token path must remain inside its disposable home.');
+  }
+  return join(home, suffix);
 }
 
-function requireCurrentHome(): string {
-  return process.env.HOME || process.env.USERPROFILE || (process.platform === 'win32' ? 'C:\\Users\\Default' : '/tmp');
+async function resolveTestHome(ctx: TestContext): Promise<string> {
+  const home = await resolveIsolatedTestHome(ctx.env.HOME || ctx.env.USERPROFILE || ctx.workingDir);
+  ctx.env.HOME = home;
+  ctx.env.USERPROFILE = home;
+  for (const directory of [join(home, '.eai'), join(home, '.eai', 'tokens')]) {
+    try {
+      const info = await lstat(directory);
+      if (!info.isDirectory() || info.isSymbolicLink()) throw new Error('Auth fixture token directories must not contain links or special files.');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  const { getActiveProfile } = await import('../../src/lib/profile.js');
+  const profile = getActiveProfile();
+  const leaves = [await fixtureTokenFile(home, 'default')];
+  if (profile !== 'default') leaves.push(await fixtureTokenFile(home, profile));
+  for (const path of leaves) {
+    try {
+      const info = await lstat(path);
+      if (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1) {
+        throw new Error('Auth fixture token leaves must be unlinked regular files.');
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+  }
+  return home;
+}
+
+async function clearIsolatedTokens(home: string): Promise<void> {
+  const originalHome = process.env.HOME;
+  const originalUserProfile = process.env.USERPROFILE;
+  const { getActiveProfile, setActiveProfile } = await import('../../src/lib/profile.js');
+  const { clearTokens } = await import('../../src/lib/auth.js');
+  const originalProfile = getActiveProfile();
+  process.env.HOME = home;
+  process.env.USERPROFILE = home;
+  try {
+    await clearTokens();
+    if (originalProfile !== 'default') {
+      setActiveProfile('default');
+      await clearTokens();
+    }
+  } finally {
+    if (originalProfile !== 'default') setActiveProfile(originalProfile);
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
+  }
 }
 
 /**
@@ -46,12 +102,14 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 }): Promise<void> {
   // Use environment variable approach for testing - CLI checks this first
   ctx.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
-  ctx.env.HOME ||= ctx.workingDir;
-
   // Also write tokens file to home directory for full integration
-  const homedir = resolveTestHome(ctx);
-  const tokensDir = join(homedir, '.eai');
-  await mkdir(tokensDir, { recursive: true });
+  const homedir = await resolveTestHome(ctx);
+  const { getActiveProfile } = await import('../../src/lib/profile.js');
+  const tokensFile = await fixtureTokenFile(homedir, getActiveProfile());
+  await clearIsolatedTokens(homedir);
+  const tokensDir = dirname(tokensFile);
+  await mkdir(tokensDir, { recursive: true, mode: 0o700 });
+  await chmod(tokensDir, 0o700);
 
   const tokens = {
     accessToken: '<fixture-access-token>',
@@ -77,11 +135,12 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
   encrypted += cipher.final('hex');
   const encryptedData = `${iv.toString('hex')}:${encrypted}`;
 
-  await writeFile(
-    join(tokensDir, 'tokens.json'),
-    encryptedData,
-    { encoding: 'utf-8', mode: 0o600 }
-  );
+  // Cleanup removed the old fixture leaf. Exclusive creation refuses a new
+  // occupant, including a link introduced between validation and publication.
+  const file = await open(tokensFile,
+    constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | (constants.O_NOFOLLOW || 0), 0o600);
+  try { await file.writeFile(encryptedData, 'utf8'); await file.chmod(0o600); }
+  finally { await file.close(); }
 }
 
 /**
@@ -90,34 +149,25 @@ export async function userIsLoggedIn(ctx: TestContext, opts?: {
 export async function userIsNotLoggedIn(ctx: TestContext): Promise<void> {
   // Clear environment variable
   delete ctx.env.EAI_ACCESS_TOKEN;
-  ctx.env.HOME ||= ctx.workingDir;
-
-  // Remove tokens file if it exists
-  const homedir = resolveTestHome(ctx);
-  const tokensFile = join(homedir, '.eai', 'tokens.json');
-  try {
-    const { unlink } = await import('node:fs/promises');
-    await unlink(tokensFile);
-  } catch {
-    // File may not exist, that's fine
-  }
+  await cleanupTestTokens(ctx);
 }
 
 /**
  * Clean up test tokens (call in afterEach)
  */
 export async function cleanupTestTokens(ctx?: TestContext): Promise<void> {
-  const homedir = resolveTestHome(ctx);
+  // A failed beforeEach may not have created a context. Never substitute the
+  // user's ambient home in that case.
+  if (!ctx) return;
+  const homedir = await resolveTestHome(ctx);
   const tokensFile = join(homedir, '.eai', 'tokens.json');
   try {
-    const { unlink } = await import('node:fs/promises');
     await unlink(tokensFile);
-  } catch {
-    // File may not exist, that's fine
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
   }
   // Clear the module-level token cache so it doesn't leak between tests
-  const { clearTokens } = await import('../../src/lib/auth.js');
-  await clearTokens();
+  await clearIsolatedTokens(homedir);
 }
 
 /**

@@ -126,6 +126,55 @@ Rules:
    endpoint URLs.
 3. Use your deployment provider's secret management for deployed applications.
 
+`eai init` records the local CLI profile selector as `EAI_PROFILE` in this
+ignored file so a reopened app workspace keeps its CLI authentication context.
+The selection order is an explicit `--profile`, your shell's `EAI_PROFILE`, the
+app-root `.env.local` selector, then the public default. Named selectors require
+an existing local CLI profile; a missing profile fails before platform requests.
+`eai env push` excludes this selector, and `eai env pull` excludes it before
+parsing or resolving cloud references, preserving its local value. Profile
+credentials and CLI tokens remain outside the app repository.
+
+`eai init` establishes the `.env.local` ignore rule before writing credentials.
+Existing `.gitignore` and `.env.local` files must be regular, unlinked files
+within 1 MiB. The ignore file's content and permissions are preserved when the
+rule is appended atomically. The generated `.env.local` replaces an ordinary
+scaffold file atomically with private permissions; linked credential destinations
+are refused, including when initializing in the current directory.
+All subsequent init hydration and provisioning patches use that same protected
+writer, including client secrets and cloud-secret hydration.
+Temporary `.env.local.eai-*.tmp` credential files are ignored as well, so an
+interrupted initialization cannot leave them eligible for ordinary Git staging.
+Init file writers use an exclusive lock with no stale-lock takeover. New leaves
+are published without replacing another file. Existing regular files are
+rechecked under that lock and replaced atomically; these checks coordinate init
+writers and detect observed changes, without isolating arbitrary concurrent
+filesystem changes by the same user. Inspect the files and lock before retrying
+an interrupted initialization.
+
+Before commands use PublicAPI authentication, a named profile's PublicAPI endpoint
+must agree with `BASE_URL_PUBLIC_API` and `ROUTING_BOOTSTRAP_PUBLIC_API_URL`
+where configured in the app-root `.env.local` or your shell. The shell bootstrap
+is checked even when the project has no `BASE_URL_PUBLIC_API`.
+`eai login` accepts its authentication flags before that check, then rechecks
+the selected profile and returned token configuration before protected workspace
+discovery. `eai logout` clears only the selected local token namespace.
+
+`eai env pull` and `eai env push` use Azure CLI authorization independently of
+your platform workspace role and PublicAPI configuration. They validate the
+local profile selector without requiring saved platform authentication settings.
+For an App Configuration identity with data-plane
+permissions, use Azure CLI's login mode for the command:
+
+```bash
+AZURE_DEFAULTS_APPCONFIG_AUTH_MODE=login eai env push --label <app-name> --key <key>
+AZURE_DEFAULTS_APPCONFIG_AUTH_MODE=login eai env pull --label <app-name>
+```
+
+Configure `EAI_APP_CONFIG_STORE` for the intended store. Azure CLI defaults to
+access-key authorization when no auth mode is configured; that mode also requires
+permission to retrieve the store's access keys.
+
 ### `eai.config.ts`
 
 **File**: `eai.config.ts` in the project root

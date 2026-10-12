@@ -285,7 +285,7 @@ function findCommand(
   return findCommand(child, tail);
 }
 
-function runCli(args: readonly string[], cwd: string): Promise<CliResult> {
+function runCli(args: readonly string[], cwd: string, overrides: NodeJS.ProcessEnv = {}): Promise<CliResult> {
   const env = {
     ...process.env,
     HOME: cwd,
@@ -294,6 +294,7 @@ function runCli(args: readonly string[], cwd: string): Promise<CliResult> {
     EAI_NON_INTERACTIVE: "1",
     EAI_PROFILE: "default",
     NO_UPDATE_NOTIFIER: "1",
+    ...overrides,
   };
 
   return new Promise((resolve, reject) => {
@@ -325,6 +326,30 @@ describe("built CLI discovery and error contracts", () => {
 
   afterEach(async () => {
     await testEnvironment.cleanup();
+  });
+
+  test.each([
+    { label: 'explicit separated selector', args: ['--profile', '../escape', 'whoami', '--format', 'json'], env: {} },
+    { label: 'explicit equals selector', args: ['--profile=.hidden', 'whoami', '--format=json'], env: {} },
+    { label: 'environment selector', args: ['whoami', '--format', 'json'], env: { EAI_PROFILE: '../escape' } },
+    { label: 'environment selector with JSON alias', args: ['whoami', '--json'], env: { EAI_PROFILE: '.hidden' } },
+  ])('invalid $label exits with the structured E006 envelope', async ({ args, env }) => {
+    const result = await runCli(args, testEnvironment.dir, env);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    const envelope = JSON.parse(result.stderr) as { error: { code: string; message: string; exitCode: number } };
+    expect(envelope.error.code).toBe('E006');
+    expect(envelope.error.exitCode).toBe(1);
+    expect(envelope.error.message).toContain('profile names');
+    expect(result.stderr).not.toContain('at setActiveProfile');
+  });
+
+  test('invalid profile text errors retain normal guidance without an uncaught stack', async () => {
+    const result = await runCli(['--profile', '../escape', 'whoami'], testEnvironment.dir);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('E006');
+    expect(result.stderr).not.toContain('at setActiveProfile');
   });
 
   test("--describe preserves the recursive command schema", async () => {

@@ -76,8 +76,8 @@ describe('read-only managed source validation command', () => {
 });
 
 async function put(root: string, path: string, content: string | Buffer): Promise<void> {
-  await mkdir(dirname(join(root, path)), { recursive: true });
-  await writeFile(join(root, path), content);
+  await mkdir(dirname(join(root, path)), { recursive: true, mode: 0o700 });
+  await writeFile(join(root, path), content, { mode: 0o644 });
 }
 
 async function project(): Promise<string> {

@@ -18,6 +18,9 @@ async function fixture() {
   const evidence = join(root, 'private');
   await mkdir(project, { mode: 0o700 });
   await mkdir(evidence, { mode: 0o700 });
+  await chmod(root, 0o700);
+  await chmod(project, 0o700);
+  await chmod(evidence, 0o700);
   return { root, project, evidence, path: join(evidence, 'binding.json') };
 }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
