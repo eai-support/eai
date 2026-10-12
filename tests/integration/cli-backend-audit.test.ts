@@ -85,13 +85,28 @@ describe('CLI backend audit evidence', () => {
       version: '3.19.2', runtimeFileCount: 200, dirty: false };
     const actors = Object.fromEntries(Object.keys(qa.SLOTS).map((slot, index) => [slot, { oid: id(index + 1), profile: 'qa-' + slot }]));
     const tenantIds = { a: id(20), b: id(21) };
-    const authorizationEvidence = { schemaVersion: 'eai.cli-authorization-evidence.v1', fixtureId: id(30),
+    const runId = id(31), objectType = 'cli-qa-authorization-row';
+    const created = ['adminA', 'builderA', 'adminB', 'builderB'].map((creatorSlot, index) => ({
+      creatorSlot, tenantId: tenantIds[qa.SLOTS[creatorSlot][0] as 'a' | 'b'], resourceId: id(60 + index),
+      nonce: `cli-qa-${runId}-${creatorSlot}-${id(80 + index)}`, idempotencyKey: id(70 + index),
+      phase: 'absent', creationDispatched: true, acknowledgedBound: true, version: 1,
+    }));
+    const authorizationEvidence = { schemaVersion: 'eai.cli-authorization-evidence.v1', fixtureId: id(30), runId,
       status: 'passed', qualification: 'normal-cli-profiles', qualified: true, environment: 'DEV', publicApiUrl,
-      candidate, actors, tenantIds, foundationVerified: true, cleanupVerified: true, completedAt: observedAt,
+      candidate, actors, tenantIds, foundationVerified: true, cleanupVerified: true, localCleanupVerified: true, completedAt: observedAt,
+      publishedFixture: ['a', 'b'].map((slot, index) => ({ tenantId: tenantIds[slot as 'a' | 'b'],
+        definitionId: id(40 + index), objectType, nonceField: 'qaNonce', schemaVersion: 1,
+        publicationStatus: 'published', propertyFingerprintSha256: 'a'.repeat(64) })),
+      created, cleanup: created.map(row => ({ creatorSlot: row.creatorSlot, tenantId: row.tenantId, resourceId: row.resourceId,
+        profile: actors[qa.SLOTS[row.creatorSlot][0] === 'a' ? 'adminA' : 'adminB'].profile,
+        status: 'passed', deleteAcknowledged: true, absenceVerified: true, deleteHttpStatus: 200, absenceHttpStatus: 404 })), leftovers: [],
       cases: qa.ROLE_CASES.map((name: string) => { const slot = name.split(':')[0], workspace = qa.SLOTS[slot][0];
+        const creator = name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'adminB' : 'adminA')
+          : slot === 'viewerA' ? 'adminA' : slot;
         return { name, actorId: actors[slot].oid, profile: actors[slot].profile, status: 'passed',
+          resourceId: created.find(row => row.creatorSlot === creator)!.resourceId,
           scopeTenantId: tenantIds[name.endsWith(':sibling-denied') ? (workspace === 'a' ? 'b' : 'a') : workspace as 'a' | 'b'],
-          httpStatus: name.endsWith('-denied') ? 403 : 200 }; }) };
+          httpStatus: name.endsWith('-denied') ? 403 : name.endsWith(':write') ? 201 : 200 }; }) };
     const deployments = qa.SERVICES.map((service: string) => service === 'CIAM' ? { service, environment: 'DEV', publicApiUrl, observedAt,
       source: 'oidc-discovery', sourceReference: `https://qa.ciamlogin.com/${id(40)}/v2.0/.well-known/openid-configuration`,
       identity: { tenantId: id(40), clientId: id(41), verified: true, issuer: `https://qa.ciamlogin.com/${id(40)}/v2.0`,
@@ -138,6 +153,39 @@ describe('CLI backend audit evidence', () => {
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['published-missing', 'published-duplicate', 'published-tenant', 'published-fingerprint', 'published-draft',
+    'created-missing', 'created-duplicate', 'created-tenant', 'created-unacknowledged', 'created-not-dispatched',
+    'created-not-absent', 'created-duplicate-key', 'created-nonce', 'cleanup-missing', 'cleanup-id', 'cleanup-profile',
+    'cleanup-no-delete', 'cleanup-no-absence', 'cleanup-wrong-status', 'leftovers', 'local-cleanup',
+    'case-resource', 'viewer-resource', 'sibling-resource'])('contradictory %s receipts cannot qualify the permission consumer', failure => {
+    const { input, decisions } = completeContractModel(), authorization = input.evidence.authorizationEvidence;
+    if (failure === 'published-missing') authorization.publishedFixture = [];
+    if (failure === 'published-duplicate') authorization.publishedFixture[1] = authorization.publishedFixture[0];
+    if (failure === 'published-tenant') authorization.publishedFixture[0].tenantId = '00000000-0000-4000-8000-000000000999';
+    if (failure === 'published-fingerprint') authorization.publishedFixture[1].propertyFingerprintSha256 = 'b'.repeat(64);
+    if (failure === 'published-draft') authorization.publishedFixture[0].publicationStatus = 'draft';
+    if (failure === 'created-missing') authorization.created = [];
+    if (failure === 'created-duplicate') authorization.created[1] = authorization.created[0];
+    if (failure === 'created-tenant') authorization.created[0].tenantId = authorization.tenantIds.b;
+    if (failure === 'created-unacknowledged') authorization.created[0].acknowledgedBound = false;
+    if (failure === 'created-not-dispatched') authorization.created[0].creationDispatched = false;
+    if (failure === 'created-not-absent') authorization.created[0].phase = 'acknowledged';
+    if (failure === 'created-duplicate-key') authorization.created[1].idempotencyKey = authorization.created[0].idempotencyKey;
+    if (failure === 'created-nonce') authorization.created[0].nonce = 'foreign-run';
+    if (failure === 'cleanup-missing') authorization.cleanup = [];
+    if (failure === 'cleanup-id') authorization.cleanup[0].resourceId = authorization.created[1].resourceId;
+    if (failure === 'cleanup-profile') authorization.cleanup[0].profile = authorization.actors.adminB.profile;
+    if (failure === 'cleanup-no-delete') authorization.cleanup[0].deleteAcknowledged = false;
+    if (failure === 'cleanup-no-absence') authorization.cleanup[0].absenceVerified = false;
+    if (failure === 'cleanup-wrong-status') authorization.cleanup[0].absenceHttpStatus = 403;
+    if (failure === 'leftovers') Object.assign(authorization, { leftovers: [{ resourceId: authorization.created[0].resourceId }] });
+    if (failure === 'local-cleanup') authorization.localCleanupVerified = false;
+    if (failure === 'case-resource') authorization.cases[0].resourceId = authorization.created[1].resourceId;
+    if (failure === 'viewer-resource') authorization.cases.find((row: any) => row.name === 'viewerA:read')!.resourceId = authorization.created[1].resourceId;
+    if (failure === 'sibling-resource') authorization.cases.find((row: any) => row.name === 'adminA:sibling-denied')!.resourceId = authorization.created[0].resourceId;
+    const report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
   });
   test.each(['fixtureId', 'workspace-a', 'workspace-b', 'actor-oid', 'actor-profile', 'missing-context'])('separately valid %s cycle evidence cannot borrow another role foundation', field => {
     const { input, decisions } = completeContractModel(), cycle = addCompleteCycleModel(input);

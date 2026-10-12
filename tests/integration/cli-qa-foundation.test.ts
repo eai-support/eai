@@ -51,6 +51,43 @@ describe('retained CLI QA foundation authority', () => {
 });
 
 describe('private foundation and exclusive lease', () => {
+  test.each([0o777, 0o770])('private file operations refuse non-sticky writable ancestor mode %s', mode => {
+    const { root, foundation } = privateFixture(), ancestor = join(root, 'shared'), leaf = join(ancestor, 'private');
+    mkdirSync(ancestor, { mode: 0o700 }); mkdirSync(leaf, { mode: 0o700 });
+    const path = join(leaf, 'state.json'); qa.writePrivate(path, foundation); const before = readFileSync(path);
+    chmodSync(ancestor, mode); let entered = false;
+    expect(() => qa.readPrivate(path)).toThrow('ancestor');
+    expect(() => qa.writePrivate(path, {})).toThrow('ancestor');
+    expect(() => qa.withLease(path, () => { entered = true; })).toThrow('ancestor');
+    expect(entered).toBe(false); expect(readFileSync(path)).toEqual(before); expect(existsSync(path + '.lease')).toBe(false);
+  });
+  test('changing a previously bound ancestor to unsafe writable mode invalidates its identity', () => {
+    const { root } = privateFixture(), leaf = join(root, 'private');
+    mkdirSync(leaf, { mode: 0o700 }); const parents = qa.privateDirectory(leaf);
+    chmodSync(root, 0o777); expect(() => qa.assertPrivateDirectory(parents)).toThrow('ancestor');
+  });
+  test('trusted sticky temporary ancestors retain supported private operations', () => {
+    const { root, foundation } = privateFixture(), ancestor = join(root, 'sticky'), leaf = join(ancestor, 'private');
+    mkdirSync(ancestor, { mode: 0o700 }); chmodSync(ancestor, 0o1777); mkdirSync(leaf, { mode: 0o700 });
+    const path = join(leaf, 'state.json'); qa.writePrivate(path, foundation);
+    expect(qa.readPrivate(path).fixtureId).toBe(foundation.fixtureId); expect(qa.withLease(path, () => 'owned')).toBe('owned');
+  });
+  test('normal-profile calls allow operational settings and exclude every ambient credential family', () => {
+    const { root, foundation } = privateFixture(); let checked = false;
+    const forbidden = { GH_TOKEN: 'synthetic-gh', GITHUB_TOKEN: 'synthetic-github', AZURE_CLIENT_SECRET: 'synthetic-azure',
+      NPM_TOKEN: 'synthetic-npm', npm_config_token: 'synthetic-npm-config', NODE_OPTIONS: '--require=foreign.cjs',
+      NODE_TLS_REJECT_UNAUTHORIZED: '0', UNAPPROVED_SETTING: 'ambient', EAI_ACCESS_TOKEN: 'synthetic-eai' };
+    const operational = { HOME: '/normal-profile-home', PATH: '/normal-bin', TMPDIR: '/system-temp',
+      NODE_EXTRA_CA_CERTS: '/trusted-ca.pem', HTTPS_PROXY: 'http://proxy.example.invalid:8080' };
+    const call = qa.cliCaller('dist/index.js', foundation, join(root, 'contexts'), { env: { ...operational, ...forbidden },
+      execute: (_cli: string, _args: string[], options: { env: Record<string, string> }) => {
+        for (const [key, value] of Object.entries(operational)) expect(options.env[key]).toBe(value);
+        for (const key of Object.keys(forbidden)) expect(options.env[key]).toBeUndefined();
+        expect(options.env.EAI_PROFILE).toBe(foundation.owner.profile); checked = true;
+        return { status: 0, stdout: '{}', stderr: '' };
+      } });
+    call(foundation.owner, ['whoami'], foundation.parentTenantId); expect(checked).toBe(true);
+  });
   test('private operations accept the operating system temporary-directory path, including fixed macOS aliases', () => {
     const root = mkdtempSync(join(tmpdir(), 'eai-qa-system-temp-')); directories.push(realpathSync(root));
     const path = join(root, 'state.json'), value = qa.initialize(fixtureSpec());

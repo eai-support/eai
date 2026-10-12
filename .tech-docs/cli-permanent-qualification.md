@@ -31,8 +31,16 @@ These are private operator observations, not signed server attestations.
 Private state and leases refuse caller-created links in every ancestor and
 recheck the observed directory identities before file operations. The fixed
 macOS `/tmp` and `/var` aliases are allowed only with their exact system targets.
+Ancestors must belong to the operator or root and cannot grant group/world
+write access without the sticky bit. Trusted sticky temporary directories remain
+supported; a private leaf inside a non-sticky shared parent is refused. Ownership,
+permissions and directory identities are rechecked during each operation.
 These checks do not provide descriptor-relative isolation from arbitrary
 concurrent filesystem changes by another process using the same OS account.
+Normal-profile calls and lifecycle subprocesses receive only allowlisted OS,
+profile-home and network settings plus the harness's explicit tenant/profile
+settings. Ambient GitHub, Azure, npm and headless credential variables, injected
+Node options and operator lifecycle overrides are excluded.
 
 ## Retained foundation
 
@@ -92,9 +100,12 @@ or any malformed present marker rather than inferring ownership from it.
 Publish the same simple, synthetic `cli-qa-*` Object Type in both retained
 siblings using the normal app/schema workflow. Add an `authorization` binding
 with `workspaceSlot: a`, its exact `objectType`, a text `nonceField`, and bounded
-synthetic `data`. An optional exact Object Type `id` may be included. The probe
+synthetic `data`. An optional exact Object Type `id` binds only workspace `a`. The probe
 reads and validates both published schemas before mutation; this binding cannot
 stand in for missing published schemas.
+Each selected definition must explicitly report `status: published`; the passive
+schema endpoint can return an installed draft definition. Draft, disabled or
+missing publication status blocks this published-fixture probe.
 Published property names, types, required flags, select values and defaults must
 match across siblings; local definition IDs and property order may differ.
 
@@ -211,6 +222,11 @@ both retained workspace IDs and all five actors' exact OIDs/profiles. The cycle
 controller records those references from its verified foundation. Independently
 valid receipts from another foundation, actor or workspace cannot be combined
 to certify this run; older cycle receipts without that context cannot qualify.
+Permission evidence must also carry both matching published schema observations,
+four fresh acknowledged rows and their exact successful DELETE/404 cleanup
+records. Every allow/deny case names its scoped row; flags without those receipts
+cannot certify authorization. Candidate/deployment read failures after output
+validation leave a private blocked summary before any runtime mutation.
 Raw local/live smoke summaries prove selected command journeys and deliberately
 omit full per-command completion evidence. The audit preserves their observed
 success counts while classifying those partial observations as `incomplete`.

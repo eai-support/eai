@@ -80,16 +80,14 @@ function runQualification(options, dependencies = {}) {
   const runLive = dependencies.runLive || smoke.runLiveSmoke;
   return qa.withLease(options.foundationPath, () => {
     const foundation = qa.validateFoundation(qa.readPrivate(options.foundationPath));
-    const deployments = qa.readPrivate(options.deploymentsPath);
-    const candidate = candidateEvidence(options.cliPath);
+    let deployments, candidate;
     const output = resolve(options.output || join(require('node:os').tmpdir(), 'eai-cli-cycles-' + randomUUID(), 'summary.json'));
     requireCondition([options.foundationPath, options.deploymentsPath, options.cleanupPreflight, options.buildReceiptPath, options.cliPath]
       .filter(Boolean).every(path => resolve(path) !== output) && !existsSync(output),
     'Use a new private cycle output separate from every fixture, proof and CLI input.');
-    const cycleEnv = { ...(dependencies.env || process.env) };
-    for (const key of Object.keys(cycleEnv)) if (key.startsWith('EAI_E2E_')) delete cycleEnv[key];
+    const cycleEnv = qa.operationalEnvironment(dependencies.env || process.env);
     const report = { schemaVersion: 'eai.cli-permanent-cycles.v1', fixtureId: foundation.fixtureId,
-      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, candidate,
+      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, candidate: null,
       actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])),
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
       qualification: Object.keys(dependencies).some(key => !['env', 'log'].includes(key)) ? 'controlled-fixtures' : 'normal-cli-profiles',
@@ -97,6 +95,8 @@ function runQualification(options, dependencies = {}) {
     const save = () => qa.writePrivate(output, report);
     let stage = 'preflight'; save();
     try {
+      deployments = qa.readPrivate(options.deploymentsPath);
+      candidate = candidateEvidence(options.cliPath); report.candidate = candidate; save();
       requireCondition(foundation.state === 'verified', 'Retained foundation has not been freshly prepared.');
       requireCondition(candidateValid(candidate), 'Use a clean, source-bound built CLI candidate.');
       requireCondition(options.buildReceiptPath && sourceBuildVerified(qa.readPrivate(options.buildReceiptPath), candidate, { now: now() }),

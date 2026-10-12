@@ -87,6 +87,35 @@ function controlled() {
 }
 
 describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
+  test.each(['missing-deployments', 'malformed-deployments', 'public-deployments', 'candidate-read'])('retains %s preflight failure in a blocked summary', failure => {
+    const fixture = controlled();
+    if (failure === 'missing-deployments') rmSync(fixture.options.deploymentsPath);
+    if (failure === 'malformed-deployments') writeFileSync(fixture.options.deploymentsPath, '{broken', { mode: 0o600 });
+    if (failure === 'public-deployments') {
+      const fs = require('node:fs'); fs.chmodSync(fixture.options.deploymentsPath, 0o644);
+    }
+    const dependencies = failure === 'candidate-read' ? { ...fixture.dependencies,
+      candidateEvidence: () => { throw new Error('Synthetic unreadable candidate'); } } : fixture.dependencies;
+    let report: any; try { cycles.runQualification(fixture.options, dependencies); }
+    catch (error) { report = (error as Error & { report: unknown }).report; }
+    expect(report).toMatchObject({ status: 'blocked', qualified: false, cycles: [], stoppedAt: 'preflight' });
+    expect(qa.readPrivate(fixture.options.output)).toMatchObject({ status: 'blocked', qualified: false });
+    expect(fixture.runs()).toBe(0); expect(existsSync(fixture.options.foundationPath + '.lease')).toBe(false);
+    expect(readFileSync(fixture.options.output, 'utf8')).not.toContain('Synthetic unreadable candidate');
+  });
+  test('live cycle subprocesses receive only operational environment and explicit owned settings', () => {
+    const fixture = controlled();
+    const ambient = { GH_TOKEN: 'synthetic-gh', GITHUB_TOKEN: 'synthetic-github', AZURE_CLIENT_SECRET: 'synthetic-azure',
+      NPM_TOKEN: 'synthetic-npm', NODE_OPTIONS: '--require=foreign.cjs', EAI_E2E_RUN_ID: 'foreign-run' };
+    const report = cycles.runQualification(fixture.options, { ...fixture.dependencies,
+      env: { ...ambient, HOME: '/normal-home', PATH: '/normal-bin' }, runLive: (_cli: string, options: { env: Record<string, string> }) => {
+        for (const key of Object.keys(ambient)) expect(options.env[key]).toBeUndefined();
+        expect(options.env.HOME).toBe('/normal-home'); expect(options.env.PATH).toBe('/normal-bin');
+        expect(options.env.EAI_E2E_TEST_PROFILE).toBe(fixture.foundation.actors.adminA.profile);
+        return fixture.liveReport();
+      } });
+    expect(report.status).toBe('passed'); expect(report.cycles).toHaveLength(10);
+  });
   test('records exactly ten fresh proven lifecycles and releases the single-host lease', () => {
     const fixture = controlled(); const report = cycles.runQualification(fixture.options, fixture.dependencies);
     expect(report.status).toBe('passed'); expect(report.contractsVerified).toBe(true); expect(report.qualified).toBe(false); expect(report.cycles).toHaveLength(10);

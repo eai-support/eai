@@ -33,6 +33,7 @@ function fixtureBinding(foundation) {
     && FIELD.test(binding.nonceField || '') && !['constructor', 'prototype'].includes(binding.nonceField)
     && record(binding.data) && Buffer.byteLength(JSON.stringify(binding.data)) <= 16384,
   'Provide a retained cli-qa-* Object Type binding with a text nonce field and bounded synthetic data.');
+  requireCondition(binding.workspaceSlot === 'a', 'The authorization binding must name retained workspace a.');
   requireCondition(!Object.hasOwn(binding.data, binding.nonceField)
     && Object.keys(binding.data).length <= 32 && Object.keys(binding.data).every(key => FIELD.test(key)
       && !['constructor', 'prototype'].includes(key)), 'Synthetic fixture data must leave the run nonce to the probe.');
@@ -79,9 +80,12 @@ function verifyPublishedFixture(call, foundation, binding) {
       && Array.isArray(schema.dropped_types), 'Published fixture schema must acknowledge its exact tenant.');
     const matches = schema.object_types.filter(type => type?.slug === binding.objectType);
     requireCondition(matches.length === 1 && record(matches[0]) && typeof matches[0].id === 'string'
-      && (!binding.id || matches[0].id === binding.id) && !schema.dropped_types.some(type => type?.slug === binding.objectType),
+      && matches[0].id.length > 0 && matches[0].id.length <= 128 && matches[0].id.trim() === matches[0].id
+      && Number.isSafeInteger(matches[0].schemaVersion) && matches[0].schemaVersion >= 1
+      && (slot !== 'a' || !binding.id || matches[0].id === binding.id) && !schema.dropped_types.some(type => type?.slug === binding.objectType),
     'The exact retained Object Type is missing, ambiguous or dropped from a sibling published schema.');
     const type = matches[0];
+    requireCondition(type.status === 'published', 'The selected fixture must have explicit published status in both siblings.');
     requireCondition(Array.isArray(type.properties) && type.properties.every(property => record(property)
       && typeof property.name === 'string') && new Set(type.properties.map(property => property.name)).size === type.properties.length,
     'Published fixture properties are incomplete or ambiguous.');
@@ -106,7 +110,7 @@ function verifyPublishedFixture(call, foundation, binding) {
       'Sibling published fixture property definitions must match before role mutations.');
     firstProperties = properties;
     observations.push({ tenantId, definitionId: type.id, objectType: type.slug,
-      schemaVersion: type.schemaVersion, nonceField: binding.nonceField,
+      schemaVersion: type.schemaVersion, nonceField: binding.nonceField, publicationStatus: type.status,
       propertyFingerprintSha256: createHash('sha256').update(JSON.stringify(properties)).digest('hex') });
   }
   return observations;
@@ -154,13 +158,14 @@ function runAuthorizationProbe(options, dependencies = {}) {
   const evidenceFor = dependencies.candidateEvidence || smoke.candidateEvidence;
   return qa.withLease(options.foundationPath, () => {
     const foundation = qa.validateFoundation(qa.readPrivate(options.foundationPath));
-    const output = resolve(options.output), candidate = evidenceFor(options.cliPath), runId = uuid();
+    const output = resolve(options.output), runId = uuid();
+    let candidate;
     requireCondition(output !== resolve(options.foundationPath) && !fs.existsSync(output), 'Use a new private evidence file, separate from the foundation.');
     requireCondition(UUID.test(runId), 'The probe requires a new ownership UUID.');
     const contextRoot = output + '.contexts-' + runId;
     requireCondition(!fs.existsSync(contextRoot), 'A prior context directory cannot be adopted.');
     const report = { schemaVersion: SCHEMA, fixtureId: foundation.fixtureId, runId, environment: foundation.environment,
-      publicApiUrl: foundation.publicApiUrl, candidate, probeSourceSha256: sourceHash(__filename),
+      publicApiUrl: foundation.publicApiUrl, candidate: null, probeSourceSha256: sourceHash(__filename),
       foundationSourceSha256: sourceHash(require.resolve('./cli-qa-foundation.cjs')),
       qualification: Object.keys(dependencies).some(key => !['env', 'log'].includes(key))
         ? 'controlled-fixtures' : 'normal-cli-profiles', qualified: false,
@@ -188,6 +193,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
     }
     const rowPath = row => `/v4/data/resources/${row.tenantId}/${binding.objectType}/${row.resourceId}`;
     try {
+      candidate = evidenceFor(options.cliPath); report.candidate = candidate; save();
       requireCondition(foundation.state === 'verified' && UUID.test(foundation.workspaces.a.id || '')
         && UUID.test(foundation.workspaces.b.id || ''), 'Prepare the exact retained sibling foundation first.');
       requireCondition(candidateValid(candidate), 'Use a clean, source-bound built CLI candidate.');
@@ -239,6 +245,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
         requireCondition(dto.version === viewerRow.version, 'Viewer read must preserve the exact owned version.'); entry.resourceId = viewerRow.resourceId;
       });
       runCase('viewerA:write-denied', entry => {
+        entry.resourceId = viewerRow.resourceId;
         const path = rowPath(viewerRow), attemptNonce = `cli-qa-${runId}-viewer-attempt-${uuid()}`;
         viewerRow.allowedNonces.push(attemptNonce); save();
         const response = dispatch(call, foundation.actors.viewerA, 'PUT', path, viewerRow.tenantId,
@@ -248,6 +255,7 @@ function runAuthorizationProbe(options, dependencies = {}) {
       for (const slot of Object.keys(qa.SLOTS)) {
         const other = qa.SLOTS[slot][0] === 'a' ? 'adminB' : 'adminA', row = report.created.find(item => item.creatorSlot === other);
         runCase(slot + ':sibling-denied', entry => {
+          entry.resourceId = row.resourceId;
           const path = rowPath(row), response = dispatch(call, foundation.actors[slot], 'GET', path, row.tenantId);
           entry.httpStatus = httpStatus(response); denial(response, 'GET', path, row.tenantId, foundation);
         });

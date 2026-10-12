@@ -73,6 +73,11 @@ function initialize(spec, uuid = randomUUID) {
   return validateFoundation({ ...spec, schemaVersion: SCHEMA, fixtureId: uuid(), publicApiUrl: publicApi(spec.environment, spec.region),
     workspaces: { a: { ...spec.workspaces.a, id: null }, b: { ...spec.workspaces.b, id: null } }, journal: {}, state: 'unprepared' });
 }
+function safePrivateAncestor(stat) {
+  const uid = typeof process.getuid === 'function' ? process.getuid() : undefined;
+  return (uid === undefined || stat.uid === uid || stat.uid === 0)
+    && (!(stat.mode & 0o022) || Boolean(stat.mode & 0o1000));
+}
 function privateDirectory(path) {
   path = resolve(path);
   const root = parse(path).root, identities = [];
@@ -83,12 +88,14 @@ function privateDirectory(path) {
     let aliasTarget;
     if (stat.isSymbolicLink() && expectedTarget && fs.realpathSync(current) === expectedTarget) {
       const target = fs.lstatSync(expectedTarget);
-      requireCondition(target.isDirectory() && !target.isSymbolicLink(), 'Private directory ancestor must be a regular directory.');
-      aliasTarget = { path: expectedTarget, dev: target.dev, ino: target.ino };
+      requireCondition(target.isDirectory() && !target.isSymbolicLink() && safePrivateAncestor(target),
+        'Private directory ancestor must be a trusted regular directory without unsafe write access.');
+      aliasTarget = { path: expectedTarget, dev: target.dev, ino: target.ino, uid: target.uid, mode: target.mode & 0o7777 };
     }
     requireCondition((stat.isDirectory() && !stat.isSymbolicLink()) || aliasTarget,
       'Private directory ancestor must be a regular directory; caller-created links are refused.');
-    identities.push({ path: current, dev: stat.dev, ino: stat.ino, aliasTarget });
+    requireCondition(aliasTarget || safePrivateAncestor(stat), 'Private directory ancestor has unsafe ownership or non-sticky write access.');
+    identities.push({ path: current, dev: stat.dev, ino: stat.ino, uid: stat.uid, mode: stat.mode & 0o7777, aliasTarget });
   };
   bind(root);
   let current = root;
@@ -107,12 +114,14 @@ function assertPrivateDirectory(identities) {
   for (const identity of identities) {
     const stat = fs.lstatSync(identity.path);
     requireCondition(stat.dev === identity.dev && stat.ino === identity.ino
+      && stat.uid === identity.uid && (stat.mode & 0o7777) === identity.mode
       && (identity.aliasTarget ? stat.isSymbolicLink() : stat.isDirectory() && !stat.isSymbolicLink()),
     'Private directory ancestor changed during the operation.');
     if (identity.aliasTarget) {
       const target = fs.lstatSync(identity.aliasTarget.path);
       requireCondition(fs.realpathSync(identity.path) === identity.aliasTarget.path && target.isDirectory() && !target.isSymbolicLink()
-        && target.dev === identity.aliasTarget.dev && target.ino === identity.aliasTarget.ino,
+        && target.dev === identity.aliasTarget.dev && target.ino === identity.aliasTarget.ino
+        && target.uid === identity.aliasTarget.uid && (target.mode & 0o7777) === identity.aliasTarget.mode && safePrivateAncestor(target),
       'Private directory ancestor alias changed during the operation.');
     }
   }
@@ -170,10 +179,17 @@ function context(root, foundation, tenantId) {
   writePrivateText(join(root, 'eai.config.ts'), 'export default {};\n');
   writePrivateText(join(root, '.env.local'), `BASE_URL_PUBLIC_API=${foundation.publicApiUrl}\nEAI_TENANT_ID=${tenantId}\n`);
 }
+/** Preserve normal profile homes and OS/network settings, never ambient credentials or code injection. */
+function operationalEnvironment(environment) {
+  const allowed = new Set(['HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'XDG_CONFIG_HOME', 'PATH', 'Path', 'PATHEXT',
+    'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'windir', 'COMSPEC', 'ComSpec', 'TMPDIR', 'TMP', 'TEMP', 'LANG', 'LC_ALL',
+    'TERM', 'CI', 'NO_COLOR', 'FORCE_COLOR', 'HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy', 'NODE_EXTRA_CA_CERTS', 'SSL_CERT_FILE', 'SSL_CERT_DIR']);
+  return Object.fromEntries(Object.entries(environment).filter(([key, value]) => allowed.has(key) && typeof value === 'string'));
+}
 function cliCaller(cliPath, foundation, root, dependencies) {
   const execute = dependencies.execute || executeCli;
-  const env = { ...(dependencies.env || process.env) };
-  for (const key of Object.keys(env)) if (/^(EAI_|NEXT_PUBLIC_|BASE_URL_|ROUTING_|ENTRA_|AUTH_|OBO_|TENANT_|WORKFLOW_|PUBLICAPI_)/.test(key)) delete env[key];
+  const env = operationalEnvironment(dependencies.env || process.env);
   return (actor, args, tenantId) => {
     const cwd = join(root, 'context-' + tenantId);
     context(cwd, foundation, tenantId);
@@ -335,6 +351,47 @@ function deploymentParity(deployments, { environment, publicApiUrl, now = Date.n
       && typeof selected.deploymentId === 'string' && /^[A-Za-z0-9_.:-]{1,200}$/.test(selected.deploymentId);
   });
 }
+/** Validate the actual probe's published/created/cleanup rows before accepting its pass flags. */
+function authorizationReceiptsVerified(authorization, actors, tenants) {
+  const record = value => value && typeof value === 'object' && !Array.isArray(value);
+  const uuid = value => typeof value === 'string' && UUID.test(value);
+  const published = authorization.publishedFixture, created = authorization.created, cleanup = authorization.cleanup;
+  const writers = Object.keys(SLOTS).filter(slot => SLOTS[slot][1] !== 'tenant-viewer');
+  if (!uuid(authorization.runId) || authorization.localCleanupVerified !== true
+    || !Array.isArray(authorization.leftovers) || authorization.leftovers.length !== 0
+    || !Array.isArray(published) || published.length !== 2 || !published.every(record)
+    || !Array.isArray(created) || created.length !== writers.length || !created.every(record)
+    || !Array.isArray(cleanup) || cleanup.length !== writers.length || !cleanup.every(record)) return false;
+  if (!['a', 'b'].every(slot => published.filter(row => row.tenantId === tenants[slot]).length === 1)
+    || !published.every(row => typeof row.definitionId === 'string' && row.definitionId.trim() === row.definitionId
+      && row.definitionId.length > 0 && row.definitionId.length <= 128 && /^cli-qa-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.objectType || '')
+      && typeof row.nonceField === 'string' && /^[A-Za-z][A-Za-z0-9_]{0,63}$/.test(row.nonceField)
+      && Number.isSafeInteger(row.schemaVersion) && row.schemaVersion >= 1 && row.publicationStatus === 'published'
+      && typeof row.propertyFingerprintSha256 === 'string' && /^[a-f0-9]{64}$/.test(row.propertyFingerprintSha256))
+    || !['objectType', 'nonceField', 'propertyFingerprintSha256'].every(field => published[0][field] === published[1][field])) return false;
+  if (!writers.every(slot => created.filter(row => row.creatorSlot === slot).length === 1
+    && cleanup.filter(row => row.creatorSlot === slot).length === 1)
+    || !created.every(row => {
+      const prefix = `cli-qa-${authorization.runId}-${row.creatorSlot}-`;
+      return row.tenantId === tenants[SLOTS[row.creatorSlot]?.[0]] && uuid(row.resourceId) && uuid(row.idempotencyKey)
+        && typeof row.nonce === 'string' && row.nonce.startsWith(prefix) && uuid(row.nonce.slice(prefix.length))
+        && row.creationDispatched === true && row.acknowledgedBound === true && row.phase === 'absent'
+        && Number.isSafeInteger(row.version) && row.version >= 1;
+    }) || new Set(created.map(row => row.resourceId.toLowerCase())).size !== writers.length
+    || new Set(created.map(row => row.idempotencyKey.toLowerCase())).size !== writers.length) return false;
+  if (!cleanup.every(row => {
+    const owned = created.find(entry => entry.creatorSlot === row.creatorSlot);
+    const admin = SLOTS[row.creatorSlot]?.[0] === 'a' ? 'adminA' : 'adminB';
+    return owned && row.resourceId === owned.resourceId && row.tenantId === owned.tenantId && row.profile === actors[admin].profile
+      && row.status === 'passed' && row.deleteAcknowledged === true && row.absenceVerified === true
+      && row.deleteHttpStatus === 200 && row.absenceHttpStatus === 404;
+  })) return false;
+  return authorization.cases.every(row => {
+    const slot = row.name.split(':')[0], sibling = row.name.endsWith(':sibling-denied');
+    const creator = sibling ? (SLOTS[slot][0] === 'a' ? 'adminB' : 'adminA') : slot === 'viewerA' ? 'adminA' : slot;
+    return row.resourceId === created.find(entry => entry.creatorSlot === creator)?.resourceId;
+  });
+}
 function authorizationVerified(evidence, candidate, context) {
   const authorization = evidence?.authorizationEvidence;
   const age = (context.now ?? Date.now()) - Date.parse(authorization?.completedAt);
@@ -343,7 +400,8 @@ function authorizationVerified(evidence, candidate, context) {
     || authorization.environment !== context.environment || authorization.publicApiUrl !== context.publicApiUrl
     || authorization.candidate?.gitSha !== candidate.gitSha || authorization.candidate?.runtimeSha256 !== candidate.runtimeSha256
     || authorization.candidate?.binarySha256 !== candidate.binarySha256 || !Number.isFinite(age) || age < -60000 || age > 3600000
-    || !authorization.foundationVerified || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)) return false;
+    || !authorization.foundationVerified || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)
+    || authorization.cases.length !== ROLE_CASES.length) return false;
   const actors = authorization.actors || {}, tenants = authorization.tenantIds || {};
   if (!UUID.test(tenants.a || '') || !UUID.test(tenants.b || '') || tenants.a === tenants.b) return false;
   if (!Object.keys(SLOTS).every(slot => UUID.test(actors[slot]?.oid || '') && typeof actors[slot]?.profile === 'string')
@@ -353,7 +411,8 @@ function authorizationVerified(evidence, candidate, context) {
       && row.profile === actors[name.split(':')[0]].profile && row.actorId === actors[name.split(':')[0]].oid
       && row.scopeTenantId === tenants[name.endsWith(':sibling-denied')
         ? (SLOTS[name.split(':')[0]][0] === 'a' ? 'b' : 'a') : SLOTS[name.split(':')[0]][0]]
-      && (name.endsWith('-denied') ? [403, 404].includes(row.httpStatus) : row.httpStatus >= 200 && row.httpStatus < 300)));
+      && (name.endsWith('-denied') ? [403, 404].includes(row.httpStatus) : row.httpStatus === (name.endsWith(':write') ? 201 : 200))))
+    && authorizationReceiptsVerified(authorization, actors, tenants);
 }
 function cycleReceiptVerified(row) {
   return UUID.test(row.clientId || '') && UUID.test(row.tenantId || '') && /^eai-e2e-[a-z0-9-]+$/.test(row.appKey || '')
@@ -411,5 +470,5 @@ function main() {
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
 module.exports = { SCHEMA, SLOTS, SERVICES, ROLE_CASES, publicApi, initialize, validateFoundation, readPrivate, writePrivate, writePrivateText,
   withLease, prepareFoundation, deploymentParity, authorizationVerified, cycleReceiptVerified, cycleIdentitiesFresh, cyclesVerified, foundationEvidenceBound,
-  privateDirectory, assertPrivateDirectory,
+  privateDirectory, assertPrivateDirectory, operationalEnvironment,
   cliCaller, getBody, verifyActors, verifyIdentity, verifyWorkspaces };

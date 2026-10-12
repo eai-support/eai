@@ -21,7 +21,8 @@ interface Faults {
   baseline?: 'global' | 'wrong-oid' | 'builder-admin' | 'viewer-builder' | 'sibling-access' | 'wrong-parent' | 'admin-context-only'
     | 'empty-inventory' | 'foreign-inventory' | 'unrelated-membership';
   schema?: 'missing-b' | 'wrong-tenant' | 'wrong-request' | 'duplicate' | 'required' | 'nonce-type' | 'wrong-data-type' | 'dropped'
-    | 'sibling-type' | 'sibling-required' | 'sibling-options' | 'sibling-extra' | 'sibling-id-order';
+    | 'sibling-type' | 'sibling-required' | 'sibling-options' | 'sibling-extra' | 'sibling-id-order'
+    | 'draft' | 'disabled' | 'missing-publication';
   ownRead?: 'tenant' | 'type' | 'nonce' | 'version';
   viewerStatus?: number; viewerExit?: number; viewerRequest?: boolean; siblingStatus?: number;
   cleanup?: 'delete-failed-but-absent' | 'absence403' | 'foreign-current' | 'wrong-delete-id' | 'delete-not-confirmed' | 'delete-no-timestamp';
@@ -104,6 +105,8 @@ function controlled(faults: Faults = {}) {
     }
     if (path.startsWith('/v4/data/resources/schema/')) {
       const type = definition();
+      if (faults.schema === 'draft' || faults.schema === 'disabled') type.status = faults.schema;
+      if (faults.schema === 'missing-publication') delete (type as Record<string, unknown>).status;
       if (tenantId === uuid(31)) {
         if (faults.schema === 'sibling-type') type.properties[5].type = 'text';
         if (faults.schema === 'sibling-required') type.properties[1].required = false;
@@ -244,6 +247,14 @@ describe('normal-profile authorization role probe', () => {
     expect(readFileSync(fixture.output, 'utf8')).not.toContain('Private provider text');
     expect(fixture.checkpoints.some(row => (row.created as any[])?.some(entry => entry.phase === 'acknowledged' && entry.resourceId))).toBe(true);
   });
+  test('the actual controlled producer emits structurally complete receipts for the independent consumer', () => {
+    const fixture = controlled(), report = fixture.run();
+    // This is a consumer DTO model; changing its labels does not execute normal identities.
+    const model = { ...report, qualified: true, qualification: 'normal-cli-profiles' };
+    expect(qa.authorizationVerified({ authorizationEvidence: model }, candidate,
+      { ...fixture.foundation, now: Date.parse(timestamp) })).toBe(true);
+    expect(report.qualification).toBe('controlled-fixtures'); expect(report.qualified).toBe(false);
+  });
 
   test.each([401, 500, 503])('viewer PUT %s is failure rather than authorization denial', viewerStatus => {
     const fixture = controlled({ viewerStatus }); const report = fixture.failed();
@@ -277,6 +288,29 @@ describe('normal-profile authorization role probe', () => {
 });
 
 describe('role probe fixture and authority preflight', () => {
+  test.each(['draft', 'disabled', 'missing-publication'] as const)('a %s selected schema cannot establish a published fixture', schema => {
+    const fixture = controlled({ schema }), report = fixture.failed();
+    expect(report.status).toBe('blocked'); expect(report.foundationVerified).toBe(false);
+    expect(report.created).toEqual([]); expect(fixture.calls.some(row => row.method !== 'GET')).toBe(false);
+  });
+  test('an optional definition ID binds workspace a while the sibling keeps its tenant-local ID', () => {
+    const fixture = controlled({ schema: 'sibling-id-order' });
+    fixture.foundation.bindings.authorization.id = uuid(50); qa.writePrivate(fixture.foundationPath, fixture.foundation);
+    const report = fixture.run(); expect(report.status).toBe('passed');
+    expect(report.publishedFixture.map((row: any) => row.definitionId)).toEqual([uuid(50), uuid(51)]);
+  });
+  test('authorization binding to workspace b blocks before any schema read or row mutation', () => {
+    const fixture = controlled();
+    Object.assign(fixture.foundation.bindings.authorization, { workspaceSlot: 'b', tenantId: uuid(31) });
+    qa.writePrivate(fixture.foundationPath, fixture.foundation);
+    expect(fixture.run).toThrow(); expect(fixture.calls).toEqual([]);
+  });
+  test('candidate evidence read failure is retained as a blocked report before runtime dispatch', () => {
+    const fixture = controlled(); fixture.dependencies.candidateEvidence = () => { throw new Error('Synthetic candidate read failure'); };
+    const report = fixture.failed(); expect(report).toMatchObject({ status: 'blocked', qualified: false, created: [] });
+    expect(qa.readPrivate(fixture.output)).toMatchObject({ status: 'blocked', qualified: false }); expect(fixture.calls).toEqual([]);
+    expect(existsSync(fixture.foundationPath + '.lease')).toBe(false);
+  });
   test.each(['empty-inventory', 'foreign-inventory'] as const)('actor %s cannot contradict its own workspace membership', baseline => {
     const fixture = controlled({ baseline }); const report = fixture.failed();
     expect(report.status).toBe('blocked'); expect(report.foundationVerified).toBe(false);
