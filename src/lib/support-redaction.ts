@@ -1,4 +1,4 @@
-const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key/i;
+const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key/i;
 
 /** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
@@ -20,8 +20,8 @@ export function redactSupportText(text: string, sensitiveValues: readonly string
     .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted-jwt]')
     .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]{16,})\b/g, '[redacted-key]')
     .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[redacted]@')
-    .replace(/((?:["']?[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|account[_-]?key|cookie|credential|authorization|connection[_-]?string|private[_-]?key)[\w.-]*["']?\s*[:=]\s*))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, '$1[redacted]')
-    .replace(/((?:--[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key)[\w-]*)\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, '$1[redacted]')
+    .replace(/((?:["']?[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|authorization|connection[_-]?string|private[_-]?key)[\w.-]*["']?\s*[:=]\s*))(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s,;}]+)/gi, '$1[redacted]')
+    .replace(/((?:--[\w-]*(?:token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key)[\w-]*)\s+)(?:"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\s]+)/gi, '$1[redacted]')
     .replace(/([?&](?:sig|signature|access_token|token|key|code)=)[^&#\s]*/gi, '$1[redacted]')
     .replace(/#draft=[^\s"']+/gi, '#draft=[redacted]')
     // eslint-disable-next-line no-control-regex -- Upstream terminal escapes must not execute during report review.

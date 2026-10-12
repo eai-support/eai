@@ -53,6 +53,9 @@ describe('local support report redaction', () => {
     ['refreshToken: refresh-fixture-secret', 'refresh-fixture-secret'],
     ['password="password fixture secret"', 'password fixture secret'],
     ['api_key=api-fixture-secret', 'api-fixture-secret'],
+    ['AWS_ACCESS_KEY_ID=aws-id-fixture', 'aws-id-fixture'],
+    ['access_key: access-key-fixture', 'access-key-fixture'],
+    ['--access-key-id access-id-fixture', 'access-id-fixture'],
     ['AccountKey=storage-fixture-secret;', 'storage-fixture-secret'],
     ['--token command-fixture-secret', 'command-fixture-secret'],
     ['https://account:credential-fixture-secret@example.invalid', 'credential-fixture-secret'],
@@ -323,6 +326,53 @@ describe('harness session summary schema', () => {
 });
 
 describe('support consent and request limits', () => {
+  test.each([undefined, '0'.repeat(64)])('requires a matching digest for interactive --yes with digest %j', async (approvedDigest) => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation(value => { shown.push(String(value)); });
+    const confirm = vi.fn(async () => true);
+    await runSupport({ format: 'text', yes: true, approvedDigest, open: false }, { confirm, isInteractive: true });
+    expect(process.exitCode).toBe(1);
+    expect(shown.join('\n')).toContain('Nothing was sent.');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(server.requests).toHaveLength(0);
+  });
+
+  test('sends the exact preview after matching interactive --yes approval', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation(value => { shown.push(String(value)); });
+    let jsonOutput = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation(value => { jsonOutput += String(value); return true; });
+    await runSupport({ format: 'json', open: false }, { isInteractive: true });
+    const preview = JSON.parse(jsonOutput) as { bundleDigest: string; bundle: SupportBundle };
+    expect(server.requests).toHaveLength(0);
+    await runSupport({ format: 'text', yes: true, approvedDigest: preview.bundleDigest, open: false }, { isInteractive: true });
+    expect(process.exitCode).toBe(0);
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+  });
+
   test.each(['opaque-process-credential-fixture', ''])('redacts shadowed project credentials before interactive consent with process value %j', async (processValue) => {
     const home = await createTestEnvironment();
     contexts.push(home);

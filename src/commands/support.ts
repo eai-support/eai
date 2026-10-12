@@ -147,7 +147,7 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
     if (options.yes) {
       // Relayed consent must name the exact report the person saw; any change invalidates it.
       const approved = options.approvedDigest?.trim().toLowerCase();
-      if ((json || !interactive || approved !== undefined) && approved !== digest) {
+      if (approved !== digest) {
         emit({ ok: false, status: 'consent_stale', bundle, previewText, bundleDigest: digest, url: chatUrl, ...ignored,
           message: approved === undefined
             ? 'Approval must name the previewed report: rerun with --yes --approved-digest <bundleDigest> after the person approves previewText. Nothing was sent.'

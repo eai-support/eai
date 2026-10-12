@@ -88,6 +88,32 @@ afterEach(async () => {
 });
 
 describe('eai support draft handoff', () => {
+  test('redacts access keys in every free-form harness field before preview and the consented POST', async () => {
+    const home = await environment();
+    const server = await fixture();
+    await writeSupportSession(home.dir);
+    const credential = 'AWS_ACCESS_KEY_ID=aws-fixture access_key=opaque-fixture';
+    const context = harnessContextFixture({
+      request: credential, goal: credential, summary: credential, steps: [credential],
+      commands: [{ command: credential, exitCode: 1, errorCode: 'access_key=opaque-fixture', reasonCode: credential }],
+      errors: [{ code: credential, message: credential }], attemptedFixes: [credential],
+      filesTouched: ['src/access_key=opaque-fixture.ts'],
+    });
+    const contextPath = join(home.dir, 'summary.json');
+    await writeFile(contextPath, JSON.stringify(context));
+    const { preview, sent } = await previewThenApprove(home.dir,
+      ['--source', 'harness', '--tool', 'codex', '--context-file', contextPath], { EAI_WEBSITE_URL: server.origin });
+    expect(sent.code, sent.stdout + sent.stderr).toBe(0);
+    expect(parse(sent).status).toBe('created');
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+    for (const text of [preview.previewText!, JSON.stringify(preview.bundle), JSON.stringify(server.requests[0].body), sent.stdout]) {
+      expect(text).not.toContain('aws-fixture');
+      expect(text).not.toContain('opaque-fixture');
+      expect(text).toContain('[redacted]');
+    }
+  });
+
   test('previews the harness report with zero POSTs, then sends exactly the approved bundle with the saved bearer', async () => {
     const home = await environment();
     const server = await fixture();

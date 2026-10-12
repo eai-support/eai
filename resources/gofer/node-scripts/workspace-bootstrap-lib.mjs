@@ -1139,7 +1139,7 @@ check-repair iterations, and validation must run
 \`node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir .specify/specs/{feature} --stage 6_validate --strict\`
 before declaring the work complete.
 
-Support starts only when the person asks "get help". Follow the full support contract in AGENTS.md.
+Support starts only when the person explicitly requests support. Follow the full support contract in AGENTS.md.
 `;
 }
 

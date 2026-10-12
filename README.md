@@ -541,7 +541,7 @@ ending with its digest, and `bundleDigest`. The harness shows `previewText`
 unchanged and asks you. After you approve, it reruns with
 `--yes --approved-digest <bundleDigest>`; any other digest answers
 `consent_stale` and sends nothing. JSON runs without `--yes` never send a report,
-and `--yes` in JSON or noninteractive runs always needs the digest.
+and `--yes` always needs the digest, including interactive text runs.
 
 When the saved session has no active workspace, the report needs to know where
 your organisation is based so it is stored in that region. A terminal asks you;

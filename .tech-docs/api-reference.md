@@ -1375,7 +1375,7 @@ draft id and one-time token in its fragment. The page submits the final report.
 | `--decline` | Decline a preview locally and remove only its CLI-owned `--context-file`; no authentication or network request. Cannot be combined with `--yes` or `--create-context-file`. |
 | `--create-context-file` | Allocate an empty private CLI-owned file and return `contextFile`; no authentication or network request. Write the JSON summary into that file without replacing it. |
 | `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file allocated with `--create-context-file` under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Marked files older than 24 hours in that directory are removed on the next support invocation; untracked files and files elsewhere are never deleted. |
-| `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in JSON or noninteractive runs; a mismatch answers `consent_stale`. |
+| `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in every mode; a mismatch answers `consent_stale`. |
 | `--organisation-location <location>` | `apac`, `emea` or `americas`; sent as `organisationLocation` when the saved session has no active workspace. |
 | `--no-last-error` | Leave the saved context of the last failing command out of the report. |
 | `--yes` | Send only after the person has explicitly consented to the displayed report. |
