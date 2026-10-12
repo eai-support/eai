@@ -1574,8 +1574,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     created: {}, cleanup: [], leftovers: [], cleanupVerified: false, cleanupStatus: 'not-needed', localCleanupVerified: false };
   const checkpoint = () => writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 });
   // Override child-process HOME only. Never load, copy or change the operator's auth files.
-  const childEnv = Object.fromEntries(Object.entries({ ...process.env, ...env }).filter(([key]) =>
-    !/^(EAI_|ENTRA_|AUTH_|OBO_|BASE_URL_|ROUTING_|TENANT_|WORKFLOW_|NEXT_PUBLIC_|AZURE_|GIT_)/.test(key)));
+  const childEnv = operationalEnvironment({ ...process.env, ...env });
   Object.assign(childEnv, { HOME: isolatedHome, USERPROFILE: isolatedHome, XDG_CONFIG_HOME: join(isolatedHome, '.config'),
     AZURE_CONFIG_DIR: join(isolatedHome, '.azure'), GH_CONFIG_DIR: join(isolatedHome, '.gh'),
     EAI_PROFILE: 'default', EAI_AUTH_TENANT_NAME: 'local-fixture', EAI_AUTH_TENANT_ID: '11111111-1111-4111-8111-111111111111',
@@ -1715,8 +1714,7 @@ function retainedFixtureContext(value, profile, actorId, parentTenantId) {
 function runLiveSmoke(cliPath, dependencies = {}) {
   const env = dependencies.env || process.env;
   // Child processes use the owned scaffold and selected profile, never ambient app routing/auth overrides.
-  const childEnv = Object.fromEntries(Object.entries(env).filter(([key]) =>
-    !/^(EAI_|NEXT_PUBLIC_|ENTRA_|AUTH_|OBO_|BASE_URL_|ROUTING_|TENANT_|WORKFLOW_|PUBLICAPI_)/.test(key)));
+  const childEnv = operationalEnvironment(env);
   const execute = dependencies.execute || runCommand;
   const now = dependencies.now || Date.now;
   const wait = dependencies.wait || sleep;
@@ -1967,7 +1965,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const created = json(['tenant', 'create', '--name', 'EAI CLI Audit ' + runId + ' ' + nonce, '--slug', appName,
       '--parent', parentTenantId, '--domain', appName + '.example.invalid', '--usecase', 'generic', '--industry', 'test',
       '--starter-template', 'eai-app-template', ...(env.EAI_E2E_CHILD_HOME_REGION ? ['--home-region', env.EAI_E2E_CHILD_HOME_REGION] : []),
-      '--format', 'json'], { cwd: controlRoot, observe(result) {
+      '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
         const payload = parseJson(result.stdout, {});
         if (result.status !== 0 && payload.ok === false && [400, 401, 403, 404, 409, 422].includes(payload.status)) {
           childAttempted = false;
@@ -1978,7 +1976,10 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const immediateParent = tenant?.parentTenantId ?? tenant?.parentTenant?.id ?? tenant?.parentTenant;
         if (tenant && typeof tenant.id === 'string' && !reservedTenantIds.has(tenant.id) && tenant.slug === appName
           && immediateParent === parentTenantId && tenant.reused !== true) {
-          report.created.childTenantId = tenant.id; childOwned = true; checkpoint();
+          report.created.childTenantId = tenant.id;
+          report.created.childCreation = { tenantId: tenant.id, parentTenantId: immediateParent, slug: tenant.slug,
+            newChild: tenant.reused !== true, exitCode: result.status };
+          childOwned = true; checkpoint();
         }
       } });
     assertion('created-child-ownership', childOwned && created.tenant.id === child(),
@@ -2462,7 +2463,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         }
         assertion('complete-parent-child-inventory', inventoryComplete,
           'Parent child inventory exceeded the bounded verification limit.');
-        return { tenantId: id, parentTenantId: parentId, hardPurged: true, absenceVerified: true,
+        return { tenantId: receipt.id, parentTenantId: receipt.response.parentTenantId, deleted: receipt.deleted,
+          hardPurged: receipt.hardPurged, receiptStatus: receipt.response.status, absenceVerified: true,
           absenceMethod: 'complete-parent-children-inventory' };
       }
       if (runtimeOwned && runtime() !== child()) cleanupStep('runtime-tenant', () => deleteLeaf(runtime(), child()));

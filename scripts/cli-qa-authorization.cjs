@@ -158,7 +158,8 @@ function runAuthorizationProbe(options, dependencies = {}) {
     requireCondition(UUID.test(runId), 'The probe requires a new ownership UUID.');
     const contextRoot = output + '.contexts-' + runId;
     requireCondition(!fs.existsSync(contextRoot), 'A prior context directory cannot be adopted.');
-    const report = { schemaVersion: SCHEMA, fixtureId: foundation.fixtureId, runId, environment: foundation.environment,
+    const report = { schemaVersion: SCHEMA, fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+      runId, environment: foundation.environment,
       publicApiUrl: foundation.publicApiUrl, candidate: null, probeSourceSha256: sourceHash(__filename),
       foundationSourceSha256: sourceHash(require.resolve('./cli-qa-foundation.cjs')),
       qualification: Object.keys(dependencies).some(key => !['env', 'log'].includes(key))

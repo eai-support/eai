@@ -6,7 +6,7 @@ const { existsSync, mkdtempSync, readdirSync, lstatSync, rmSync, rmdirSync } = r
 const qa = require('./cli-qa-foundation.cjs');
 const smoke = require('./eai-full-e2e-smoke.cjs');
 const { sourceBuildVerified } = require('./cli-qa-build-receipt.cjs');
-const { cycleStepEvidence, cycleStepsVerified } = require('./cli-qa-cycle-steps.cjs');
+const { cycleStepEvidence, cycleStepsVerified, cycleOwnershipEvidence, cycleOwnershipVerified } = require('./cli-qa-cycle-steps.cjs');
 function requireCondition(condition, message) { if (!condition) throw new Error(message); }
 function candidateValid(candidate) {
   return /^[a-f0-9]{40}$/.test(candidate.gitSha || '') && /^[a-f0-9]{64}$/.test(candidate.binarySha256 || '')
@@ -18,11 +18,14 @@ function cycleReceipt(report) {
   const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
   const builds = (report.commands || []).filter(row => row.command === 'npm run build');
   const stepEvidence = cycleStepEvidence(report);
+  const ownershipEvidence = cycleOwnershipEvidence(report);
   const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,
     clientId: rotation.clientId, enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId });
-  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence,
+  const ownershipVerified = cycleOwnershipVerified(ownershipEvidence, { tenantId: rotation.tenantId,
+    appKey: report.created?.appKey, stepEvidence });
+  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence, ownershipEvidence,
     enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId,
-    status: report.status === 'passed' && !stepsVerified ? 'incomplete' : report.status,
+    status: report.status === 'passed' && (!stepsVerified || !ownershipVerified) ? 'incomplete' : report.status,
     rotationDispatches: stepsVerified && rotations.length === 1 && rotations[0].status === 'passed' ? rotation.commandDispatches : 0,
     credentialChanged: rotation.credentialChanged === true, firstInventoryEmpty: deletion.firstInventoryEmpty === true,
     recreatedSameKey: deletion.recreatedSameKey === true, deletionVerified: deletion.deletionVerified === true,
@@ -87,7 +90,11 @@ function ownedReportValid(report, foundation, candidate, preflight) {
     && deletion.enrollmentId === created.enrollmentId && deletion.recreatedEnrollmentId === created.recreatedEnrollmentId
     && Array.isArray(report.leftovers) && report.leftovers.length === 0 && leaf?.status === 'passed'
     && leaf.evidence?.tenantId === created.childTenantId && leaf.evidence.parentTenantId === foundation.workspaces.a.id
-    && leaf.evidence.hardPurged === true && leaf.evidence.absenceVerified === true;
+    && leaf.evidence.hardPurged === true && leaf.evidence.absenceVerified === true
+    && cycleOwnershipVerified(cycleOwnershipEvidence(report), cycleReceipt(report), {
+      fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl,
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id }, actors: foundation.actors });
 }
 
 /** Stop at the first unqualified lifecycle; each runner still performs its finally cleanup. */
@@ -103,6 +110,7 @@ function runQualification(options, dependencies = {}) {
     'Use a new private cycle output separate from every fixture, proof and CLI input.');
     const cycleEnv = qa.operationalEnvironment(dependencies.env || process.env);
     const report = { schemaVersion: 'eai.cli-permanent-cycles.v1', fixtureId: foundation.fixtureId,
+      foundationParentTenantId: foundation.parentTenantId,
       environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, candidate: null,
       actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])),
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
@@ -174,7 +182,7 @@ function runQualification(options, dependencies = {}) {
           if (receipt) receipt.localProjectCleanupVerified = true;
         }
         save();
-        requireCondition(qa.cycleReceiptVerified(receipt), 'Lifecycle lacks rotation, first-read, recreation or cleanup proof.');
+        requireCondition(qa.cycleReceiptVerified(receipt, report), 'Lifecycle lacks rotation, first-read, recreation or owned child cleanup proof.');
         const after = candidateEvidence(options.cliPath);
         requireCondition(candidateValid(after) && after.gitSha === candidate.gitSha && after.runtimeSha256 === candidate.runtimeSha256
           && after.binarySha256 === candidate.binarySha256, 'CLI candidate changed during the lifecycle.');
@@ -185,7 +193,7 @@ function runQualification(options, dependencies = {}) {
         requireCondition(cleanupPreflightVerified(afterPreflight, foundation, deployments, now())
           && afterPreflight.observedAt === preflight.observedAt, 'Cleanup observation changed or expired during the lifecycle.');
       }
-      const structurallyVerified = report.cycles.every(qa.cycleReceiptVerified) && qa.cycleIdentitiesFresh(report.cycles);
+      const structurallyVerified = report.cycles.every(row => qa.cycleReceiptVerified(row, report)) && qa.cycleIdentitiesFresh(report.cycles);
       requireCondition(structurallyVerified, 'Cycles reused a registration/app or lack exact fresh identity proof.');
       report.contractsVerified = true; report.qualified = report.qualification === 'normal-cli-profiles';
       report.status = 'passed';

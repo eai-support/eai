@@ -400,6 +400,7 @@
             ".github/workflows/ci.yml",
             "tests/unit/cli-test-coverage.test.ts",
             "scripts/cli-qa-foundation.cjs",
+            "scripts/cli-qa-operational-env.cjs",
             "scripts/qualify-cli-permanent.cjs",
             "scripts/audit-cli-backend.cjs",
             "scripts/eai-full-e2e-smoke.cjs",

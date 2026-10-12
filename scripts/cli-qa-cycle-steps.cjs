@@ -60,4 +60,73 @@ function cycleStepsVerified(value, cycle) {
     && registration.tenantId === cycle.tenantId && registration.authorizationAbsent === true
     && registration.registrationAbsent === true && registration.registrationAbsenceVerified === true;
 }
-module.exports = { cycleStepEvidence, cycleStepsVerified };
+/** Project actual child creation and parent-authorized purge observations. */
+function cycleOwnershipEvidence(report) {
+  if (!record(report) || !Array.isArray(report.commands) || !Array.isArray(report.assertions)
+    || !Array.isArray(report.cleanup) || !record(report.created?.childCreation)) return null;
+  function selected(command, phase, name) {
+    const rows = report.commands.filter(row => row?.command === command && row.phase === phase
+      && row.scopeTenantId === report.parentTenantId && row.assertions?.includes(name));
+    const guards = report.assertions.filter(row => row?.name === name && row.phase === phase);
+    if (rows.length !== 1 || guards.length !== 1) return null;
+    const row = rows[0], guard = guards[0];
+    return { command, phase, sequence: report.commands.indexOf(row), status: row.status, exitCode: row.exitCode,
+      scopeTenantId: row.scopeTenantId, options: row.options || [],
+      assertion: { name: guard.name, phase: guard.phase, status: guard.status } };
+  }
+  const leaves = report.cleanup.filter(row => row?.artifact === 'child-tenant');
+  if (leaves.length !== 1 || !record(leaves[0].evidence)) return null;
+  const creation = report.created.childCreation, leaf = leaves[0];
+  return { schemaVersion: 'eai.cli-cycle-ownership.v1', fixtureId: report.fixtureId,
+    foundationParentTenantId: report.foundationParentTenantId,
+    tenantIds: { a: report.tenantIds?.a, b: report.tenantIds?.b },
+    environment: report.environment, publicApiUrl: report.expectedPublicApi,
+    actorId: report.actors?.adminA?.oid, profile: report.profile,
+    tenantId: report.created.childTenantId, parentTenantId: report.parentTenantId,
+    creation: { tenantId: creation.tenantId, parentTenantId: creation.parentTenantId, slug: creation.slug,
+      newChild: creation.newChild, exitCode: creation.exitCode,
+      command: selected('eai workspace create', 'isolation', 'created-child-ownership') },
+    cleanup: { status: leaf.status, tenantId: leaf.evidence.tenantId, parentTenantId: leaf.evidence.parentTenantId,
+      deleted: leaf.evidence.deleted, hardPurged: leaf.evidence.hardPurged, receiptStatus: leaf.evidence.receiptStatus,
+      absenceVerified: leaf.evidence.absenceVerified, absenceMethod: leaf.evidence.absenceMethod,
+      command: selected('eai workspace delete', 'cleanup', 'child-hard-purge-receipt') } };
+}
+/** Imported receipts must independently match the retained fixture and exact leaf. */
+function cycleOwnershipVerified(value, cycle, foundation) {
+  const uuid = input => typeof input === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(input);
+  if (!record(value) || value.schemaVersion !== 'eai.cli-cycle-ownership.v1' || !record(cycle)
+    || !uuid(value.fixtureId) || !uuid(value.foundationParentTenantId) || !record(value.tenantIds)
+    || !uuid(value.tenantIds.a) || !uuid(value.tenantIds.b)
+    || new Set([value.foundationParentTenantId, value.tenantIds.a, value.tenantIds.b].map(id => id.toLowerCase())).size !== 3
+    || !uuid(value.actorId) || typeof value.profile !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/.test(value.profile)
+    || !['DEV', 'TEST'].includes(value.environment) || typeof value.publicApiUrl !== 'string'
+    || !uuid(value.tenantId) || value.tenantId !== cycle.tenantId || value.parentTenantId !== value.tenantIds.a
+    || [value.foundationParentTenantId, value.tenantIds.a, value.tenantIds.b]
+      .some(id => id.toLowerCase() === value.tenantId.toLowerCase())) return false;
+  if (foundation !== undefined && (!record(foundation) || value.fixtureId !== foundation.fixtureId
+    || value.foundationParentTenantId !== foundation.foundationParentTenantId
+    || value.environment !== foundation.environment || value.publicApiUrl !== foundation.publicApiUrl
+    || value.tenantIds.a !== foundation.tenantIds?.a || value.tenantIds.b !== foundation.tenantIds?.b
+    || value.actorId !== foundation.actors?.adminA?.oid || value.profile !== foundation.actors?.adminA?.profile)) return false;
+  const creation = value.creation, cleanup = value.cleanup;
+  if (!record(creation) || creation.tenantId !== cycle.tenantId || creation.parentTenantId !== value.parentTenantId
+    || creation.slug !== cycle.appKey || creation.newChild !== true || creation.exitCode !== 0
+    || !record(cleanup) || cleanup.status !== 'passed' || cleanup.tenantId !== cycle.tenantId
+    || cleanup.parentTenantId !== value.parentTenantId || cleanup.deleted !== true || cleanup.hardPurged !== true
+    || cleanup.receiptStatus !== 'hard_purged' || cleanup.absenceVerified !== true
+    || cleanup.absenceMethod !== 'complete-parent-children-inventory') return false;
+  function commandVerified(row, command, phase, assertion, option) {
+    return record(row) && row.command === command && row.phase === phase && row.status === 'passed' && row.exitCode === 0
+      && row.scopeTenantId === value.parentTenantId && Number.isSafeInteger(row.sequence) && row.sequence >= 0
+      && Array.isArray(row.options) && row.options.every(item => typeof item === 'string')
+      && row.options.includes('--parent') && (!option || row.options.includes(option))
+      && record(row.assertion) && row.assertion.name === assertion && row.assertion.phase === phase && row.assertion.status === 'passed';
+  }
+  const steps = cycle.stepEvidence?.commands;
+  return Array.isArray(steps) && steps.length === STEPS.length && steps.every(row => Number.isSafeInteger(row?.sequence))
+    && commandVerified(creation.command, 'eai workspace create', 'isolation', 'created-child-ownership')
+    && commandVerified(cleanup.command, 'eai workspace delete', 'cleanup', 'child-hard-purge-receipt', '--force-hard-purge')
+    && creation.command.sequence < Math.min(...steps.map(row => row.sequence))
+    && cleanup.command.sequence > Math.max(...steps.map(row => row.sequence));
+}
+module.exports = { cycleStepEvidence, cycleStepsVerified, cycleOwnershipEvidence, cycleOwnershipVerified };

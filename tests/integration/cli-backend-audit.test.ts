@@ -4,7 +4,7 @@ import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, realpath
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, test } from 'vitest';
-import { cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
+import { cycleOwnershipModel, cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
 
 const require = createRequire(import.meta.url);
 const { buildAudit, markdown } = require('../../scripts/audit-cli-backend.cjs');
@@ -102,7 +102,7 @@ describe('CLI backend audit evidence', () => {
       nonce: `cli-qa-${runId}-${creatorSlot}-${id(80 + index)}`, idempotencyKey: id(70 + index),
       phase: 'absent', creationDispatched: true, acknowledgedBound: true, version: 1,
     }));
-    const authorizationEvidence = { schemaVersion: 'eai.cli-authorization-evidence.v1', fixtureId: id(30), runId,
+    const authorizationEvidence = { schemaVersion: 'eai.cli-authorization-evidence.v1', fixtureId: id(30), foundationParentTenantId: id(19), runId,
       status: 'passed', qualification: 'normal-cli-profiles', qualified: true, environment: 'DEV', publicApiUrl,
       candidate, actors, tenantIds, foundationVerified: true, cleanupVerified: true, localCleanupVerified: true, completedAt: observedAt,
       publishedFixture: ['a', 'b'].map((slot, index) => ({ tenantId: tenantIds[slot as 'a' | 'b'],
@@ -165,7 +165,8 @@ describe('CLI backend audit evidence', () => {
     const id = (number: number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
     const authorization = input.evidence.authorizationEvidence;
     const cycleEvidence = { schemaVersion: 'eai.cli-permanent-cycles.v1', qualified: true, qualification: 'normal-cli-profiles', status: 'passed',
-      fixtureId: authorization.fixtureId, environment: authorization.environment, publicApiUrl: authorization.publicApiUrl,
+      fixtureId: authorization.fixtureId, foundationParentTenantId: authorization.foundationParentTenantId,
+      environment: authorization.environment, publicApiUrl: authorization.publicApiUrl,
       candidate: input.candidate, actors: structuredClone(authorization.actors), tenantIds: structuredClone(authorization.tenantIds),
       completedAt: authorization.completedAt, cycles: Array.from({ length: 10 }, (_, index) => ({
         clientId: id(100 + index), tenantId: id(200 + index), appKey: 'eai-e2e-fixture-' + index, status: 'passed',
@@ -173,8 +174,9 @@ describe('CLI backend audit evidence', () => {
         credentialChanged: true, firstInventoryEmpty: true, recreatedSameKey: true, cleanupVerified: true,
         localProjectCleanupVerified: true, registrationAbsent: true, deletionVerified: true, appBuildVerified: true,
       })) };
-    cycleEvidence.cycles = cycleEvidence.cycles.map(cycle => ({ ...cycle, stepEvidence: cycleStepModel(cycle) }));
-    Object.assign(input.evidence, { cycleEvidence }); return cycleEvidence;
+    const boundCycles = { ...cycleEvidence, cycles: cycleEvidence.cycles.map(cycle => ({ ...cycle, stepEvidence: cycleStepModel(cycle),
+      ownershipEvidence: cycleOwnershipModel(cycle, cycleEvidence) })) };
+    Object.assign(input.evidence, { cycleEvidence: boundCycles }); return boundCycles;
   }
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
@@ -207,6 +209,56 @@ describe('CLI backend audit evidence', () => {
     expect(report.aliasEvidence[0].status).toBe('incomplete');
     expect(report.optionCoverageComplete).toBe(false); expect(report.backendCertified).toBe(false);
   });
+  test.each(['missing', 'creation-child', 'creation-parent', 'creation-reused', 'creation-exit', 'cleanup-child',
+    'cleanup-parent', 'cleanup-status', 'cleanup-soft', 'cleanup-absence', 'foreign-fixture', 'foreign-root',
+    'foreign-admin', 'retained-a', 'retained-b', 'retained-root'] as const)(
+    'imported %s cycle ownership cannot qualify a protected child scope', failure => {
+      const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+      const cycle = cycles.cycles[0], proof = cycle.ownershipEvidence;
+      if (failure === 'missing') Object.assign(cycle, { ownershipEvidence: undefined });
+      if (failure === 'creation-child') proof.creation.tenantId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'creation-parent') proof.creation.parentTenantId = proof.tenantIds.b;
+      if (failure === 'creation-reused') proof.creation.newChild = false;
+      if (failure === 'creation-exit') proof.creation.exitCode = 1;
+      if (failure === 'cleanup-child') proof.cleanup.tenantId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'cleanup-parent') proof.cleanup.parentTenantId = proof.tenantIds.b;
+      if (failure === 'cleanup-status') proof.cleanup.receiptStatus = 'accepted';
+      if (failure === 'cleanup-soft') proof.cleanup.hardPurged = false;
+      if (failure === 'cleanup-absence') proof.cleanup.absenceVerified = false;
+      if (failure === 'foreign-fixture') proof.fixtureId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'foreign-root') proof.foundationParentTenantId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'foreign-admin') proof.actorId = input.evidence.authorizationEvidence.actors.builderA.oid;
+      if (failure.startsWith('retained-')) {
+        const tenantId = failure === 'retained-root' ? cycles.foundationParentTenantId : cycles.tenantIds[failure === 'retained-a' ? 'a' : 'b'];
+        cycle.tenantId = tenantId; Object.assign(cycle, { stepEvidence: cycleStepModel(cycle), ownershipEvidence: cycleOwnershipModel(cycle, cycles) });
+      }
+      for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
+        receipt.scopeTenantId = cycle.tenantId;
+        for (const assertion of receipt.assertions) assertion.scopeTenantId = cycle.tenantId;
+      }
+      const report = buildAudit(input, decisions);
+      expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now })).toBe(false);
+      // Retained a/b remain valid read scopes; they cannot count as new children.
+      const retainedRead = ['retained-a', 'retained-b'].includes(failure);
+      expect(report.commands[0].status).toBe(retainedRead ? 'passed' : 'incomplete');
+      expect(report.aliasEvidence[0].status).toBe(retainedRead ? 'passed' : 'incomplete');
+      expect(report.optionCoverageComplete).toBe(retainedRead); expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test('complete synthetic imported ownership and step observations admit a distinct cycle child scope', () => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input), tenantId = cycles.cycles[0].tenantId;
+    for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
+      receipt.scopeTenantId = tenantId; for (const assertion of receipt.assertions) assertion.scopeTenantId = tenantId;
+    }
+    expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['failed', 'blocked', 'passed'] as const)('a supported %s attempt in unsupported receipts cannot be discarded', status => {
+    const { input, decisions } = completeContractModel();
+    Object.assign(input.evidence, { unsupported: [{ ...input.evidence.commands[0], status }] });
+    const report = buildAudit(input, decisions);
+    expect(report.evidenceValidation.valid).toBe(false); expect(report.commands[0].status).not.toBe('passed');
+    expect(report.commands[0].status).toBe(status === 'passed' ? 'incomplete' : status);
+    expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+  });
   test('an alias-scoped command receipt cannot replace the canonical invocation or its options', () => {
     const { input, decisions } = completeContractModel(), row = input.evidence.commands[0];
     Object.assign(row, { alias: 'eai tenant list' });
@@ -228,6 +280,7 @@ describe('CLI backend audit evidence', () => {
       ? 'https://example.invalid/public' : scope === 'region' ? 'https://dev-api.eu.myenterprise.ai/public' : input.evidence.expectedPublicApi;
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
@@ -246,6 +299,7 @@ describe('CLI backend audit evidence', () => {
     const [environment, region] = value.split(':'), publicApiUrl = qa.publicApi(environment, region);
     Object.assign(input.evidence, { environment, expectedPublicApi: publicApiUrl });
     Object.assign(input.evidence.authorizationEvidence, { environment, publicApiUrl }); Object.assign(cycles, { environment, publicApiUrl });
+    for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
@@ -457,7 +511,7 @@ describe('CLI backend audit evidence', () => {
     if (field === 'actor-profile') cycle.actors.adminA.profile = 'other-normal-profile';
     if (field === 'missing-context') Object.assign(cycle, { actors: undefined, tenantIds: undefined });
     expect(qa.authorizationVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(true);
-    expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(true);
+    expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: authorizationUrl(input), now: input.now })).toBe(false);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(false);
   });
   function authorizationUrl(input: ReturnType<typeof completeContractModel>['input']): string {

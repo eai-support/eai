@@ -423,7 +423,7 @@ function authorizationVerified(evidence, candidate, context) {
       && (name.endsWith('-denied') ? [403, 404].includes(row.httpStatus) : row.httpStatus === (name.endsWith(':write') ? 201 : 200))))
     && authorizationReceiptsVerified(authorization, actors, tenants);
 }
-function cycleReceiptVerified(row) {
+function cycleReceiptVerified(row, foundation) {
   return row && typeof row === 'object' && !Array.isArray(row)
     && UUID.test(row.clientId || '') && UUID.test(row.tenantId || '') && /^eai-e2e-[a-z0-9-]+$/.test(row.appKey || '')
     && row.status === 'passed' && row.rotationDispatches === 1 && row.credentialChanged === true && row.firstInventoryEmpty === true
@@ -431,7 +431,8 @@ function cycleReceiptVerified(row) {
     && row.recreatedEnrollmentId.toLowerCase() !== row.enrollmentId.toLowerCase()
     && row.cleanupVerified === true && row.localProjectCleanupVerified === true && row.registrationAbsent === true
     && row.deletionVerified === true && row.appBuildVerified === true
-    && require('./cli-qa-cycle-steps.cjs').cycleStepsVerified(row.stepEvidence, row);
+    && require('./cli-qa-cycle-steps.cjs').cycleStepsVerified(row.stepEvidence, row)
+    && require('./cli-qa-cycle-steps.cjs').cycleOwnershipVerified(row.ownershipEvidence, row, foundation);
 }
 function cycleIdentitiesFresh(rows) {
   return rows.length === 10 && new Set(rows.map(row => row.clientId.toLowerCase())).size === 10
@@ -446,13 +447,15 @@ function cyclesVerified(evidence, candidate, context) {
     || !UUID.test(cycle.fixtureId || '') || cycle.environment !== context.environment || cycle.publicApiUrl !== context.publicApiUrl
     || !require('./cli-qa-build-receipt.cjs').candidateMatches(cycle.candidate, candidate)
     || !Number.isFinite(age) || age < -60000 || age > 3600000
-    || !Array.isArray(cycle.cycles) || cycle.cycles.length !== 10) return false;
-  return cycle.cycles.every(cycleReceiptVerified) && cycleIdentitiesFresh(cycle.cycles);
+    || !Array.isArray(cycle.cycles) || cycle.cycles.length !== 10 || !foundationEvidenceBound(evidence)) return false;
+  return cycle.cycles.every(row => cycleReceiptVerified(row, cycle)) && cycleIdentitiesFresh(cycle.cycles);
 }
 /** Separate valid receipts must still name the same retained foundation. */
 function foundationEvidenceBound(evidence) {
   const authorization = evidence?.authorizationEvidence, cycles = evidence?.cycleEvidence;
   if (!UUID.test(authorization?.fixtureId || '') || authorization.fixtureId !== cycles?.fixtureId) return false;
+  if (!UUID.test(authorization.foundationParentTenantId || '')
+    || authorization.foundationParentTenantId !== cycles.foundationParentTenantId) return false;
   if (!['a', 'b'].every(slot => UUID.test(authorization.tenantIds?.[slot] || '')
     && authorization.tenantIds[slot] === cycles.tenantIds?.[slot])) return false;
   return Object.keys(SLOTS).every(slot => {

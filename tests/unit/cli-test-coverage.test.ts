@@ -7,6 +7,7 @@ import { describe, expect, test } from 'vitest';
 
 interface FeatureCoverage {
   id: string;
+  owned_paths: string[];
   required_repo_tests: string[];
   required_ci_checks: string[];
 }
@@ -23,6 +24,12 @@ const focusedSuites = focusedCommand.split(/\s+/).filter(argument => /^(?:tests\
 const focusedSuiteSet = new Set(focusedSuites);
 
 describe('focused CLI evidence ownership', () => {
+  test('the shared qualification environment and installed-Git helper has explicit owning suites', () => {
+    const feature = coverage.repositories.eai.features.find(row => row.id === 'eai-cli-owned-qualification');
+    expect(feature?.owned_paths).toContain('scripts/cli-qa-operational-env.cjs');
+    expect(feature?.required_repo_tests).toContain('tests/integration/cli-qa-build-receipt.test.ts');
+    expect(feature?.required_repo_tests).toContain('tests/integration/full-e2e-smoke.test.ts');
+  });
   test('the focused gate selects existing explicit suites without duplicates', () => {
     expect(focusedSuites.length).toBeGreaterThan(0);
     expect(focusedSuiteSet.size).toBe(focusedSuites.length);

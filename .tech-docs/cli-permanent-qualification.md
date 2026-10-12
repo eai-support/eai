@@ -48,6 +48,13 @@ Retained sibling scopes require a complete valid authorization receipt. If cycle
 context is supplied, its fixture, workspaces and actors must match that role
 receipt. Valid standalone role evidence can report a retained read as passed;
 it does not prove the ten cycles required for full qualification.
+Each imported cycle must also carry its actual child-create acknowledgment and
+parent-scoped command/guard, plus the exact parent hard-purge receipt and complete
+parent-inventory absence observation. The independent consumer matches these to
+the retained fixture, root parent, both siblings and administrator. A retained
+workspace cannot qualify as a new disposable child, and missing or mismatched
+ownership evidence cannot qualify that child scope. These remain unsigned
+operator observations rather than signed server attestations.
 A same-candidate command observed in another environment cannot certify this
 environment. These unsigned records are trusted operator observations.
 The canonical build and its source Git reads use the same restricted operational

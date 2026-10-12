@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test } from 'vitest';
-import { cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
+import { cycleOwnershipModel, cycleStepModel } from '../helpers/cli-qa-cycle-model.js';
 const require = createRequire(import.meta.url);
 const qa = require('../../scripts/cli-qa-foundation.cjs');
 const cycles = require('../../scripts/qualify-cli-permanent.cjs');
@@ -76,6 +76,11 @@ function controlled() {
     const index = ++runs, child = uuid(100 + index), client = uuid(200 + index), enrollment = uuid(300 + index), recreated = uuid(400 + index);
     const appKey = 'eai-e2e-cycle-' + index;
     const steps = cycleStepModel({ tenantId: child, clientId: client, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated });
+    const ownership = cycleOwnershipModel({ tenantId: child, clientId: client, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated }, {
+      fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl,
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id }, actors: foundation.actors });
+    const ownedCommand = (row: typeof ownership.creation.command) => ({ ...row, assertions: [row.assertion.name] });
     return { candidate, preflight, fixtureId: foundation.fixtureId,
       foundationParentTenantId: foundation.parentTenantId,
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
@@ -83,14 +88,17 @@ function controlled() {
         const identity = actor as { oid: string; profile: string }; return [slot, { oid: identity.oid, profile: identity.profile }];
       })), profile: foundation.actors.adminA.profile, environment: 'DEV', expectedPublicApi: foundation.publicApiUrl,
       parentTenantId: uuid(30), status: 'passed', cleanupVerified: true, leftovers: [],
-      created: { appKey, childTenantId: child, runtimeTenantId: child, entraClientId: client, enrollmentId: enrollment, recreatedEnrollmentId: recreated },
+      created: { appKey, childTenantId: child, childCreation: ownership.creation,
+        runtimeTenantId: child, entraClientId: client, enrollmentId: enrollment, recreatedEnrollmentId: recreated },
       rotationCycle: { clientId: client, tenantId: child, appKey, commandDispatches: 1, credentialChanged: true },
       deletionCycle: { tenantId: child, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated,
         deletionVerified: true, firstInventoryEmpty: true, recreatedSameKey: true },
-      commands: [...steps.commands].sort((a, b) => a.sequence - b.sequence).map(row => ({ ...row, assertions: row.assertions.map(value => value.name) })),
-      assertions: steps.commands.flatMap(row => row.assertions),
+      commands: [ownedCommand(ownership.creation.command),
+        ...[...steps.commands].sort((a, b) => a.sequence - b.sequence).map(row => ({ ...row, assertions: row.assertions.map(value => value.name) })),
+        ownedCommand(ownership.cleanup.command)],
+      assertions: [ownership.creation.command.assertion, ...steps.commands.flatMap(row => row.assertions), ownership.cleanup.command.assertion],
       cleanup: [{ artifact: 'entra-registration', status: 'passed', evidence: steps.registration },
-        { artifact: 'child-tenant', status: 'passed', evidence: { tenantId: child, parentTenantId: uuid(30), hardPurged: true, absenceVerified: true } }] };
+        { artifact: 'child-tenant', status: 'passed', evidence: ownership.cleanup }] };
   };
   const dependencies = { now: () => now, env: {}, execute, candidateEvidence: () => candidate,
     runLive: (_cli: string, dependencies: { env: Record<string, string> }) => {
@@ -362,12 +370,16 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const fixture = controlled();
     const receipts = Array.from({ length: 10 }, () => cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true }));
     const cycleEvidence = { schemaVersion: 'eai.cli-permanent-cycles.v1', qualified: true, qualification: 'normal-cli-profiles', status: 'passed',
-      fixtureId: fixture.foundation.fixtureId, environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+      fixtureId: fixture.foundation.fixtureId, foundationParentTenantId: fixture.foundation.parentTenantId,
+      tenantIds: { a: fixture.foundation.workspaces.a.id, b: fixture.foundation.workspaces.b.id },
+      actors: fixture.foundation.actors, environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
       candidate, completedAt: new Date(fixture.dependencies.now()).toISOString(), cycles: receipts };
-    expect(qa.cyclesVerified({ cycleEvidence }, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+    const evidence = { cycleEvidence, authorizationEvidence: { fixtureId: cycleEvidence.fixtureId,
+      foundationParentTenantId: cycleEvidence.foundationParentTenantId, tenantIds: cycleEvidence.tenantIds, actors: cycleEvidence.actors } };
+    expect(qa.cyclesVerified(evidence, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
       now: fixture.dependencies.now() })).toBe(true);
     receipts[1].recreatedEnrollmentId = receipts[0].enrollmentId;
-    expect(qa.cyclesVerified({ cycleEvidence }, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
+    expect(qa.cyclesVerified(evidence, candidate, { environment: 'DEV', publicApiUrl: fixture.foundation.publicApiUrl,
       now: fixture.dependencies.now() })).toBe(false);
   });
   test.each(['success', 'failure'])('removes generated local credentials on cycle %s while retaining private receipts', outcome => {
@@ -470,7 +482,7 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
       const fixture = controlled();
       const runLive = () => { const report = fixture.liveReport();
         if (reason === 'skipped') report.commands = report.commands.filter(row => row.command !== 'npm run build');
-        else report.commands[1].status = 'failed';
+        else report.commands.find(row => row.command === 'npm run build')!.status = 'failed';
         return report; };
       expect(() => cycles.runQualification(fixture.options, { ...fixture.dependencies, runLive })).toThrow();
       expect(fixture.runs()).toBe(1); expect(qa.readPrivate(fixture.options.output).cycles[0].appBuildVerified).toBe(false);

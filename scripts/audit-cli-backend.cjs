@@ -124,7 +124,9 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
         && (name === 'aliases' || row.alias === undefined)
         && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
-      if (!valid) malformedAttempts.push({ collection: name, index });
+      const misclassified = valid && name === 'unsupported' && !UNSUPPORTED.has(row.command);
+      if (!valid || misclassified) malformedAttempts.push({ collection: name, index,
+        ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status } : {}) });
       return Boolean(valid);
     });
   }
@@ -134,7 +136,8 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
     const row = decisions.get(entry.command);
     const contract = backendContract(entry.command, row.crud);
     const unsupported = UNSUPPORTED.has(entry.command);
-    const executions = [...commandReceipts, ...(unsupported ? unsupportedReceipts : [])].filter(item => item.command === entry.command);
+    // Keep known misclassified attempts visible, including failed/blocked status.
+    const executions = [...commandReceipts, ...unsupportedReceipts].filter(item => item.command === entry.command);
     const actualExecutionStatus = scopedStatus(executions, undefined, !evidenceValid, contract);
     const status = unsupported && ['passed', 'not-run'].includes(actualExecutionStatus) ? 'unsupported' : actualExecutionStatus;
     return { ...entry, operation: row.crud, ...contract, status, executions: executions.length,

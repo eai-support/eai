@@ -19,7 +19,8 @@ interface SmokeReport {
   cleanup: { artifact: string; status: string; evidence?: { tenantId?: string }; reason?: string }[];
   coverage: { command: string; status: string; executions: number }[];
   created: { childTenantId: string; runtimeTenantId: string; appKey: string; resources: { type: string; id: string }[]; entraClientId: string; workflowIds: string[];
-    enrollmentId?: string; recreatedEnrollmentId?: string };
+    enrollmentId?: string; recreatedEnrollmentId?: string;
+    childCreation?: { tenantId: string; parentTenantId: string; slug: string; newChild: boolean; exitCode: number } };
   deletionCycle?: { firstInventoryEmpty: boolean; recreatedSameKey: boolean; enrollmentId: string; recreatedEnrollmentId?: string };
   rotationCycle?: { commandDispatches: number; credentialChanged: boolean };
   workflowReadiness?: { workflowKey: string; status: string; reasonCode: string; executable: boolean };
@@ -834,6 +835,20 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.status).toBe('failed');
     expect(report.cleanup.find(row => row.artifact === 'batch-resources')?.status).toBe('failed');
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
+    expect(report.created.childCreation).toMatchObject({ tenantId: 'run-child', parentTenantId: 'qa-parent',
+      slug: report.created.appKey, newChild: true, exitCode: 0 });
+    expect(report.cleanup.find(row => row.artifact === 'child-tenant')?.evidence).toMatchObject({
+      tenantId: 'run-child', parentTenantId: 'qa-parent', deleted: true, hardPurged: true, receiptStatus: 'hard_purged',
+      absenceVerified: true, absenceMethod: 'complete-parent-children-inventory' });
+    // Actual controlled producer output, separate from synthetic UUID consumer DTOs.
+    const ownership = require('../../scripts/cli-qa-cycle-steps.cjs').cycleOwnershipEvidence(report);
+    expect(ownership.creation).toMatchObject({ tenantId: 'run-child', parentTenantId: 'qa-parent', newChild: true, exitCode: 0,
+      command: { command: 'eai workspace create', phase: 'isolation', status: 'passed', exitCode: 0,
+        scopeTenantId: 'qa-parent', assertion: { name: 'created-child-ownership', phase: 'isolation', status: 'passed' } } });
+    expect(ownership.cleanup).toMatchObject({ tenantId: 'run-child', parentTenantId: 'qa-parent', deleted: true,
+      receiptStatus: 'hard_purged', hardPurged: true, absenceVerified: true,
+      command: { command: 'eai workspace delete', phase: 'cleanup', status: 'passed', exitCode: 0,
+        scopeTenantId: 'qa-parent', assertion: { name: 'child-hard-purge-receipt', phase: 'cleanup', status: 'passed' } } });
     expect(controlled.resources.size).toBe(0);
     expect(controlled.calls.filter(call => matches(call.args, ['resources', 'delete']))).toHaveLength(4);
   });
@@ -951,6 +966,21 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       BASE_URL_ADMIN_API: 'https://foreign.invalid', EAI_ACCESS_TOKEN: privateSecret, PUBLICAPI_TOKEN: privateSecret });
     expect(report.cleanupVerified).toBe(true); expect(subprocesses).toBeGreaterThan(10); expect(builds).toBe(1);
     expect(readFileSync(report.summaryPath, 'utf8')).not.toContain(privateSecret);
+  });
+  test.each(['cli', 'build'] as const)('standalone live %s processes receive only operational and owned context', kind => {
+    const captured: ControlledOptions[] = [];
+    const controlled = harness({ override(args, _result, options) {
+      if ((kind === 'build') === matches(args, ['run', 'build'])) captured.push(options);
+      return undefined;
+    } });
+    const forbidden = ['NODE_OPTIONS', 'NPM_TOKEN', 'GH_TOKEN', 'AZURE_CLIENT_SECRET'];
+    const report = controlled.run({ HOME: '/normal-profile-home', HTTPS_PROXY: 'https://proxy.example.invalid',
+      NODE_OPTIONS: '--conditions=qa-synthetic-control', NPM_TOKEN: 'controlled-ambient-value',
+      GH_TOKEN: 'controlled-ambient-value', AZURE_CLIENT_SECRET: 'controlled-ambient-value' });
+    expect(report.cleanupVerified).toBe(true); expect(captured.length).toBeGreaterThan(0);
+    expect(captured.every(options => options.replaceEnv === true && forbidden.every(key => options.env[key] === undefined))).toBe(true);
+    expect(captured.every(options => options.env.HOME === '/normal-profile-home'
+      && options.env.HTTPS_PROXY === 'https://proxy.example.invalid' && options.env.EAI_PROFILE === 'dev-qa')).toBe(true);
   });
 
   test.each(['nonzero', 'unknown', 'same-id', 'foreign'])('recreation %s preserves acknowledged cleanup and never retries creation', condition => {
@@ -1211,6 +1241,20 @@ describe('local CLI qualification', () => {
     expect(report.coverageComplete).toBe(false);
     const saved = readFileSync(report.summaryPath, 'utf8');
     expect(saved).not.toContain('operator-credential-must-not-reach-child'); expect(saved).not.toContain('synthetic-local-fixture-value');
+  });
+  test('standalone local processes exclude ambient credentials and Node injection despite isolated HOME', () => {
+    const captured: ControlledOptions[] = [], execute = controlledExecute();
+    const report: LocalReport = runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: outputRoot(),
+      HTTPS_PROXY: 'https://proxy.example.invalid', NODE_OPTIONS: '--conditions=qa-synthetic-control',
+      NPM_TOKEN: 'controlled-ambient-value', GH_TOKEN: 'controlled-ambient-value', AZURE_CLIENT_SECRET: 'controlled-ambient-value' },
+      execute: (command: unknown, args: string[], settings: ControlledOptions) => {
+        captured.push(settings); return execute(command, args, settings);
+      }, log: () => {} });
+    expect(report.status).toBe('passed'); expect(captured.length).toBeGreaterThan(0);
+    expect(captured.every(options => options.replaceEnv === true
+      && ['NODE_OPTIONS', 'NPM_TOKEN', 'GH_TOKEN', 'AZURE_CLIENT_SECRET'].every(key => options.env[key] === undefined))).toBe(true);
+    expect(captured.every(options => options.env.HOME !== process.env.HOME
+      && options.env.HTTPS_PROXY === 'https://proxy.example.invalid')).toBe(true);
   });
 
   test.each(['failedRuntime', 'mutateEnvRead', 'leakSyntheticSecret'] as const)('controlled local failure %s preserves truthful command evidence and cleans fixtures', option => {
