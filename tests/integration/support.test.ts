@@ -869,6 +869,10 @@ describe('CLI-owned context file lifecycle', () => {
     await expect(access(outside)).resolves.toBeUndefined();
     await expect(access(owned)).resolves.toBeUndefined();
     await expect(access(alias)).resolves.toBeUndefined();
+    const approved = await runSupportCli(home.dir, ['support', '--format', 'json', '--yes', '--approved-digest', parse(result).bundleDigest!, '--tool', 'codex', '--context-file', alias], { EAI_WEBSITE_URL: server.origin });
+    expect(parse(approved).status).toBe('created');
+    await expect(access(alias)).resolves.toBeUndefined();
+    await expect(access(owned)).resolves.toBeUndefined();
     const oversized = join(home.dir, 'outside-large.json');
     await writeFile(oversized, 'x'.repeat(70 * 1024));
     const failed = await runSupportCli(home.dir, ['support', '--format', 'json', '--tool', 'codex', '--context-file', oversized], { EAI_WEBSITE_URL: server.origin });

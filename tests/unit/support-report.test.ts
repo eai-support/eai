@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { access, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
@@ -10,6 +10,7 @@ import {
   fitHarnessContext,
   HARNESS_BLOCK_MAX_BYTES,
   harnessBlockBytes,
+  pathAliases,
   redactHarnessContext,
   renderSupportPreview,
   SupportContextError,
@@ -370,11 +371,16 @@ describe('support consent and request limits', () => {
     vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
     const confirm = vi.fn(async () => {
       expect(shown.join('\n')).toContain('Redacted support report');
-      expect(shown.join('\n')).toContain('eai-cli');
+      expect(shown.join('\n')).toContain('harness');
       expect(shown.join('\n')).not.toContain(SUPPORT_SESSION_TOKEN);
       return false;
     });
-    await runSupport({ format: 'text', open: false }, { confirm, isInteractive: true });
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const contextFile = join(directory, 'declined.json');
+    await writeFile(contextFile, JSON.stringify(harnessContextFixture()), { mode: 0o600 });
+    await runSupport({ format: 'text', open: false, source: 'harness', contextFile }, { confirm, isInteractive: true });
+    await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(confirm).toHaveBeenCalledOnce();
     expect(shown.join('\n')).toContain('No report was sent and no draft was created.');
     expect(server.requests).toHaveLength(0);
@@ -491,4 +497,19 @@ describe('support path safety', () => {
     expect(safe.summary).not.toContain('C:/Users/alex/project');
     expect(safe.summary).not.toContain('C:\\Users\\alex\\project');
   });
+});
+
+
+test('hides the shell PWD alias of a project reached through a symlink', async () => {
+  const environment = await createTestEnvironment();
+  contexts.push(environment);
+  const project = join(environment.dir, 'project');
+  const alias = join(environment.dir, 'shell-alias');
+  await mkdir(project);
+  await symlink(project, alias);
+  vi.stubEnv('PWD', alias);
+  const roots = pathAliases(project);
+  expect(roots).toContain(alias);
+  const context = validateHarnessContext({ ...harnessContextFixture(), summary: `${alias}/src/index.ts` });
+  expect(redactHarnessContext(context, { sensitiveValues: [], homes: [], projectRoots: roots }).summary).toBe('./src/index.ts');
 });
