@@ -165,10 +165,10 @@ export async function prepareSupportReport(options: SupportOptions, session: Sto
 /** Validated one-time capability link and expiry returned by the website. */
 export interface SupportDraft { readonly url: string; readonly expiresAt: string }
 
-const invalidDraftResponse = (): SupportRequestError => new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
+const createInvalidDraftResponseError = (): SupportRequestError => new SupportRequestError('invalid_response', 'The support website returned an invalid draft response.');
 
 async function readBoundedBody(response: Response): Promise<Buffer> {
-  if (!response.body) throw invalidDraftResponse();
+  if (!response.body) throw createInvalidDraftResponseError();
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
@@ -179,7 +179,7 @@ async function readBoundedBody(response: Response): Promise<Buffer> {
       bytes += value.byteLength;
       if (bytes > MAX_RESPONSE_BYTES) {
         await reader.cancel();
-        throw invalidDraftResponse();
+        throw createInvalidDraftResponseError();
       }
       chunks.push(value);
     }
@@ -230,21 +230,21 @@ export async function createSupportDraft(website: string, bundle: SupportBundle,
     }
     if (!response.headers.get('content-type')?.includes('application/json') || !response.body) {
       await response.body?.cancel();
-      throw invalidDraftResponse();
+      throw createInvalidDraftResponseError();
     }
     const data: unknown = JSON.parse((await readBoundedBody(response)).toString('utf8'));
-    if (!data || typeof data !== 'object') throw invalidDraftResponse();
+    if (!data || typeof data !== 'object') throw createInvalidDraftResponseError();
     const { id, token, expiresAt, redeemUrl } = data as Record<string, unknown>;
     if (typeof id !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
       || typeof token !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(token)
       || typeof expiresAt !== 'string' || !Number.isFinite(Date.parse(expiresAt)) || Date.parse(expiresAt) <= Date.now()
       || redeemUrl !== `${website}/support#draft=${id}.${token}`) {
-      throw invalidDraftResponse();
+      throw createInvalidDraftResponseError();
     }
     return { url: redeemUrl, expiresAt };
   } catch (error) {
     if (error instanceof SupportRequestError) throw error;
-    if (error instanceof SyntaxError) throw invalidDraftResponse();
+    if (error instanceof SyntaxError) throw createInvalidDraftResponseError();
     throw new SupportRequestError('request_failed', 'The support request failed or timed out. No retry was sent; a draft may have been created.');
   }
 }

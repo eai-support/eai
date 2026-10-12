@@ -420,7 +420,6 @@ describe("built CLI discovery and error contracts", () => {
         code: string;
         message: string;
         suggestion: string;
-        help: string;
         exitCode: number;
       };
     };
