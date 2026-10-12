@@ -15,7 +15,8 @@ const schema = { command: 'eai', subcommands: [
 ] };
 const commands = ['eai verify', 'eai verify calls', 'eai workspace list', 'eai types define'];
 const decisions = commands.map(command => ({ command, crud: 'read', coverage: 'live', notes: 'fixture', cleanupMechanism: 'none', cleanupVerified: 'read only' }));
-const candidate = { gitSha: 'candidate-sha', binarySha256: 'entry-sha', runtimeSha256: 'runtime-sha', version: '3.19.1' };
+const candidate = { gitSha: 'a'.repeat(40), binarySha256: 'b'.repeat(64), runtimeSha256: 'c'.repeat(64),
+  version: '3.19.1', runtimeFileCount: 200, dirty: false };
 interface AuditAssertion { name: string; command: string; executionId: string; status: string; option?: string; alias?: string }
 
 describe('CLI backend audit evidence', () => {
@@ -162,6 +163,49 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
   });
+  test.each(['dirty', 'version', 'runtimeFileCount'])('top-level evidence rejects a different candidate %s', field => {
+    const { input, decisions } = completeContractModel();
+    input.evidence.candidate = { ...input.evidence.candidate, [field]: field === 'dirty' ? true : field === 'version' ? '3.19.99' : 201 };
+    expect(() => buildAudit(input, decisions)).toThrow('exact CLI candidate');
+  });
+  test.each(['dirty', 'version', 'runtimeFileCount'])('authorization evidence cannot reuse a different candidate %s', field => {
+    const { input, decisions } = completeContractModel();
+    input.evidence.authorizationEvidence.candidate = { ...input.candidate,
+      [field]: field === 'dirty' ? true : field === 'version' ? '3.19.99' : 201 };
+    const report = buildAudit(input, decisions); expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
+  });
+  test.each(['dirty', 'version', 'runtimeFileCount'])('cycle evidence cannot reuse a different candidate %s', field => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+    cycles.candidate = { ...input.candidate, [field]: field === 'dirty' ? true : field === 'version' ? '3.19.99' : 201 };
+    expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now })).toBe(false);
+    expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(false);
+  });
+  function unsupportedModel() {
+    const command = 'eai types define', executionId = '00000000-0000-4000-8000-000000000777';
+    return { schema: { command: 'eai', subcommands: [{ command: 'types', subcommands: [{ command: 'define' }] }] },
+      evidence: { candidate, unsupported: [{ command, executionId, status: 'passed', coverageComplete: true,
+        assertions: [{ name: 'refuses before auth/network', command, executionId, status: 'passed' }],
+        exitCode: 1, authenticationBypassed: true, networkCalls: 0 }] },
+      decisions: [{ command, crud: 'create', coverage: 'unsupported', notes: 'No public contract.' }] };
+  }
+  test('unsupported completion accepts a complete execution-bound denial observation', () => {
+    const { schema, evidence, decisions } = unsupportedModel();
+    expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
+  });
+  test.each(['bare', 'execution', 'complete', 'missing-assertions', 'malformed-assertion', 'failed-assertion', 'foreign-command', 'foreign-execution'])
+    ('unsupported completion rejects a %s denial claim', failure => {
+      const { schema, evidence, decisions } = unsupportedModel(), row = evidence.unsupported[0];
+      if (failure === 'bare') { Object.assign(row, { executionId: undefined, coverageComplete: undefined, assertions: undefined }); }
+      if (failure === 'execution') row.executionId = 'not-an-execution';
+      if (failure === 'complete') row.coverageComplete = false;
+      if (failure === 'missing-assertions') row.assertions = [];
+      if (failure === 'malformed-assertion') Object.assign(row, { assertions: [null] });
+      if (failure === 'failed-assertion') row.assertions[0].status = 'failed';
+      if (failure === 'foreign-command') row.assertions[0].command = 'eai user list';
+      if (failure === 'foreign-execution') row.assertions[0].executionId = '00000000-0000-4000-8000-000000000999';
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.unsupportedVerified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+    });
   test.each(['commands', 'aliases', 'unsupported'])('a null %s attempt is retained and cannot be hidden by a passing receipt', collection => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     Object.assign(input.evidence, { [collection]: [null, ...(input.evidence[collection as 'commands'] || [])] });
@@ -289,7 +333,8 @@ describe('CLI backend audit evidence', () => {
     if (reason === 'role-age') input.evidence.authorizationEvidence.completedAt = new Date(input.now - 3600001).toISOString();
     if (reason === 'not-ready') input.deployments[0].runtime.ready = false;
     if (reason === 'workflow-head') input.deployments[0].source = 'workflow-head';
-    expect(buildAudit(input, decisions).backendCertified).toBe(false);
+    if (reason === 'dirty' || reason === 'untracked-status') expect(() => buildAudit(input, decisions)).toThrow('exact CLI candidate');
+    else expect(buildAudit(input, decisions).backendCertified).toBe(false);
   });
   test.each(['failed', 'blocked', 'running'])('later successful alias receipts preserve an earlier %s observation', status => {
     const { input, decisions } = completeContractModel();
@@ -312,6 +357,30 @@ describe('CLI backend audit evidence', () => {
 describe('private blocked audit attempts', () => {
   const directories: string[] = [];
   afterEach(() => { for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); });
+  test('schema subprocess excludes ambient injection, credentials and routing while retaining operational settings', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-schema-env-'))); directories.push(root);
+    const output = join(root, 'audit'), cli = join(root, 'dist', 'index.js'), observation = join(root, 'child.json');
+    const preload = join(root, 'preload.cjs'), injected = join(root, 'injected');
+    mkdirSync(join(root, 'dist')); mkdirSync(join(root, 'resources'));
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ version: '3.19.3' }));
+    writeFileSync(preload, `if (process.argv[1] === ${JSON.stringify(cli)}) require('node:fs').writeFileSync(${JSON.stringify(injected)}, 'child-preload');\n`);
+    writeFileSync(cli, `require('node:fs').writeFileSync(${JSON.stringify(observation)}, JSON.stringify({
+      nodeOptions: !!process.env.NODE_OPTIONS, npm: !!process.env.NPM_TOKEN, github: !!process.env.GH_TOKEN,
+      azure: !!process.env.AZURE_CLIENT_SECRET, route: !!process.env.BASE_URL_PUBLIC_API, profile: !!process.env.EAI_PROFILE,
+      home: process.env.HOME, path: process.env.PATH, language: process.env.LANG }));
+      console.log(JSON.stringify({command:'eai',subcommands:[{command:'verify'}]}));\n`);
+    const env = { ...process.env, HOME: root, USERPROFILE: root, LANG: 'C.UTF-8', NODE_OPTIONS: '--require=' + preload,
+      NPM_TOKEN: 'synthetic-npm', GH_TOKEN: 'synthetic-github', AZURE_CLIENT_SECRET: 'synthetic-azure',
+      BASE_URL_PUBLIC_API: 'https://example.invalid/ambient', EAI_PROFILE: 'ambient-profile' };
+    const result = spawnSync(process.execPath, [resolve('scripts/audit-cli-backend.cjs'), '--cli', cli, '--output', output], {
+      encoding: 'utf8', timeout: 10000, env,
+    });
+    expect(result.status).toBe(0);
+    expect(JSON.parse(readFileSync(observation, 'utf8'))).toEqual({ nodeOptions: false, npm: false, github: false,
+      azure: false, route: false, profile: false, home: root, path: process.env.PATH, language: 'C.UTF-8' });
+    expect(() => statSync(injected)).toThrow();
+    expect(qa.readPrivate(join(output, 'capabilities.json')).backendCertified).toBe(false);
+  });
   test('a normal source inventory persists its matrix without claiming executed capability', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-inventory-'))); directories.push(root);
     const output = join(root, 'audit');

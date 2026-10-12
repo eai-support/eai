@@ -231,6 +231,14 @@ incomplete entries when joining matching reports. An executed subset cannot
 claim `coverageComplete`; every command, alias and option needs its own named
 assertions. `types define` and `resources indexes-apply` intentionally return
 unsupported before auth/network and need explicit exit-1/no-network evidence.
+Their receipts also require a complete UUID-bound execution with passing scoped
+assertions; bare exit/auth/network flags cannot certify unsupported completion.
+Top-level evidence, role receipts and cycle receipts must match all six clean
+candidate fields: source SHA, entrypoint hash, runtime hash, runtime file count,
+package version and `dirty: false`.
+The audit's schema subprocess retains normal home, path, locale and network
+settings through the same operational allowlist as the qualification commands;
+it excludes ambient credentials, Node injection options and EAI routing context.
 Absent evidence remains `not-run`; attempted unfinished observations remain
 `incomplete`. Command, alias and option failures take precedence over blocked
 or incomplete observations, and one success cannot erase another attempt for

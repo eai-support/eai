@@ -95,6 +95,11 @@ function candidateValid(candidate) {
     && Number.isSafeInteger(candidate.runtimeFileCount) && candidate.runtimeFileCount > 0
     && typeof candidate.version === 'string' && candidate.version.length <= 100 && VERSION.test(candidate.version) && candidate.dirty === false;
 }
+/** Every qualification receipt must identify the whole clean CLI candidate. */
+function candidateMatches(left, right) {
+  return Boolean(candidateValid(left) && candidateValid(right)
+    && CANDIDATE_FIELDS.every(field => left[field] === right[field]));
+}
 function sameSource(left, right) {
   return left.sourceSha === right.sourceSha && left.sourceSha256 === right.sourceSha256 && left.sourceFileCount === right.sourceFileCount;
 }
@@ -106,7 +111,7 @@ function sourceBuildVerified(receipt, candidate, { now = Date.now() } = {}) {
     || receipt.sourceFingerprintVersion !== SOURCE_FINGERPRINT || typeof receipt.sourceSha256 !== 'string' || !HASH.test(receipt.sourceSha256)
     || !Number.isSafeInteger(receipt.sourceFileCount) || receipt.sourceFileCount <= 0 || receipt.sourceSha !== candidate.gitSha
     || !Array.isArray(receipt.command) || receipt.command.length !== COMMAND.length || !COMMAND.every((part, index) => receipt.command[index] === part)
-    || !candidateValid(receipt.candidate) || !CANDIDATE_FIELDS.every(field => receipt.candidate[field] === candidate[field])
+    || !candidateMatches(receipt.candidate, candidate)
     || typeof receipt.observedAt !== 'string' || !Number.isFinite(now)) return false;
   const age = now - Date.parse(receipt.observedAt);
   return Number.isFinite(age) && age >= -60000 && age <= 3600000;
@@ -192,4 +197,4 @@ function main() {
     sourceSha: receipt.sourceSha, runtimeSha256: receipt.candidate.runtimeSha256, observedAt: receipt.observedAt }));
 }
 if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
-module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified };
+module.exports = { SCHEMA, SOURCE_FINGERPRINT, runBuildReceipt, sourceBuildVerified, candidateMatches };

@@ -399,8 +399,8 @@ function authorizationVerified(evidence, candidate, context) {
   if (!authorization || authorization.schemaVersion !== 'eai.cli-authorization-evidence.v1' || !UUID.test(authorization.fixtureId || '')
     || authorization.qualified !== true || authorization.qualification !== 'normal-cli-profiles' || authorization.status !== 'passed'
     || authorization.environment !== context.environment || authorization.publicApiUrl !== context.publicApiUrl
-    || authorization.candidate?.gitSha !== candidate.gitSha || authorization.candidate?.runtimeSha256 !== candidate.runtimeSha256
-    || authorization.candidate?.binarySha256 !== candidate.binarySha256 || !Number.isFinite(age) || age < -60000 || age > 3600000
+    || !require('./cli-qa-build-receipt.cjs').candidateMatches(authorization.candidate, candidate)
+    || !Number.isFinite(age) || age < -60000 || age > 3600000
     || !authorization.foundationVerified || authorization.cleanupVerified !== true || !Array.isArray(authorization.cases)
     || authorization.cases.length !== ROLE_CASES.length) return false;
   const actors = authorization.actors || {}, tenants = authorization.tenantIds || {};
@@ -434,8 +434,8 @@ function cyclesVerified(evidence, candidate, context) {
   const age = (context.now ?? Date.now()) - Date.parse(cycle?.completedAt);
   if (cycle?.schemaVersion !== 'eai.cli-permanent-cycles.v1' || cycle.qualified !== true || cycle.qualification !== 'normal-cli-profiles' || cycle.status !== 'passed'
     || !UUID.test(cycle.fixtureId || '') || cycle.environment !== context.environment || cycle.publicApiUrl !== context.publicApiUrl
-    || cycle.candidate?.gitSha !== candidate.gitSha || cycle.candidate?.runtimeSha256 !== candidate.runtimeSha256
-    || cycle.candidate?.binarySha256 !== candidate.binarySha256 || !Number.isFinite(age) || age < -60000 || age > 3600000
+    || !require('./cli-qa-build-receipt.cjs').candidateMatches(cycle.candidate, candidate)
+    || !Number.isFinite(age) || age < -60000 || age > 3600000
     || !Array.isArray(cycle.cycles) || cycle.cycles.length !== 10) return false;
   return cycle.cycles.every(cycleReceiptVerified) && cycleIdentitiesFresh(cycle.cycles);
 }

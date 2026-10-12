@@ -5,7 +5,7 @@ const { existsSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 const smoke = require('./eai-full-e2e-smoke.cjs');
 const qualification = require('./cli-qa-foundation.cjs');
-const { sourceBuildVerified } = require('./cli-qa-build-receipt.cjs');
+const { sourceBuildVerified, candidateMatches } = require('./cli-qa-build-receipt.cjs');
 const ROOT = resolve(__dirname, '..');
 
 const CONTRACTS = {
@@ -87,8 +87,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const decisions = new Map(traceability.map(row => [row.command, row]));
   const unknown = entries.filter(entry => !decisions.has(entry.command));
   if (unknown.length) throw new Error('Missing command coverage decisions: ' + unknown.map(entry => entry.command).join(', '));
-  if (evidence && (evidence.candidate?.gitSha !== candidate.gitSha || evidence.candidate?.binarySha256 !== candidate.binarySha256
-    || !candidate.runtimeSha256 || evidence.candidate?.runtimeSha256 !== candidate.runtimeSha256)) {
+  if (evidence && !candidateMatches(evidence.candidate, candidate)) {
     throw new Error('Live evidence does not identify this exact CLI candidate.');
   }
   // Unscoped malformed attempts cannot be discarded to certify another success.
@@ -139,7 +138,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const optionCoverageComplete = optionEvidence.every(row => row.status === 'passed');
   const unsupportedVerified = evidenceValid && [...UNSUPPORTED.keys()].filter(command => commands.some(row => row.command === command)).every(command => {
     const executions = unsupportedReceipts.filter(row => row.command === command);
-    return executions.length > 0 && executions.every(row => row.status === 'passed'
+    return executionStatus(executions) === 'passed' && executions.every(row => row.status === 'passed'
       && row.exitCode === 1 && row.authenticationBypassed === true && row.networkCalls === 0);
   });
   const backendCertified = evidenceValid && backendCommands.length > 0 && backendCommands.every(row => row.status === 'passed')
@@ -169,7 +168,8 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
 }
 
 function commandOutput(args) {
-  const result = spawnSync(args[0], args.slice(1), { cwd: ROOT, encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 });
+  const result = spawnSync(args[0], args.slice(1), { cwd: ROOT, env: qualification.operationalEnvironment(process.env),
+    encoding: 'utf8', timeout: 60000, maxBuffer: 8 * 1024 * 1024 });
   if (result.status !== 0) throw new Error('Audit input command failed: ' + args.slice(0, 3).join(' '));
   return result.stdout.trim();
 }
