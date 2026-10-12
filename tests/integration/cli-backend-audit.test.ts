@@ -154,6 +154,12 @@ describe('CLI backend audit evidence', () => {
     expect(report.optionCoverageComplete).toBe(true); expect(report.aliasCoverageComplete).toBe(true); expect(report.backendCertified).toBe(true);
     expect(report.fullCapabilityQualified).toBe(false);
   });
+  test('valid standalone authorization admits retained scopes without claiming ten completed cycles', () => {
+    const { input, decisions } = completeContractModel(), report = buildAudit(input, decisions);
+    expect(report.authorizationVerified).toBe(true); expect(report.foundationEvidenceBound).toBe(false);
+    expect(report.commands[0].status).toBe('passed'); expect(report.aliasEvidence[0].status).toBe('passed');
+    expect(report.optionCoverageComplete).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
+  });
   function addCompleteCycleModel(input: ReturnType<typeof completeContractModel>['input']) {
     // A synthetic consumer DTO model, never a live qualification observation.
     const id = (number: number) => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
@@ -173,6 +179,33 @@ describe('CLI backend audit evidence', () => {
   test('a complete matching fixture/workspace/actor model can qualify the combined consumer', () => {
     const { input, decisions } = completeContractModel(); addCompleteCycleModel(input);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
+  });
+  test.each(['unverified-role', 'missing-role', 'foreign-fixture', 'foreign-workspace', 'foreign-actor'] as const)(
+    'protected command, alias and option scopes refuse %s retained authorization', failure => {
+      const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+      if (failure === 'unverified-role') input.evidence.authorizationEvidence.qualified = false;
+      if (failure === 'missing-role') Object.assign(input.evidence, { authorizationEvidence: undefined });
+      if (failure === 'foreign-fixture') cycles.fixtureId = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'foreign-workspace') cycles.tenantIds.b = '00000000-0000-4000-8000-000000000999';
+      if (failure === 'foreign-actor') cycles.actors.builderA.oid = '00000000-0000-4000-8000-000000000999';
+      const report = buildAudit(input, decisions);
+      expect(report.commands[0].status).toBe('incomplete');
+      expect(report.aliasEvidence[0].status).toBe('incomplete');
+      expect(report.optionEvidence.every((row: { status: string }) => row.status === 'incomplete')).toBe(true);
+      expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test('a cycle child cannot qualify protected scopes through an unverified role receipt', () => {
+    const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input);
+    input.evidence.authorizationEvidence.qualified = false;
+    const scopeTenantId = cycles.cycles[0].tenantId;
+    for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
+      Object.assign(receipt, { scopeTenantId });
+      for (const assertion of receipt.assertions) Object.assign(assertion, { scopeTenantId });
+    }
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe('incomplete');
+    expect(report.aliasEvidence[0].status).toBe('incomplete');
+    expect(report.optionCoverageComplete).toBe(false); expect(report.backendCertified).toBe(false);
   });
   test('an alias-scoped command receipt cannot replace the canonical invocation or its options', () => {
     const { input, decisions } = completeContractModel(), row = input.evidence.commands[0];
@@ -224,7 +257,7 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(); Object.assign(input.evidence.authorizationEvidence.cases, { 0: caseRow });
     const context = { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now };
     expect(qa.authorizationVerified(input.evidence, input.candidate, context)).toBe(false);
-    const report = buildAudit(input, decisions); expect(report.commands[0].status).toBe('passed');
+    const report = buildAudit(input, decisions); expect(report.commands[0].status).toBe('incomplete');
     expect(report.authorizationVerified).toBe(false); expect(report.backendCertified).toBe(false);
   });
   test.each(['dirty', 'version', 'runtimeFileCount'])('top-level evidence rejects a different candidate %s', field => {

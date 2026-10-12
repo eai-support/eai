@@ -92,10 +92,13 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   }
   const context = { environment: environment || evidence?.environment, publicApiUrl: publicApiUrl || evidence?.expectedPublicApi, now };
   const uuid = value => typeof value === 'string' && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value);
+  const authorizationVerified = qualification.authorizationVerified(evidence, candidate, context);
+  const foundationEvidenceBound = qualification.foundationEvidenceBound(evidence);
+  const roleScopeBound = authorizationVerified && (evidence?.cycleEvidence === undefined || foundationEvidenceBound);
   const retained = evidence?.authorizationEvidence?.tenantIds;
-  const ownedTenants = new Set(retained && uuid(retained.a) && uuid(retained.b) && retained.a !== retained.b
+  const ownedTenants = new Set(roleScopeBound && retained && uuid(retained.a) && uuid(retained.b) && retained.a !== retained.b
     ? [retained.a, retained.b] : []);
-  if (qualification.foundationEvidenceBound(evidence) && qualification.cyclesVerified(evidence, candidate, context))
+  if (roleScopeBound && foundationEvidenceBound && qualification.cyclesVerified(evidence, candidate, context))
     for (const cycle of evidence.cycleEvidence.cycles) ownedTenants.add(cycle.tenantId);
   function scopeVerified(row) {
     return qualification.qualificationScopeVerified(context) && row.environment === context.environment
@@ -145,8 +148,6 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   const backendCommands = commands.filter(row => row.requiresProtectedBackend);
   const parityComplete = qualification.deploymentParity(deployments, { ...context, now,
     requiredServices: [...qualification.SERVICES, ...(backendCommands.some(row => row.command === 'eai support') ? ['Website'] : [])] });
-  const authorizationVerified = qualification.authorizationVerified(evidence, candidate, context);
-  const foundationEvidenceBound = qualification.foundationEvidenceBound(evidence);
   const candidateVerified = sourceBuildVerified(buildReceipt, candidate, { now });
   const aliasEvidence = commands.flatMap(row => row.aliases.map(alias => {
     const executions = aliasReceipts.filter(item => item.alias === alias && item.command === row.command);
