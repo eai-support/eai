@@ -103,6 +103,28 @@ describe('local support report redaction', () => {
     expect(redactSupportText(clean)).toBe(clean);
   });
 
+  test('assignments inside quoted credential continuations are not next fields', () => {
+    for (const value of ['api_key=[removed]', 'api_key=[first,PRIVATE_CANARY]', '"api_key=[removed]"']) {
+      for (const quote of ['"', "'"]) {
+        let diagnostic = `${value} ${quote}foo=PRIVATE_CANARY${quote} status=public-id`;
+        for (let depth = 0; depth < 4; depth++) {
+          const clean = redactSupportText(diagnostic);
+          expect(clean).not.toContain('PRIVATE_CANARY');
+          expect(clean).toContain('public-id');
+          expect(redactSupportText(clean)).toBe(clean);
+          diagnostic = JSON.stringify(diagnostic);
+        }
+      }
+    }
+    for (const quote of ['"', "'"]) {
+      let diagnostic = `api_key=[removed] ${quote}client_id${quote}=${quote}public-id${quote}`;
+      for (let depth = 0; depth < 4; depth++) {
+        expect(redactSupportText(diagnostic)).toBe(diagnostic);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+  });
+
   test('quoted private continuations after an enclosing credential wrapper stay private and stable', () => {
     for (const value of ['[first,PRIVATE_CANARY]', '{first:PRIVATE_CANARY}', '[removed]', '[redacted]']) {
       for (const quote of ['"', "'"]) {

@@ -25,7 +25,7 @@ function decodeCredentialKey(key: string): string {
   return parts.join('');
 }
 
-interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number }
+interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number; readonly quotedKeyEnd: number }
 
 function redactCredentialValues(text: string): string {
   const escaped = new Uint8Array(text.length);
@@ -93,14 +93,14 @@ function redactCredentialValues(text: string): string {
     }
     const key = decodeCredentialKey(text.slice(match.index, keyEnd));
     let start = keyEnd;
-    if (quoteEnds[start]) start = quoteEnds[start];
-    else if (keyEnd < fullEnd && quoteEnds[fullEnd]) start = quoteEnds[fullEnd];
+    const quotedKeyEnd = quoteEnds[keyEnd] || (keyEnd < fullEnd ? quoteEnds[fullEnd] : 0);
+    if (quotedKeyEnd) start = quotedKeyEnd;
     const separator = start;
     while (start < text.length && /\s/.test(text[start])) start++;
     if (text[start] === '=' || text[start] === ':') start++;
     else if (!key.startsWith('--') || start === separator) continue;
     while (start < text.length && /\s/.test(text[start])) start++;
-    fields.push({ key, start, tokenStart: match.index });
+    fields.push({ key, start, tokenStart: match.index, quotedKeyEnd });
   }
   const fieldStarts = new Set(fields.map(field => field.tokenStart));
   const firstValueCharacter = new Uint32Array(text.length + 1);
@@ -119,7 +119,7 @@ function redactCredentialValues(text: string): string {
   const quoteStartsByEnd = new Map(quotes.map(quote => [quote.end, quote.start]));
   for (const field of fields) {
     const quoteStart = quoteStartsByEnd.get(field.tokenStart);
-    if (quoteStart !== undefined) quotedFieldStarts.add(quoteStart);
+    if (quoteStart !== undefined && field.quotedKeyEnd && closingEnds[quoteStart] === field.quotedKeyEnd) quotedFieldStarts.add(quoteStart);
   }
   const markerContent = new Uint32Array(text.length + 1);
   markerContent[text.length] = text.length;
@@ -152,11 +152,12 @@ function redactCredentialValues(text: string): string {
     const end = stableMarker ? start : marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
     cover(start, end);
     const boundary = stableMarker ? markerEnd : end;
-    if (!closingWrapper[boundary] || closingWrapper[boundary] > tokenStart) continue;
-    const continuation = markerContent[wrapperEnds[boundary]];
+    const enclosingWrapper = closingWrapper[boundary] && closingWrapper[boundary] <= tokenStart;
+    if (!enclosingWrapper && !completeContainer) continue;
+    const continuation = markerContent[enclosingWrapper ? wrapperEnds[boundary] : boundary];
     // SECURITY: adjacent quoted text can be a private value continuation outside the enclosing wrapper.
     if (quoteEnds[continuation] && !quotedFieldStarts.has(continuation) && !(closingWrapper[continuation] && closingWrapper[continuation] <= tokenStart)) {
-      cover(continuation, markerTailEnds[continuation]);
+      cover(enclosingWrapper ? continuation : start, markerTailEnds[continuation]);
     }
   }
   const parts: string[] = [];
