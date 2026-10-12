@@ -93,10 +93,11 @@ export async function runSupport(options: SupportOptions, dependencies: SupportD
       process.exitCode = 1;
       return;
     }
+    // A local refusal must remove its owned preview even if profile settings changed.
+    if (options.decline) discardOwnedHarnessContext(options.contextFile);
     const website = await resolveSupportWebsite();
     chatUrl = supportChatUrl(website);
     if (options.decline) {
-      discardOwnedHarnessContext(options.contextFile);
       emit({ ok: true, status: 'declined', url: chatUrl, message: 'No report was sent and no draft was created.' });
       return;
     }

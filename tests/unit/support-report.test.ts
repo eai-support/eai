@@ -682,3 +682,22 @@ test.each(['environment', 'named-profile'] as const)('explicit decline resolves 
   expect(loadTokens).not.toHaveBeenCalled();
   expect(fetch).not.toHaveBeenCalled();
 });
+
+
+test.each(['missing-profile-origin', 'invalid-origin'] as const)('decline still removes its owned preview when %s changes', async setting => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  vi.stubEnv('EAI_WEBSITE_URL', setting === 'invalid-origin' ? 'https://support.fixture.invalid/unsafe-path' : '');
+  if (setting === 'missing-profile-origin') setActiveProfile('missing-support-origin');
+  const file = createHarnessContextFile();
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ decline: true, contextFile: file, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'failed', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+  await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${file}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
