@@ -215,6 +215,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.executions.some(row => row.command === 'eai workspace create')).toBe(true);
   });
 
+  test('canonical lifecycle inherits child home region without forwarding an obsolete explicit region override', () => {
+    const controlled = harness();
+    const report = controlled.run({ EAI_E2E_CANONICAL_CYCLE_COMMANDS: '1', EAI_E2E_CHILD_HOME_REGION: 'eu' });
+    expect(report.status).toBe('passed');
+    const creation = controlled.calls.find(call => matches(call.args, ['workspace', 'create']));
+    expect(creation).toBeDefined();
+    expect(creation!.args).not.toContain('--home-region');
+    expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
+  });
+
   // The receiver forbids unknown property and storage-binding fields. Local
   // types validate alone does not establish this deployed manifest contract.
   const manifestPropertyFields = new Set(['name', 'type', 'label', 'required', 'indexed', 'defaultValue', 'options',
