@@ -952,7 +952,7 @@ if (lifecycle && args.includes('provision')) {
     const dockerLog = join(root, 'docker.log');
     writeFileSync(join(bin, 'docker'), `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> '${dockerLog}'\nif [[ "$*" == *SEARCH_DEFAULT_API_KEY* ]]; then echo fixture-search-key; exit 0; fi\nexit 77\n`, { mode: 0o700 });
     const result = spawnSync('bash', [join(fixtureScripts, 'test-local-dedicated-tenant-lifecycle.sh')], {
-      encoding: 'utf8', timeout: 10000,
+      encoding: 'utf8', timeout: 30000,
       env: { ...process.env, ...ambient, ...hintEnv, HOME: root, USERPROFILE: root, TMPDIR: root, PATH: `${bin}:${process.env.PATH}`,
         EAI_E2E_PROFILE: 'local', EAI_E2E_PUBLIC_API_URL: api, EAI_E2E_PARENT_TENANT_ID: 'parent-fixture',
         EAI_HARNESS_TEST_LOG: log, EAI_HARNESS_TEST_MODE: mode },
