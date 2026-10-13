@@ -9,6 +9,8 @@ Your harness authors a JSON manifest. The CLI validates it locally, reads the se
 
 This mode supports typed document fields and one flat workflow classifier. It requires administrator permission and an enabled, ready workspace. Installed commands do not establish that the workspace has the capability. Nested classifiers, segmentation, audio/video, arbitrary model deployments and resource provisioning are unavailable in this mode; unsupported settings fail before any configuration writes.
 
+These commands require CLI v3.20.0 or newer. The 3.20.0 source candidate requires package publication and DEV provider qualification before launch; the existing published release is listed in [Start Here](./start-here.md).
+
 ## Author and validate
 
 Start with the installed schema. Local schema and validation commands need no sign-in and make no network requests:

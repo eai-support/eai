@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "releaseVersion": "3.19.4",
+  "releaseVersion": "3.20.0",
   "capabilities": {
     "localSearch": true,
     "sourceLinkedAssistant": true,
