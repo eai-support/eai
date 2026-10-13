@@ -68,7 +68,7 @@ describe('CLI backend audit evidence', () => {
     expect(() => buildAudit({ schema, candidate, evidence: { ...evidence, candidate: { ...candidate, runtimeSha256: 'other-libraries' } } }, decisions)).toThrow('exact CLI candidate');
   });
   test.each(['running', 'incomplete'])('retains attempted %s observations separately from commands never run', status => {
-    const evidence = { candidate, commands: [{ command: 'eai verify', status }] };
+    const evidence = { candidate, commands: [{ command: 'eai verify', invokedCommand: 'eai verify', status }] };
     const report = buildAudit({ schema, candidate, evidence }, decisions);
     expect(report.commands.find((row: { command: string }) => row.command === 'eai verify').status).toBe('incomplete');
     expect(report.commands.find((row: { command: string }) => row.command === 'eai verify calls').status).toBe('not-run');
@@ -152,17 +152,107 @@ describe('CLI backend audit evidence', () => {
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
     const executionId = id(90), aliasExecutionId = id(91);
     const scope = { environment: 'DEV', publicApiUrl, scopeTenantId: tenantIds.a };
+    const transport = (executionId: string) => [{ schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl,
+      tenantId: tenantIds.a, proofKind: 'transport-response', method: 'GET', path: '/public/v4/identity/tenants' }];
     const assertions: AuditAssertion[] = [
       { name: 'exact inventory', command: 'eai workspace list', executionId, status: 'passed', ...scope },
       ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed', ...scope })),
     ];
     const evidence = { candidate, environment: 'DEV', expectedPublicApi: publicApiUrl, cleanupVerified: true, authorizationEvidence,
-      commands: [{ command: 'eai workspace list', executionId, exitCode: 0, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], ...scope }],
-      aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, exitCode: 0, status: 'passed', coverageComplete: true,
+      commands: [{ command: 'eai workspace list', invokedCommand: 'eai workspace list', executionId, exitCode: 0, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], transportObservations: transport(executionId), ...scope }],
+      aliases: [{ alias: 'eai tenant list', invokedCommand: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, exitCode: 0, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'exact alias inventory', command: 'eai workspace list', alias: 'eai tenant list',
-          executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], ...scope }] };
+          executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], transportObservations: transport(aliasExecutionId), ...scope }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
   }
+
+  test.each(['canonical', 'other', 'missing'])(
+    'alias projection refuses %s invoked spelling even with passing bound transport and assertions', kind => {
+      const { input, decisions } = completeContractModel();
+      Object.assign(input.evidence.aliases[0], { invokedCommand: kind === 'canonical' ? 'eai workspace list'
+        : kind === 'other' ? 'eai verify' : undefined });
+      const report = buildAudit(input, decisions);
+      expect(report.aliasEvidence[0].status).toBe('incomplete');
+      expect(report.aliasCoverageComplete).toBe(false);
+      expect(report.evidenceValidation.valid).toBe(false);
+      expect(report.evidenceValidation.malformedAttempts).toContainEqual(expect.objectContaining({
+        collection: 'aliases', reason: 'invoked-spelling-mismatch', command: 'eai workspace list',
+      }));
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test.each(['alias', 'padding', 'missing'])(
+    'canonical projection refuses %s invoked spelling independently of transport scope', kind => {
+      const { input, decisions } = completeContractModel();
+      Object.assign(input.evidence.commands[0], { invokedCommand: kind === 'alias' ? 'eai tenant list'
+        : kind === 'padding' ? ' eai workspace list' : undefined });
+      const report = buildAudit(input, decisions);
+      expect(report.commands[0].status).toBe('incomplete');
+      expect(report.evidenceValidation.valid).toBe(false);
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test('a mismatched invoked spelling keeps an observed failure visible', () => {
+    const { input, decisions } = completeContractModel();
+    Object.assign(input.evidence.commands[0], { invokedCommand: 'eai tenant list', status: 'failed', exitCode: 1 });
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe('failed');
+    expect(report.summary.failed).toBe(1);
+    expect(report.evidenceValidation.valid).toBe(false);
+  });
+
+  test('matching selected protected scope and passing summaries cannot certify an unobserved transport', () => {
+    const { input, decisions } = completeContractModel();
+    Object.assign(input.evidence.commands[0], { transportObservations: undefined });
+    const result = buildAudit(input, decisions);
+    expect(result.commands[0].status).toBe('incomplete');
+    expect(result.backendCertified).toBe(false); expect(result.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].flatMap(operation =>
+    ['missing', 'wrong-route', 'correct'].map(route => ({ operation, route }))))(
+    'resource JSON scope cannot certify $operation with a $route primary route independently of passing summaries', ({ operation, route }) => {
+      const { input } = completeContractModel(), row = input.evidence.commands[0];
+      const command = 'eai resources ' + operation;
+      input.schema = { command: 'eai', subcommands: [{ command: 'resources', aliases: [], subcommands: [{ command: operation, options: [] }] }] };
+      input.evidence.aliases = [];
+      row.command = command; row.invokedCommand = command; row.options = [];
+      row.assertions = [{ ...row.assertions[0], command }];
+      const collection = '/public/v4/data/resources/' + row.scopeTenantId + '/project';
+      const primary = { ...row.transportObservations[0], method: route === 'wrong-route' ? 'GET' : operation === 'delete' ? 'DELETE' : 'POST',
+        path: route === 'wrong-route' ? collection : operation === 'delete' ? collection + '/owned-id'
+          : operation.startsWith('batch-') ? collection + '/batch/' + operation.slice(6) : collection };
+      const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: row.executionId,
+        publicApiUrl: row.publicApiUrl, tenantId: row.scopeTenantId, proofKind: 'transport-response', source: 'resource-json' };
+      Object.assign(row, { transportObservations: route === 'missing' ? [responseScope] : [primary, responseScope] });
+      const report = buildAudit(input, [{ command, crud: operation.includes('delete') ? 'delete' : 'create', coverage: 'live', notes: 'modeled consumer DTO only' }]);
+      expect(report.evidenceValidation).toEqual({ valid: true, malformedAttempts: [] });
+      expect(report.commands[0].status).toBe(route === 'correct' ? 'passed' : 'incomplete');
+      expect(report.backendCertified).toBe(route === 'correct');
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+
+  test.each([{ options: [] }, { options: ['--apply'] }, { options: ['--schema'] }, { options: ['--schema', '--apply'] }])(
+    'bundle flags $options cannot certify a backend from local-style summaries', ({ options }) => {
+      const { input } = completeContractModel(), row = input.evidence.commands[0], command = 'eai provision resourceapi-bundle';
+      input.schema = { command: 'eai', subcommands: [{ command: 'provision', aliases: [], subcommands: [{ command: 'resourceapi-bundle', options: [] }] }] };
+      input.evidence.aliases = []; row.command = command; row.invokedCommand = command; row.options = options;
+      row.assertions = [{ ...row.assertions[0], command }]; Object.assign(row, { transportObservations: undefined });
+      const result = buildAudit(input, [{ command, crud: 'create-local', coverage: 'live', notes: 'modeled consumer DTO only' }]);
+      expect(result.commands[0].requiresProtectedBackend).toBe(true);
+      expect(result.commands[0].routeFamilies).toContain('/v4/platform');
+      expect(result.commands[0].status).toBe('incomplete'); expect(result.backendCertified).toBe(false); expect(result.fullCapabilityQualified).toBe(false);
+    });
+
+  test.each(['uuid', 'gateway', 'tenant', 'kind', 'auxiliary', 'global'])(
+    'a protected %s transport mismatch stays incomplete independently of passing summaries', kind => {
+      const { input, decisions } = completeContractModel();
+      const observed = input.evidence.commands[0].transportObservations[0];
+      if (kind === 'uuid') observed.executionId = '00000000-0000-4000-8000-000000000999';
+      if (kind === 'gateway') observed.publicApiUrl = 'https://foreign.invalid/public';
+      if (kind === 'tenant') observed.tenantId = '00000000-0000-4000-8000-000000000999';
+      if (kind === 'kind') observed.proofKind = 'selected-context';
+      if (kind === 'auxiliary') observed.path = '/public/v4/data/resources/object-types';
+      if (kind === 'global') observed.tenantId = 'system';
+      expect(buildAudit(input, decisions).commands[0].status).toBe('incomplete');
+    });
 
   test.each(['oid', 'profile'])('case-folded duplicate actor %s cannot certify independent normal roles', field => {
     const { input, decisions } = completeContractModel(), authorization = input.evidence.authorizationEvidence;
@@ -191,6 +281,59 @@ describe('CLI backend audit evidence', () => {
     expect(report.authorizationVerified).toBe(true); expect(report.foundationEvidenceBound).toBe(false);
     expect(report.commands[0].status).toBe('passed'); expect(report.aliasEvidence[0].status).toBe('passed');
     expect(report.optionCoverageComplete).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test.each(([
+    ['commands', 'commands'], ['commands', 'aliases'], ['commands', 'unsupported'],
+    ['aliases', 'aliases'], ['aliases', 'unsupported'], ['unsupported', 'unsupported'],
+  ] as const).flatMap(([source, target]) => [false, true].map(caseFolded => ({ source, target, caseFolded }))))
+    ('imported $source to $target receipt reuse cannot qualify several capabilities (caseFolded=$caseFolded)', ({ source, target, caseFolded }) => {
+      const { input, decisions } = completeContractModel(), unsupported = unsupportedModel();
+      Object.assign(input.schema, { subcommands: [...input.schema.subcommands, ...unsupported.schema.subcommands] });
+      decisions.push(...unsupported.decisions);
+      const collections = { commands: input.evidence.commands, aliases: input.evidence.aliases, unsupported: unsupported.evidence.unsupported };
+      Object.assign(input.evidence, { unsupported: collections.unsupported });
+      const executionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa90';
+      const original = collections[source][0], duplicate = JSON.parse(JSON.stringify(collections[target][0]));
+      if (source === 'commands' && target === 'commands') {
+        input.schema.subcommands[0].subcommands.push({ command: 'info', options: input.schema.subcommands[0].subcommands[0].options });
+        duplicate.command = 'eai workspace info'; duplicate.invokedCommand = duplicate.command;
+        for (const assertion of duplicate.assertions) assertion.command = duplicate.command;
+        decisions.push({ ...decisions[0], command: duplicate.command });
+      }
+      const bind = (row: { executionId: string; assertions: AuditAssertion[]; transportObservations?: { executionId: string }[] }, id: string): void => {
+        row.executionId = id;
+        for (const assertion of row.assertions) assertion.executionId = id;
+        for (const observed of row.transportObservations || []) observed.executionId = id;
+      };
+      bind(original, executionId); bind(duplicate, caseFolded ? executionId.toUpperCase() : executionId);
+      Object.assign(input.evidence, { [target]: [...collections[target], duplicate] });
+      const report = buildAudit(input, decisions);
+      expect(report.evidenceValidation.valid, `${source}/${target}; caseFolded=${caseFolded}`).toBe(false);
+      expect(report.evidenceValidation.malformedAttempts).toContainEqual(expect.objectContaining({
+        collection: target, reason: 'duplicate-execution-id', command: duplicate.command,
+      }));
+      expect(report.commands.every((row: { actualExecutionStatus: string }) => row.actualExecutionStatus !== 'passed')).toBe(true);
+      expect(report.aliasCoverageComplete).toBe(false); expect(report.optionCoverageComplete).toBe(false);
+      expect(report.unsupportedVerified).toBe(false); expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test('distinct invocations across all collections preserve options and multiple assertions on one invocation', () => {
+    const { input, decisions } = completeContractModel(), unsupported = unsupportedModel();
+    Object.assign(input.schema, { subcommands: [...input.schema.subcommands, ...unsupported.schema.subcommands] });
+    decisions.push(...unsupported.decisions); Object.assign(input.evidence, { unsupported: unsupported.evidence.unsupported });
+    const report = buildAudit(input, decisions);
+    expect(report.evidenceValidation.valid).toBe(true);
+    expect(report.commands.find((row: { command: string }) => row.command === 'eai workspace list').status).toBe('passed');
+    expect(report.aliasCoverageComplete).toBe(true); expect(report.optionCoverageComplete).toBe(true);
+    expect(report.unsupportedVerified).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['failed', 'blocked'])('duplicate receipts retain observed %s command and option precedence', status => {
+    const { input, decisions } = completeContractModel(), original = input.evidence.commands[0];
+    input.evidence.commands.push(JSON.parse(JSON.stringify(original)));
+    Object.assign(original, { status, exitCode: 1 });
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe(status);
+    expect(report.optionEvidence.every((row: { status: string }) => row.status === status)).toBe(true);
+    expect(report.evidenceValidation.valid).toBe(false); expect(report.backendCertified).toBe(false);
   });
   test.each([undefined, null, 1, 2, '0'])('supported command and alias exit %j never qualifies passing assertions', exitCode => {
     const { input, decisions } = completeContractModel();
@@ -294,6 +437,7 @@ describe('CLI backend audit evidence', () => {
       }
       for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
         receipt.scopeTenantId = cycle.tenantId;
+        for (const observed of receipt.transportObservations) observed.tenantId = cycle.tenantId;
         for (const assertion of receipt.assertions) assertion.scopeTenantId = cycle.tenantId;
       }
       const report = buildAudit(input, decisions);
@@ -308,6 +452,7 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input), tenantId = cycles.cycles[0].tenantId;
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       receipt.scopeTenantId = tenantId; for (const assertion of receipt.assertions) assertion.scopeTenantId = tenantId;
+      for (const observed of receipt.transportObservations) observed.tenantId = tenantId;
     }
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
   });
@@ -347,6 +492,7 @@ describe('CLI backend audit evidence', () => {
     for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
+      for (const observed of receipt.transportObservations) observed.publicApiUrl = publicApiUrl;
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
     }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
@@ -375,6 +521,7 @@ describe('CLI backend audit evidence', () => {
     }
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
+      for (const observed of receipt.transportObservations) observed.publicApiUrl = publicApiUrl;
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
     }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
@@ -404,18 +551,50 @@ describe('CLI backend audit evidence', () => {
     expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now })).toBe(false);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(false);
   });
-  function unsupportedModel() {
-    const command = 'eai types define', executionId = '00000000-0000-4000-8000-000000000777';
-    return { schema: { command: 'eai', subcommands: [{ command: 'types', subcommands: [{ command: 'define' }] }] },
-      evidence: { candidate, unsupported: [{ command, executionId, status: 'passed', coverageComplete: true,
+  function unsupportedModel(command = 'eai types define') {
+    const executionId = '00000000-0000-4000-8000-000000000777';
+    return { schema: { command: 'eai', subcommands: [{ command: command.split(' ')[1], subcommands: [{ command: command.split(' ')[2] }] }] },
+      evidence: { candidate, unsupported: [{ command, invokedCommand: command, executionId, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'refuses before auth/network', command, executionId, status: 'passed' }],
         exitCode: 1, authenticationBypassed: true, networkCalls: 0 }] },
       decisions: [{ command, crud: 'create', coverage: 'unsupported', notes: 'No public contract.' }] };
   }
+  test.each(['eai types define', 'eai resources indexes-apply'].flatMap(command =>
+    ['passed', 'failed', 'blocked', 'incomplete'].map(status => ({ command, status }))))(
+    'known unsupported $command in commands is malformed and preserves $status precedence', ({ command, status }) => {
+      const { schema, evidence, decisions } = unsupportedModel(command), row = evidence.unsupported[0];
+      Object.assign(row, { status }); Object.assign(evidence, { commands: [row], unsupported: [] });
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.evidenceValidation).toMatchObject({ valid: false, malformedAttempts: [{ collection: 'commands', index: 0,
+        reason: 'unsupported-command-outside-unsupported', command, status }] });
+      const expected = status === 'passed' ? 'incomplete' : status;
+      expect(report.commands[0].actualExecutionStatus).toBe(expected); expect(report.commands[0].status).toBe(expected);
+      expect(report.commands[0].capability).toBe('unsupported'); expect(report.unsupportedVerified).toBe(false);
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test.each(['eai types define', 'eai resources indexes-apply'])(
+    'actual alias-free unsupported %s rejects an aliases import and retains its proper denial collection', command => {
+      const { schema, evidence, decisions } = unsupportedModel(command);
+      expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
+      const row = { ...evidence.unsupported[0], alias: command };
+      Object.assign(evidence, { aliases: [row], unsupported: [] });
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.evidenceValidation.valid).toBe(false); expect(report.unsupportedVerified).toBe(false);
+      expect(report.commands[0].actualExecutionStatus).toBe('incomplete'); expect(report.fullCapabilityQualified).toBe(false);
+    });
   test('unsupported completion accepts a complete execution-bound denial observation', () => {
     const { schema, evidence, decisions } = unsupportedModel();
     expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
   });
+  test.each(['other', 'missing'])(
+    'unsupported projection refuses %s invoked spelling with otherwise complete denial evidence', kind => {
+      const { schema, evidence, decisions } = unsupportedModel();
+      Object.assign(evidence.unsupported[0], { invokedCommand: kind === 'other' ? 'eai types pull' : undefined });
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.commands[0].actualExecutionStatus).toBe('incomplete');
+      expect(report.unsupportedVerified).toBe(false);
+      expect(report.evidenceValidation.valid).toBe(false);
+    });
   test.each(['failed', 'blocked', 'running', 'incomplete'])('unsupported capability retains its attempted %s observation in the summary', status => {
     const { schema, evidence, decisions } = unsupportedModel(); evidence.unsupported[0].status = status;
     const report = buildAudit({ schema, candidate, evidence }, decisions);
@@ -662,14 +841,21 @@ describe('CLI backend audit evidence', () => {
   });
   test.each(['failed', 'blocked', 'running'])('later successful alias receipts preserve an earlier %s observation', status => {
     const { input, decisions } = completeContractModel();
-    input.evidence.aliases.unshift({ ...input.evidence.aliases[0], status });
+    const original = input.evidence.aliases[0], executionId = '00000000-0000-4000-8000-000000000992';
+    input.evidence.aliases.unshift({ ...original, status, executionId,
+      assertions: original.assertions.map(assertion => ({ ...assertion, executionId })),
+      transportObservations: original.transportObservations.map(observed => ({ ...observed, executionId })) });
     const report = buildAudit(input, decisions);
     expect(report.aliasCoverageComplete).toBe(false);
     expect(report.aliasEvidence[0].status).toBe(status === 'running' ? 'incomplete' : status);
   });
   test.each(['failed', 'blocked', 'running', 'incomplete'])('option success cannot mask a retained %s attempt for that option', status => {
     const { input, decisions } = completeContractModel();
-    input.evidence.commands.push({ ...input.evidence.commands[0], status, options: ['--format'] });
+    const original = input.evidence.commands[0], executionId = '00000000-0000-4000-8000-000000000993';
+    input.evidence.commands.push({ ...original, status, executionId, options: ['--format'],
+      assertions: original.assertions.filter(assertion => assertion.option === undefined || assertion.option === '--format')
+        .map(assertion => ({ ...assertion, executionId })),
+      transportObservations: original.transportObservations.map(observed => ({ ...observed, executionId })) });
     const report = buildAudit(input, decisions);
     expect(report.optionEvidence.find((row: { option: string }) => row.option === '--format').status)
       .toBe(['running', 'incomplete'].includes(status) ? 'incomplete' : status);

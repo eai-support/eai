@@ -7,6 +7,7 @@ const smoke = require('./eai-full-e2e-smoke.cjs');
 const qualification = require('./cli-qa-foundation.cjs');
 const { sourceBuildVerified, candidateMatches } = require('./cli-qa-build-receipt.cjs');
 const ROOT = resolve(__dirname, '..');
+const { requiresProtectedScope, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const CONTRACTS = {
   workspace: { routes: ['/v4/identity/tenants', '/v4/platform/tenants', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'ResourceAPI'] },
@@ -31,7 +32,7 @@ const CONTRACTS = {
   support: { routes: ['/api/support/drafts'], services: ['EnterpriseAIGroup-Website'] },
 };
 const LOCAL_GROUPS = new Set(['start', 'dev', 'logout', 'runtime', 'update', 'gofer', 'template', 'blocks', 'errors', 'agent']);
-const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env', 'eai provision resourceapi-bundle']);
+const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env']);
 const UNSUPPORTED = new Map([
   ['eai types define', 'Interactive definition is explicitly unavailable before authentication or network access.'],
   ['eai resources indexes-apply', 'PublicAPI exposes only dry-run index planning; no public index-apply contract exists.'],
@@ -43,7 +44,7 @@ function backendContract(command, operation) {
   const contract = CONTRACTS[group];
   if (!local && !contract) throw new Error('Unclassified CLI capability: ' + command);
   return {
-    requiresProtectedBackend: !local,
+    requiresProtectedBackend: requiresProtectedScope(command),
     routeFamilies: local ? [] : contract.routes,
     dependencies: local ? ['local CLI/app files or external tooling'] : contract.services,
     authorization: local ? 'local context' : group === 'env'
@@ -109,13 +110,13 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   function scopedStatus(executions, option, malformed, contract) {
     const status = executionStatus(executions, option, malformed);
     if (status !== 'passed' || !contract.requiresProtectedBackend) return status;
-    return executions.every(item => scopeVerified(item)
+    return executions.every(item => observedScopeVerified(item) && scopeVerified(item)
       && executionAssertions(item, option).every(assertion => scopeVerified(assertion)
         && assertion.scopeTenantId === item.scopeTenantId)) ? 'passed' : 'incomplete';
   }
   // Unscoped malformed attempts cannot be discarded to certify another success.
   // Retain bounded collection/index observations, never raw malformed input.
-  const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command));
+  const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command)), executionIds = new Set();
   function collection(name) {
     const values = evidence?.[name];
     if (values === undefined) return [];
@@ -126,9 +127,17 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
         && (name === 'aliases' || row.alias === undefined)
         && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
-      const misclassified = valid && name === 'unsupported' && !UNSUPPORTED.has(row.command);
-      if (!valid || misclassified) malformedAttempts.push({ collection: name, index,
-        ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status } : {}) });
+      const misclassified = valid && (name === 'unsupported' ? !UNSUPPORTED.has(row.command) : UNSUPPORTED.has(row.command));
+      const wrongInvocation = valid && row.invokedCommand !== (name === 'aliases' ? row.alias : row.command);
+      const executionId = valid && uuid(row.executionId) ? row.executionId.toLowerCase() : undefined;
+      const duplicateExecution = executionId !== undefined && executionIds.has(executionId);
+      if (executionId !== undefined) executionIds.add(executionId);
+      if (!valid || misclassified || wrongInvocation || duplicateExecution) malformedAttempts.push({ collection: name, index,
+        ...(misclassified ? { reason: name === 'unsupported' ? 'supported-command-in-unsupported' : 'unsupported-command-outside-unsupported', command: row.command, status: row.status }
+          : wrongInvocation ? { reason: 'invoked-spelling-mismatch', command: row.command, status: row.status }
+            : duplicateExecution ? { reason: 'duplicate-execution-id', command: row.command, status: row.status } : {}) });
+      // Retain known failed attempts even when spelling is inconsistent. The
+      // malformed contract prevents all positive qualification independently.
       return Boolean(valid);
     });
   }

@@ -513,6 +513,11 @@ Get a single resource.
 #### `eai resources create <type>`
 Create a resource.
 
+JSON preserves the created resource fields and adds `request` with the exact
+response-bound `publicApiUrl`, `tenantId` and `proofKind: "transport-response"`.
+Backend-provided request assertions are replaced by this sanitized transport
+observation; credentials, headers and query values are excluded.
+
 **Arguments**: `<type>`
 
 **Options**:
@@ -549,6 +554,8 @@ Update a resource with optimistic locking.
 
 #### `eai resources delete <type> <id>`
 Delete a resource.
+
+Successful JSON adds the same response-bound `request` scope as resource create.
 
 **Arguments**: `<type>`, `<id>`
 
@@ -627,6 +634,9 @@ Show the published Object Types for a workspace.
 
 #### `eai resources batch-create <type>` · `batch-update <type>` · `batch-delete <type>`
 Bulk resource operations.
+
+`batch-create`, `batch-import` and `batch-delete` JSON preserves backend result
+fields and adds the same exact response-bound `request` scope as resource create.
 
 **Arguments**: `<type>`
 
