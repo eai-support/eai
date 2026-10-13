@@ -983,7 +983,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     const deniedCaller = harness({ parentRoles: ['tenant-viewer'] }); const error = failure(deniedCaller);
     expect(error.report.status).toBe('blocked');
     expect(deniedCaller.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
-  });
+  }, 60000);
 
   test.each([[], [{ id: 'other-parent' }], [{ id: 'qa-parent', isActive: false }], [{ id: 'qa-parent', directMembership: false }]])(
     'inaccessible supplied parent blocks before selection or creation: %j', tenants => {

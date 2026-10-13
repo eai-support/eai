@@ -34,12 +34,15 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
   verifiedGithubUser: NonNullable<
     CliManagedGithubLinkSession["verifiedGithubUser"]
   >;
+  repositoryAuthority?: "eai-managed" | "customer-owned";
+  predecessor?: { operationId: string; integrityHash: string; mergedCommitSha: string };
   repository: {
     owner: string;
     name: string;
     id?: number;
     nodeId?: string;
     defaultBranch?: string;
+    installationId?: string;
     private?: boolean;
   };
   review?: {

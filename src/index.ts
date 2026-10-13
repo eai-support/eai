@@ -352,16 +352,18 @@ if (cliArgs.includes('--describe')) {
   const invokedCommand = program.commands.find(command => command.name() === topLevelCommandName
     || command.aliases().includes(topLevelCommandName ?? ''));
   if (invokedCommand) setSupportCommand(`eai ${invokedCommand.name()}`);
-  try {
-    setActiveProfile(readInvocationProfile(cliArgs));
-  } catch (error) {
-    const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
-    exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-      isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
-  }
   const commandIndex = readTopLevelCommandIndex(cliArgs);
   const isLocalContentUnderstanding = topLevelCommandName === 'content-understanding' && commandIndex !== null
     && ['schema', 'validate'].includes(readTopLevelCommandName(cliArgs.slice(commandIndex + 1)) ?? '');
+  if (!isLocalContentUnderstanding) {
+    try {
+      setActiveProfile(readInvocationProfile(cliArgs));
+    } catch (error) {
+      const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
+      exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
+    }
+  }
   const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||

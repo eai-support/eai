@@ -177,8 +177,16 @@ docsCommand.command('get <documentId>').description('Read the persisted document
         || (observedJob === null && !untrackedJob) || (options.jobId && observedJob !== options.jobId)) {
         throw new ContentUnderstandingError('DOC_RECORD_MISMATCH', 'Document result does not match the requested document, job and workspace.');
       }
-      printRead(options, { ok: true, status: response.status, request: { method: 'GET', path,
-        ...context.client.getRequestScope() }, body });
+      const processingStatuses = [body.processingStatus,
+        ...(body.machineAnalysis !== undefined ? [isRecord(body.machineAnalysis) ? body.machineAnalysis.processingStatus : undefined] : [])];
+      const failed = processingStatuses.some(status => typeof status === 'string' && ['failed', 'completed_with_errors', 'partial_failure'].includes(status));
+      const pending = !failed && processingStatuses.some(status => status !== 'complete' && status !== 'completed');
+      printRead(options, { ok: !failed && !pending, status: response.status, request: { method: 'GET', path,
+        ...context.client.getRequestScope() }, body,
+        ...(failed || pending ? { error: { code: failed ? 'DOC_RECORD_FAILED' : 'DOC_RECORD_PENDING',
+          message: failed ? 'Persisted document processing failed; inspect its analysis results.'
+            : 'Persisted document processing is incomplete. Poll the original job and read this document again; do not re-upload.',
+          documentId, ...(options.jobId ? { jobId: options.jobId } : {}) } } : {}) });
     } catch (error) { printRead(options, { ...readFailure(error), documentId, ...(options.jobId ? { jobId: options.jobId } : {}) }); }
   });
 

@@ -221,7 +221,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       const membership = { id: tenantId, slug: 'owned-fixture', displayName: 'Owned fixture', roles: ['tenant-admin'],
         isActive: true, homeRegion: 'au', hqCountryCode: 'AU', parentId: null };
       const body = scenario === 'job-alias' ? { job_id: 'job-one', tenant_id: tenantId, status: 'completed', documents: [{ document_id: 'doc-one' }] }
-        : scenario === 'record-alias' ? { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one',
+        : scenario === 'record-alias' ? { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one', processingStatus: 'complete',
           results: { field: { value: ['one', { nested: true }], confidence: null } } }
           : scenario === 'nested-error' ? { error: { code: 'CU_OPERATION_BUSY', message: 'The original operation has an active lease' } }
             : { ...readyCapabilities, features: { ...readyCapabilities.features, typed_fields: false } };
@@ -291,7 +291,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_JOB_MISMATCH' } });
   });
   test.each(['snake', 'matching aliases'])('document record accepts %s identities and preserves recursive results', async shape => {
-    const body = { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one',
+    const body = { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one', processingStatus: 'complete',
       result: { field: { value: ['one', { nested: true }], confidence: null } },
       ...(shape === 'matching aliases' ? { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: 'job-one' } : {}) };
     routes = () => Response.json(body);
@@ -305,7 +305,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
   });
   test('nullable optional job identity remains untracked and cannot satisfy an explicit job selector', async () => {
-    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: null, job_id: null };
+    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: null, job_id: null, processingStatus: 'complete' };
     routes = () => Response.json(body);
     expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: true, body });
     expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
@@ -321,7 +321,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       expect(calls[0].init.method).toBe('GET');
     });
   test('document record with absent job metadata remains valid for an unfiltered read', async () => {
-    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, analysis: { retained: ['full', 'body'] } };
+    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, processingStatus: 'complete', analysis: { retained: ['full', 'body'] } };
     routes = () => Response.json(body);
     expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: true, body });
     expect(calls[0].url.searchParams.has('job_id')).toBe(false);
@@ -401,6 +401,22 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       expect(result.status).toBe(0); expect(result.stderr).toBe(''); expect(JSON.parse(result.stdout).ok).toBe(true);
     }
   });
+  test.each(['schema', 'validate'].flatMap(command => ['prefix', 'equals', 'trailing', 'environment'].map(selector => ({ command, selector }))))(
+    'compiled local $command ignores malformed $selector profile syntax without any network', async ({ command, selector }) => {
+      const observer = join(directory, 'local-malformed-profile-observer.mjs'), networkLog = join(directory, 'local-malformed-profile-network.log');
+      await writeFile(observer, `import {appendFileSync} from 'node:fs';globalThis.fetch=async()=>{appendFileSync(${JSON.stringify(networkLog)},'attempt\\n');throw new Error('Unexpected local command network');};`, { mode: 0o600 });
+      const invocation = ['content-understanding', command, ...(command === 'validate' ? ['--file', file] : []), '--format', 'json'];
+      const args = selector === 'prefix' ? ['--profile', '../bad', ...invocation]
+        : selector === 'equals' ? ['--profile=../bad', ...invocation]
+          : selector === 'trailing' ? [...invocation, '--profile', '../bad'] : invocation;
+      const result = spawnSync(process.execPath, ['dist/index.js', ...args], { encoding: 'utf8', timeout: 10000,
+        env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '',
+          EAI_PROFILE: selector === 'environment' ? '../bad' : '', EAI_NO_UPDATE_CHECK: '', NO_UPDATE_NOTIFIER: '', CI: '',
+          EAI_UPDATE_NOTIFIER_FORCE: '1', NODE_OPTIONS: `--import=${observer}` } });
+      expect(result.status, result.stdout + result.stderr).toBe(0);
+      expect(result.stderr).toBe(''); expect(JSON.parse(result.stdout).ok).toBe(true);
+      expect(existsSync(networkLog)).toBe(false);
+    });
   test('default-text schema and validate also suppress every forced update-notifier network attempt', async () => {
     const observer = join(directory, 'observe-fetch.mjs'), networkLog = join(directory, 'network-attempts.log');
     await writeFile(observer, `import { appendFileSync } from 'node:fs';\nglobalThis.fetch = async () => { appendFileSync(${JSON.stringify(networkLog)}, 'attempt\\n'); throw new Error('Controlled zero-network observer'); };\n`, { mode: 0o600 });
@@ -714,7 +730,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     const membership = { id: tenantId, slug: 'owned-fixture', displayName: 'Owned fixture', roles: ['tenant-admin'],
       isActive: true, homeRegion: 'au', hqCountryCode: 'AU', parentId: null };
     const body = target === 'job' ? { jobId: id, tenantId, status: 'completed', documents: [{ documentId: 'doc-one' }] }
-      : { documentId: target === 'get' ? id : 'doc-one', tenantId, storageTarget: 'resourceapi',
+      : { documentId: target === 'get' ? id : 'doc-one', tenantId, storageTarget: 'resourceapi', processingStatus: 'complete',
         jobId: target === 'job-option' ? id : null };
     await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
     await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
@@ -767,6 +783,49 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test.each(['failed', 'completed_with_errors'])('document job %s is nonzero', async status => {
     routes = () => Response.json({ jobId: 'job-one', tenantId, status, documents: [{ documentId: 'doc-one' }] });
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_JOB_FAILED', jobId: 'job-one' } });
+  });
+  test.each(['pending', 'queued', 'accepted', 'processing', 'unknown', null, undefined, ['complete'], { status: 'completed' }])(
+    'persisted document processing %s is incomplete and retains the original scoped body', async processingStatus => {
+      const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: 'job-one', processingStatus,
+        analysis: { retained: ['raw', { value: 42 }] } };
+      routes = () => Response.json(body);
+      expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toEqual(expect.objectContaining({
+        ok: false, body: JSON.parse(JSON.stringify(body)), request: expect.objectContaining({ tenantId, publicApiUrl: gateway }),
+        error: expect.objectContaining({ code: 'DOC_RECORD_PENDING', documentId: 'doc-one', jobId: 'job-one' }) }));
+      expect(process.exitCode).toBe(1); expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+    });
+  test.each(['failed', 'completed_with_errors', 'partial_failure'])(
+    'persisted document processing %s is failure and retains the raw body', async processingStatus => {
+      const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, processingStatus, retained: ['raw'] };
+      routes = () => Response.json(body);
+      expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, body,
+        error: { code: 'DOC_RECORD_FAILED', documentId: 'doc-one' } });
+      expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+    });
+  test.each(['complete', 'completed'])(
+    'persisted document completion spelling %s preserves the entire successful record', async processingStatus => {
+      const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, processingStatus,
+        machineAnalysis: { processingStatus: 'completed', warnings: ['Retain evidence'] }, retained: { value: ['unchanged'] } };
+      routes = () => Response.json(body);
+      expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: true, body });
+      expect(process.exitCode).toBe(0);
+    });
+  test.each(['failed', 'processing', null])(
+    'persisted machine analysis %s cannot be hidden by a completed record summary', async processingStatus => {
+      const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, processingStatus: 'complete',
+        machineAnalysis: { processingStatus, retained: true } };
+      routes = () => Response.json(body);
+      expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, body,
+        error: { code: processingStatus === 'failed' ? 'DOC_RECORD_FAILED' : 'DOC_RECORD_PENDING' } });
+      expect(process.exitCode).toBe(1);
+    });
+  test('actual business projection pending summary preserves machine analysis failure', async () => {
+    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: 'job-one', processingStatus: 'pending',
+      machineAnalysis: { processingStatus: 'failed', extractedFields: [], validationResult: null }, reviewStatus: 'needs_review' };
+    routes = () => Response.json(body);
+    expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: false, body,
+      error: { code: 'DOC_RECORD_FAILED', documentId: 'doc-one', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls.every(call => call.init.method === 'GET')).toBe(true);
   });
   test('failed document pipeline remains failure even if job summary claims completion', async () => {
     routes = () => Response.json({ jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one', classification: { status: 'failed' } }] });

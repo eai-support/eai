@@ -27,6 +27,10 @@ describe('agent guide', () => {
 
     expect(guide.firstCommands.map((entry) => entry.command)).toContain('eai --describe');
     expect(guide.capabilities).toContain('app-manifest-name-slug-negotiation-v1');
+    expect(guide.capabilities).toContain('resource-mutation-response-scope-v1');
+    expect(guide.operatingRules).toContain(
+      'For resource create, batch-create, batch-import, delete and batch-delete JSON, resource-mutation-response-scope-v1 supplies request.publicApiUrl, request.tenantId and request.proofKind=transport-response from the exact transport response. Verify that scope before adopting returned IDs or certifying cleanup; missing or mismatched proof requires reconciliation without guessed deletion.',
+    );
     expect(guide.recoveryLoop).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -192,6 +196,8 @@ describe('agent guide', () => {
 
     expect(payload.audience).toBe('ai-agents');
     expect(payload.capabilities).toContain('app-manifest-name-slug-negotiation-v1');
+    expect(payload.capabilities).toContain('resource-mutation-response-scope-v1');
+    expect(payload.operatingRules.join('\n')).toContain('missing or mismatched proof requires reconciliation without guessed deletion');
     expect(payload.firstCommands).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
