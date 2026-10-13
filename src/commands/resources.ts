@@ -10,6 +10,7 @@ import {
   RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
   RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE,
   validateResourceIndexObjectTypes,
+  withPublicRequestObservation,
 } from '../lib/api.js';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
@@ -499,7 +500,7 @@ resourcesCommand
       }
       const data = await res.json();
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         succeedCommand(spinner,`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
@@ -541,7 +542,7 @@ resourcesCommand
         outboxEnqueued?: number;
       };
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         const projection = data.projectionDeferred === true
           ? 'projection deferred'
@@ -616,7 +617,7 @@ resourcesCommand
       }
       const data = await res.json();
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         succeedCommand(spinner,`Batch delete complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
@@ -744,7 +745,7 @@ Examples:
       const output = buildCreateResourceOutput(type, data, created);
 
       if (options.format === 'json') {
-        out.json(output);
+        out.json(withPublicRequestObservation(output, res));
       } else {
         const createdId = typeof output.id === 'string' ? output.id : undefined;
         succeedCommand(spinner,`Created ${type} ${chalk.dim(createdId ?? '')}`);
@@ -848,7 +849,7 @@ resourcesCommand
       }
 
       if (options.format === 'json') {
-        out.json({ type, id, deleted: true });
+        out.json(withPublicRequestObservation({ type, id, deleted: true }, res));
       } else {
         succeedCommand(spinner,`Deleted ${type} ${chalk.dim(id)}`);
       }

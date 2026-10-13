@@ -382,6 +382,24 @@ Canonical summary coverage excludes alias executions, including failed alias
 attempts. Both selected lifecycle and child ownership projections preserve each
 command and guard's exact execution UUID. Missing, legacy, mismatched or reused
 UUIDs cannot certify either projection, including reuse across the ten cycles.
+Both projections require the exact canonical invoked spelling and no alias on
+the command or assertion. The qualifier selects canonical workspace commands;
+the general smoke still records legacy aliases separately. Selected receipts
+keep their original full-ledger positions, including preceding alias attempts.
+Every live semantic assertion names its exact recorded response; only explicit
+global checks may use an unbound source.
+
+Resource create, batch-create, batch-import, delete and batch-delete JSON includes
+`request.publicApiUrl`, `request.tenantId` and `request.proofKind` set to
+`transport-response`. The client snapshots those safe fields at dispatch and
+binds them to the exact response, replacing backend-supplied request assertions.
+The runner validates supplied scope on every ownership observer before adopting
+IDs, and requires this transport proof for resource adoption and deletion.
+Missing or foreign proof leaves an unverified mutation without copying returned
+IDs into cleanup. Other existing owner acknowledgments remain explicitly labeled
+without transport proof; workflow resources require an exact tenant and owner
+readback before deletion. No flags, generic success or returned ID invents scope
+proof. Independent cleanup of an already verified disposable child continues.
 
 Only a verified semantic contract can set command completion. Exit zero, JSON
 shape, read-only preservation, global preflight success and later passing

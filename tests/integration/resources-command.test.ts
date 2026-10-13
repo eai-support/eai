@@ -97,6 +97,30 @@ describe('eai resources command guidance', () => {
     expect(command?.options.find(option => option.long === '--object-type')?.mandatory).toBe(true);
   });
 
+  test.each(['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'])(
+    '%s JSON request scope comes from its exact transport and replaces backend assertions', async operation => {
+      const observed: { url: string; tenant: string | null }[] = [];
+      mockServer.server.use(http.all(`${API_BASE}/v4/data/resources/test-tenant-id/project*`, ({ request }) => {
+        observed.push({ url: request.url, tenant: request.headers.get('X-Tenant-Id') });
+        return HttpResponse.json({ id: 'owned-resource', data: { title: 'preserved' }, succeeded: 1, failed: 0,
+          results: [{ id: 'owned-resource' }], request: { publicApiUrl: 'https://foreign.invalid', tenantId: 'foreign', secret: 'backend-forged' } });
+      }));
+      const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      const exit = vi.spyOn(process, 'exit');
+      const args = [operation, 'project', ...(operation === 'delete' ? ['owned-resource', '--force'] : []),
+        ...(operation === 'batch-delete' ? ['--ids', 'owned-resource', '--force']
+          : operation === 'create' ? ['--data', '{"title":"preserved"}']
+            : operation === 'delete' ? [] : ['--data', '[{"title":"preserved"}]']), '--format', 'json'];
+      await resourcesCommand.parseAsync(args, { from: 'user' });
+      expect(exit).not.toHaveBeenCalled();
+      expect(observed).toHaveLength(1);
+      expect(observed[0].tenant).toBe('test-tenant-id');
+      const payload = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
+      expect(payload.request).toEqual({ publicApiUrl: API_BASE, tenantId: 'test-tenant-id', proofKind: 'transport-response' });
+      expect(JSON.stringify(payload)).not.toContain('backend-forged');
+      if (operation === 'create') expect(payload).toMatchObject({ id: 'owned-resource', data: { title: 'preserved' } });
+    });
+
   test('index planning sends only exact slugs accepted by the strict public receiver', async () => {
     const received: unknown[] = [];
     const payload = { tenantId: 'test-tenant-id', objectTypeCount: 2, schemaVersion: '42' };

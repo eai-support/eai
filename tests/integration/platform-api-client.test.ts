@@ -8,7 +8,7 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText, withPublicRequestObservation } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
@@ -98,6 +98,42 @@ describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
+
+  test('resource transport observations remain bound to their exact response across concurrent reversed completion', async () => {
+    const pending: Array<{ resolve: (response: Response) => void; url: string; tenant: string | null }> = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => new Promise<Response>(resolve => {
+      pending.push({ resolve, url: String(input), tenant: new Headers(options?.headers).get('X-Tenant-Id') })
+    }))
+    const first = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'first-owned-tenant').createResource('project', {})
+    const second = new PlatformAPIClient('https://dev-api.au.myenterprise.ai/public', 'second-owned-tenant').createResource('project', {})
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    const secondResponse = new Response('{}'), firstResponse = new Response('{}')
+    pending[1].resolve(secondResponse); pending[0].resolve(firstResponse)
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe(firstResponse); expect(b).toBe(secondResponse)
+    expect(withPublicRequestObservation({ id: 'a', request: { tenantId: 'forged', secret: 'do-not-emit' } }, a).request).toEqual({
+      publicApiUrl: 'https://test-api.au.myenterprise.ai/public', tenantId: 'first-owned-tenant', proofKind: 'transport-response',
+    })
+    expect(withPublicRequestObservation({ id: 'b' }, b).request).toEqual({
+      publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'second-owned-tenant', proofKind: 'transport-response',
+    })
+    expect(JSON.stringify(withPublicRequestObservation({ id: 'a' }, a))).not.toContain('fixture-access-token')
+    expect(() => withPublicRequestObservation({}, new Response('{}'))).toThrow('exact unredirected')
+  })
+
+  test.each(['redirected', 'foreign-response-url', 'gateway-query', 'gateway-credentials', 'reused-response'])(
+    'resource response scope cannot be manufactured from %s transport state', async kind => {
+      const response = new Response('{}')
+      if (kind === 'redirected') Object.defineProperty(response, 'redirected', { value: true })
+      if (kind === 'foreign-response-url') Object.defineProperty(response, 'url', { value: 'https://foreign.invalid/result?token=secret' })
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+      const gateway = kind === 'gateway-query' ? 'https://test-api.au.myenterprise.ai/public?token=secret'
+        : kind === 'gateway-credentials' ? 'https://user:secret@test-api.au.myenterprise.ai/public' : 'https://test-api.au.myenterprise.ai/public'
+      const client = new PlatformAPIClient(gateway, 'owned-tenant')
+      await client.createResource('project', {})
+      if (kind === 'reused-response') await client.createResource('project', {})
+      expect(() => withPublicRequestObservation({ request: { publicApiUrl: gateway, tenantId: 'owned-tenant' } }, response)).toThrow('exact unredirected')
+    })
 
   test('preserves exact tenant filter, stable sorting and bounded deadlines on every type export page', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))

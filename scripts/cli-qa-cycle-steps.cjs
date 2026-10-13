@@ -14,8 +14,12 @@ const SCHEMA = 'eai.cli-cycle-step-evidence.v1';
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 function record(value) { return value && typeof value === 'object' && !Array.isArray(value); }
 function executionUuid(value) { return typeof value === 'string' && UUID.test(value); }
+function canonicalExecution(row) {
+  return record(row) && row.alias === undefined && row.invokedCommand === row.command;
+}
 function assertionBound(row, assertion) {
-  return record(assertion) && executionUuid(row.executionId) && assertion.executionId === row.executionId
+  return canonicalExecution(row) && record(assertion) && assertion.alias === undefined
+    && executionUuid(row.executionId) && assertion.executionId === row.executionId
     && assertion.command === row.command && assertion.phase === row.phase
     && assertion.executionSequence === row.executionSequence;
 }
@@ -42,13 +46,13 @@ function cycleStepEvidence(report) {
   if (!Array.isArray(executions) || !Array.isArray(report.assertions) || !Array.isArray(report.cleanup)) return null;
   const commands = [];
   for (const [command, phase, name] of STEPS) {
-    const rows = executions.filter(row => row?.command === command && row.phase === phase
+    const rows = executions.filter(row => canonicalExecution(row) && row.command === command && row.phase === phase
       && assertionNames(row, name));
     const assertions = report.assertions.filter(row => row?.name === name && row.phase === phase);
     if (rows.length !== 1 || assertions.length !== 1) return null;
     const row = rows[0];
     if (!selectedExecutionVerified(executions, row, assertions[0])) return null;
-    commands.push({ command, phase, executionId: row.executionId, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode, scopeTenantId: row.scopeTenantId,
+    commands.push({ command, invokedCommand: row.invokedCommand, phase, executionId: row.executionId, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode, scopeTenantId: row.scopeTenantId,
       environment: row.environment, publicApiUrl: row.publicApiUrl, executionSequence: row.executionSequence,
       options: row.options || [], npmExecution: row.npmExecution,
       assertions: assertions.map(value => ({ name: value.name, command: value.command, executionId: value.executionId, phase: value.phase, status: value.status, executionSequence: value.executionSequence,
@@ -56,7 +60,7 @@ function cycleStepEvidence(report) {
   }
   const counts = [['eai provision entra', 'app-sign-in', 1, '--rotate-secret'], ['npm run build', 'build', 1],
     ['eai app delete', 'cleanup', 2], ['eai app list', 'cleanup', 3], ['eai app create', 'cleanup', 1]];
-  if (!counts.every(([command, phase, count, option]) => executions.filter(row => row?.command === command && row.phase === phase
+  if (!counts.every(([command, phase, count, option]) => executions.filter(row => canonicalExecution(row) && row.command === command && row.phase === phase
     && (!option || row.options?.includes(option))).length === count)) return null;
   const registrations = report.cleanup.filter(row => row?.artifact === 'entra-registration');
   if (registrations.length !== 1) return null;
@@ -78,7 +82,7 @@ function cycleStepsVerified(value, cycle) {
     || !Array.isArray(value.commands) || value.commands.length !== STEPS.length) return false;
   if (!STEPS.every(([command, phase, name], index) => {
     const row = value.commands[index];
-    return record(row) && row.command === command && row.phase === phase && row.status === 'passed' && row.exitCode === 0
+    return canonicalExecution(row) && row.command === command && row.phase === phase && row.status === 'passed' && row.exitCode === 0
       && executionUuid(row.executionId)
       && Number.isSafeInteger(row.sequence) && row.sequence >= 0
       && row.executionSequence === row.sequence
@@ -105,13 +109,13 @@ function cycleOwnershipEvidence(report) {
   if (!record(report) || !Array.isArray(executions) || !Array.isArray(report.assertions)
     || !Array.isArray(report.cleanup) || !record(report.created?.childCreation)) return null;
   function selected(command, phase, name) {
-    const rows = executions.filter(row => row?.command === command && row.phase === phase
+    const rows = executions.filter(row => canonicalExecution(row) && row.command === command && row.phase === phase
       && row.scopeTenantId === report.parentTenantId && assertionNames(row, name));
     const guards = report.assertions.filter(row => row?.name === name && row.phase === phase);
     if (rows.length !== 1 || guards.length !== 1) return null;
     const row = rows[0], guard = guards[0];
     if (!selectedExecutionVerified(executions, row, guard)) return null;
-    return { command, phase, executionId: row.executionId, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode,
+    return { command, invokedCommand: row.invokedCommand, phase, executionId: row.executionId, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode,
       environment: row.environment, publicApiUrl: row.publicApiUrl, executionSequence: row.executionSequence,
       scopeTenantId: row.scopeTenantId, options: row.options || [],
       assertion: { name: guard.name, command: guard.command, executionId: guard.executionId, phase: guard.phase, status: guard.status, executionSequence: guard.executionSequence,
@@ -160,7 +164,7 @@ function cycleOwnershipVerified(value, cycle, foundation) {
     || cleanup.receiptStatus !== 'hard_purged' || cleanup.absenceVerified !== true
     || cleanup.absenceMethod !== 'complete-parent-children-inventory') return false;
   function commandVerified(row, command, phase, assertion, option) {
-    return record(row) && row.command === command && row.phase === phase && row.status === 'passed' && row.exitCode === 0
+    return canonicalExecution(row) && row.command === command && row.phase === phase && row.status === 'passed' && row.exitCode === 0
       && executionUuid(row.executionId)
       && executionScope(row, value, value.parentTenantId) && Number.isSafeInteger(row.sequence) && row.sequence >= 0
       && row.executionSequence === row.sequence
