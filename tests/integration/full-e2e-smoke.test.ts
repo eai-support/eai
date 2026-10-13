@@ -703,7 +703,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     }
   });
 
-  test.each(['tenant', 'key', 'name', 'missing', 'extra', 'gateway', 'proof', 'array', 'null'])(
+  test.each(['tenant', 'key', 'name', 'missing', 'extra', 'gateway', 'proof', 'array', 'null',
+    'metadata-only', 'metadata-unmarked', 'domain-plus-metadata', 'wrong-domain-plus-metadata'])(
     'app domain request %s mismatch remains contained before enrollment adoption', kind => {
       const controlled = harness({ override(args, result) {
         if (!matches(args, ['app', 'create'])) return undefined;
@@ -717,6 +718,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         if (kind === 'proof') payload.request.proofKind = 'transport-response';
         if (kind === 'array') payload.request = [];
         if (kind === 'null') payload.request = null;
+        const metadata = { publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: payload.tenantId, proofKind: 'transport-response' };
+        if (kind === 'metadata-only') payload.request = metadata;
+        if (kind === 'metadata-unmarked') payload.request = { publicApiUrl: metadata.publicApiUrl, tenantId: metadata.tenantId };
+        if (kind === 'domain-plus-metadata') Object.assign(payload.request, metadata);
+        if (kind === 'wrong-domain-plus-metadata') Object.assign(payload.request, metadata, { verticalKey: 'foreign-app' });
         return ok(payload);
       } });
       const report = failure(controlled).report;
@@ -738,6 +744,30 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     const report = failure(controlled).report;
     expect(report.created.enrollmentId).toBe(''); expect(report.created.appKey).toBe('');
     expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+  });
+
+  test.each(['domain', 'metadata'])('private app transport still requires the supplied %s enrollment request', kind => {
+    const controlled = harness({ override(args, result, options) {
+      if (!matches(args, ['app', 'create'])) return undefined;
+      const payload = JSON.parse(result.stdout), tenantId = flag(args, '--tenant-id');
+      if (kind === 'metadata') payload.request = { publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+        tenantId, proofKind: 'transport-response' };
+      return { ...result, stdout: JSON.stringify(payload), transportOutput: JSON.stringify({ schemaVersion: 'eai.cli-qa-transport.v1',
+        executionId: options.env.EAI_CLI_QA_EXECUTION_ID, publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId,
+        proofKind: 'transport-response', method: 'POST', path: `/public/v4/platform/tenants/${tenantId}/apps` }) + '\n' };
+    } });
+    if (kind === 'domain') {
+      const report = controlled.run();
+      expect(report.created.enrollmentId).toBe('run-enrollment');
+      expect(report.executions.find(row => row.command === 'eai app create')?.scopeObservation).toBe('transport-response');
+      expect(report.cleanupVerified).toBe(true);
+    } else {
+      const report = failure(controlled).report;
+      expect(report.created.enrollmentId).toBe(''); expect(report.created.appKey).toBe('');
+      expect(report.executions.find(row => row.command === 'eai app create')?.scopeObservation).toBe('unverified');
+      expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+    }
   });
 
   test('actual controlled live producer keeps aliases, parent forwarding and UUID-bound assertions without inventing canonical or backend qualification', () => {

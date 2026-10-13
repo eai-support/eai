@@ -1868,7 +1868,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         && observedRequest.publicApiUrl === entry.publicApiUrl && observedRequest.tenantId === entry.scopeTenantId
         && typeof observedRequest.tenantId === 'string' && observedRequest.tenantId.length > 0
         && (!Object.hasOwn(observedRequest, 'proofKind') || observedRequest.proofKind === 'transport-response');
-      if ((supplied && !requestMatches && !appDomainRequest)
+      if ((supplied && (entry.command === 'eai app create' ? !appDomainRequest : !requestMatches))
         || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'
           || Object.keys(observedRequest).some(key => !['publicApiUrl', 'tenantId', 'proofKind'].includes(key))))) {
         // Never copy unverifiable backend IDs into adoption or cleanup journals.
