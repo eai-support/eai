@@ -427,7 +427,7 @@
         },
         {
           "id": "eai-cli-owned-qualification",
-          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending.",
+          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending. Actual local/live producers retain UUID-bound semantic assertions, canonical/alias/unsupported collections and an ordered lifecycle execution ledger; JSON-only exits and unverified options remain incomplete.",
           "owned_paths": [
             ".github/workflows/ci.yml",
             "tests/unit/cli-test-coverage.test.ts",
@@ -452,7 +452,8 @@
             "tests/integration/cli-qa-build-receipt.test.ts",
             "scripts/cli-local-child-ownership.cjs",
             "scripts/cli-qa-cycle-steps.cjs",
-            "tests/helpers/cli-qa-cycle-model.ts"
+            "tests/helpers/cli-qa-cycle-model.ts",
+            "scripts/cli-smoke-execution-evidence.cjs"
           ],
           "required_repo_tests": [
             "tests/unit/cli-test-coverage.test.ts",

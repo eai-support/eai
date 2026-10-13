@@ -16,8 +16,8 @@ function cycleReceipt(report) {
   const context = { environment: report.environment, publicApiUrl: report.expectedPublicApi };
   const rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const registration = report.cleanup?.find(row => row.artifact === 'entra-registration');
-  const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
-  const builds = (report.commands || []).filter(row => row.command === 'npm run build');
+  const rotations = (report.executions || report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
+  const builds = (report.executions || report.commands || []).filter(row => row.command === 'npm run build');
   const stepEvidence = cycleStepEvidence(report);
   const ownershipEvidence = cycleOwnershipEvidence(report);
   const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,

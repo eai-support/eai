@@ -18,6 +18,7 @@ interface SmokeReport {
   cleanupStatus: string;
   coverageComplete: boolean;
   commands: { command: string; status: string; phase: string; exitCode?: number; scopeTenantId?: string }[];
+  executions: SmokeReport['commands'];
   cleanup: { artifact: string; status: string; evidence?: { tenantId?: string }; reason?: string }[];
   coverage: { command: string; status: string; executions: number }[];
   created: { childTenantId: string; runtimeTenantId: string; appKey: string; resources: { type: string; id: string }[]; entraClientId: string; workflowIds: string[];
@@ -451,6 +452,42 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     throw new Error('Expected controlled lifecycle failure');
   }
 
+  test('actual controlled live producer keeps aliases, parent forwarding and UUID-bound assertions without inventing canonical or backend qualification', () => {
+    const report = harness().run();
+    const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
+    expect(new Set(saved.executions.map((row: { executionId: string }) => row.executionId)).size).toBe(saved.executions.length);
+    expect(saved.commands.every((row: { command: string; alias?: string }) => row.command.startsWith('eai ') && row.alias === undefined)).toBe(true);
+    const created = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant create');
+    expect(created).toMatchObject({ command: 'eai workspace create', scopeTenantId: saved.parentTenantId, coverageComplete: true });
+    expect(created.assertions).toContainEqual(expect.objectContaining({ command: created.command, alias: created.alias,
+      executionId: created.executionId, scopeTenantId: saved.parentTenantId, name: 'created-child-ownership', status: 'passed' }));
+    const bootstrap = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant bootstrap-admin');
+    expect(bootstrap.scopeTenantId).toBe(saved.parentTenantId);
+    const { buildAudit } = require('../../scripts/audit-cli-backend.cjs');
+    const schema = JSON.parse(execFileSync(process.execPath, [cliPath, '--describe'], { encoding: 'utf8' }));
+    // Cleanliness is explicitly a consumer candidate model; all raw execution rows are the actual controlled producer output.
+    const candidate = { ...saved.candidate, dirty: false };
+    const audit = buildAudit({ schema, candidate, evidence: { ...saved, candidate } });
+    expect(audit.evidenceValidation).toEqual({ valid: true, malformedAttempts: [] });
+    expect(audit.commands.find((row: { command: string }) => row.command === created.command).status).toBe('not-run');
+    expect(audit.aliasEvidence.find((row: { alias: string }) => row.alias === created.alias).status).toBe('incomplete');
+    expect(audit.backendCertified).toBe(false); expect(audit.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['gateway', 'tenant'])('actual observed %s forwarding cannot be replaced with selected fixture scope', kind => {
+    const controlled = harness({ override(args, result) {
+      if (!matches(args, ['publicapi', 'get'])) return undefined;
+      const payload = JSON.parse(result.stdout);
+      return ok({ ...payload, request: { publicApiUrl: kind === 'gateway' ? 'https://test-api.au.myenterprise.ai/public' : 'https://dev-api.au.myenterprise.ai/public',
+        tenantId: kind === 'tenant' ? 'foreign-workspace' : flag(args, '--tenant-id') } });
+    } });
+    const report = failure(controlled).report;
+    expect(report.status).toBe('failed');
+    expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
+    const observed = report.commands.find(row => row.command === 'eai publicapi get');
+    expect(observed?.status).toBe('failed');
+    expect(observed?.scopeTenantId).toBe(kind === 'tenant' ? 'foreign-workspace' : 'qa-parent');
+  });
+
   function retainedContext() {
     const tenantIds = { a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' };
     const actors = Object.fromEntries(['adminA', 'builderA', 'viewerA', 'adminB', 'builderB'].map((slot, index) =>
@@ -660,10 +697,10 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     ]);
     expect(queries.every(call => flag(call.args, '--tenant-id') === 'run-runtime')).toBe(true);
     const queryEvidence = report.commands.filter(row => row.command === 'eai resources query') as Array<
-      { status: string; assertions: string[] }
+      { status: string; assertions: { name: string }[] }
     >;
     expect(queryEvidence.every(row => row.status === 'passed')).toBe(true);
-    expect(queryEvidence.map(row => row.assertions.filter(name => name.includes('-created-row-')).length)).toEqual([5, 3]);
+    expect(queryEvidence.map(row => row.assertions.filter(assertion => assertion.name.includes('-created-row-')).length)).toEqual([5, 3]);
   });
 
   test.each(['empty', 'foreign-id', 'wrong-type', 'stale-data', 'bad-total', 'partial-documentdb'])('query smoke rejects %s evidence and still verifies cleanup', kind => {
@@ -721,7 +758,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(index(['types', 'validate'])).toBeGreaterThan(checked);
     expect(index(['types', 'seed'])).toBeGreaterThan(checked);
     expect(index(['run', 'build'])).toBeGreaterThan(checked);
-    expect(report.commands).toEqual(expect.arrayContaining([
+    expect(report.executions).toEqual(expect.arrayContaining([
       expect.objectContaining({ command: 'npm run build:object-types', status: 'passed', exitCode: 0 }),
       expect.objectContaining({ command: 'npm run check:object-types', status: 'passed', exitCode: 0 }),
     ]));
@@ -741,7 +778,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     const report = outcome.report;
     expect(report.status).toBe('failed'); expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
     const failedCommand = kind.startsWith('stale') ? 'npm run check:object-types' : 'npm run build:object-types';
-    expect(report.commands.find(row => row.command === failedCommand)?.status).toBe('failed');
+    expect(report.executions.find(row => row.command === failedCommand)?.status).toBe('failed');
     expect(controlled.calls.some(call => matches(call.args, ['types', 'validate']) || matches(call.args, ['types', 'seed'])
       || matches(call.args, ['run', 'build']))).toBe(false);
     expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(true);
@@ -1288,6 +1325,50 @@ const scriptPath = join(root, 'scripts', 'eai-full-e2e-smoke.cjs');
 const cliPath = join(root, 'dist', 'index.js');
 const { runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, candidateEvidence, redact } = createRequire(import.meta.url)(scriptPath);
 
+describe('producer execution receipt controls', () => {
+  const { producerEvidence } = require('../../scripts/cli-smoke-execution-evidence.cjs');
+  const entries = [{ command: 'eai workspace list', aliases: ['eai tenant list'] },
+    { command: 'eai types define', aliases: [] }, { command: 'eai blocks list', aliases: [] }];
+  test('retains actual alias spelling separately and never manufactures its canonical invocation', () => {
+    const report = { assertions: [] }, producer = producerEvidence(report, entries);
+    const alias = producer.start(['tenant', 'list', '--format', 'json'], 'read', { environment: 'DEV', publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', scopeTenantId: '11111111-1111-4111-8111-111111111111' });
+    Object.assign(alias, { status: 'passed', exitCode: 0 });
+    producer.assert(alias, 'actual-listed-workspace', 'passed', { contract: true });
+    expect(report).toMatchObject({ commands: [], unsupported: [], aliases: [expect.objectContaining({ command: 'eai workspace list', alias: 'eai tenant list', invokedCommand: 'eai tenant list', coverageComplete: true })] });
+    expect(alias.assertions[0]).toMatchObject({ executionId: alias.executionId, command: alias.command, alias: alias.alias,
+      environment: alias.environment, publicApiUrl: alias.publicApiUrl, scopeTenantId: alias.scopeTenantId });
+  });
+  test('JSON/exit success is incomplete until an actual semantic assertion exists and options need their own check', () => {
+    const report = { assertions: [] }, producer = producerEvidence(report, entries);
+    const execution = producer.start(['blocks', 'list', '--format', 'json'], 'local');
+    Object.assign(execution, { status: 'passed', exitCode: 0 });
+    producer.assert(execution, 'successful-json-contract', 'passed'); expect(execution.coverageComplete).toBe(false);
+    producer.assert(execution, 'exact-block-observed', 'passed', { contract: true }); expect(execution.coverageComplete).toBe(true);
+    expect(execution.assertions.every((row: { option?: string }) => row.option === undefined)).toBe(true);
+    expect(() => producer.assert(execution, 'uninvoked-option', 'passed', { option: '--unknown' })).toThrow('actually invoked');
+    producer.assert(execution, 'failed-semantic-check', 'failed');
+    producer.assert(execution, 'later-passing-check', 'passed', { contract: true });
+    expect(execution.status).toBe('failed'); expect(execution.coverageComplete).toBe(false);
+  });
+  test.each([undefined, false, true])('unsupported completion requires observed zero calls and exact bypass: %s', authenticationBypassed => {
+    const report = { assertions: [] }, producer = producerEvidence(report, entries);
+    const execution = producer.start(['types', 'define', '--format', 'json'], 'local');
+    Object.assign(execution, { status: 'passed', exitCode: 1, authenticationBypassed });
+    producer.assert(execution, 'explicit-unsupported-code', 'passed', { contract: true });
+    expect(execution.coverageComplete).toBe(false);
+    Object.assign(execution, { networkCalls: 0 }); producer.complete(execution);
+    expect(execution.coverageComplete).toBe(authenticationBypassed === true);
+    Object.assign(execution, { networkCalls: 1 }); producer.complete(execution); expect(execution.coverageComplete).toBe(false);
+    expect(report).toMatchObject({ commands: [], aliases: [], unsupported: [execution] });
+  });
+  test('refuses duplicate execution IDs and assertions for a fabricated execution', () => {
+    const report = { assertions: [] }, producer = producerEvidence(report, entries, () => '11111111-1111-4111-8111-111111111111');
+    producer.start(['blocks', 'list'], 'local');
+    expect(() => producer.start(['blocks', 'list'], 'local')).toThrow('fresh execution UUID');
+    expect(() => producer.assert({}, 'fabricated', 'passed')).toThrow('actually recorded');
+  });
+});
+
 describe('local CLI qualification', () => {
   const fixtureRoots: string[] = [];
   afterEach(() => { for (const path of fixtureRoots.splice(0)) rmSync(path, { recursive: true, force: true }); });
@@ -1300,7 +1381,8 @@ describe('local CLI qualification', () => {
     cleanupVerified: boolean;
     cleanupStatus: string;
     coverageComplete: boolean;
-    commands: { command: string; status: string; coverageComplete?: boolean; reason?: string }[];
+    commands: { command: string; status: string; coverageComplete?: boolean; reason?: string; executionId?: string;
+      assertions?: { name: string; command: string; executionId: string; status: string; option?: string }[] }[];
     assertions: { name: string; status: string }[];
   }
   function outputRoot(): string {
@@ -1363,6 +1445,36 @@ describe('local CLI qualification', () => {
     expect(report.coverageComplete).toBe(false);
     const saved = readFileSync(report.summaryPath, 'utf8');
     expect(saved).not.toContain('operator-credential-must-not-reach-child'); expect(saved).not.toContain('synthetic-local-fixture-value');
+  });
+  test('actual local producer emits execution-bound assertions consumed by the strict audit without certifying untouched capabilities', () => {
+    const report = runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: outputRoot() }, execute: controlledExecute(), log: () => {} });
+    const checked = report.commands.find((row: { command: string }) => row.command === 'eai blocks list');
+    expect(checked.executionId).toMatch(/^[a-f0-9-]{36}$/);
+    expect(checked.assertions).toContainEqual(expect.objectContaining({
+      name: 'built-in-block-discovery', command: checked.command, executionId: checked.executionId, status: 'passed',
+    }));
+    expect(new Set(report.executions.map((row: { executionId: string }) => row.executionId)).size).toBe(report.executions.length);
+    const { buildAudit } = require('../../scripts/audit-cli-backend.cjs');
+    // Candidate cleanliness is a consumer fixture here; execution/assertion rows are actual producer output.
+    const controlledCandidate = { ...report.candidate, dirty: false };
+    const schema = JSON.parse(execFileSync(process.execPath, [cliPath, '--describe'], { encoding: 'utf8' }));
+    const audit = buildAudit({ schema, candidate: controlledCandidate, evidence: { ...report, candidate: controlledCandidate } });
+    expect(audit.commands.find((row: { command: string }) => row.command === 'eai blocks list').status).toBe('passed');
+    expect(audit.commands.find((row: { command: string }) => row.command === 'eai login').status).toBe('incomplete');
+    expect(audit.commands.find((row: { command: string }) => row.command === 'eai classifier publish').status).toBe('not-run');
+    expect(audit.optionEvidence.find((row: { command: string; option: string }) => row.command === 'eai blocks list' && row.option === '--format').status).toBe('passed');
+    expect(audit.fullCapabilityQualified).toBe(false); expect(audit.backendCertified).toBe(false);
+  });
+  test('a real failed local assertion stays attached to its invocation and wins over successful exit and later commands', () => {
+    let report, summaryPath;
+    try { runLocalSmoke(cliPath, { env: { EAI_E2E_OUTPUT_ROOT: outputRoot() }, execute: controlledExecute({ failedRuntime: true }), log: () => {} }); }
+    catch (error) { const failure = error as Error & { report: LocalReport; summaryPath: string }; report = failure.report; summaryPath = failure.summaryPath; }
+    const runtime = report!.commands.find(row => row.command === 'eai runtime validate')!;
+    expect(runtime.assertions).toContainEqual(expect.objectContaining({ command: runtime.command, executionId: runtime.executionId, status: 'failed' }));
+    expect(runtime.coverageComplete).toBe(false);
+    const saved = JSON.parse(readFileSync(summaryPath!, 'utf8'));
+    expect(saved.assertions.filter((row: { command: string }) => row.command === runtime.command)
+      .every((row: { executionId: string }) => row.executionId === runtime.executionId)).toBe(true);
   });
   test('standalone local processes exclude ambient credentials and Node injection despite isolated HOME', () => {
     const captured: ControlledOptions[] = [], execute = controlledExecute();
