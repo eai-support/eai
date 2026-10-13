@@ -2,12 +2,15 @@
  * eai docs — document management (upload, classify, index).
  */
 
-import { Command } from 'commander';
+import { Command, Option } from 'commander';
 import ora from 'ora';
 import chalk from 'chalk';
 import { parseApiError, validateDocumentUploadContext, type DocumentUploadContext } from '../lib/api.js';
 import { makeSpinner, resolveCommandContext } from '../lib/context.js';
 import * as out from '../lib/output.js';
+import { isRecord } from '../lib/utils.js';
+import { ContentUnderstandingError } from '../lib/content-understanding-manifest.js';
+import { readContentUnderstandingResponse, requireWaitTimeout } from '../lib/content-understanding-client.js';
 
 interface DocumentCommandOptions extends DocumentUploadContext {
   tenantId?: string;
@@ -72,6 +75,8 @@ Typical workflow:
   1. Configure and publish the app's document schemas and workflow classifier
   2. Run classify once to upload and queue analysis, or upload for full processing
   3. Poll the returned job ID and read the saved results; acceptance is not completion
+     eai docs job <job-id> --tenant-id <workspace-id> --wait --format json
+     eai docs get <document-id> --job-id <job-id> --tenant-id <workspace-id> --format json
 
 Standalone documents require a business document lifecycle enabled on the
 app/workflow binding. PublicAPI checks readiness and permissions before writing.
@@ -81,6 +86,89 @@ Use docs commands when the file is the subject of document processing or AI
 context. Use "eai resources file" when the file is an attachment to a typed
 resource object.
   `);
+
+interface DocumentReadOptions extends DocumentCommandOptions {
+  jobId?: string;
+  wait?: boolean;
+  timeout?: string;
+}
+function readIdentifier(value: string, label: string): string {
+  if (!value || value === '.' || value === '..' || value.trim() !== value || value.length > 256 || [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
+    throw new ContentUnderstandingError('DOC_IDENTIFIER_INVALID', `${label} must be a nonempty bounded identifier.`);
+  }
+  return value;
+}
+function readFailure(error: unknown): Record<string, unknown> {
+  return { ok: false, ...(error instanceof ContentUnderstandingError && error.status ? { status: error.status } : {}),
+    error: { code: error instanceof ContentUnderstandingError ? error.code : 'DOC_REQUEST_FAILED',
+      message: error instanceof Error ? error.message : 'Document read failed.' } };
+}
+function printRead(options: DocumentReadOptions, result: Record<string, unknown>): void {
+  if (options.format === 'json') out.json(result);
+  else if (result.ok !== true) out.error(isRecord(result.error) && typeof result.error.message === 'string' ? result.error.message : 'Document read failed.');
+  else if (isRecord(result.body)) out.info(`Document ${String(result.body.status || result.body.processingStatus || 'record retrieved')}`);
+  if (result.ok !== true) process.exitCode = 1;
+}
+function parseJob(value: Record<string, unknown>, jobId: string, tenantId: string): Record<string, unknown> {
+  if (value.jobId !== jobId || value.tenantId !== tenantId || typeof value.status !== 'string'
+    || !['queued', 'processing', 'completed', 'completed_with_errors', 'failed'].includes(value.status)
+    || !Array.isArray(value.documents) || value.documents.some(doc => !isRecord(doc) || typeof doc.documentId !== 'string' || !doc.documentId)) {
+    throw new ContentUnderstandingError('DOC_JOB_MISMATCH', 'Document job does not match the requested job and workspace.');
+  }
+  return value;
+}
+
+docsCommand.command('job <jobId>').description('Read an accepted document job; optionally wait without repeating upload')
+  .option('--tenant-id <id>', 'Exact owning workspace')
+  .option('--wait', 'Poll this exact job only', false)
+  .option('--timeout <seconds>', 'Wait deadline, 1 to 1800 seconds', '300')
+  .addOption(new Option('--format <format>', 'Output format').choices(['text', 'json']).default('text'))
+  .action(async (jobId: string, options: DocumentReadOptions) => {
+    try {
+      readIdentifier(jobId, 'Job ID'); const timeout = requireWaitTimeout(options.timeout);
+      const context = await resolveCommandContext({ tenantId: options.tenantId, interactive: false });
+      const path = `/v4/data/documents/jobs/${encodeURIComponent(jobId)}`, deadline = Date.now() + timeout;
+      let response = await context.client.getDocumentJob(jobId, Math.max(1, deadline - Date.now()));
+      let job = parseJob(await readContentUnderstandingResponse(response), jobId, context.tenantId);
+      while (options.wait && ['queued', 'processing'].includes(String(job.status)) && Date.now() < deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
+        if (Date.now() >= deadline) break;
+        response = await context.client.getDocumentJob(jobId, Math.max(1, deadline - Date.now()));
+        job = parseJob(await readContentUnderstandingResponse(response), jobId, context.tenantId);
+      }
+      const stageFailed = (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
+        .some(key => isRecord(doc[key]) && doc[key].status === 'failed'));
+      const failed = ['failed', 'completed_with_errors'].includes(String(job.status)) || stageFailed;
+      const pending = options.wait && job.status !== 'completed' && !failed;
+      printRead(options, { ok: !failed && !pending, status: response.status, request: { method: 'GET', path,
+        ...context.client.getRequestScope() }, body: job,
+        ...(failed || pending ? { error: { code: failed ? 'DOC_JOB_FAILED' : 'DOC_JOB_PENDING',
+          message: failed ? 'Document job failed or completed with errors; inspect its pipeline results.' : 'Wait deadline reached. Poll this job again; do not re-upload.', jobId } } : {}) });
+    } catch (error) { printRead(options, { ...readFailure(error), jobId }); }
+  });
+
+docsCommand.command('get <documentId>').description('Read the persisted document and analysis result through PublicAPI')
+  .option('--tenant-id <id>', 'Exact owning workspace')
+  .option('--job-id <id>', 'Original accepted job ID for the document')
+  .addOption(new Option('--storage-target <target>', 'Document storage target').choices(['resourceapi']).default('resourceapi'))
+  .addOption(new Option('--format <format>', 'Output format').choices(['text', 'json']).default('text'))
+  .action(async (documentId: string, options: DocumentReadOptions) => {
+    try {
+      readIdentifier(documentId, 'Document ID'); if (options.jobId !== undefined) readIdentifier(options.jobId, 'Job ID');
+      const context = await resolveCommandContext({ tenantId: options.tenantId, interactive: false });
+      const params = new URLSearchParams({ storage_target: 'resourceapi', ...(options.jobId ? { job_id: options.jobId } : {}) });
+      const path = `/v4/data/documents/records/${encodeURIComponent(documentId)}?${params}`;
+      const response = await context.client.getDocumentRecord(documentId, options.jobId);
+      const body = await readContentUnderstandingResponse(response);
+      if (body.documentId !== documentId || body.storageTarget !== 'resourceapi'
+        || ['tenantId', 'tenant_id', 'tenant'].some(key => body[key] !== undefined && body[key] !== context.tenantId)
+        || (options.jobId && ['jobId', 'job_id'].some(key => body[key] !== undefined && body[key] !== options.jobId))) {
+        throw new ContentUnderstandingError('DOC_RECORD_MISMATCH', 'Document result does not match the requested document, job and workspace.');
+      }
+      printRead(options, { ok: true, status: response.status, request: { method: 'GET', path,
+        ...context.client.getRequestScope() }, body });
+    } catch (error) { printRead(options, { ...readFailure(error), documentId, ...(options.jobId ? { jobId: options.jobId } : {}) }); }
+  });
 
 // ─── eai docs upload ─────────────────────────────────────────────────────
 

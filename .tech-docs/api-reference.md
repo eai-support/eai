@@ -829,6 +829,10 @@ Request an operator-assisted runtime workflow binding.
 
 ---
 
+### Content Understanding configuration
+
+`eai content-understanding schema` and `validate --file <path>` are local, authentication-free commands. `capabilities`, `plan`, `apply` and `status` use the selected workspace and require `--tenant-id`. `plan` is read-only; `apply` requires the original `--file` and saved JSON `--plan`, accepts an acknowledged `--operation-id` for resume, and optionally waits within `--timeout 1..1800`. Status only reads an existing operation and asks for explicit apply when mutation remains. JSON output uses `--format json`; pending work is distinct from completion. See [Content Understanding](content-understanding.md) for bounded fields, flat classification, readiness and unknown acknowledgement recovery.
+
 ### Document Commands
 
 Uploads require authorized context: either an existing Curate planning project
@@ -885,6 +889,10 @@ Classify a document.
 - `POST /v4/data/documents/upload` — `multipart/form-data` (`files`, `tenant_id`, `storage_target=resourceapi`, authorized project or paired app/workflow context, `processing_mode=classification`). This uploads and queues classification once; do not call upload first.
 
 ---
+
+#### `eai docs job <jobId>` and `eai docs get <documentId>`
+
+Read an accepted job or the complete persisted document result. Both accept `--tenant-id` and `--format json`. Job supports GET-only `--wait` with `--timeout 1..1800`; failed stages, completed-with-errors and timed-out waits exit nonzero without re-upload. Get accepts `--job-id` and `--storage-target resourceapi`, preserves recursive values/evidence/provenance in the response body, and checks document/job/workspace observations.
 
 #### `eai docs index <id>`
 Index a document for RAG (two-step).

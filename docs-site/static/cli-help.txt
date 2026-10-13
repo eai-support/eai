@@ -14,6 +14,85 @@ Persistent static fallback setup:
 npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
 
+eai content-understanding --help
+================================
+
+Usage: eai content-understanding [options] [command]
+
+Validate, plan and materialize bounded document analyzers through the selected
+workspace PublicAPI
+
+Options:
+  -h, --help              display help for command
+
+Commands:
+  schema [options]        Print the local manifest JSON schema and semantic
+                          bounds
+  validate [options]      Validate the complete manifest locally with no
+                          authentication or network access
+  capabilities [options]  Read actual selected-workspace typed mode,
+                          prerequisites and readiness
+  plan [options]          Read prerequisites and return a scope-bound
+                          configuration plan; writes nothing
+  apply [options]         Apply or explicitly resume the unchanged saved plan
+                          after current capability checks
+  status [options]        Read or wait for an existing operation; dispatches no
+                          provider mutation
+  help [command]          display help for command
+
+Harness workflow:
+  eai content-understanding schema --format json
+  eai content-understanding validate --file cu.json --format json
+  eai content-understanding capabilities --tenant-id <workspace-id> --format json
+  eai content-understanding plan --file cu.json --tenant-id <workspace-id> --format json > cu-plan.json
+  eai content-understanding apply --file cu.json --plan cu-plan.json --tenant-id <workspace-id> --format json
+  eai content-understanding status --operation-id <operation-id> --tenant-id <workspace-id> --format json
+
+Your harness authors the manifest. The platform owns Azure credentials, approved models,
+provider ownership and readiness. Typed mode must be enabled and qualified on that workspace.
+Only document fields and flat classification are available. Graphs and segmentation are refused.
+Before planning, prepare the existing app/workflow binding and matching tenant-owned
+classifier draft with the existing setup and eai classifier save commands.
+Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.
+Status only reads existing operations; acceptance and pending work are not completion.
+Succeeded historical work requires currentReady exactly true before document processing.
+
+---
+
+eai docs job --help
+===================
+
+Usage: eai docs job [options] <jobId>
+
+Read an accepted document job; optionally wait without repeating upload
+
+Options:
+  --tenant-id <id>     Exact owning workspace
+  --wait               Poll this exact job only (default: false)
+  --timeout <seconds>  Wait deadline, 1 to 1800 seconds (default: "300")
+  --format <format>    Output format (choices: "text", "json", default: "text")
+  -h, --help           display help for command
+
+---
+
+eai docs get --help
+===================
+
+Usage: eai docs get [options] <documentId>
+
+Read the persisted document and analysis result through PublicAPI
+
+Options:
+  --tenant-id <id>           Exact owning workspace
+  --job-id <id>              Original accepted job ID for the document
+  --storage-target <target>  Document storage target (choices: "resourceapi",
+                             default: "resourceapi")
+  --format <format>          Output format (choices: "text", "json", default:
+                             "text")
+  -h, --help                 display help for command
+
+---
+
 eai --help
 ==========
 
@@ -72,6 +151,9 @@ Commands:
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
                                enable, and delete workspace document classifiers
+  content-understanding        Validate, plan and materialize bounded document
+                               analyzers through the selected workspace
+                               PublicAPI
   help [command]               display help for command
 
 Getting Started:

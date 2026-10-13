@@ -31,10 +31,14 @@ const DOC_ORDER = [
   "app-template/documents-and-files.md",
   "app-template/config-driven-ui.md",
   "configuration.md",
+  "content-understanding.md",
   "error-guidance.md",
   "api-reference.md",
 ];
 const HELP_COMMANDS = [
+  { label: "eai content-understanding --help", args: ["dist/index.js", "content-understanding", "--help"] },
+  { label: "eai docs job --help", args: ["dist/index.js", "docs", "job", "--help"] },
+  { label: "eai docs get --help", args: ["dist/index.js", "docs", "get", "--help"] },
   { label: "eai --help", args: ["dist/index.js", "--help"] },
   { label: "eai init --help", args: ["dist/index.js", "init", "--help"] },
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },

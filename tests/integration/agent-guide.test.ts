@@ -126,6 +126,22 @@ describe('agent guide', () => {
     );
   });
 
+  test('typed configuration guidance distinguishes installed support, backend readiness and immutable recovery', () => {
+    const guide = getAgentGuide();
+    expect(guide.capabilities).toContain('content-understanding-manifest-v1');
+    const rules = guide.operatingRules.join('\n');
+    expect(rules).toContain('Installed manifest support does not mean the backend mode is enabled or qualified');
+    expect(rules).toContain('never automatically repeat it or create a replacement plan');
+    expect(rules).toContain('never call Azure directly or invent analyzer IDs');
+    expect(rules).toContain('app/workflow binding must already exist');
+    expect(rules).toContain('matching tenant-owned draft with eai classifier save first');
+    const commands = guide.commonWorkflows.flatMap(workflow => workflow.commands);
+    for (const fragment of ['content-understanding validate', 'content-understanding capabilities', 'content-understanding plan', 'content-understanding status', 'docs job', 'docs get']) {
+      expect(commands.find(entry => entry.command.includes(fragment))?.mutates).toBe(false);
+    }
+    expect(commands.find(entry => entry.command.includes('content-understanding apply'))?.mutates).toBe(true);
+  });
+
   test('prints the agent guide in text mode', async () => {
     const result = await runCommand(ctx, 'eai agent guide');
 

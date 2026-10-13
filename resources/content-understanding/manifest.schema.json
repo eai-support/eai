@@ -1,0 +1,545 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:eai:content-understanding:manifest:1",
+  "title": "EAI Content Understanding typed document manifest",
+  "type": "object",
+  "required": [
+    "kind",
+    "schemaVersion",
+    "tenantId",
+    "bundleKey",
+    "provider",
+    "apiVersion",
+    "binding",
+    "documentTypes"
+  ],
+  "properties": {
+    "kind": {
+      "const": "eai.content-understanding"
+    },
+    "schemaVersion": {
+      "const": 1
+    },
+    "tenantId": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$",
+      "not": {
+        "const": "00000000-0000-0000-0000-000000000000"
+      }
+    },
+    "bundleKey": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+    },
+    "provider": {
+      "const": "azure-content-understanding"
+    },
+    "apiVersion": {
+      "const": "2025-11-01"
+    },
+    "binding": {
+      "type": "object",
+      "required": [
+        "appKey",
+        "workflowKey",
+        "documentLifecycle"
+      ],
+      "properties": {
+        "appKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "workflowKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "documentLifecycle": {
+          "const": "business-document-v1"
+        }
+      },
+      "additionalProperties": false
+    },
+    "documentTypes": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "items": {
+        "type": "object",
+        "required": [
+          "code",
+          "name",
+          "contentUnderstanding"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$",
+            "not": {
+              "const": "Other"
+            }
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 1024
+          },
+          "category": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+          },
+          "contentUnderstanding": {
+            "type": "object",
+            "required": [
+              "analyzerDefinition"
+            ],
+            "properties": {
+              "analyzerDefinition": {
+                "$ref": "#/$defs/analyzer"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "classifier": {
+      "type": "object",
+      "required": [
+        "classifierKey",
+        "displayName",
+        "definition"
+      ],
+      "properties": {
+        "classifierKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+        },
+        "displayName": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "definition": {
+          "type": "object",
+          "required": [
+            "labels"
+          ],
+          "properties": {
+            "labels": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "required": [
+                  "key",
+                  "displayName",
+                  "description",
+                  "documentTypeKey"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                  },
+                  "displayName": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "description": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 1024
+                  },
+                  "documentTypeKey": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 128,
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*$"
+                  }
+                },
+                "additionalProperties": false,
+                "allOf": [
+                  {
+                    "if": {
+                      "properties": {
+                        "key": {
+                          "const": "Other"
+                        }
+                      },
+                      "required": [
+                        "key"
+                      ]
+                    },
+                    "then": {
+                      "properties": {
+                        "documentTypeKey": {
+                          "const": "Other"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            },
+            "minimumConfidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "field": {
+      "oneOf": [
+        {
+          "type": "object",
+          "required": [
+            "$ref"
+          ],
+          "properties": {
+            "$ref": {
+              "type": "string",
+              "pattern": "^#/definitions/[A-Za-z][A-Za-z0-9_]{0,63}$"
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "estimateSourceAndConfidence": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "enum": [
+                "string",
+                "date",
+                "time",
+                "number",
+                "integer",
+                "boolean",
+                "array",
+                "object",
+                "json"
+              ]
+            },
+            "method": {
+              "enum": [
+                "extract",
+                "generate",
+                "classify"
+              ]
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "examples": {
+              "type": "array",
+              "maxItems": 100,
+              "items": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            },
+            "estimateSourceAndConfidence": {
+              "type": "boolean"
+            },
+            "properties": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/field"
+              }
+            },
+            "items": {
+              "$ref": "#/$defs/field"
+            },
+            "enum": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 200,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200
+              }
+            },
+            "enumDescriptions": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 1024
+              }
+            }
+          },
+          "additionalProperties": false,
+          "allOf": [
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "array"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "items"
+                ],
+                "not": {
+                  "required": [
+                    "properties"
+                  ]
+                }
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "items"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "properties": {
+                  "type": {
+                    "const": "object"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "properties"
+                ]
+              },
+              "else": {
+                "not": {
+                  "required": [
+                    "properties"
+                  ]
+                }
+              }
+            },
+            {
+              "if": {
+                "required": [
+                  "method"
+                ],
+                "properties": {
+                  "method": {
+                    "const": "classify"
+                  }
+                }
+              },
+              "then": {
+                "required": [
+                  "enum"
+                ],
+                "properties": {
+                  "type": {
+                    "const": "string"
+                  }
+                }
+              },
+              "else": {
+                "not": {
+                  "anyOf": [
+                    {
+                      "required": [
+                        "enum"
+                      ]
+                    },
+                    {
+                      "required": [
+                        "enumDescriptions"
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "analyzer": {
+      "type": "object",
+      "required": [
+        "fieldSchema"
+      ],
+      "properties": {
+        "schemaVersion": {
+          "const": 1,
+          "default": 1
+        },
+        "baseAnalyzerId": {
+          "const": "prebuilt-document",
+          "default": "prebuilt-document"
+        },
+        "modelProfile": {
+          "const": "default",
+          "default": "default"
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1024
+        },
+        "config": {
+          "type": "object",
+          "properties": {
+            "enableOcr": {
+              "type": "boolean"
+            },
+            "enableLayout": {
+              "type": "boolean"
+            },
+            "enableFormula": {
+              "type": "boolean"
+            },
+            "enableFigureAnalysis": {
+              "type": "boolean"
+            },
+            "enableFigureDescription": {
+              "type": "boolean"
+            },
+            "returnDetails": {
+              "type": "boolean",
+              "default": true
+            },
+            "estimateFieldSourceAndConfidence": {
+              "type": "boolean",
+              "default": true
+            },
+            "omitContent": {
+              "const": false
+            },
+            "enableSegment": {
+              "const": false
+            },
+            "segmentPerPage": {
+              "const": false
+            },
+            "tableFormat": {
+              "enum": [
+                "html",
+                "markdown"
+              ]
+            },
+            "chartFormat": {
+              "enum": [
+                "chartJs",
+                "markdown"
+              ]
+            },
+            "annotationFormat": {
+              "enum": [
+                "markdown",
+                "none"
+              ]
+            }
+          },
+          "additionalProperties": false
+        },
+        "fieldSchema": {
+          "type": "object",
+          "required": [
+            "fields"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 64
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1024
+            },
+            "fields": {
+              "type": "object",
+              "minProperties": 1,
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/field"
+              }
+            },
+            "definitions": {
+              "type": "object",
+              "propertyNames": {
+                "type": "string",
+                "maxLength": 64,
+                "pattern": "^[A-Za-z][A-Za-z0-9_]*$"
+              },
+              "additionalProperties": {
+                "$ref": "#/$defs/field"
+              }
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "x-eai-semanticRules": [
+    "Expanded validation includes referenced targets, array items and unused definitions: at most200 nodes, nesting7, classify categories300.",
+    "Only local finite definition references; no cycles; reference overlays only description and evidence.",
+    "Extract including omitted method requires effective source/confidence estimation exactlytrue.",
+    "If present, enumDescriptions covers exactly the classify enum; field descriptions cannot contain context templates.",
+    "Combined normalized leaf snapshots must fit16KiB; the backend also validates complete queue snapshots.",
+    "Document codes and label keys are unique; non-Other labels must reference a leaf in the bundle.",
+    "Fields/flat classifiers require enabled and qualified backend mode; advanced format/figure/formula settings require separate capability approval.",
+    "No direct Azure credentials, infrastructure/model deployment, nested classifiers or segmentation.",
+    "Other is reserved for manual review: no leaf code Other; its label routes only to Other. Strings and keys must contain Unicode scalar values.",
+    "Bounded human strings count UTF-16 code units; JSON Schema maxLength alone is insufficient for this bound."
+  ]
+}

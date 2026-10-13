@@ -48,6 +48,7 @@ import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
+import { contentUnderstandingCommand } from './commands/content-understanding.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -100,7 +101,8 @@ program
     }
 
     const capability = `${actionCommand.parent?.name()}:${actionCommand.name()}`;
-    if (capability === 'types:define' || capability === 'resources:indexes-apply') return;
+    if (capability === 'types:define' || capability === 'resources:indexes-apply'
+      || capability === 'content-understanding:schema' || capability === 'content-understanding:validate') return;
 
     try {
       await activateCommandProfile(actionCommand);
@@ -141,6 +143,7 @@ program.addCommand(supportCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
 program.addCommand(classifierCommand);
+program.addCommand(contentUnderstandingCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -237,7 +240,7 @@ ${chalk.bold('Accessibility:')}
   ${chalk.cyan('eai --no-color <command>')}
 `);
 
-function readTopLevelCommandName(args: readonly string[]): string | null {
+function readTopLevelCommandIndex(args: readonly string[]): number | null {
   const flagsWithValues = new Set(['--profile']);
 
   for (let i = 0; i < args.length; i += 1) {
@@ -247,7 +250,7 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
     }
 
     if (arg === '--') {
-      return args[i + 1] ?? null;
+      return args[i + 1] ? i + 1 : null;
     }
 
     if (arg.startsWith('--profile=')) {
@@ -263,10 +266,15 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
       continue;
     }
 
-    return arg;
+    return i;
   }
 
   return null;
+}
+
+function readTopLevelCommandName(args: readonly string[]): string | null {
+  const index = readTopLevelCommandIndex(args);
+  return index === null ? null : args[index] ?? null;
 }
 
 function readInvocationProfile(args: readonly string[]): string {
@@ -325,10 +333,14 @@ if (cliArgs.includes('--describe')) {
     exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
       isMachineReadableInvocation(cliArgs) ? 'json' : 'text');
   }
-  const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
+  const commandIndex = readTopLevelCommandIndex(cliArgs);
+  const isLocalContentUnderstanding = topLevelCommandName === 'content-understanding' && commandIndex !== null
+    && ['schema', 'validate'].includes(readTopLevelCommandName(cliArgs.slice(commandIndex + 1)) ?? '');
+  const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||
     isMachineReadableInvocation(cliArgs) ||
+    isLocalContentUnderstanding ||
     (topLevelCommandName === 'types' && cliArgs.includes('define')) ||
     (topLevelCommandName === 'resources' && cliArgs.includes('indexes-apply'));
 

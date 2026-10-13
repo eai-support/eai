@@ -4,6 +4,38 @@
     "eai": {
       "features": [
         {
+          "id": "bounded-content-understanding",
+          "description": "Local declarative typed-field validation, selected-workspace capability discovery, read-only plans, original-operation apply/status recovery and exact document job/result reads. Deployed readiness remains separately gated.",
+          "owned_paths": [
+            "src/commands/content-understanding.ts",
+            "src/lib/content-understanding-manifest.ts",
+            "src/lib/content-understanding-client.ts",
+            "src/commands/docs.ts",
+            "src/lib/api.ts",
+            "src/index.ts",
+            "src/lib/agent-guide.ts",
+            "resources/content-understanding/",
+            ".tech-docs/content-understanding.md",
+            "tests/unit/content-understanding-manifest.test.ts",
+            "tests/integration/content-understanding.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/content-understanding-manifest.test.ts",
+            "tests/integration/content-understanding.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/agent-guide.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
+          "required_deployed_contracts": []
+        },
+        {
           "id": "configurable-document-lifecycle",
           "description": "Existing planning and configured standalone business uploads share the queued PublicAPI contract; lifecycle selection is an explicit administrator binding, not a client storage override.",
           "owned_paths": [
