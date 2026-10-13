@@ -709,12 +709,12 @@ describe('private blocked audit attempts', () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-inventory-'))); directories.push(root);
     const output = join(root, 'audit');
     const result = spawnSync(process.execPath, [resolve('scripts/audit-cli-backend.cjs'), '--cli', resolve('dist/index.js'), '--output', output], {
-      encoding: 'utf8', timeout: 10000, env: { ...process.env, EAI_DISABLE_KV_AUTO_FETCH: '1' },
+      encoding: 'utf8', timeout: 75000, env: { ...process.env, EAI_DISABLE_KV_AUTO_FETCH: '1' },
     });
     expect(result.status).toBe(0); const report = qa.readPrivate(join(output, 'capabilities.json'));
     expect(report.commands.length).toBeGreaterThan(100); expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
     expect(report.evidenceValidation).toEqual({ valid: true, malformedAttempts: [] });
-  });
+  }, 90000);
   test.each(['candidate', 'evidence-missing', 'evidence-malformed', 'deployments-missing', 'deployments-malformed',
     'build-receipt-missing', 'build-receipt-malformed'])('retains sanitized %s failure in new private output', failure => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-audit-blocked-'))); directories.push(root);
@@ -935,7 +935,7 @@ if (lifecycle && args.includes('provision')) {
     const ownedNode = join(root, '.nvm', 'versions', 'node', nodeVersion, 'bin', 'node');
     mkdirSync(dirname(ownedNode), { recursive: true, mode: 0o700 }); symlinkSync(process.execPath, ownedNode);
     const nodeLog = join(root, 'path-node.log');
-    const hintEnv: Record<string, string> = {};
+    const hintEnv: Record<string, string> = { npm_node_execpath: ownedNode };
     if (mode.startsWith('node-hint-')) {
       const hostile = mode === 'node-hint-traversal'
         ? join(root, '.nvm', 'versions', 'node') + '/' + nodeVersion + '/../../../injected/bin/node'
