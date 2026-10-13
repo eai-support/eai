@@ -66,11 +66,32 @@ function primaryTransportMatches(command, observed) {
     return false;
   }
   if (group === 'resources') {
-    const methods = { create: ['POST'], 'batch-create': ['POST'], 'batch-import': ['POST'], delete: ['DELETE'],
-      'batch-delete': ['POST', 'DELETE'], update: ['PATCH', 'PUT'], 'batch-update': ['PATCH', 'PUT', 'POST'], get: ['GET'], list: ['GET'] };
     if (action === 'indexes-plan') return observed.method === 'POST' && path === tenant + '/resourceapi/index-plan';
-    return path.startsWith(resources + '/')
-      && (!methods[action] || methods[action].includes(observed.method));
+    if (action === 'cache-refresh') return observed.method === 'POST' && path === tenant + '/resourceapi/cache-refresh';
+    if (action === 'schema') return observed.method === 'GET' && path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId);
+    const namespaceRoutes = {
+      query: ['POST', '/query'], search: ['POST', '/search'], doctor: ['GET', '/storage/doctor'],
+      'performance-status': ['GET', '/storage/schema-status'], 'sync-schema': ['POST', '/storage/sync-schema'],
+    };
+    const namespace = action === 'storage'
+      ? { status: ['GET', '/storage'], doctor: ['GET', '/storage/doctor'] }[command.split(' ')[3]]
+      : namespaceRoutes[action];
+    if (namespace) return observed.method === namespace[0] && path === resources + namespace[1];
+    const parts = segments(resources);
+    let decoded;
+    try { decoded = parts.map(part => decodeURIComponent(part)); } catch { return false; }
+    if (!decoded.length || decoded.some(part => !part || part === '.' || part === '..' || /[\/\\\u0000-\u001f\u007f]/.test(part))
+      || ['operations', 'query', 'search', 'storage', 'metering'].includes(decoded[0])) return false;
+    if (action === 'create' || action === 'list') return parts.length === 1 && observed.method === (action === 'create' ? 'POST' : 'GET');
+    if (action === 'get' || action === 'update' || action === 'delete') return parts.length === 2
+      && observed.method === { get: 'GET', update: 'PUT', delete: 'DELETE' }[action]
+      && !(action === 'get' && decoded[1] === 'stream');
+    if (['batch-create', 'batch-import', 'batch-update', 'batch-delete'].includes(action))
+      return observed.method === 'POST' && parts.length === 3 && parts[1] === 'batch' && parts[2] === action.slice(6);
+    if (action === 'aggregate') return observed.method === 'POST' && parts.length === 2 && parts[1] === 'aggregate';
+    if (action === 'file') return parts.length === 4 && parts[2] === 'files'
+      && observed.method === { upload: 'POST', get: 'GET', delete: 'DELETE' }[command.split(' ')[3]];
+    return false;
   }
   if (group === 'types') return /\/v4\/data\/resources\/(?:object-types|schema)(?:\/|$)/.test(path);
   if (group === 'classifier') return /\/v4\/data\/resources\/.*classifier/.test(path);
