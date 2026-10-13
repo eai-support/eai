@@ -1,5 +1,6 @@
 // Synthetic selected-step DTOs for consumer controls; never live qualification.
 import { createRequire } from 'node:module';
+import { randomUUID } from 'node:crypto';
 const npm = createRequire(import.meta.url)('../../scripts/cli-qa-npm-execution.cjs');
 const appNpmModel = { schemaVersion: 'eai.cli-app-npm-execution.v1', script: 'build', qualification: 'normal-execution',
   canonicalExecution: { ...npm.canonicalBuildExecution(), exitCode: 0, executablesUnchanged: true },
@@ -22,9 +23,13 @@ export function cycleStepModel(identity: CycleIdentity) {
     ['eai publicapi delete', 'cleanup', 'entra-cleanup-receipt', 2],
   ] as const;
   return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity, ...scope,
-    commands: definitions.map(([command, phase, name, sequence], index) => ({ command, phase, sequence: sequence + 1, executionSequence: sequence + 1, status: 'passed', exitCode: 0,
-      ...scope, options: index === 0 ? ['--rotate-secret'] : [],
-      npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined, assertions: [{ name, phase, executionSequence: sequence + 1, status: 'passed', ...scope }] })),
+    commands: definitions.map(([command, phase, name, sequence], index) => {
+      const executionId = randomUUID();
+      return { command, executionId, phase, sequence: sequence + 1, executionSequence: sequence + 1, status: 'passed', exitCode: 0,
+        ...scope, options: index === 0 ? ['--rotate-secret'] : [],
+        npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined,
+        assertions: [{ name, command, executionId, phase, executionSequence: sequence + 1, status: 'passed', ...scope }] };
+    }),
     registration: { status: 'passed', clientId: identity.clientId, tenantId: identity.tenantId,
       authorizationAbsent: true, registrationAbsent: true, registrationAbsenceVerified: true } };
 }
@@ -37,10 +42,11 @@ interface CycleFoundation {
 export function cycleOwnershipModel(identity: CycleIdentity, foundation: CycleFoundation) {
   const parentTenantId = foundation.tenantIds.a;
   const scope = { environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, scopeTenantId: parentTenantId };
-  const command = (name: string, phase: string, sequence: number, assertion: string, options: string[]) => ({
-    command: name, phase, sequence, executionSequence: sequence, status: 'passed', exitCode: 0, ...scope, options,
-    assertion: { name: assertion, phase, executionSequence: sequence, status: 'passed', ...scope },
-  });
+  const command = (name: string, phase: string, sequence: number, assertion: string, options: string[]) => {
+    const executionId = randomUUID();
+    return { command: name, executionId, phase, sequence, executionSequence: sequence, status: 'passed', exitCode: 0, ...scope, options,
+      assertion: { name: assertion, command: name, executionId, phase, executionSequence: sequence, status: 'passed', ...scope } };
+  };
   return { schemaVersion: 'eai.cli-cycle-ownership.v1', fixtureId: foundation.fixtureId,
     foundationParentTenantId: foundation.foundationParentTenantId, tenantIds: { ...foundation.tenantIds },
     environment: foundation.environment, publicApiUrl: foundation.publicApiUrl,

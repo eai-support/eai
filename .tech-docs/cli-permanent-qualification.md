@@ -378,6 +378,10 @@ An alias does not also create a canonical command receipt. Each semantic check
 keeps its observed outcome, scope and invocation sequence. JSON-format checks
 name `--format`; rotation evidence names `--rotate-secret`. Other option checks
 require their own observed semantic assertions.
+Canonical summary coverage excludes alias executions, including failed alias
+attempts. Both selected lifecycle and child ownership projections preserve each
+command and guard's exact execution UUID. Missing, legacy, mismatched or reused
+UUIDs cannot certify either projection, including reuse across the ten cycles.
 
 Only a verified semantic contract can set command completion. Exit zero, JSON
 shape, read-only preservation, global preflight success and later passing
