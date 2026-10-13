@@ -116,7 +116,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   }
   // Unscoped malformed attempts cannot be discarded to certify another success.
   // Retain bounded collection/index observations, never raw malformed input.
-  const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command));
+  const malformedAttempts = [], knownCommands = new Set(entries.map(entry => entry.command)), executionIds = new Set();
   function collection(name) {
     const values = evidence?.[name];
     if (values === undefined) return [];
@@ -129,9 +129,13 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
       const misclassified = valid && name === 'unsupported' && !UNSUPPORTED.has(row.command);
       const wrongInvocation = valid && row.invokedCommand !== (name === 'aliases' ? row.alias : row.command);
-      if (!valid || misclassified || wrongInvocation) malformedAttempts.push({ collection: name, index,
+      const executionId = valid && uuid(row.executionId) ? row.executionId.toLowerCase() : undefined;
+      const duplicateExecution = executionId !== undefined && executionIds.has(executionId);
+      if (executionId !== undefined) executionIds.add(executionId);
+      if (!valid || misclassified || wrongInvocation || duplicateExecution) malformedAttempts.push({ collection: name, index,
         ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status }
-          : wrongInvocation ? { reason: 'invoked-spelling-mismatch', command: row.command, status: row.status } : {}) });
+          : wrongInvocation ? { reason: 'invoked-spelling-mismatch', command: row.command, status: row.status }
+            : duplicateExecution ? { reason: 'duplicate-execution-id', command: row.command, status: row.status } : {}) });
       // Retain known failed attempts even when spelling is inconsistent. The
       // malformed contract prevents all positive qualification independently.
       return Boolean(valid);

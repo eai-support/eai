@@ -17,7 +17,7 @@ describe('QA primary scope follows declared client routes', () => {
   const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
   const tenant = '11111111-1111-4111-8111-111111111111'
   const executionId = '22222222-2222-4222-8222-222222222222'
-  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient) => Promise<Response> }[] = [
+  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient) => Promise<Response>; refuse?: string[] }[] = [
     { name: 'child creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned', parent: tenant }) },
     { name: 'root creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned' }) },
     { name: 'child bootstrap', command: 'eai workspace bootstrap-admin', invoke: client => client.bootstrapChildTenantAdmin(tenant, 'owned-child', { userOid: 'owned-actor', userEmail: 'owned@example.invalid' }) },
@@ -39,10 +39,20 @@ describe('QA primary scope follows declared client routes', () => {
     { name: 'index planning', command: 'eai resources indexes-plan', invoke: client => client.planResourceIndexes(['owned-resource']) },
     { name: 'object type verification', command: 'eai verify', invoke: client => client.getPublishedObjectTypes({ limit: 1 }) },
     { name: 'schema verification', command: 'eai verify', invoke: client => client.getSchema() },
+    { name: 'doctor identity read', command: 'eai doctor', invoke: client => client.requestPublicApi('/v4/identity/me') },
+    { name: 'Object Type diff inventory', command: 'eai types diff', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type pull inventory', command: 'eai types pull', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type pull schema fallback', command: 'eai types pull', invoke: client => client.getSchema() },
+    { name: 'Object Type seed inventory', command: 'eai types seed', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type seed readback', command: 'eai types seed', invoke: client => client.getSchema() },
+    { name: 'Object Type seed creation', command: 'eai types seed', invoke: client => client.createObjectType({ name: 'OwnedResource', slug: 'owned-resource' }), refuse: ['eai types diff', 'eai types pull'] },
+    { name: 'Object Type seed update', command: 'eai types seed', invoke: client => client.updateObjectType('owned-definition', { slug: 'owned-resource' }), refuse: ['eai types diff', 'eai types pull'] },
+    { name: 'chat send', command: 'eai chat send', invoke: client => client.sendChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat stream'] },
+    { name: 'chat stream', command: 'eai chat stream', invoke: client => client.streamChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat send'] },
   ]
   afterEach(() => vi.restoreAllMocks())
   test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))(
-    'accepts actual $name at $gateway and refuses wrong methods', async ({ command, invoke, gateway }) => {
+    'accepts actual $name at $gateway and refuses wrong methods', async ({ command, invoke, refuse, gateway }) => {
       const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
       await invoke(new PlatformAPIClient(gateway, tenant))
       expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -55,6 +65,10 @@ describe('QA primary scope follows declared client routes', () => {
       expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(true)
       const invalidMethod = observed.method === 'GET' ? 'DELETE' : 'HEAD'
       expect(primaryTransportMatches(command, { ...observed, method: invalidMethod })).toBe(false)
+      for (const candidate of refuse || []) {
+        expect(primaryTransportMatches(candidate, observed)).toBe(false)
+        expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+      }
       const alias = command.startsWith('eai workspace ') ? command.replace('eai workspace ', 'eai tenant ')
         : command.startsWith('eai app ') ? command.replace('eai app ', 'eai vertical ') : undefined
       if (alias) expect(primaryTransportMatches(alias, observed)).toBe(true)
@@ -83,6 +97,16 @@ describe('QA primary scope follows declared client routes', () => {
     expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
       transportObservations: [observed] })).toBe(false)
   })
+  test.each(['/health', '/v4/identity/me'].flatMap(path =>
+    ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(method => ({ path, method }))))
+    ('doctor refuses $method on the read-only $path transport', ({ path, method }) => {
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+        tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+      expect(primaryTransportMatches('eai doctor', { ...observed, method: 'GET' })).toBe(true)
+      expect(primaryTransportMatches('eai doctor', observed)).toBe(false)
+      expect(observedScopeVerified({ command: 'eai doctor', executionId, scopeTenantId: tenant,
+        publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+    })
 })
 
 describe('QA resource operations require their actual route shape', () => {
