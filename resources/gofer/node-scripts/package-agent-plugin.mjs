@@ -672,7 +672,7 @@ ${buildBlockerMediationContract()}
 
 function withTenantContextErrorGuidance(content) {
   const guidance =
-    '- For `MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, run `eai errors explain app_token_tenant_context_required --format json`, confirm workspace context, and retry `/v4/platform/tenants/<tenant-id>/...` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.';
+    '- For `MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, reuse the original-failure guidance for `app_token_tenant_context_required`; only if it has not been queried, run `eai errors explain app_token_tenant_context_required --format json` at most once when advertised, confirm workspace context, and retry `/v4/platform/tenants/<tenant-id>/...` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.';
 
   if (content.includes('app_token_tenant_context_required')) {
     return content;
@@ -909,7 +909,7 @@ Start with \`/eai\`, \`#eai\`, or \`$eai\` depending on the host. Gofer first cl
 
 Gofer does not invent EAI CLI commands. It verifies command paths and flags with \`eai --describe\` and command-specific \`--help\` before suggesting or running them. If the installed CLI does not list a command, Gofer does not run it.
 
-For original EAI command failures, query advertised guidance at most once and never retry or explain a failed \`eai errors explain\` command. Use \`.specify/references/platform/eai-error-catalog.yaml\` as fallback, run read-only diagnostics before mutating fixes, and stop at the retry/escalation condition. For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` grants workspace admin access. For \`MISSING_TENANT\`, \`app_token_tenant_context_required\`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, run \`eai errors explain app_token_tenant_context_required --format json\`, confirm workspace context, and retry \`/v4/platform/tenants/<tenant-id>/...\` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.
+For original EAI command failures, query advertised guidance at most once and never retry or explain a failed \`eai errors explain\` command. Use \`.specify/references/platform/eai-error-catalog.yaml\` as fallback, run read-only diagnostics before mutating fixes, and stop at the retry/escalation condition. For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` grants workspace admin access. For \`MISSING_TENANT\`, \`app_token_tenant_context_required\`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, reuse the original-failure guidance for \`app_token_tenant_context_required\`; only if it has not been queried, run \`eai errors explain app_token_tenant_context_required --format json\` at most once when advertised, confirm workspace context, and retry \`/v4/platform/tenants/<tenant-id>/...\` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.
 
 If \`/eai\` is unknown in a new repo, install or update this plugin first, then refresh/restart the host command picker.
 
@@ -1314,6 +1314,9 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
   }
   const supportAgentsPath = path.join(pluginRoot, 'AGENTS.md');
   try {
+    // Copy preserves symlinks; normalization must not write outside the plugin root.
+    const metadata = await fs.lstat(supportAgentsPath);
+    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error('AGENTS.md must be a regular file, not a symlink.');
     const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
     await fs.writeFile(supportAgentsPath, ensureSupportReportContract(supportAgents), 'utf8');
   } catch (error) {

@@ -1087,6 +1087,10 @@ test.each([false, true])(
       expect(result.exitCode, result.stderr).toBe(0);
       for (const file of ["AGENTS.md", ".github/copilot-instructions.md"]) {
         const content = await readFile(join(environment.dir, file), "utf8");
+        if (eai) {
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        } else expect(content).not.toContain('For `MISSING_TENANT`');
         expect(content, file).toContain(
           "Never retry or explain a failed `eai errors explain` command",
         );
@@ -1107,5 +1111,46 @@ test.each([false, true])(
     } finally {
       await environment.cleanup();
     }
+  },
+);
+
+test.each(['missing', 'regular', 'symlink', 'directory'])(
+  'bundled packager preserves the filesystem boundary for AGENTS=%s',
+  async (kind) => {
+    const outer = await mkdtemp(join(tmpdir(), 'cli-packager-agents-'));
+    const root = join(outer, 'source');
+    const sentinel = join(outer, 'outside.md');
+    const original = '# Unrelated file\nPreserve these bytes.\n';
+    try {
+      await mkdir(join(root, 'extension'), { recursive: true });
+      await writeFile(join(root, 'extension/package.json'), '{"version":"3.14.3"}');
+      await writeFile(join(root, 'extension/icon.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXkQAAAAASUVORK5CYII=', 'base64'));
+      await mkdir(join(root, '.specify/commands'), { recursive: true });
+      await cp(join(BUNDLED_GOFER_RESOURCES, 'commands/0_gofer_start.md'), join(root, '.specify/commands/0_gofer_start.md'));
+      await writeFile(sentinel, original);
+      if (kind === 'regular') await writeFile(join(root, 'AGENTS.md'), original);
+      if (kind === 'symlink') await symlink(sentinel, join(root, 'AGENTS.md'));
+      if (kind === 'directory') await mkdir(join(root, 'AGENTS.md'));
+      const result = await runChild(process.execPath, [join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'out'], { cwd: root });
+      expect(await readFile(sentinel, 'utf8')).toBe(original);
+      if (kind === 'symlink' || kind === 'directory') {
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain('AGENTS.md must be a regular file');
+      } else {
+        expect(result.exitCode, result.stderr).toBe(0);
+        const plugin = join(root, 'out/eai-gofer-agent-plugin-3.14.3/eai-gofer');
+        expect(existsSync(join(plugin, 'AGENTS.md'))).toBe(kind === 'regular');
+        if (kind === 'regular') {
+          const content = await readFile(join(plugin, 'AGENTS.md'), 'utf8');
+          expect(content).toContain(original.trim());
+          expect(content.split('## Support only when the person asks')).toHaveLength(2);
+        }
+        for (const file of ['README.md', 'skills/eai/SKILL.md']) {
+          const content = await readFile(join(plugin, file), 'utf8');
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        }
+      }
+    } finally { await rm(outer, { recursive: true, force: true }); }
   },
 );

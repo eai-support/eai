@@ -1091,8 +1091,10 @@ separation from `tasks.md`:
 - If platform user lookup or membership prerequisite calls fail with
   `MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context
   required for app tokens", treat it as a workspace-scoped route/context issue
-  before treating it as a workspace-member data issue. Run `eai errors explain
-  app_token_tenant_context_required --format json` when advertised, confirm
+  before treating it as a workspace-member data issue. Reuse the original-failure
+  guidance for `app_token_tenant_context_required`; only if it has not been queried,
+  run `eai errors explain app_token_tenant_context_required --format json` at most
+  once when advertised, confirm
   `eai whoami` and `eai workspace list --format json`, and retry through
   `/v4/platform/tenants/<tenant-id>/users/by-email?email=<email>`,
   `/v4/platform/tenants/<tenant-id>/users/<oid>/memberships`,
