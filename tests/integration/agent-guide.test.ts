@@ -52,7 +52,7 @@ describe('agent guide', () => {
       'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     );
     expect(guide.operatingRules).toContain(
-      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", run eai errors explain app_token_tenant_context_required --format json and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
+      'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", reuse the original-failure guidance for app_token_tenant_context_required; only if it has not been queried, run eai errors explain app_token_tenant_context_required --format json at most once when advertised and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
     );
   });
 
@@ -107,6 +107,9 @@ describe('agent guide', () => {
     expect(verify?.instruction).not.toContain('say "get help"');
     expect(verify?.instruction).toContain('Do not start a support report on your own.');
     const rules = guide.operatingRules.join('\n');
+    const tenantRule = guide.operatingRules.find(rule => rule.includes('returns MISSING_TENANT'));
+    expect(tenantRule).toContain('reuse the original-failure guidance');
+    expect(tenantRule).toContain('only if it has not been queried');
     expect(rules).toContain('Start a support report only when the person explicitly asks for EAI Support');
     expect(rules).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
     expect(rules).toContain('allocation, preview, sending or decline');

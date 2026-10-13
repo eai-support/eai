@@ -308,10 +308,12 @@ be cached.
 If platform user lookup or membership prerequisite calls fail with
 `MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context
 required for app tokens", do not start by changing workspace members, role
-definitions, Entra configuration, databases, or cloud portals. Run:
+definitions, Entra configuration, databases, or cloud portals. Reuse the
+original-failure guidance for `app_token_tenant_context_required`; only if it has
+not been queried, run `eai errors explain app_token_tenant_context_required --format
+json` at most once when advertised. Then confirm workspace context:
 
 ```bash
-eai errors explain app_token_tenant_context_required --format json
 eai whoami
 eai workspace list --format json
 ```
