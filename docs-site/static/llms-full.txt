@@ -2541,6 +2541,11 @@ Apply may return an accepted `pending` or `running` operation. Retain its `opera
 
 A safe HTTP failure after successful reservation can include its confirmed `operationId`; retain that ID and inspect the existing operation. If the acknowledgement is lost, `CU_APPLY_ACK_UNKNOWN` preserves the original plan identity. Keep the original manifest and plan. Deliberately repeat that original apply to recover the existing durable operation, or inspect its status once its ID is known. The CLI never automatically repeats an initial apply with unknown acknowledgement. A replacement plan or client-generated operation ID cannot establish recovery.
 
+For an explicit `--operation-id`, JSON errors also preserve that valid supplied ID
+when authentication, saved-plan, gateway or capability preflight fails. This
+retention does not confirm existence or ownership; the backend must still
+authorize the original operation before it can be read or resumed.
+
 ```bash
 eai content-understanding status --operation-id <operation-id> --tenant-id <workspace-id> --wait --format json
 eai content-understanding apply --file cu.json --plan cu-plan.json --operation-id <operation-id> --tenant-id <workspace-id> --wait --format json
