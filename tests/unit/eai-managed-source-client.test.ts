@@ -8,7 +8,7 @@ import * as output from '../../src/commands/eai-managed-deploy-output.js';
 import { resumeManagedSource } from '../../src/commands/eai-managed-deploy-managed-source.js';
 import { recoverLegacyCliManagedSourceReview, recoverReviewedCliManagedSourceEvidence } from '../../src/lib/eai-managed-source-publication-client.js';
 import type { ManagedDeployExecutionContext } from '../../src/commands/eai-managed-deploy-contract.js';
-import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
+import { classifyCliManagedSourceOperation, cliManagedPortalOrigin, cliManagedSourceMovePortalOrigin, cliManagedSourceIdempotencyKey, pollCliManagedSource, recoverAcceptedCliManagedSourceUpload, resumeCliManagedSourceUpload, submitCliManagedSource, validateCliGithubLinkSession, validateCliManagedSourceOperation, verifyCliGithubIdentity, type CliManagedSourceOperation, type CliManagedSourceScope } from '../../src/lib/eai-managed-source-client.js';
 
 const scope: CliManagedSourceScope = { tenantId: 'company', appKey: 'my-app', targetTenantId: 'runtime', environment: 'preview', actorId: 'eai-user-oid' };
 function session(status: CliManagedGithubLinkSession['status'] = 'verified'): CliManagedGithubLinkSession {
@@ -171,6 +171,26 @@ describe('managed publication authority and readiness', () => {
       upload: { url: 'https://dev-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/uploads/cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', ticket: 'one-use-upload-proof', sha256: bundle.bundleSha256, expiresAt: new Date(Date.now() + 300_000).toISOString() },
     };
   }
+
+  test('accepts only the sealed customer-owned successor shape after a native transfer', () => {
+    const initial = operation();
+    expect(validateCliManagedSourceOperation(initial, scope)).toBe(initial);
+    const transferred: CliManagedSourceOperation = {
+      ...initial,
+      repositoryAuthority: 'customer-owned',
+      repository: { owner: 'customer-org', name: initial.repository.name, id: 1414837259,
+        nodeId: 'R_customer', defaultBranch: 'main', installationId: '163883684', private: true },
+      predecessor: { operationId: 'cli-managed-' + 'b'.repeat(32), integrityHash: `sha256:${'c'.repeat(64)}`,
+        mergedCommitSha: 'd'.repeat(40) },
+    };
+    expect(validateCliManagedSourceOperation(transferred, scope)).toBe(transferred);
+    for (const invalid of [
+      { ...transferred, repository: { ...transferred.repository, owner: 'eai-generated-apps' } },
+      { ...transferred, repository: { ...transferred.repository, id: 0 } },
+      { ...transferred, predecessor: undefined },
+      { ...initial, repository: { ...initial.repository, owner: 'customer-org' } },
+    ]) expect(() => validateCliManagedSourceOperation(invalid, scope)).toThrow('Publication response does not match');
+  });
 
   function reviewRepairFixture() {
     const originalReview = { number: 1, headBranch: `eai-cli/${operation().operationId}`, headSha: '1'.repeat(40), baseSha: '2'.repeat(40) };
