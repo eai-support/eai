@@ -46,6 +46,14 @@ describe('bounded Content Understanding manifest', () => {
     const value = manifest(); value.documentTypes[0].name = '  Human document name  ';
     expect(parseContentUnderstandingManifest(value).documentTypes[0].name).toBe(value.documentTypes[0].name);
   });
+  test.each(['bundle', 'tenant', 'field', 'definition'])('rejects a final line terminator in exact %s identifiers', kind => {
+    const value = manifest();
+    if (kind === 'bundle') value.bundleKey += '\n';
+    if (kind === 'tenant') value.tenantId += '\n';
+    if (kind === 'field') value.documentTypes[0].contentUnderstanding.analyzerDefinition.fieldSchema.fields['Invalid\n'] = { type: 'string' };
+    if (kind === 'definition') value.documentTypes[0].contentUnderstanding.analyzerDefinition.fieldSchema.definitions = { 'Invalid\n': { type: 'string' } };
+    expect(() => parseContentUnderstandingManifest(value)).toThrow();
+  });
   test('reserved Other represents manual review and cannot own or reference an analyzer leaf', () => {
     const value = manifest(); value.documentTypes[0].code = 'Other';
     expect(() => parseContentUnderstandingManifest(value)).toThrow('reserved');

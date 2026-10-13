@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -168,6 +168,88 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test('current disabled mode blocks apply even when the saved plan was ready', async () => {
     routes = () => Response.json({ ...readyCapabilities, enabled: false, ready: false, modelBindingFingerprint: null, blockers: ['disabled'] });
     expect(await cu(applyArgs())).toMatchObject({ ok: false, error: { code: 'CU_NOT_READY' } }); expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
+  });
+  test.each(['authentication', 'gateway', 'saved-readiness', 'capability-readiness', 'capability-http', 'capability-transport'])(
+    'known apply operation survives %s preflight failure without creating or confirming replacement work', async stage => {
+      if (stage === 'authentication') vi.mocked(resolveCommandContext).mockRejectedValueOnce(new Error('Sign in is required'));
+      if (stage === 'gateway' || stage === 'saved-readiness') {
+        const plan = JSON.parse(await readFile(planPath, 'utf8'));
+        if (stage === 'gateway') plan.binding.publicApiUrl = 'https://test-api.au.myenterprise.ai/public';
+        else { plan.body.ready = false; plan.body.blockers = [{ code: 'CU_WORKFLOW_BINDING_REQUIRED' }]; }
+        await writeFile(planPath, JSON.stringify(plan));
+      }
+      if (stage === 'capability-readiness') routes = () => Response.json({ ...readyCapabilities,
+        enabled: false, ready: false, modelBindingFingerprint: null, blockers: [{ code: 'CU_MODE_DISABLED' }] });
+      if (stage === 'capability-http') routes = () => Response.json({ error: 'CU_AUTHORIZATION_REQUIRED', message: 'Tenant admin access required' }, { status: 403 });
+      if (stage === 'capability-transport') routes = () => { throw new TypeError('Controlled capability read failure'); };
+      const result = await cu(applyArgs(['--operation-id', 'cu-original-operation']));
+      expect(result).toMatchObject({ ok: false, error: { operationId: 'cu-original-operation' } });
+      expect(result.error).toMatchObject({ code: stage === 'gateway' ? 'CU_PLAN_MISMATCH'
+        : ['saved-readiness', 'capability-readiness'].includes(stage) ? 'CU_NOT_READY'
+          : stage === 'capability-http' ? 'CU_AUTHORIZATION_REQUIRED' : 'CU_REQUEST_FAILED' });
+      expect(result).not.toHaveProperty('body');
+      expect(result).not.toHaveProperty('binding');
+      expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+      expect(process.exitCode).toBe(1);
+    });
+  test('status context failure retains only its valid supplied operation identity without observing or creating it', async () => {
+    vi.mocked(resolveCommandContext).mockRejectedValueOnce(new Error('Sign in is required'));
+    const result = await cu(['status', '--operation-id', 'cu-original-operation', ...scoped]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'CU_REQUEST_FAILED', operationId: 'cu-original-operation' } });
+    expect(result).not.toHaveProperty('body'); expect(calls).toHaveLength(0); expect(process.exitCode).toBe(1);
+  });
+  test.each(['apply', 'status'].flatMap(command => ['../foreign-operation', 'cu-original-operation\n'].map(id => ({ command, id }))))('invalid $command operation identity is rejected without echoing it or resolving auth: $id', async ({ command, id }) => {
+    const args = command === 'apply' ? applyArgs(['--operation-id', id]) : ['status', '--operation-id', id, ...scoped];
+    const result = await cu(args);
+    expect(result).toMatchObject({ ok: false, error: { code: 'CU_OPERATION_INVALID' } });
+    expect(result.error).not.toHaveProperty('operationId'); expect(JSON.stringify(result)).not.toContain(id);
+    expect(resolveCommandContext).not.toHaveBeenCalled(); expect(calls).toHaveLength(0);
+  });
+  test('a final newline in a server digest is rejected rather than saved as a qualified plan', async () => {
+    routes = () => Response.json({ ...readyPlan, planDigest: readyPlan.planDigest + '\n' });
+    expect(await cu(['plan', '--file', file, ...scoped])).toMatchObject({ ok: false, error: { code: 'CU_PLAN_MISMATCH' } });
+  });
+  test.each(['apply', 'status'].flatMap(command => ['profile', 'project', 'membership'].map(stage => ({ command, stage }))))(
+    'compiled $command retains the supplied identity through actual $stage preflight failure', async ({ command, stage }) => {
+      const actualGateway = 'https://api.au.myenterprise.ai/public';
+      const observer = join(directory, 'observe-preflight-fetch.mjs'), networkLog = join(directory, 'preflight-network.log');
+      await writeFile(observer, `import { appendFileSync } from 'node:fs';\nglobalThis.fetch = async (input) => {\n  const path = new URL(String(input)).pathname;\n  appendFileSync(${JSON.stringify(networkLog)}, path + '\\n');\n  if (path === '/public/v4/identity/tenants') return new Response('{}', { status: 401 });\n  throw new Error('Unexpected preflight dispatch');\n};\n`, { mode: 0o600 });
+      const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '<owned-preflight-token>', EAI_PROFILE: '',
+        BASE_URL_PUBLIC_API: actualGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
+      if (stage === 'membership') {
+        await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
+        await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+        await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${actualGateway}\n`);
+        const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
+          import { storeTokens } from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
+          import { DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
+          await storeTokens({ accessToken: '<owned-preflight-token>', refreshToken: '<owned-preflight-refresh>', expiresAt: Date.now() + 3600000,
+            tenantId: DEFAULT_PROD_AUTH_TENANT_ID, tenantName: DEFAULT_PROD_AUTH_TENANT_NAME, clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
+            oid: 'owned-preflight-actor', upn: 'owned@example.invalid', activeTenantId: ${JSON.stringify(tenantId)}, publicApiUrl: ${JSON.stringify(actualGateway)} });
+        `], { encoding: 'utf8', timeout: 5000, env: childEnv });
+        expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+      }
+      const args = command === 'apply' ? applyArgs(['--operation-id', 'cu-original-operation']) : ['status', '--operation-id', 'cu-original-operation', ...scoped];
+      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname,
+        ...(stage === 'profile' ? ['--profile', 'missing-owned-profile'] : []), 'content-understanding', ...args, '--format', 'json'],
+        { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
+      expect(result.status).toBe(1); expect(result.signal).toBeNull();
+      const output = result.stdout.trim() || result.stderr.trim();
+      const payload = output.startsWith('{') ? JSON.parse(output) : null;
+      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? 'E001' : 'E102', operationId: 'cu-original-operation' } });
+      expect(payload).not.toHaveProperty('body');
+      const dispatched = existsSync(networkLog) ? (await readFile(networkLog, 'utf8')).trim().split('\n') : [];
+      expect(dispatched).toEqual(stage === 'membership' ? ['/public/v4/identity/tenants'] : []);
+      expect(output).not.toContain('owned-preflight-token');
+    });
+  test.each(['apply', 'status'])('compiled %s rejects an invalid ID before a missing profile can resolve auth or expose it', async command => {
+    const args = command === 'apply' ? applyArgs(['--operation-id', '../foreign-operation']) : ['status', '--operation-id', '../foreign-operation', ...scoped];
+    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', 'missing-owned-profile',
+      'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
+      env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
+    expect(result.status).toBe(1); const output = result.stdout.trim() || result.stderr.trim();
+    expect(JSON.parse(output)).toMatchObject({ error: { code: 'CU_OPERATION_INVALID' } });
+    expect(output).not.toContain('../foreign-operation');
   });
   test('lost apply acknowledgement preserves original plan identity and never automatically repeats POST', async () => {
     routes = url => { if (url.pathname.endsWith('/capabilities')) return Response.json(readyCapabilities); throw new TypeError('controlled lost acknowledgement'); };

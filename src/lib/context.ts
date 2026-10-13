@@ -42,9 +42,12 @@ export async function resolveCommandContext(options?: {
   validatePublicApiUrl?: (url: string) => string;
   publicApiUrl?: string;
   pinPublicApiUrl?: boolean;
+  /** Let an owning command retain operation identity instead of exiting here. */
+  onError?: (code: ErrorCode) => never;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
+    options?.onError?.(ErrorCode.E001);
     exitWithError(ErrorCode.E001);
   }
 
@@ -69,6 +72,7 @@ export async function resolveCommandContext(options?: {
     });
   } catch (error) {
     if (error instanceof TenantMembershipAuthError) {
+      options?.onError?.(ErrorCode.E102);
       exitWithError(ErrorCode.E102);
     }
     throw error;

@@ -48,7 +48,7 @@ import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
-import { contentUnderstandingCommand } from './commands/content-understanding.js';
+import { contentUnderstandingCommand, contentUnderstandingPreflightOperationId } from './commands/content-understanding.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -104,11 +104,14 @@ program
     if (capability === 'types:define' || capability === 'resources:indexes-apply'
       || capability === 'content-understanding:schema' || capability === 'content-understanding:validate') return;
 
+    const retainedOperationId = capability === 'content-understanding:apply' || capability === 'content-understanding:status'
+      ? contentUnderstandingPreflightOperationId(opts) : undefined;
+
     try {
       await activateCommandProfile(actionCommand);
     } catch (error) {
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        opts.format === 'json' || opts.json ? 'json' : 'text');
+        opts.format === 'json' || opts.json ? 'json' : 'text', retainedOperationId);
     }
   });
 

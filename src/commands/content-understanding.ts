@@ -5,6 +5,7 @@ import { resolveCommandContext, type CommandContext } from '../lib/context.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { errorCatalog } from '../lib/error-codes.js';
 import {
   CANONICAL_TENANT_ID, ContentUnderstandingError, parseContentUnderstandingManifest,
   type ContentUnderstandingManifest,
@@ -45,13 +46,17 @@ function tenantId(options: CuOptions, manifest?: ContentUnderstandingManifest): 
 }
 async function contextFor(id: string): Promise<CommandContext> {
   const context = await resolveCommandContext({ tenantId: id, interactive: false, forceRefresh: true,
-    validatePublicApiUrl: requireManagedPublicApiUrl, pinPublicApiUrl: true });
+    validatePublicApiUrl: requireManagedPublicApiUrl, pinPublicApiUrl: true,
+    onError: code => { throw new ContentUnderstandingError(code, errorCatalog[code].message); } });
   if (context.tenantId !== id) throw new ContentUnderstandingError('CU_TENANT_MISMATCH', 'Resolved workspace differs from the requested workspace.');
   return context;
 }
 function print(options: CuOptions, value: CuOutput | ContentUnderstandingPlanFile): void {
   if (options.format === 'json') out.json(value);
-  else if (!value.ok) out.error(('error' in value ? value.error?.message : undefined) || 'Content Understanding request failed.');
+  else if (!value.ok) {
+    out.error(('error' in value ? value.error?.message : undefined) || 'Content Understanding request failed.');
+    if ('error' in value && value.error?.operationId) out.info(`Operation ID: ${value.error.operationId}`);
+  }
   else if ('body' in value && isRecord(value.body)) {
     const body = value.body;
     if (body.$schema) { process.stdout.write(JSON.stringify(body, null, 2) + '\n'); return; }
@@ -66,8 +71,26 @@ function failure(error: unknown): CuOutput {
     error: { code: known ? error.code : 'CU_REQUEST_FAILED', message: error instanceof Error ? error.message : 'Content Understanding request failed.',
       ...(known && error.operationId ? { operationId: error.operationId } : {}) } };
 }
-function action(handler: (options: CuOptions) => Promise<CuOutput | ContentUnderstandingPlanFile>): (options: CuOptions) => Promise<void> {
-  return async options => { try { print(options, await handler(options)); } catch (error) { print(options, failure(error)); } };
+/** Validate the caller's identity before index-level profile activation can exit. */
+export function contentUnderstandingPreflightOperationId(options: CuOptions): string | undefined {
+  try { return options.operationId === undefined ? undefined : requireContentUnderstandingOperationId(options.operationId); }
+  catch (error) { print(options, failure(error)); process.exit(1); }
+}
+function action(handler: (options: CuOptions) => Promise<CuOutput | ContentUnderstandingPlanFile>,
+  retainRequestedOperation = false): (options: CuOptions) => Promise<void> {
+  return async options => {
+    let requestedOperation: string | undefined;
+    try {
+      if (retainRequestedOperation && options.operationId !== undefined) requestedOperation = requireContentUnderstandingOperationId(options.operationId);
+      print(options, await handler(options));
+    } catch (error) {
+      const result = failure(error);
+      // This is the valid identity supplied by the caller, not a server
+      // acknowledgment. Preflight failure never creates an operation receipt.
+      if (requestedOperation && result.error) result.error.operationId = requestedOperation;
+      print(options, result);
+    }
+  };
 }
 
 async function capabilities(context: CommandContext, timeoutMs?: number): Promise<Record<string, unknown>> {
@@ -216,7 +239,7 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').descri
         throw new ContentUnderstandingError('CU_APPLY_ACK_UNKNOWN', 'Resume acknowledgement is unknown. Inspect this original operation before deliberately repeating the unchanged apply.', operationId);
       }
     });
-  }));
+  }, true));
 waitOptions(workspaceOptions(contentUnderstandingCommand.command('status').description('Read or wait for an existing operation; dispatches no provider mutation')
   .requiredOption('--operation-id <id>', 'Exact acknowledged operation ID')))
   .action(action(async options => {
@@ -227,4 +250,4 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('status').descr
       Math.max(1, deadline - Date.now()))), context.tenantId, { operationId }); }
     catch (error) { throw operationReadError(error, operationId); }
     return waitForOperation(context, operation, options, deadline);
-  }));
+  }, true));
