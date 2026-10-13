@@ -12,8 +12,8 @@ import {
 } from '../lib/content-understanding-manifest.js';
 import {
   parseContentUnderstandingCapabilities, parseContentUnderstandingOperation, parseContentUnderstandingPlan,
-  readContentUnderstandingResponse, requireContentUnderstandingOperationId, requireWaitTimeout,
-  type ContentUnderstandingOperation, type ContentUnderstandingPlanFile,
+  readContentUnderstandingResponse, requireContentUnderstandingOperationId, requireWaitTimeout, requireContentUnderstandingManifestCapabilities,
+  type ContentUnderstandingOperation, type ContentUnderstandingPlanFile, type ContentUnderstandingCapabilities,
 } from '../lib/content-understanding-client.js';
 
 interface CuOptions {
@@ -93,7 +93,7 @@ function action(handler: (options: CuOptions) => Promise<CuOutput | ContentUnder
   };
 }
 
-async function capabilities(context: CommandContext, timeoutMs?: number): Promise<Record<string, unknown>> {
+async function capabilities(context: CommandContext, timeoutMs?: number): Promise<ContentUnderstandingCapabilities> {
   return parseContentUnderstandingCapabilities(await readContentUnderstandingResponse(await context.client.getContentUnderstandingCapabilities(timeoutMs)), context.tenantId);
 }
 
@@ -163,6 +163,7 @@ Harness workflow:
 Your harness authors the manifest. The platform owns Azure credentials, approved models,
 provider ownership and readiness. Typed mode must be enabled and qualified on that workspace.
 Only document fields and flat classification are available. Graphs and segmentation are refused.
+Formula, figure and output-format settings require features.advancedDocumentConfig exactly true.
 Before planning, prepare the existing app/workflow binding and matching tenant-owned
 classifier draft with the existing setup and eai classifier save commands.
 Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.
@@ -205,7 +206,7 @@ workspaceOptions(contentUnderstandingCommand.command('plan').description('Read p
 waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').description('Apply or explicitly resume the unchanged saved plan after current capability checks')
   .requiredOption('--file <path>', 'Original declarative document configuration JSON')
   .requiredOption('--plan <path>', 'Original JSON output from the plan command')
-  .option('--operation-id <id>', 'Resume this exact acknowledged operation')))
+  .option('--operation-id <id>', 'Resume this exact acknowledged canonical operation UUID')))
   .action(action(async options => {
     const timeout = requireWaitTimeout(options.timeout), input = await readManifest(options.file), id = tenantId(options, input.manifest);
     const plan = await parsePlanFile(options, input), requestedOperation = options.operationId === undefined ? undefined : requireContentUnderstandingOperationId(options.operationId);
@@ -214,6 +215,7 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').descri
     if (plan.binding.publicApiUrl !== context.publicApiUrl) throw new ContentUnderstandingError('CU_PLAN_MISMATCH', 'Selected PublicAPI gateway differs from the saved plan.');
     const available = await capabilities(context);
     if (available.enabled !== true || available.ready !== true) throw new ContentUnderstandingError('CU_NOT_READY', 'Typed configuration is not enabled and ready on this workspace.');
+    requireContentUnderstandingManifestCapabilities(input.manifest, available);
     // The backend checks actual versions/model bindings, or recovers the original durable operation before checking changed activation state.
     const deadline = Date.now() + timeout;
     let raw: Record<string, unknown>;
@@ -230,6 +232,7 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').descri
     return waitForOperation(context, operation, options, deadline, async (operationId, timeoutMs) => {
       const current = await capabilities(context, timeoutMs);
       if (current.enabled !== true || current.ready !== true) throw new ContentUnderstandingError('CU_NOT_READY', 'Typed configuration is no longer enabled and ready; retain the existing operation.', operationId);
+      requireContentUnderstandingManifestCapabilities(input.manifest, current);
       try {
         return parseContentUnderstandingOperation(await readContentUnderstandingResponse(await context.client.applyContentUnderstandingConfiguration(input.manifest,
           plan.body.planDigest, plan.body.expectedVersions, operationId, Math.max(1, deadline - Date.now()))), id,
@@ -241,7 +244,7 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').descri
     });
   }, true));
 waitOptions(workspaceOptions(contentUnderstandingCommand.command('status').description('Read or wait for an existing operation; dispatches no provider mutation')
-  .requiredOption('--operation-id <id>', 'Exact acknowledged operation ID')))
+  .requiredOption('--operation-id <id>', 'Exact acknowledged canonical operation UUID')))
   .action(action(async options => {
     const timeout = requireWaitTimeout(options.timeout), operationId = requireContentUnderstandingOperationId(options.operationId), context = await contextFor(tenantId(options));
     const deadline = Date.now() + timeout;

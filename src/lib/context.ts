@@ -11,6 +11,7 @@ import {
   resolvePublicApiUrl,
   resolveActiveTenantContext,
   TenantMembershipAuthError,
+  TenantLoginRequiredError,
   type TenantMembership,
   type ActiveTenantContext,
   type PublicApiRequestPolicy,
@@ -71,6 +72,10 @@ export async function resolveCommandContext(options?: {
       pinPublicApiUrl: options?.pinPublicApiUrl,
     });
   } catch (error) {
+    if (error instanceof TenantLoginRequiredError) {
+      options?.onError?.(ErrorCode.E101);
+      exitWithError(ErrorCode.E101);
+    }
     if (error instanceof TenantMembershipAuthError) {
       options?.onError?.(ErrorCode.E102);
       exitWithError(ErrorCode.E102);

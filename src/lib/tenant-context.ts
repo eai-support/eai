@@ -36,6 +36,13 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const TENANT_MEMBERSHIP_AUTH_MESSAGE =
   "Authentication is missing or expired. Run `eai login` to refresh your session.";
 
+export class TenantLoginRequiredError extends Error {
+  constructor() {
+    super("Not logged in. Run `eai login` to authenticate.");
+    this.name = "TenantLoginRequiredError";
+  }
+}
+
 export class TenantMembershipAuthError extends Error {
   readonly status?: number;
 
@@ -721,7 +728,7 @@ export async function fetchTenantAdminMemberships(
 }> {
   const tokens = await loadTokens();
   if (!tokens?.oid) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
   const authMismatch = await getActiveAuthConfigMismatch(tokens);
   if (authMismatch) {
@@ -773,7 +780,7 @@ export async function saveActiveTenantSelection(
 ): Promise<StoredTokens> {
   const tokens = existingTokens ?? (await loadTokens());
   if (!tokens) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
 
   const next: StoredTokens = {

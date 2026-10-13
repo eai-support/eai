@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.20.0
+Package source version: 3.20.0
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -51,6 +51,7 @@ Harness workflow:
 Your harness authors the manifest. The platform owns Azure credentials, approved models,
 provider ownership and readiness. Typed mode must be enabled and qualified on that workspace.
 Only document fields and flat classification are available. Graphs and segmentation are refused.
+Formula, figure and output-format settings require features.advancedDocumentConfig exactly true.
 Before planning, prepare the existing app/workflow binding and matching tenant-owned
 classifier draft with the existing setup and eai classifier save commands.
 Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.

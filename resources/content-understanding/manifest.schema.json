@@ -440,13 +440,16 @@
               "type": "boolean"
             },
             "enableFormula": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             },
             "enableFigureAnalysis": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             },
             "enableFigureDescription": {
-              "type": "boolean"
+              "type": "boolean",
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             },
             "returnDetails": {
               "type": "boolean",
@@ -469,19 +472,22 @@
               "enum": [
                 "html",
                 "markdown"
-              ]
+              ],
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             },
             "chartFormat": {
               "enum": [
                 "chartJs",
                 "markdown"
-              ]
+              ],
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             },
             "annotationFormat": {
               "enum": [
                 "markdown",
                 "none"
-              ]
+              ],
+              "description": "Values other than false require features.advancedDocumentConfig exactly true on the selected workspace before apply or continuation."
             }
           },
           "additionalProperties": false
@@ -537,7 +543,7 @@
     "If present, enumDescriptions covers exactly the classify enum; field descriptions cannot contain context templates.",
     "Combined normalized leaf snapshots must fit16KiB; the backend also validates complete queue snapshots.",
     "Document codes and label keys are unique; non-Other labels must reference a leaf in the bundle.",
-    "Fields/flat classifiers require enabled and qualified backend mode; advanced format/figure/formula settings require separate capability approval.",
+    "Ready typed mode requires features.typed_fields and features.flatClassifiers exactly true. Advanced format/figure/formula values other than false require features.advancedDocumentConfig exactly true before apply and continuation.",
     "No direct Azure credentials, infrastructure/model deployment, nested classifiers or segmentation.",
     "Other is reserved for manual review: no leaf code Other; its label routes only to Other. Strings and keys must contain Unicode scalar values.",
     "Bounded human strings count UTF-16 code units; JSON Schema maxLength alone is insufficient for this bound."

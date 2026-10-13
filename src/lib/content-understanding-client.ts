@@ -1,9 +1,12 @@
 import { parseApiError, readManagedPublicResponseText } from './api.js';
-import { ContentUnderstandingError } from './content-understanding-manifest.js';
+import { CANONICAL_TENANT_ID, ContentUnderstandingError, type ContentUnderstandingManifest } from './content-understanding-manifest.js';
 import { isRecord } from './utils.js';
 
 const DIGEST = /^(?:sha256:)?[a-f0-9]{64}$/;
-const OPERATION = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
+const operationIdValid = (value: unknown): value is string => typeof value === 'string'
+  && CANONICAL_TENANT_ID.test(value) && value !== '00000000-0000-0000-0000-000000000000';
+const ADVANCED_CONFIG_KEYS = ['enableFormula', 'enableFigureAnalysis', 'enableFigureDescription',
+  'tableFormat', 'chartFormat', 'annotationFormat'];
 export interface ContentUnderstandingCapabilities extends Record<string, unknown> {
   schemaVersion: 1;
   tenantId: string;
@@ -15,6 +18,7 @@ export interface ContentUnderstandingCapabilities extends Record<string, unknown
   modelProfile: 'default';
   capabilityFingerprint: string;
   modelBindingFingerprint: string | null;
+  features: Record<string, unknown>;
   blockers: unknown[];
 }
 export interface ContentUnderstandingPlan extends Record<string, unknown> {
@@ -53,15 +57,21 @@ export async function readContentUnderstandingResponse(response: Response): Prom
   const raw = await readManagedPublicResponseText(response);
   if (!response.ok) {
     const failure = await parseApiError(new Response(raw, { status: response.status }));
-    const code = failure.code && /^[A-Za-z0-9_.:-]{1,100}$/.test(failure.code) ? failure.code : 'CU_REQUEST_FAILED';
+    let envelope: unknown;
+    try { envelope = JSON.parse(raw); } catch { /* Preserve the existing safe non-JSON fallback. */ }
+    // Validation bodies can contain authored secrets; keep their existing safe
+    // issue summary instead of promoting arbitrary nested validation messages.
+    const nested = response.status !== 422 && isRecord(envelope) && isRecord(envelope.error) ? envelope.error : undefined;
+    const suppliedCode = typeof nested?.code === 'string' && /^[A-Za-z0-9_.:-]{1,100}$/.test(nested.code)
+      ? nested.code : failure.code;
+    const code = suppliedCode && /^[A-Za-z0-9_.:-]{1,100}$/.test(suppliedCode) ? suppliedCode : 'CU_REQUEST_FAILED';
+    const message = typeof nested?.message === 'string' && nested.message.length > 0 && nested.message.length <= 4096
+      ? nested.message : failure.message;
     // Reservation may have succeeded before a later safe HTTP failure. Only
     // the validated platform response can acknowledge a new operation identity.
     let operationId: string | undefined;
-    try {
-      const envelope: unknown = JSON.parse(raw);
-      if (isRecord(envelope) && typeof envelope.operationId === 'string' && OPERATION.test(envelope.operationId)) operationId = envelope.operationId;
-    } catch { /* An invalid error envelope cannot acknowledge an operation. */ }
-    throw new ContentUnderstandingError(code, failure.message, operationId, response.status);
+    if (isRecord(envelope) && operationIdValid(envelope.operationId)) operationId = envelope.operationId;
+    throw new ContentUnderstandingError(code, message, operationId, response.status);
   }
   let value: unknown;
   try { value = JSON.parse(raw); } catch { throw new ContentUnderstandingError('CU_INVALID_RESPONSE', 'The platform returned an invalid JSON response.'); }
@@ -77,10 +87,24 @@ export function parseContentUnderstandingCapabilities(value: Record<string, unkn
     || !Array.isArray(value.blockers) || !isRecord(value.limits) || !isRecord(value.features)
     || (value.modelBindingFingerprint !== null && (typeof value.modelBindingFingerprint !== 'string' || !DIGEST.test(value.modelBindingFingerprint)))
     || (value.ready && value.blockers.length > 0)
+    || (value.ready && (value.features.typed_fields !== true || value.features.flatClassifiers !== true))
     || (value.ready && (!value.enabled || typeof value.modelBindingFingerprint !== 'string' || !DIGEST.test(value.modelBindingFingerprint)))) {
     throw new ContentUnderstandingError('CU_INVALID_RESPONSE', 'Capabilities do not match the selected workspace and typed document mode.');
   }
   return value as ContentUnderstandingCapabilities;
+}
+
+/** Local syntax acceptance does not authorize advanced provider configuration. */
+export function requireContentUnderstandingManifestCapabilities(manifest: ContentUnderstandingManifest,
+  capabilities: ContentUnderstandingCapabilities): void {
+  if (capabilities.features.advancedDocumentConfig === true) return;
+  for (const document of manifest.documentTypes) {
+    const config = document.contentUnderstanding.analyzerDefinition.config;
+    if (isRecord(config) && ADVANCED_CONFIG_KEYS.some(key => Object.hasOwn(config, key) && config[key] !== false)) {
+      throw new ContentUnderstandingError('CU_ADVANCED_CONFIGURATION_NOT_QUALIFIED',
+        'Advanced formula, figure and output-format settings require features.advancedDocumentConfig exactly true on this workspace.');
+    }
+  }
 }
 
 export function parseContentUnderstandingPlan(value: unknown, tenantId: string, bundleKey: string): ContentUnderstandingPlan {
@@ -95,7 +119,7 @@ export function parseContentUnderstandingPlan(value: unknown, tenantId: string, 
 }
 
 export function requireContentUnderstandingOperationId(value: unknown, originalOperationId?: string): string {
-  if (typeof value !== 'string' || !OPERATION.test(value)) throw new ContentUnderstandingError('CU_OPERATION_INVALID', 'Operation ID must be a bounded platform identifier.', originalOperationId);
+  if (!operationIdValid(value)) throw new ContentUnderstandingError('CU_OPERATION_INVALID', 'Operation ID must be an exact nonzero canonical platform UUID.', originalOperationId);
   return value;
 }
 

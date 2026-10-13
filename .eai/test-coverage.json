@@ -5,7 +5,7 @@
       "features": [
         {
           "id": "bounded-content-understanding",
-          "description": "Local declarative typed-field validation, selected-workspace capability discovery, read-only plans, original-operation apply/status recovery and exact document job/result reads. Deployed readiness remains separately gated.",
+          "description": "Local declarative typed-field validation, exact workspace typed/flat and advanced capability gates, canonical original-operation UUID recovery, safe API/auth errors, and ambiguity-safe camel/snake document job/result reads. Deployed readiness and release publication remain separately gated.",
           "owned_paths": [
             "src/commands/content-understanding.ts",
             "src/lib/content-understanding-manifest.ts",
@@ -17,7 +17,9 @@
             "resources/content-understanding/",
             ".tech-docs/content-understanding.md",
             "tests/unit/content-understanding-manifest.test.ts",
-            "tests/integration/content-understanding.test.ts"
+            "tests/integration/content-understanding.test.ts",
+            "src/lib/context.ts",
+            "src/lib/tenant-context.ts"
           ],
           "required_repo_tests": [
             "tests/unit/content-understanding-manifest.test.ts",

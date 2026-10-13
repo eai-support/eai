@@ -145,7 +145,7 @@ ${output}`,
     .join("\n\n---\n\n");
 
   return `# EAI CLI Help Snapshot
-Version: ${context.version}
+Package source version: ${context.version}
 
 Install / update the CLI:
 ${RECOMMENDED_INSTALL_CMD}
@@ -171,7 +171,7 @@ function buildLlmsIndex(context) {
 
   return `# EAI CLI Documentation
 
-> Release-aligned documentation surfaces for \`@enterpriseai/cli\` v${context.version}.
+> Source documentation surfaces for \`@enterpriseai/cli\` package source v${context.version}. This snapshot does not certify release-channel publication.
 
 ## Install
 
@@ -242,7 +242,7 @@ ${doc.body.trim()}`,
     .join("\n\n");
 
   return `# EAI CLI — Full Documentation
-> Release-aligned documentation bundle for \`@enterpriseai/cli\` v${context.version}.
+> Source documentation bundle for \`@enterpriseai/cli\` package source v${context.version}. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install

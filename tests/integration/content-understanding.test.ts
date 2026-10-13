@@ -22,6 +22,7 @@ const tenantId = '11111111-1111-4111-8111-111111111111';
 const gateway = 'https://dev-api.au.myenterprise.ai/public';
 const base = '/public/v4/data/documents/content-understanding';
 const digest = 'a'.repeat(64);
+const jwtShapedIdentifier = ['eyJaaaaaaaaaaa', 'bbbbbbbbbbb', 'ccccccccccc'].join('.');
 const original = JSON.parse(await readFile(new URL('../../resources/content-understanding/procurement-example.json', import.meta.url), 'utf8'));
 original.tenantId = tenantId;
 const manifest = parseContentUnderstandingManifest(original);
@@ -32,7 +33,7 @@ const readyPlan = { planVersion: 1, tenantId, bundleKey: manifest.bundleKey, def
   capabilityFingerprint: digest, modelBindingFingerprint: digest, expectedVersions: { runtimeConfiguration: null, publicationVersion: 0 },
   actions: [{ kind: 'leaf', logicalKey: manifest.documentTypes[0].code }], ready: true, blockers: [] };
 function operation(status = 'pending', extra = {}) {
-  return { operationId: 'cu-original-operation', tenantId, bundleKey: manifest.bundleKey, definitionDigest: digest,
+  return { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', tenantId, bundleKey: manifest.bundleKey, definitionDigest: digest,
     status, phase: status === 'succeeded' ? 'verified' : 'materializing', steps: [], nextAction: status === 'succeeded' ? null : 'status',
     ...(status === 'succeeded' ? { currentReady: true } : {}), ...extra };
 }
@@ -61,7 +62,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       if (url.pathname === `${base}/capabilities`) return Response.json(readyCapabilities);
       if (url.pathname === `${base}/configurations/plan`) return Response.json(readyPlan);
       if (url.pathname === `${base}/configurations/apply`) return Response.json(operation('succeeded'));
-      if (url.pathname === `${base}/configurations/operations/cu-original-operation`) return Response.json(operation('succeeded'));
+      if (url.pathname === `${base}/configurations/operations/aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa`) return Response.json(operation('succeeded'));
       return Response.json({ error: { code: 'NOT_FOUND', message: 'Fixture route not found' } }, { status: 404 });
     };
     fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -79,6 +80,179 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   }
   const scoped = ['--tenant-id', tenantId];
   function applyArgs(extra: string[] = []) { return ['apply', '--file', file, '--plan', planPath, ...scoped, ...extra]; }
+  async function writeAdvancedManifest(config: Record<string, unknown>) {
+    const input = structuredClone(original);
+    input.documentTypes[0].contentUnderstanding.analyzerDefinition.config = { ...input.documentTypes[0].contentUnderstanding.analyzerDefinition.config, ...config };
+    const bytes = JSON.stringify(input);
+    await writeFile(file, bytes);
+    const saved = JSON.parse(await readFile(planPath, 'utf8'));
+    saved.binding.manifestSha256 = createHash('sha256').update(bytes).digest('hex');
+    await writeFile(planPath, JSON.stringify(saved));
+  }
+
+  test.each(['typed_fields', 'flatClassifiers'].flatMap(feature => [false, undefined, 'true'].map(value => ({ feature, value }))))(
+    'ready capability without exact $feature=$value is not a typed mode proof', async ({ feature, value }) => {
+      routes = () => Response.json({ ...readyCapabilities, features: { ...readyCapabilities.features, [feature]: value } });
+      expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: false, error: { code: 'CU_INVALID_RESPONSE' } });
+    });
+  test('disabled capabilities may truthfully expose unavailable feature flags', async () => {
+    routes = () => Response.json({ ...readyCapabilities, enabled: false, ready: false, features: {},
+      modelBindingFingerprint: null, blockers: ['CU_MODE_DISABLED'] });
+    expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: { enabled: false, ready: false, features: {} } });
+  });
+  test.each([['enableFormula', true], ['enableFigureAnalysis', true], ['enableFigureDescription', true],
+    ['tableFormat', 'markdown'], ['chartFormat', 'markdown'], ['annotationFormat', 'none']])(
+    'advanced %s is blocked before initial or explicit-resume writes without workspace approval', async (key, value) => {
+      await writeAdvancedManifest({ [String(key)]: value });
+      for (const args of [applyArgs(), applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])]) {
+        const result = await cu(args);
+        expect(result).toMatchObject({ ok: false, error: { code: 'CU_ADVANCED_CONFIGURATION_NOT_QUALIFIED' } });
+        expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+      }
+    });
+  test('advanced configuration approval is checked again before acknowledged wait continuation', async () => {
+    await writeAdvancedManifest({ enableFormula: true });
+    let capabilityReads = 0;
+    routes = url => url.pathname.endsWith('/capabilities')
+      ? Response.json({ ...readyCapabilities, features: { ...readyCapabilities.features, advancedDocumentConfig: ++capabilityReads === 1 } })
+      : Response.json(operation('pending', { nextAction: 'apply' }));
+    expect(await cu(applyArgs(['--wait', '--timeout', '5']))).toMatchObject({ ok: false,
+      error: { code: 'CU_ADVANCED_CONFIGURATION_NOT_QUALIFIED', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+    expect(calls.filter(call => call.init.method === 'POST')).toHaveLength(1);
+  });
+  test('approved advanced settings are forwarded unchanged and false advanced switches need no approval', async () => {
+    await writeAdvancedManifest({ enableFormula: true, enableFigureAnalysis: true, enableFigureDescription: true,
+      tableFormat: 'html', chartFormat: 'chartJs', annotationFormat: 'markdown' });
+    routes = url => url.pathname.endsWith('/capabilities')
+      ? Response.json({ ...readyCapabilities, features: { ...readyCapabilities.features, advancedDocumentConfig: true } })
+      : Response.json(operation('succeeded'));
+    expect(await cu(applyArgs())).toMatchObject({ ok: true });
+    expect(JSON.parse(calls.find(call => call.init.method === 'POST')!.init.body as string).manifest.documentTypes[0]
+      .contentUnderstanding.analyzerDefinition.config).toMatchObject({ enableFormula: true, tableFormat: 'html', chartFormat: 'chartJs' });
+    await writeAdvancedManifest({ enableFormula: false, enableFigureAnalysis: false, enableFigureDescription: false });
+    routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities) : Response.json(operation('succeeded'));
+    expect(await cu(applyArgs())).toMatchObject({ ok: true });
+  });
+  test.each(['apply', 'status'])('nested %s API errors preserve the platform code, message and original operation', async command => {
+    routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities)
+      : Response.json({ error: { code: 'CU_OPERATION_BUSY', message: 'The original operation has an active lease' },
+        operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, { status: 409 });
+    const args = command === 'apply' ? applyArgs() : ['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped];
+    expect(await cu(args)).toMatchObject({ ok: false, status: 409, error: { code: 'CU_OPERATION_BUSY',
+      message: 'The original operation has an active lease', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+  });
+  test.each([{ code: { unsafe: true }, message: { unsafe: true } }, { code: 'unsafe code', message: 'x'.repeat(4097) }])(
+    'malformed nested errors use the existing safe platform fallback: %j', async error => {
+      routes = () => Response.json({ error, message: 'Safe top-level error' }, { status: 409 });
+      expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]))
+        .toMatchObject({ ok: false, error: { code: 'CU_REQUEST_FAILED', message: 'Safe top-level error' } });
+    });
+  test('validation errors do not expose nested authored strings as trusted platform messages', async () => {
+    routes = () => Response.json({ error: { code: 'CU_OPERATION_BUSY', message: 'synthetic-validation-secret' },
+      detail: [{ loc: ['body', 'manifest'], msg: 'synthetic-validation-secret', type: 'value_error' }] }, { status: 422 });
+    const result = await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'VALIDATION_ERROR' } });
+    expect(JSON.stringify(result)).not.toContain('synthetic-validation-secret');
+  });
+  test.each(['apply', 'status'])('JWT-shaped %s operation identities are refused before profile/auth or redaction', command => {
+    const invalid = jwtShapedIdentifier;
+    const args = command === 'apply' ? applyArgs(['--operation-id', invalid]) : ['status', '--operation-id', invalid, ...scoped];
+    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', 'missing-owned-profile',
+      'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
+      env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
+    const output = result.stdout.trim() || result.stderr.trim();
+    expect(result.status).toBe(1); expect(JSON.parse(output)).toMatchObject({ error: { code: 'CU_OPERATION_INVALID' } });
+    expect(output).not.toContain(invalid); expect(output).not.toContain('[redacted-jwt]');
+  });
+  test('actual JSON output retains canonical operation UUIDs while unrelated JWT data is redacted', () => {
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {json} from ${JSON.stringify(new URL('../../dist/lib/output.js', import.meta.url).href)};
+      json({operationId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',note:${JSON.stringify(jwtShapedIdentifier)}});`], { encoding: 'utf8', timeout: 10000 });
+    expect(result.status).toBe(0); expect(JSON.parse(result.stdout)).toEqual({ operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', note: '[redacted-jwt]' });
+  });
+  test.each(['job-alias', 'record-alias', 'nested-error', 'feature-gate'])(
+    'compiled CLI enforces the observed %s contract through actual profile/context/API/output', async scenario => {
+      const actualGateway = 'https://api.au.myenterprise.ai/public';
+      const observer = join(directory, 'observe-compiled-contract.mjs'), networkLog = join(directory, 'compiled-contract-network.jsonl');
+      const membership = { id: tenantId, slug: 'owned-fixture', displayName: 'Owned fixture', roles: ['tenant-admin'],
+        isActive: true, homeRegion: 'au', hqCountryCode: 'AU', parentId: null };
+      const body = scenario === 'job-alias' ? { job_id: 'job-one', tenant_id: tenantId, status: 'completed', documents: [{ document_id: 'doc-one' }] }
+        : scenario === 'record-alias' ? { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one',
+          results: { field: { value: ['one', { nested: true }], confidence: null } } }
+          : scenario === 'nested-error' ? { error: { code: 'CU_OPERATION_BUSY', message: 'The original operation has an active lease' } }
+            : { ...readyCapabilities, features: { ...readyCapabilities.features, typed_fields: false } };
+      await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
+      await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+      await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${actualGateway}\n`);
+      await writeFile(observer, `import {appendFileSync} from 'node:fs';
+        globalThis.fetch = async(input, init={}) => {
+          const url = new URL(String(input));
+          appendFileSync(${JSON.stringify(networkLog)},JSON.stringify({method:init.method||'GET',path:url.pathname,tenant:new Headers(init.headers).get('X-Tenant-Id')})+'\\n');
+          if(url.pathname==='/public/v4/identity/tenants') return Response.json({tenants:[${JSON.stringify(membership)}]});
+          if(url.pathname.startsWith('/public/v4/data/documents/')) return Response.json(${JSON.stringify(body)}, {status:${scenario === 'nested-error' ? 409 : 200}});
+          throw new Error('Unexpected compiled contract dispatch');
+        };`, { mode: 0o600 });
+      const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '<compiled-contract-token>',
+        EAI_PROFILE: '', BASE_URL_PUBLIC_API: actualGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
+      const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import {storeTokens} from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
+        import {DEFAULT_PROD_AUTH_TENANT_ID,DEFAULT_PROD_AUTH_TENANT_NAME,DEFAULT_PROD_AUTH_CLIENT_ID} from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
+        await storeTokens({accessToken:'<compiled-contract-token>',refreshToken:'<compiled-contract-refresh>',expiresAt:Date.now()+3600000,
+          tenantId:DEFAULT_PROD_AUTH_TENANT_ID,tenantName:DEFAULT_PROD_AUTH_TENANT_NAME,clientId:DEFAULT_PROD_AUTH_CLIENT_ID,
+          oid:'compiled-contract-actor',upn:'owned@example.invalid',activeTenantId:${JSON.stringify(tenantId)},publicApiUrl:${JSON.stringify(actualGateway)}});`],
+      { encoding: 'utf8', timeout: 5000, env: childEnv });
+      expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+      const args = scenario === 'job-alias' ? ['docs', 'job', 'job-one']
+        : scenario === 'record-alias' ? ['docs', 'get', 'doc-one', '--job-id', 'job-one']
+          : scenario === 'nested-error' ? ['content-understanding', 'status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']
+            : ['content-understanding', 'capabilities'];
+      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, ...args, ...scoped, '--format', 'json'],
+        { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
+      const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
+      expect(result.signal).toBeNull();
+      if (scenario === 'job-alias' || scenario === 'record-alias') { expect(result.status, JSON.stringify(payload)).toBe(0); expect(payload).toMatchObject({ ok: true, body }); }
+      else { expect(result.status).toBe(1); expect(payload, JSON.stringify(payload)).toMatchObject({ error: { code: scenario === 'nested-error' ? 'CU_OPERATION_BUSY' : 'CU_INVALID_RESPONSE' } }); }
+      const observations = (await readFile(networkLog, 'utf8')).trim().split('\n').map(row => JSON.parse(row));
+      expect(observations.some(row => row.path.startsWith('/public/v4/data/documents/') && row.tenant === tenantId)).toBe(true);
+      expect(observations.every(row => row.method === 'GET')).toBe(true); expect(output).not.toContain('compiled-contract-token');
+    });
+
+  test.each(['snake', 'matching aliases'])('document job accepts %s identities and preserves its original body', async shape => {
+    const body = { job_id: 'job-one', tenant_id: tenantId, status: 'completed', documents: [{ document_id: 'doc-one', custom: { retained: true } }],
+      ...(shape === 'matching aliases' ? { jobId: 'job-one', tenantId } : {}) };
+    if (shape === 'matching aliases') Object.assign(body.documents[0], { documentId: 'doc-one' });
+    routes = () => Response.json(body);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, body });
+    expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+  });
+  test.each(['job', 'tenant', 'document'])('document job rejects conflicting %s aliases', async kind => {
+    const body = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one' }],
+      ...(kind === 'job' ? { job_id: 'foreign-job' } : {}), ...(kind === 'tenant' ? { tenant_id: 'foreign-tenant' } : {}) };
+    if (kind === 'document') Object.assign(body.documents[0], { document_id: 'foreign-document' });
+    routes = () => Response.json(body);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_JOB_MISMATCH' } });
+  });
+  test.each(['snake', 'matching aliases'])('document record accepts %s identities and preserves recursive results', async shape => {
+    const body = { document_id: 'doc-one', storage_target: 'resourceapi', tenant_id: tenantId, job_id: 'job-one',
+      result: { field: { value: ['one', { nested: true }], confidence: null } },
+      ...(shape === 'matching aliases' ? { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: 'job-one' } : {}) };
+    routes = () => Response.json(body);
+    expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: true, body });
+  });
+  test.each(['document', 'storage', 'job'])('document record rejects conflicting %s aliases even without a job selector', async kind => {
+    routes = () => Response.json({ documentId: 'doc-one', storageTarget: 'resourceapi', tenantId,
+      ...(kind === 'document' ? { document_id: 'foreign-document' } : {}),
+      ...(kind === 'storage' ? { storage_target: 'legacy' } : {}),
+      ...(kind === 'job' ? { jobId: 'job-one', job_id: 'foreign-job' } : {}) });
+    expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
+  });
+  test('nullable optional job identity remains untracked and cannot satisfy an explicit job selector', async () => {
+    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: null, job_id: null };
+    routes = () => Response.json(body);
+    expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: true, body });
+    expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
+    routes = () => Response.json({ ...body, job_id: 'job-one' });
+    expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
+  });
 
   test('schema and validate work locally without resolving auth or touching the network', async () => {
     expect(await cu(['schema'])).toMatchObject({ ok: true, body: { $schema: 'https://json-schema.org/draft/2020-12/schema', properties: { kind: { const: 'eai.content-understanding' } } } });
@@ -146,10 +320,10 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test.each(['apply', 'status'])('succeeded %s requires exactly true current readiness after historical completion', async command => {
     for (const currentReady of [true, false, undefined, 'true']) {
       routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities) : Response.json(operation('succeeded', { currentReady }));
-      const result = await cu(command === 'apply' ? applyArgs() : ['status', '--operation-id', 'cu-original-operation', ...scoped]);
+      const result = await cu(command === 'apply' ? applyArgs() : ['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
       if (currentReady === true) expect(result).toMatchObject({ ok: true, status: 200, body: { currentReady: true } });
-      else expect(result).toMatchObject({ ok: false, body: { operationId: 'cu-original-operation', status: 'succeeded' },
-        error: { code: 'CU_CURRENT_READINESS_UNVERIFIED', operationId: 'cu-original-operation' } });
+      else expect(result).toMatchObject({ ok: false, body: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status: 'succeeded' },
+        error: { code: 'CU_CURRENT_READINESS_UNVERIFIED', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
     }
   });
   test('whitespace-only original file drift refuses the saved plan before auth and POST', async () => {
@@ -182,8 +356,8 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
         enabled: false, ready: false, modelBindingFingerprint: null, blockers: [{ code: 'CU_MODE_DISABLED' }] });
       if (stage === 'capability-http') routes = () => Response.json({ error: 'CU_AUTHORIZATION_REQUIRED', message: 'Tenant admin access required' }, { status: 403 });
       if (stage === 'capability-transport') routes = () => { throw new TypeError('Controlled capability read failure'); };
-      const result = await cu(applyArgs(['--operation-id', 'cu-original-operation']));
-      expect(result).toMatchObject({ ok: false, error: { operationId: 'cu-original-operation' } });
+      const result = await cu(applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']));
+      expect(result).toMatchObject({ ok: false, error: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
       expect(result.error).toMatchObject({ code: stage === 'gateway' ? 'CU_PLAN_MISMATCH'
         : ['saved-readiness', 'capability-readiness'].includes(stage) ? 'CU_NOT_READY'
           : stage === 'capability-http' ? 'CU_AUTHORIZATION_REQUIRED' : 'CU_REQUEST_FAILED' });
@@ -194,11 +368,11 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     });
   test('status context failure retains only its valid supplied operation identity without observing or creating it', async () => {
     vi.mocked(resolveCommandContext).mockRejectedValueOnce(new Error('Sign in is required'));
-    const result = await cu(['status', '--operation-id', 'cu-original-operation', ...scoped]);
-    expect(result).toMatchObject({ ok: false, error: { code: 'CU_REQUEST_FAILED', operationId: 'cu-original-operation' } });
+    const result = await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'CU_REQUEST_FAILED', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
     expect(result).not.toHaveProperty('body'); expect(calls).toHaveLength(0); expect(process.exitCode).toBe(1);
   });
-  test.each(['apply', 'status'].flatMap(command => ['../foreign-operation', 'cu-original-operation\n'].map(id => ({ command, id }))))('invalid $command operation identity is rejected without echoing it or resolving auth: $id', async ({ command, id }) => {
+  test.each(['apply', 'status'].flatMap(command => ['../foreign-operation', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa\n', 'AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA', '00000000-0000-0000-0000-000000000000'].map(id => ({ command, id }))))('invalid $command operation identity is rejected without echoing it or resolving auth: $id', async ({ command, id }) => {
     const args = command === 'apply' ? applyArgs(['--operation-id', id]) : ['status', '--operation-id', id, ...scoped];
     const result = await cu(args);
     expect(result).toMatchObject({ ok: false, error: { code: 'CU_OPERATION_INVALID' } });
@@ -209,17 +383,18 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     routes = () => Response.json({ ...readyPlan, planDigest: readyPlan.planDigest + '\n' });
     expect(await cu(['plan', '--file', file, ...scoped])).toMatchObject({ ok: false, error: { code: 'CU_PLAN_MISMATCH' } });
   });
-  test.each(['apply', 'status'].flatMap(command => ['profile', 'project', 'membership'].map(stage => ({ command, stage }))))(
+  test.each(['apply', 'status'].flatMap(command => ['profile', 'project', 'membership', 'missing-login'].map(stage => ({ command, stage }))))(
     'compiled $command retains the supplied identity through actual $stage preflight failure', async ({ command, stage }) => {
       const actualGateway = 'https://api.au.myenterprise.ai/public';
       const observer = join(directory, 'observe-preflight-fetch.mjs'), networkLog = join(directory, 'preflight-network.log');
       await writeFile(observer, `import { appendFileSync } from 'node:fs';\nglobalThis.fetch = async (input) => {\n  const path = new URL(String(input)).pathname;\n  appendFileSync(${JSON.stringify(networkLog)}, path + '\\n');\n  if (path === '/public/v4/identity/tenants') return new Response('{}', { status: 401 });\n  throw new Error('Unexpected preflight dispatch');\n};\n`, { mode: 0o600 });
       const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '<owned-preflight-token>', EAI_PROFILE: '',
         BASE_URL_PUBLIC_API: actualGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
-      if (stage === 'membership') {
+      if (stage === 'membership' || stage === 'missing-login') {
         await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
         await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
         await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${actualGateway}\n`);
+        if (stage === 'membership') {
         const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
           import { storeTokens } from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
           import { DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
@@ -228,15 +403,16 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
             oid: 'owned-preflight-actor', upn: 'owned@example.invalid', activeTenantId: ${JSON.stringify(tenantId)}, publicApiUrl: ${JSON.stringify(actualGateway)} });
         `], { encoding: 'utf8', timeout: 5000, env: childEnv });
         expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+        }
       }
-      const args = command === 'apply' ? applyArgs(['--operation-id', 'cu-original-operation']) : ['status', '--operation-id', 'cu-original-operation', ...scoped];
+      const args = command === 'apply' ? applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']) : ['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped];
       const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname,
         ...(stage === 'profile' ? ['--profile', 'missing-owned-profile'] : []), 'content-understanding', ...args, '--format', 'json'],
         { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
       expect(result.status).toBe(1); expect(result.signal).toBeNull();
       const output = result.stdout.trim() || result.stderr.trim();
       const payload = output.startsWith('{') ? JSON.parse(output) : null;
-      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? 'E001' : 'E102', operationId: 'cu-original-operation' } });
+      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? 'E001' : stage === 'missing-login' ? 'E101' : 'E102', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
       expect(payload).not.toHaveProperty('body');
       const dispatched = existsSync(networkLog) ? (await readFile(networkLog, 'utf8')).trim().split('\n') : [];
       expect(dispatched).toEqual(stage === 'membership' ? ['/public/v4/identity/tenants'] : []);
@@ -258,58 +434,58 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   });
   test('explicit original apply recovery returns the same durable operation after activation changed versions', async () => {
     await cu(applyArgs()); await cu(applyArgs());
-    expect(results.map(result => (result.body as Record<string, unknown>).operationId)).toEqual(['cu-original-operation', 'cu-original-operation']);
+    expect(results.map(result => (result.body as Record<string, unknown>).operationId)).toEqual(['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
     expect(calls.filter(call => call.init.method === 'POST').map(call => JSON.parse(call.init.body as string))).toEqual([
       { tenantId, manifest, planDigest: readyPlan.planDigest, expectedVersions: readyPlan.expectedVersions },
       { tenantId, manifest, planDigest: readyPlan.planDigest, expectedVersions: readyPlan.expectedVersions },
     ]);
   });
-  test.each([{ tenantId: 'foreign' }, { bundleKey: 'foreign' }, { definitionDigest: 'c'.repeat(64) }, { operationId: 'replacement' }])
+  test.each([{ tenantId: 'foreign' }, { bundleKey: 'foreign' }, { definitionDigest: 'c'.repeat(64) }, { operationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' }])
     ('known operation resume rejects mismatched immutable scope %j', async extra => {
       routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities) : Response.json(operation('succeeded', extra));
-      expect(await cu(applyArgs(['--operation-id', 'cu-original-operation']))).toMatchObject({ ok: false, error: { code: 'CU_OPERATION_MISMATCH', operationId: 'cu-original-operation' } });
-      expect(JSON.parse(calls[1].init.body as string).operationId).toBe('cu-original-operation');
+      expect(await cu(applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']))).toMatchObject({ ok: false, error: { code: 'CU_OPERATION_MISMATCH', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+      expect(JSON.parse(calls[1].init.body as string).operationId).toBe('aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa');
     });
   test('a malformed success receipt still retains the original known apply operation ID', async () => {
     routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities) : Response.json(operation('succeeded', { operationId: '../foreign' }));
-    expect(await cu(applyArgs(['--operation-id', 'cu-original-operation']))).toMatchObject({ ok: false,
-      error: { code: 'CU_OPERATION_INVALID', operationId: 'cu-original-operation' } });
+    expect(await cu(applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']))).toMatchObject({ ok: false,
+      error: { code: 'CU_OPERATION_INVALID', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   });
   test.each(['failed', 'unknown', 'partial'])('terminal %s is nonzero and retains operation and step observations', async status => {
     routes = () => Response.json(operation(status, { steps: [{ logicalKey: 'Invoice', status }] }));
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped])).toMatchObject({ ok: false, body: { operationId: 'cu-original-operation', status, steps: [{ logicalKey: 'Invoice', status }] }, error: { code: `CU_OPERATION_${status.toUpperCase()}` } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped])).toMatchObject({ ok: false, body: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status, steps: [{ logicalKey: 'Invoice', status }] }, error: { code: `CU_OPERATION_${status.toUpperCase()}` } });
     expect(process.exitCode).toBe(1);
   });
   test('pending status is acceptance and never causes apply, including an expired wait', async () => {
     routes = () => Response.json(operation());
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped])).toMatchObject({ ok: true, status: 202, body: { status: 'pending' } });
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped, '--wait', '--timeout', '1'])).toMatchObject({ ok: false, body: { operationId: 'cu-original-operation' }, error: { code: 'CU_OPERATION_PENDING' } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped])).toMatchObject({ ok: true, status: 202, body: { status: 'pending' } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped, '--wait', '--timeout', '1'])).toMatchObject({ ok: false, body: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, error: { code: 'CU_OPERATION_PENDING' } });
     expect(calls.every(call => call.init.method === 'GET')).toBe(true);
   });
   test('status --wait explicitly asks for apply when provider work is ready and never mutates', async () => {
     routes = () => Response.json(operation('running', { nextAction: 'apply' }));
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped, '--wait'])).toMatchObject({ ok: false, body: { nextAction: 'apply' }, error: { code: 'CU_REQUIRES_APPLY', operationId: 'cu-original-operation' } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped, '--wait'])).toMatchObject({ ok: false, body: { nextAction: 'apply' }, error: { code: 'CU_REQUIRES_APPLY', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
     expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
   });
   test('a lost poll retains the acknowledged operation and latest observations without replacement work', async () => {
     let reads = 0;
     routes = () => { if (++reads === 1) return Response.json(operation()); throw new TypeError('controlled read failure'); };
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped, '--wait', '--timeout', '5']))
-      .toMatchObject({ ok: false, body: { operationId: 'cu-original-operation', status: 'pending' }, error: { code: 'CU_OPERATION_READ_FAILED', operationId: 'cu-original-operation' } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped, '--wait', '--timeout', '5']))
+      .toMatchObject({ ok: false, body: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', status: 'pending' }, error: { code: 'CU_OPERATION_READ_FAILED', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
     expect(calls.every(call => call.init.method === 'GET')).toBe(true);
   });
   test('even an initial status read failure retains its explicit known operation ID', async () => {
     routes = () => Response.json({ error: 'CU_OPERATION_NOT_FOUND', message: 'Original operation is unavailable' }, { status: 404 });
-    expect(await cu(['status', '--operation-id', 'cu-original-operation', ...scoped]))
-      .toMatchObject({ ok: false, status: 404, error: { code: 'CU_OPERATION_NOT_FOUND', operationId: 'cu-original-operation' } });
+    expect(await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]))
+      .toMatchObject({ ok: false, status: 404, error: { code: 'CU_OPERATION_NOT_FOUND', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
   });
   test('apply --wait resumes only the known original operation when nextAction explicitly requires apply', async () => {
     let applies = 0;
     routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities)
       : url.pathname.endsWith('/apply') ? Response.json(++applies === 1 ? operation('running', { nextAction: 'apply' }) : operation('succeeded'))
       : Response.json(operation('succeeded'));
-    expect(await cu(applyArgs(['--wait', '--timeout', '5']))).toMatchObject({ ok: true, status: 200, body: { operationId: 'cu-original-operation' } });
-    expect(calls.filter(call => call.init.method === 'POST').map(call => JSON.parse(call.init.body as string).operationId)).toEqual([undefined, 'cu-original-operation']);
+    expect(await cu(applyArgs(['--wait', '--timeout', '5']))).toMatchObject({ ok: true, status: 200, body: { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+    expect(calls.filter(call => call.init.method === 'POST').map(call => JSON.parse(call.init.body as string).operationId)).toEqual([undefined, 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
   });
   test.each(['0', '1801', '-1', '1.5', 'abc'])('invalid wait %s refuses before context or writes', async timeout => {
     expect(await cu(applyArgs(['--timeout', timeout]))).toMatchObject({ ok: false, error: { code: 'INVALID_WAIT_TIMEOUT' } });
@@ -323,8 +499,8 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   });
   test('a validated owned reservation ID survives a later initial-apply HTTP error without replay', async () => {
     routes = url => url.pathname.endsWith('/capabilities') ? Response.json(readyCapabilities)
-      : Response.json({ error: 'CU_OPERATION_BUSY', message: 'Original operation is leased', operationId: 'cu-original-operation' }, { status: 409 });
-    expect(await cu(applyArgs(['--wait']))).toMatchObject({ ok: false, status: 409, error: { code: 'CU_OPERATION_BUSY', operationId: 'cu-original-operation' } });
+      : Response.json({ error: 'CU_OPERATION_BUSY', message: 'Original operation is leased', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' }, { status: 409 });
+    expect(await cu(applyArgs(['--wait']))).toMatchObject({ ok: false, status: 409, error: { code: 'CU_OPERATION_BUSY', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
     expect(calls.filter(call => call.init.method === 'POST')).toHaveLength(1);
     expect(calls.filter(call => call.init.method === 'GET')).toHaveLength(1);
   });
@@ -367,7 +543,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test('persisted record reads preserve recursive values and nullable evidence/provenance', async () => {
     const record = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, jobId: 'job-one', processingStatus: 'completed',
       analysis: { fields: { LineItems: [{ Quantity: { value: 2, confidence: null, source: [{ pageNumber: 1 }] }, UnitPrice: { value: 3.4, confidence: 0.91 } }], FollowUp: { value: ['Ask reviewer'], confidence: null } },
-        warnings: ['Verify generated suggestion'], analyzerId: 'opaque-provider-id', definitionDigest: digest, operationId: 'cu-original-operation' } };
+        warnings: ['Verify generated suggestion'], analyzerId: 'opaque-provider-id', definitionDigest: digest, operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } };
     routes = () => Response.json(record);
     expect(await docs(['get', 'doc-one', '--job-id', 'job-one', '--storage-target', 'resourceapi', ...scoped])).toMatchObject({ ok: true, body: record });
     expect(calls[0].url.pathname).toBe('/public/v4/data/documents/records/doc-one');
