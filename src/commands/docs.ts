@@ -118,7 +118,8 @@ function aliasedIdentifier(value: Record<string, unknown>, camel: string, snake:
   return supplied[0] as string;
 }
 function parseJob(value: Record<string, unknown>, jobId: string, tenantId: string): Record<string, unknown> {
-  if (aliasedIdentifier(value, 'jobId', 'job_id') !== jobId || aliasedIdentifier(value, 'tenantId', 'tenant_id') !== tenantId || typeof value.status !== 'string'
+  const observedTenant = aliasedIdentifier(value, 'tenantId', 'tenant_id');
+  if (aliasedIdentifier(value, 'jobId', 'job_id') !== jobId || (observedTenant !== undefined && observedTenant !== tenantId) || typeof value.status !== 'string'
     || !['queued', 'processing', 'completed', 'completed_with_errors', 'failed'].includes(value.status)
     || !Array.isArray(value.documents) || value.documents.some(doc => !isRecord(doc) || typeof aliasedIdentifier(doc, 'documentId', 'document_id') !== 'string')) {
     throw new ContentUnderstandingError('DOC_JOB_MISMATCH', 'Document job does not match the requested job and workspace.');
@@ -173,7 +174,7 @@ docsCommand.command('get <documentId>').description('Read the persisted document
       if (aliasedIdentifier(body, 'documentId', 'document_id') !== documentId || aliasedIdentifier(body, 'storageTarget', 'storage_target') !== 'resourceapi'
         || (observedTenant !== undefined && observedTenant !== context.tenantId)
         || (body.tenant !== undefined && body.tenant !== context.tenantId)
-        || (observedJob === null && !untrackedJob) || (options.jobId && observedJob !== undefined && observedJob !== options.jobId)) {
+        || (observedJob === null && !untrackedJob) || (options.jobId && observedJob !== options.jobId)) {
         throw new ContentUnderstandingError('DOC_RECORD_MISMATCH', 'Document result does not match the requested document, job and workspace.');
       }
       printRead(options, { ok: true, status: response.status, request: { method: 'GET', path,

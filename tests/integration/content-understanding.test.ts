@@ -269,6 +269,20 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, body });
     expect(calls.every(call => call.init.method === 'GET')).toBe(true);
   });
+  test('document job permits absent tenant metadata under the actual selected request scope', async () => {
+    const body = { jobId: 'job-one', status: 'completed', documents: [{ documentId: 'doc-one' }], summary: { retained: true } };
+    routes = () => Response.json(body);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, body, request: { tenantId, publicApiUrl: gateway } });
+    expect(calls).toHaveLength(1);
+    expect(new Headers(calls[0].init.headers).get('X-Tenant-Id')).toBe(tenantId);
+    expect(calls[0].init.method).toBe('GET');
+  });
+  test.each([{ tenantId: null }, { tenantId: '' }, { tenantId: 42 }, { tenant_id: null }, { tenant_id: '' },
+    { tenant_id: 42 }, { tenant_id: 'foreign-tenant' }, { tenantId, tenant_id: 'foreign-tenant' }])(
+    'document job still rejects supplied malformed or foreign tenant metadata %j', async extra => {
+      routes = () => Response.json({ jobId: 'job-one', status: 'completed', documents: [{ documentId: 'doc-one' }], ...extra });
+      expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_JOB_MISMATCH' } });
+    });
   test.each(['job', 'tenant', 'document'])('document job rejects conflicting %s aliases', async kind => {
     const body = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one' }],
       ...(kind === 'job' ? { job_id: 'foreign-job' } : {}), ...(kind === 'tenant' ? { tenant_id: 'foreign-tenant' } : {}) };
@@ -297,6 +311,20 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
     routes = () => Response.json({ ...body, job_id: 'job-one' });
     expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_RECORD_MISMATCH' } });
+  });
+  test.each([{}, { jobId: null }, { job_id: null }, { jobId: '' }, { job_id: 42 }, { jobId: 'foreign-job' }])(
+    'document record requires observed identity for an explicit job selector %j', async extra => {
+      routes = () => Response.json({ documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, ...extra });
+      expect(await docs(['get', 'doc-one', '--job-id', 'job-one', ...scoped])).toMatchObject({ ok: false,
+        documentId: 'doc-one', jobId: 'job-one', error: { code: 'DOC_RECORD_MISMATCH' } });
+      expect(calls[0].url.searchParams.get('job_id')).toBe('job-one');
+      expect(calls[0].init.method).toBe('GET');
+    });
+  test('document record with absent job metadata remains valid for an unfiltered read', async () => {
+    const body = { documentId: 'doc-one', storageTarget: 'resourceapi', tenantId, analysis: { retained: ['full', 'body'] } };
+    routes = () => Response.json(body);
+    expect(await docs(['get', 'doc-one', ...scoped])).toMatchObject({ ok: true, body });
+    expect(calls[0].url.searchParams.has('job_id')).toBe(false);
   });
 
   test('schema and validate work locally without resolving auth or touching the network', async () => {
