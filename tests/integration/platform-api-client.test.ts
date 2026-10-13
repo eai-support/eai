@@ -95,6 +95,22 @@ describe('compiled managed deadline rejection handling', () => {
 })
 
 describe('compiled private QA transport pipe', () => {
+  test('spawnSync drains the actual private pipe while its child emits beyond a pipe capacity', () => {
+    const script = `
+      import { recordQaTransportResponse } from ${JSON.stringify(new URL('../../dist/lib/cli-qa-transport.js', import.meta.url).href)};
+      for (let index = 0; index < 6000; index++) recordQaTransportResponse({ publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+        tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response' }, 'GET', '/public/v4/data/resources/11111111-1111-4111-8111-111111111111/project', true);
+      process.stdout.write(JSON.stringify({ emitted: 6000 }));
+    `
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+      env: { ...process.env, EAI_CLI_QA_TRANSPORT_FD: '3', EAI_CLI_QA_EXECUTION_ID: '22222222-2222-4222-8222-222222222222' },
+    })
+    expect(result.error).toBeUndefined(); expect(result.signal).toBeNull(); expect(result.status).toBe(0)
+    expect(result.stderr).toBe(''); expect(JSON.parse(String(result.stdout))).toEqual({ emitted: 6000 })
+    const pipe = String(result.output[3]); expect(Buffer.byteLength(pipe)).toBeGreaterThan(1024 * 1024)
+    expect(pipe.trim().split('\n')).toHaveLength(6000)
+  })
   test.each(['enabled', 'absent', 'invalid-uuid', 'regular-file', 'redirected'])(
     'captures only exact response scope for %s without changing normal API output', async mode => {
       const home = await mkdtemp(join(tmpdir(), 'eai-qa-pipe-process-'))
