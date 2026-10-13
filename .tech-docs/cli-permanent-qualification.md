@@ -276,7 +276,7 @@ matching top-level header cannot replace these observations. Each selected
 command and guard also carries the producer's same observed invocation sequence;
 a guard from another invocation cannot prove that selected step. Assertion-name
 lists must be arrays. This selected lifecycle proof does not implement
-the complete per-command producer-to-audit mapping tracked in issue #384.
+the command/option qualification contract. The producer now emits UUID-bound assertion records; selected lifecycle proof still cannot qualify unexecuted commands or options.
 
 Intentionally unsupported capability classification stays separate from observed
 execution status. Failed, blocked and incomplete attempts remain visible;
@@ -370,12 +370,23 @@ remains reconcilable but cannot certify the role case.
 Every allow/deny case names its scoped row; flags without those receipts
 cannot certify authorization. Candidate/deployment read failures after output
 validation leave a private blocked summary before any runtime mutation.
-Raw local/live smoke summaries prove selected command journeys and deliberately
-omit full per-command completion evidence. The audit preserves their observed
-success counts while classifying those partial observations as `incomplete`.
-Automatic producer-to-audit enrichment remains a follow-up: it must associate
-real named assertions and full command/option coverage rather than manufacture
-`coverageComplete: true` from a successful subprocess exit.
+Local/live producers allocate a fresh execution UUID before each actual
+invocation and retain structured assertions bound to that execution. `commands`,
+`aliases` and `unsupported` contain their respective actual CLI invocations;
+`executions` preserves the full ordered lifecycle ledger, including npm builds.
+An alias does not also create a canonical command receipt. Each semantic check
+keeps its observed outcome, scope and invocation sequence. JSON-format checks
+name `--format`; rotation evidence names `--rotate-secret`. Other option checks
+require their own observed semantic assertions.
+
+Only a verified semantic contract can set command completion. Exit zero, JSON
+shape, read-only preservation, global preflight success and later passing
+invocations cannot complete an unchecked contract. Missing unsupported
+authentication/network observations remain incomplete; the producer does not
+invent them. Controlled producer-to-audit tests verify this mapping, and a
+normal offline smoke verifies actual installed command assertions. Selected
+local checks do not prove authentication, deployed backend parity,
+normal-role authorization, provider readiness or ten full lifecycle cycles.
 The local Docker lifecycle harness also requires its single newly visible
 matching-slug child to carry the exact requested `parentId` before selection,
 storage provisioning or cleanup. Missing or mismatched parent metadata fails

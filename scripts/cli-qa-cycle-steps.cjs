@@ -13,24 +13,29 @@ const STEPS = [
 const SCHEMA = 'eai.cli-cycle-step-evidence.v1';
 function record(value) { return value && typeof value === 'object' && !Array.isArray(value); }
 function assertionNames(row, name) {
-  return Array.isArray(row.assertions) && row.assertions.every(value => typeof value === 'string') && row.assertions.includes(name);
+  if (!Array.isArray(row.assertions)) return false;
+  if (row.assertions.every(value => typeof value === 'string')) return row.assertions.includes(name);
+  return row.assertions.every(value => record(value) && value.command === row.command && value.executionId === row.executionId
+    && value.executionSequence === row.executionSequence && ['passed', 'failed', 'blocked', 'incomplete'].includes(value.status))
+    && row.assertions.some(value => value.name === name);
 }
 function executionScope(row, context, tenantId) {
   return row.environment === context.environment && row.publicApiUrl === context.publicApiUrl && row.scopeTenantId === tenantId;
 }
 /** Preserve the actual selected command/guard observations, never project booleans as proof. */
 function cycleStepEvidence(report) {
-  if (!Array.isArray(report.commands) || !Array.isArray(report.assertions) || !Array.isArray(report.cleanup)) return null;
+  const executions = report.executions || report.commands;
+  if (!Array.isArray(executions) || !Array.isArray(report.assertions) || !Array.isArray(report.cleanup)) return null;
   const commands = [];
   for (const [command, phase, name] of STEPS) {
-    const rows = report.commands.filter(row => row?.command === command && row.phase === phase
+    const rows = executions.filter(row => row?.command === command && row.phase === phase
       && assertionNames(row, name));
     const assertions = report.assertions.filter(row => row?.name === name && row.phase === phase);
     if (rows.length !== 1 || assertions.length !== 1) return null;
     const row = rows[0];
-    if (row.executionSequence !== report.commands.indexOf(row)
+    if (row.executionSequence !== executions.indexOf(row)
       || assertions[0].executionSequence !== row.executionSequence) return null;
-    commands.push({ command, phase, sequence: report.commands.indexOf(row), status: row.status, exitCode: row.exitCode, scopeTenantId: row.scopeTenantId,
+    commands.push({ command, phase, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode, scopeTenantId: row.scopeTenantId,
       environment: row.environment, publicApiUrl: row.publicApiUrl, executionSequence: row.executionSequence,
       options: row.options || [], npmExecution: row.npmExecution,
       assertions: assertions.map(value => ({ name: value.name, phase: value.phase, status: value.status, executionSequence: value.executionSequence,
@@ -38,7 +43,7 @@ function cycleStepEvidence(report) {
   }
   const counts = [['eai provision entra', 'app-sign-in', 1, '--rotate-secret'], ['npm run build', 'build', 1],
     ['eai app delete', 'cleanup', 2], ['eai app list', 'cleanup', 3], ['eai app create', 'cleanup', 1]];
-  if (!counts.every(([command, phase, count, option]) => report.commands.filter(row => row?.command === command && row.phase === phase
+  if (!counts.every(([command, phase, count, option]) => executions.filter(row => row?.command === command && row.phase === phase
     && (!option || row.options?.includes(option))).length === count)) return null;
   const registrations = report.cleanup.filter(row => row?.artifact === 'entra-registration');
   if (registrations.length !== 1) return null;
@@ -80,16 +85,17 @@ function cycleStepsVerified(value, cycle) {
 }
 /** Project actual child creation and parent-authorized purge observations. */
 function cycleOwnershipEvidence(report) {
-  if (!record(report) || !Array.isArray(report.commands) || !Array.isArray(report.assertions)
+  const executions = report?.executions || report?.commands;
+  if (!record(report) || !Array.isArray(executions) || !Array.isArray(report.assertions)
     || !Array.isArray(report.cleanup) || !record(report.created?.childCreation)) return null;
   function selected(command, phase, name) {
-    const rows = report.commands.filter(row => row?.command === command && row.phase === phase
+    const rows = executions.filter(row => row?.command === command && row.phase === phase
       && row.scopeTenantId === report.parentTenantId && assertionNames(row, name));
     const guards = report.assertions.filter(row => row?.name === name && row.phase === phase);
     if (rows.length !== 1 || guards.length !== 1) return null;
     const row = rows[0], guard = guards[0];
-    if (row.executionSequence !== report.commands.indexOf(row) || guard.executionSequence !== row.executionSequence) return null;
-    return { command, phase, sequence: report.commands.indexOf(row), status: row.status, exitCode: row.exitCode,
+    if (row.executionSequence !== executions.indexOf(row) || guard.executionSequence !== row.executionSequence) return null;
+    return { command, phase, sequence: executions.indexOf(row), status: row.status, exitCode: row.exitCode,
       environment: row.environment, publicApiUrl: row.publicApiUrl, executionSequence: row.executionSequence,
       scopeTenantId: row.scopeTenantId, options: row.options || [],
       assertion: { name: guard.name, phase: guard.phase, status: guard.status, executionSequence: guard.executionSequence,

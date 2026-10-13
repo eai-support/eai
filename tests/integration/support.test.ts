@@ -466,7 +466,7 @@ describe('eai support draft handoff', () => {
   test('uses the explicitly configured website origin for the active named profile', async () => {
     const home = await environment();
     const server = await fixture();
-    await mkdir(join(home.dir, '.eai'), { recursive: true });
+    await mkdir(join(home.dir, '.eai'), { recursive: true, mode: 0o700 });
     await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({
       profiles: {
         dev: {
@@ -475,7 +475,7 @@ describe('eai support draft handoff', () => {
           websiteUrl: server.origin,
         },
       },
-    }));
+    }), { mode: 0o600 });
     const result = await runSupportCli(home.dir, ['--profile', 'dev', 'support', '--format', 'json', '--yes', '--no-open']);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, status: 'signed_out', url: `${server.origin}/support` });

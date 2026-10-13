@@ -9,10 +9,17 @@ const { basename, dirname, join, relative, resolve, sep } = require('node:path')
 const ts = require('typescript');
 const { operationalEnvironment, installedGitExecution } = require('./cli-qa-operational-env.cjs');
 const qa = require('./cli-qa-foundation.cjs');
+const { producerEvidence } = require('./cli-smoke-execution-evidence.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
 const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.md');
+const producerSchemas = new Map();
+function producerSchema(cliPath, candidate) {
+  // A schema is immutable for the full observed runtime digest, not just the entry file.
+  if (!producerSchemas.has(candidate.runtimeSha256)) producerSchemas.set(candidate.runtimeSha256, leafEntries(describeCli(cliPath)));
+  return producerSchemas.get(candidate.runtimeSha256);
+}
 
 const TRACEABILITY_BASE = [
   ['eai init', 'create-local', 'live', 'Scaffolds a disposable workspace bound to the exact app already created in the fresh child.'],
@@ -1582,6 +1589,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
   const report = { schemaVersion: 'eai.cli-lifecycle-smoke.v2', qualification: 'local-fixtures',
     candidate: candidateEvidence(cliPath), status: 'running', coverageComplete: false, commands: [], assertions: [],
     created: {}, cleanup: [], leftovers: [], cleanupVerified: false, cleanupStatus: 'not-needed', localCleanupVerified: false };
+  const evidence = producerEvidence(report, producerSchema(cliPath, report.candidate), dependencies.executionUuid);
   const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 }); };
   // Override child-process HOME only. Never load, copy or change the operator's auth files.
   const childEnv = operationalEnvironment({ ...process.env, ...env });
@@ -1591,13 +1599,14 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     EAI_AUTH_SCOPE: 'api://local-fixture/access', EAI_CLI_CLIENT_ID: '22222222-2222-4222-8222-222222222222',
     BASE_URL_PUBLIC_API: 'https://dev-api.au.myenterprise.ai/public', EAI_GOFER_REFRESH_SOURCE: 'bundled',
     EAI_GOFER_REFRESH_BUNDLED_ONLY: '1', NO_UPDATE_NOTIFIER: '1', CI: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
-  function verify(name, condition) {
-    report.assertions.push({ name, phase: 'local', status: condition ? 'passed' : 'failed' }); checkpoint();
+  let activeExecution;
+  function verify(name, condition, settings = {}) {
+    evidence.assert(activeExecution, name, condition ? 'passed' : 'failed', { phase: 'local',
+      contract: !name.startsWith('read-only-files-') && !name.startsWith('successful-local-json-'), ...settings }); checkpoint();
     if (!condition) throw new Error('Local qualification assertion failed: ' + name + '.');
   }
   function invoke(args, validate = () => {}, options = {}) {
-    const entry = { command: executedCommand(args), phase: 'local', status: 'running', options: args.filter(arg => arg.startsWith('--')) };
-    report.commands.push(entry); checkpoint();
+    const entry = evidence.start(args, 'local'); activeExecution = entry; checkpoint();
     const started = Date.now();
     try {
       const originalFiles = options.allowAppWrites ? null : appDigest();
@@ -1609,14 +1618,17 @@ function runLocalSmoke(cliPath, dependencies = {}) {
       if (originalFiles) verify('read-only-files-' + args.slice(0, 2).join('-'), appDigest() === originalFiles);
       entry.status = options.incomplete ? 'incomplete' : 'passed';
       if (options.incomplete) { entry.coverageComplete = false; entry.reason = options.incomplete; }
-      checkpoint(); return result;
+      else evidence.complete(entry);
+      checkpoint(); return evidence.bind(result, entry);
     } catch (error) {
-      entry.status = 'failed'; entry.reason = 'Local contract or subprocess failed; raw output is omitted.'; checkpoint(); return null;
-    }
+      entry.status = 'failed'; entry.coverageComplete = false; entry.reason = 'Local contract or subprocess failed; raw output is omitted.'; checkpoint(); return null;
+    } finally { activeExecution = undefined; }
   }
   function json(args, validate = () => {}, options = {}) {
     return invoke(args, result => {
       const body = JSON.parse(result.stdout);
+      if (args.includes('--format') && args[args.indexOf('--format') + 1] === 'json')
+        verify('json-output-format', body !== null && typeof body === 'object', { option: '--format', contract: false });
       verify('successful-local-json-' + args.slice(0, 2).join('-'), body && typeof body === 'object'
         && body.ok !== false && body.success !== false && body.valid !== false && !['fail', 'failed'].includes(body.status));
       validate(body);
@@ -1683,7 +1695,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     invoke(['login', '--callback-port', '0'], result => verify('invalid-login-callback-rejected', /Invalid callback port/.test(result.stdout + result.stderr)),
       { expectedFailure: true, incomplete: 'Invalid callback rejection only; real browser PKCE authentication is not exercised.' });
     if (env.EAI_E2E_LOCAL_UPDATE === '1') invoke(['update', '--check', '--no-project-refresh']);
-    report.status = report.commands.some(entry => entry.status === 'failed') ? 'failed' : 'passed';
+    report.status = report.executions.some(entry => entry.status === 'failed') ? 'failed' : 'passed';
   } catch (error) {
     report.status = 'failed'; report.error = 'Local fixture setup or assertion failed; raw output is omitted.';
   } finally {
@@ -1694,7 +1706,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
       cleanup.status = report.localCleanupVerified ? 'passed' : 'failed';
     } catch { cleanup.status = 'failed'; }
     if (cleanup.status !== 'passed') { report.status = 'failed'; report.leftovers.push({ artifact: 'local-fixtures', reason: 'Disposable fixture cleanup was not verified.' }); }
-    report.coverage = coverageEvidence(report.commands); report.coverageComplete = report.coverage.every(entry => entry.status === 'passed'); checkpoint();
+    report.coverage = coverageEvidence(report.executions); report.coverageComplete = report.coverage.every(entry => entry.status === 'passed'); checkpoint();
   }
   log('[e2e] Local qualification ' + report.status + '. Summary: ' + summaryPath);
   if (report.status !== 'passed') {
@@ -1763,28 +1775,26 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   const batchIds = [];
   const child = () => report.created.childTenantId;
   const runtime = () => report.created.runtimeTenantId;
+  const evidence = producerEvidence(report, producerSchema(cliPath, report.candidate), dependencies.executionUuid);
   const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 }); };
 
-  function assertion(name, condition, message, blocked = false) {
-    const last = report.commands.at(-1);
-    report.assertions.push({ name, phase, status: condition ? 'passed' : blocked ? 'blocked' : 'failed',
-      environment: report.environment, publicApiUrl: expectedApi, scopeTenantId: last?.scopeTenantId,
-      executionSequence: last?.executionSequence });
-    if (last) {
-      (last.assertions ||= []).push(name);
-      if (!condition) last.status = blocked ? 'blocked' : 'failed';
-    }
+  function assertion(name, condition, message, blocked = false, source = report.executions.at(-1), settings = {}) {
+    const entry = source && (evidence.receipt(source) || (report.executions.includes(source) ? source : undefined));
+    evidence.assert(entry, name, condition ? 'passed' : blocked ? 'blocked' : 'failed', { phase,
+      contract: !['valid-json-output', 'successful-json-contract', 'valid-app-inventory-json'].includes(name), ...settings });
     checkpoint();
     if (!condition) throw blocked ? new SmokeBlocked(message) : new Error(message);
   }
   function eai(args, options = {}) {
-    const selector = ['--tenant-id', '--tenant', '--workspace'].find(flag => args.includes(flag));
-    const entry = { command: executedCommand(args), phase, status: 'running', executionSequence: report.commands.length,
-      environment: report.environment, publicApiUrl: expectedApi,
-      scopeTenantId: options.scopeTenantId || (selector ? args[args.indexOf(selector) + 1] : undefined),
-      // Save option names only. Arguments, command output and env can contain secrets.
-      options: args.filter(arg => arg.startsWith('--')) };
-    report.commands.push(entry); checkpoint();
+    const canonical = executedCommand(args);
+    // These management commands actually authorize through the parent client,
+    // even when their result describes a child. Preserve that forwarding scope.
+    const parentScoped = ['eai workspace create', 'eai workspace bootstrap-admin', 'eai workspace delete'].includes(canonical);
+    const selector = (parentScoped ? ['--parent'] : ['--tenant-id', '--tenant', '--workspace']).find(flag => args.includes(flag));
+    // Record the actual invoked spelling and scope used in this subprocess. No argument values are retained.
+    const entry = evidence.start(args, phase, { environment: report.environment, publicApiUrl: expectedApi,
+      scopeTenantId: selector ? args[args.indexOf(selector) + 1] : options.scopeTenantId });
+    checkpoint();
     const started = now();
     try {
       const result = execute(command, ['--profile', profile, ...args], { cwd: options.cwd || projectRoot,
@@ -1795,7 +1805,18 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         timeout: options.timeout || 60000 });
       entry.exitCode = result.status;
       entry.durationMs = Math.max(0, now() - started);
+      const observedRequest = parseJson(result.stdout, {})?.request;
+      let scopeMismatch = false;
+      if (entry.command.startsWith('eai publicapi ') && observedRequest && typeof observedRequest === 'object') {
+        scopeMismatch = observedRequest.publicApiUrl !== entry.publicApiUrl || observedRequest.tenantId !== entry.scopeTenantId;
+        // This metadata is emitted by the actual API client after forwarding,
+        // rather than inferred from the selected fixture or returned resource.
+        entry.publicApiUrl = typeof observedRequest.publicApiUrl === 'string' ? observedRequest.publicApiUrl : undefined;
+        entry.scopeTenantId = typeof observedRequest.tenantId === 'string' ? observedRequest.tenantId : undefined;
+        entry.scopeObservation = 'cli-publicapi-request';
+      }
       options.observe?.(result); // Record returned IDs before any status/contract assertion can throw.
+      if (scopeMismatch) throw new Error('Observed PublicAPI forwarding differs from the actual selected invocation scope.');
       entry.status = result.status === 0 ? 'passed' : 'failed'; checkpoint();
       if (result.status !== 0 && !options.allowFailure) {
         const body = parseJson(result.stdout, {});
@@ -1803,7 +1824,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const safeCode = typeof code === 'string' && /^[A-Z0-9_:-]{1,100}$/.test(code) ? '; ' + code : '';
         throw new Error(entry.command + ' failed (exit ' + result.status + safeCode + ').');
       }
-      return result;
+      return evidence.bind(result, entry);
     } catch (error) {
       entry.status = error instanceof SmokeBlocked ? 'blocked' : 'failed'; checkpoint(); throw error;
     }
@@ -1818,7 +1839,10 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       && payload.ok !== false && payload.success !== false && !['fail', 'failed'].includes(payload.status)
       && !(Number(payload.failed) > 0) && !(Number(payload.summary?.fail) > 0) && !(Number(payload.summary?.failed) > 0),
     executedCommand(args) + ' returned an unsuccessful result.');
-    const entry = report.commands.at(-1);
+    const entry = evidence.receipt(result);
+    evidence.bind(payload, entry); evidence.bind(payload.body, entry);
+    if (args.includes('--format') && args[args.indexOf('--format') + 1] === 'json')
+      assertion('json-output-format', payload && typeof payload === 'object', 'JSON output format was not observed.', false, result, { option: '--format', contract: false });
     if (payload.summary && typeof payload.summary === 'object') {
       entry.result = Object.fromEntries(Object.entries(payload.summary)
         .filter(([, value]) => typeof value === 'number' || typeof value === 'boolean'));
@@ -1827,9 +1851,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     return payload;
   }
   function appNpm(script, timeout) {
-    const entry = { command: 'npm run ' + script, phase, scopeTenantId: runtime(), status: 'running', executionSequence: report.commands.length,
-      environment: report.environment, publicApiUrl: expectedApi };
-    report.commands.push(entry); checkpoint();
+    const entry = evidence.start('npm run ' + script, phase, { scopeTenantId: runtime(),
+      environment: report.environment, publicApiUrl: expectedApi }); checkpoint();
     const started = now();
     try {
       const built = require('./cli-qa-npm-execution.cjs').runNpmScript({ cwd: projectRoot, configParent: runRoot,
@@ -1843,7 +1866,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       const result = built.result; entry.npmExecution = built.npmExecution;
       entry.exitCode = result.status; entry.status = result.status === 0 ? 'passed' : 'failed';
       entry.durationMs = Math.max(0, now() - started); checkpoint();
-      return result;
+      return evidence.bind(result, entry);
     } catch (error) {
       entry.status = 'failed'; entry.durationMs = Math.max(0, now() - started); checkpoint();
       throw error;
@@ -1857,7 +1880,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const body = parseJson(result.stdout, {});
     assertion('explicit-404-after-delete', result.status !== 0 && body.ok === false && body.status === 404,
       'Deletion absence was not proven for ' + path + '.');
-    report.commands.at(-1).status = 'passed'; checkpoint();
+    report.executions.at(-1).status = 'passed'; checkpoint();
   }
   function cleanupStep(artifact, action, recordLeftover = true) {
     const receipt = { artifact, status: 'running' };
@@ -1948,7 +1971,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       && /^[a-f0-9]{40}$/.test(preflight.publicApiGitSha || '') && /^[a-f0-9]{40}$/.test(preflight.adminApiGitSha || '')
       && preflight.childDeleteRoute === '/v4/platform/tenants/{parent}/children/{child}/delete' && preflight.childDeleteVerified === true
       && Number.isFinite(age) && age >= -60000 && age <= 3600000,
-    'Deployed child-delete route observation is missing, stale or mismatched to DEV, QA parent or actor.', true);
+    'Deployed child-delete route observation is missing, stale or mismatched to DEV, QA parent or actor.', true, null);
     report.preflight = { schemaVersion: preflight.schemaVersion, publicApiUrl: preflight.publicApiUrl,
       parentTenantId: preflight.parentTenantId, actorId: preflight.actorId, childDeleteVerified: preflight.childDeleteVerified,
       publicApiGitSha: preflight.publicApiGitSha, adminApiGitSha: preflight.adminApiGitSha,
@@ -2077,7 +2100,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     if (env.EAI_E2E_NEGATIVE_TESTS === '1') {
       const invalid = eai(['user', 'invite', '--email', 'not-an-email', '--tenant', runtime(), '--role', 'tenant-viewer', '--format', 'json'], { allowFailure: true });
       assertion('invalid-invite-rejected', invalid.status !== 0, 'Invalid email unexpectedly succeeded.');
-      report.commands.at(-1).status = 'passed'; checkpoint();
+      report.executions.at(-1).status = 'passed'; checkpoint();
     }
 
     phase = 'local-checks';
@@ -2258,10 +2281,10 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         && provision.app?.objectType === 'vertical-product-config' && provision.app.appKey === appName
         && provision.app.configKey === 'workflow:' + key && provision.app.action === 'created'
         && typeof provision.app.id === 'string' && Boolean(provision.app.id),
-      'Workflow provisioning did not acknowledge exact newly created workflow and app config resources.');
+      'Workflow provisioning did not acknowledge exact newly created workflow and app config resources.', false, provision);
       const id = readEnvValue(projectRoot, 'NEXT_PUBLIC_SMOKE_WORKFLOW_ID');
       assertion('workflow-provisioned-id', id === provision.workflow.id && provision.env?.NEXT_PUBLIC_SMOKE_WORKFLOW_ID === id,
-        'Provisioning did not save its exact acknowledged workflow resource ID.');
+        'Provisioning did not save its exact acknowledged workflow resource ID.', false, provision);
       const savedWorkflow = json(['resources', 'get', 'shared-workflow-config', id, '--tenant-id', runtime(), '--format', 'json']);
       const workflowData = savedWorkflow.data;
       assertion('workflow-config-persisted', savedWorkflow.id === id && workflowData?.tenantId === runtime()
@@ -2286,7 +2309,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       report.workflowReadiness = { workflowKey: key, status: readiness.status, reasonCode: readiness.reasonCode,
         executable: readiness.status === 'available' };
       if (readiness.status !== 'available') {
-        const entry = report.commands.at(-1);
+        const entry = report.executions.at(-1);
         entry.status = 'incomplete'; entry.coverageComplete = false;
         entry.reason = 'Workflow config was saved; executable AICore runtime binding is not available (' + readiness.status + ').';
       }
@@ -2309,7 +2332,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         eai(['provision', 'entra', '--rotate-secret'], { scopeTenantId: runtime() });
         const after = readEnvValue(projectRoot, 'ENTRA_CLIENT_SECRET');
         assertion('rotation-changed-local-credential', Boolean(before) && Boolean(after) && before !== after,
-          'Successful rotation did not replace the isolated app credential.');
+          'Successful rotation did not replace the isolated app credential.', false, report.executions.at(-1), { option: '--rotate-secret' });
         report.rotationCycle = { clientId: report.created.entraClientId, tenantId: runtime(), appKey: appName,
           commandDispatches: 1, credentialChanged: true }; checkpoint();
       }
@@ -2317,7 +2340,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     if (env.EAI_E2E_BUILD !== '0') {
       phase = 'build';
       const build = appNpm('build', 600000);
-      assertion('consultant-app-build', build.status === 0, 'Scaffolded consultant app build failed.');
+      assertion('consultant-app-build', build.status === 0, 'Scaffolded consultant app build failed.', false, build);
     }
     if (env.EAI_E2E_DEPLOY === '1') {
       phase = 'managed-deploy';
@@ -2333,7 +2356,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       if (['GITHUB_IDENTITY_VERIFICATION_REQUIRED', 'GITHUB_LINK_REQUIRED', 'GITHUB_LINK_BROWSER_REQUIRED', 'GITHUB_LINK_PENDING',
         'GITHUB_LINK_SESSION_REQUIRED', 'GITHUB_LINK_SESSION_PENDING'].includes(deployed.error?.code)
         || deployed.status === 'pending_review' || deployed.classification === 'pending') {
-        report.commands.at(-1).status = 'blocked';
+        report.executions.at(-1).status = 'blocked';
         throw new SmokeBlocked('Managed deployment awaits actor verification, review or operation completion.');
       }
       assertion('exact-deployment-operation', result.status === 0 && deployed.tenantId === child()
@@ -2366,7 +2389,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           alreadyAbsent = result.status !== 0 && body.ok === false && body.status === 404;
           assertion('batch-fallback-resource-observed', alreadyAbsent || (result.status === 0 && body.ok === true && body.body?.id === row.id),
             'Batch fallback could not verify the exact resource or its absence.');
-          report.commands.at(-1).status = 'passed'; checkpoint();
+          report.executions.at(-1).status = 'passed'; checkpoint();
         }
         if (!alreadyAbsent && (!batchDeleted || !batchIds.includes(row.id)))
           json(['resources', 'delete', row.type, row.id, '--tenant-id', runtime(), '--force', '--format', 'json']);
@@ -2411,17 +2434,17 @@ function runLiveSmoke(cliPath, dependencies = {}) {
             break;
           }
           if (env.EAI_E2E_REQUIRE_FIRST_EMPTY === '1') assertion('first-app-inventory-empty', false,
-            'The first app inventory after verified deletion failed; retrying cannot qualify first-read freshness.');
+            'The first app inventory after verified deletion failed; retrying cannot qualify first-read freshness.', false, result);
           const retryable = /\b(?:429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/
             .test(result.stderr || '');
-          report.commands.at(-1).retryableReadFailure = retryable; checkpoint();
+          report.executions.at(-1).retryableReadFailure = retryable; checkpoint();
           if (!retryable || attempt === 2) throw new Error('App enrollment absence could not be verified after deletion.');
           wait(1000 * (attempt + 1));
         }
         assertion('app-enrollment-absent', Array.isArray(apps.apps) && !apps.apps.some(row =>
           (row.data?.verticalKey || row.verticalKey) === appName || row.id === report.created.enrollmentId), 'App enrollment remains after deletion.');
         if (env.EAI_E2E_RECREATE_AFTER_DELETE === '1') {
-          assertion('recreate-same-owned-runtime', runtime() === child(), 'Recreation qualification requires the original run-owned runtime to be the company child.');
+          assertion('recreate-same-owned-runtime', runtime() === child(), 'Recreation qualification requires the original run-owned runtime to be the company child.', false, null);
           let recreatedId;
           try {
             const recreated = json(['app', 'create', appName, '--key', appName, '--tenant-id', child(), '--format', 'json'], {
@@ -2487,7 +2510,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       if (runtimeOwned && runtime() !== child()) cleanupStep('runtime-tenant', () => deleteLeaf(runtime(), child()));
       cleanupStep('child-tenant', () => deleteLeaf(child(), parentTenantId));
     } else if (childAttempted) report.leftovers.push({ artifact: 'child-tenant', reason: 'Creation attempted without an acknowledged run-specific tenant ID.' });
-    report.coverage = coverageEvidence(report.commands);
+    report.coverage = coverageEvidence(report.executions);
     report.coverageComplete = report.coverage.every(row => row.status === 'passed');
     const artifactCleanup = report.cleanup.filter(row => row.artifact !== 'batch-resources');
     report.cleanupRequired = childAttempted || appAttempted || entraAttempted || artifactCleanup.length > 0;
