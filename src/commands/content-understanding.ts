@@ -28,12 +28,21 @@ interface CuOptions {
 interface ManifestInput { manifest: ContentUnderstandingManifest; manifestSha256: string }
 interface CuOutput { ok: boolean; status?: number; body?: unknown; error?: { code: string; message: string; operationId?: string }; [key: string]: unknown }
 
+async function readLocalJson(path: string, code: 'CU_INVALID_MANIFEST' | 'CU_PLAN_MISMATCH', label: 'Manifest' | 'Plan'): Promise<{ bytes: Buffer; value: unknown }> {
+  let bytes: Buffer;
+  try { bytes = await readFile(path); }
+  catch { throw new ContentUnderstandingError(code, `${label} file could not be read.`); }
+  if (bytes.length > 1024 * 1024) throw new ContentUnderstandingError(code, `${label} file exceeds the input size budget.`);
+  try {
+    // Preserve a BOM so JSON parsing retains the existing refusal, while fatal decoding
+    // prevents changing malformed input bytes before binding or submitting the plan.
+    return { bytes, value: JSON.parse(new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes)) as unknown };
+  } catch { throw new ContentUnderstandingError(code, `${label} file must contain valid UTF-8 JSON.`); }
+}
+
 async function readManifest(path?: string): Promise<ManifestInput> {
   if (!path) throw new ContentUnderstandingError('CU_INVALID_MANIFEST', '--file is required.');
-  const bytes = await readFile(path);
-  if (bytes.length > 1024 * 1024) throw new ContentUnderstandingError('CU_INVALID_MANIFEST', 'Manifest file exceeds the input size budget.');
-  let value: unknown;
-  try { value = JSON.parse(bytes.toString('utf8')); } catch { throw new ContentUnderstandingError('CU_INVALID_MANIFEST', 'Manifest file must contain valid JSON.'); }
+  const { bytes, value } = await readLocalJson(path, 'CU_INVALID_MANIFEST', 'Manifest');
   return { manifest: parseContentUnderstandingManifest(value), manifestSha256: createHash('sha256').update(bytes).digest('hex') };
 }
 
@@ -99,10 +108,7 @@ async function capabilities(context: CommandContext, timeoutMs?: number): Promis
 
 async function parsePlanFile(options: CuOptions, input: ManifestInput): Promise<ContentUnderstandingPlanFile> {
   if (!options.plan) throw new ContentUnderstandingError('CU_PLAN_MISMATCH', '--plan must name the unchanged saved JSON plan.');
-  const bytes = await readFile(options.plan);
-  if (bytes.length > 1024 * 1024) throw new ContentUnderstandingError('CU_PLAN_MISMATCH', 'Plan file exceeds the input size budget.');
-  let value: unknown;
-  try { value = JSON.parse(bytes.toString('utf8')); } catch { throw new ContentUnderstandingError('CU_PLAN_MISMATCH', 'Plan file must contain the original JSON plan output.'); }
+  const { value } = await readLocalJson(options.plan, 'CU_PLAN_MISMATCH', 'Plan');
   if (!isRecord(value) || value.ok !== true || value.kind !== 'eai.content-understanding.plan' || value.schemaVersion !== 1 || !isRecord(value.binding)
     || value.binding.tenantId !== input.manifest.tenantId || value.binding.bundleKey !== input.manifest.bundleKey
     || value.binding.manifestSha256 !== input.manifestSha256 || typeof value.binding.publicApiUrl !== 'string') {

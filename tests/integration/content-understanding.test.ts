@@ -332,6 +332,67 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await cu(['validate', '--file', file])).toMatchObject({ ok: true, body: { valid: true, bundleKey: manifest.bundleKey } });
     expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
   });
+  test.each(['validate', 'plan', 'apply'].flatMap(command => ['missing', 'directory'].map(kind => ({ command, kind }))))(
+    'local manifest input reports safe $command errors for a $kind file', async ({ command, kind }) => {
+      const path = kind === 'directory' ? directory : join(directory, 'private-manifest-path.json');
+      const args = command === 'apply' ? ['apply', '--file', path, '--plan', planPath, '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]
+        : [command, '--file', path, ...(command === 'plan' ? scoped : [])];
+      const result = await cu(args);
+      expect(result).toMatchObject({ ok: false, error: { code: 'CU_INVALID_MANIFEST',
+        ...(command === 'apply' ? { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } : {}) } });
+      expect(JSON.stringify(result)).not.toContain(path);
+      expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+    });
+  test.each(['missing', 'directory'])('local plan input reports safe errors for a %s file and retains the requested operation', async kind => {
+    const path = kind === 'directory' ? directory : join(directory, 'private-plan-path.json');
+    const result = await cu(['apply', '--file', file, '--plan', path, '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
+    expect(result).toMatchObject({ ok: false, error: { code: 'CU_PLAN_MISMATCH', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+    expect(JSON.stringify(result)).not.toContain(path);
+    expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+  const invalidUtf8 = [[0xc3], [0xc0, 0xaf], [0x80]];
+  function replaceUtf8Marker(value: unknown, malformed: number[]): Buffer {
+    const [before, after] = JSON.stringify(value).split('byte-fixture-marker');
+    return Buffer.concat([Buffer.from(before), Buffer.from(malformed), Buffer.from(after)]);
+  }
+  test.each(['validate', 'plan', 'apply'].flatMap(command => invalidUtf8.map(bytes => ({ command, bytes }))))(
+    'local manifest input rejects invalid UTF-8 %j', async ({ command, bytes }) => {
+      const authored = structuredClone(original); authored.documentTypes[0].description = 'byte-fixture-marker';
+      const raw = replaceUtf8Marker(authored, bytes); await writeFile(file, raw);
+      const saved = JSON.parse(await readFile(planPath, 'utf8')); saved.binding.manifestSha256 = createHash('sha256').update(raw).digest('hex');
+      await writeFile(planPath, JSON.stringify(saved));
+      const result = await cu(command === 'apply' ? applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
+        : [command, '--file', file, ...(command === 'plan' ? scoped : [])]);
+      expect(result).toMatchObject({ ok: false, error: { code: 'CU_INVALID_MANIFEST',
+        ...(command === 'apply' ? { operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } : {}) } });
+      expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+    });
+  test.each(['actions', 'expectedVersions'].flatMap(field => invalidUtf8.map(bytes => ({ field, bytes }))))(
+    'local plan input rejects invalid UTF-8 in $field %j', async ({ field, bytes }) => {
+      const saved = JSON.parse(await readFile(planPath, 'utf8'));
+      if (field === 'actions') saved.body.actions[0].logicalKey = 'byte-fixture-marker';
+      else saved.body.expectedVersions.runtimeConfiguration = 'byte-fixture-marker';
+      await writeFile(planPath, replaceUtf8Marker(saved, bytes));
+      expect(await cu(applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])))
+        .toMatchObject({ ok: false, error: { code: 'CU_PLAN_MISMATCH', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+      expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+    });
+  test('local manifest input preserves valid Unicode bytes, normalized text and the original hash', async () => {
+    const authored = structuredClone(original); authored.documentTypes[0].description = 'Résumé 🧾';
+    const raw = Buffer.from(JSON.stringify(authored)); await writeFile(file, raw);
+    expect(await cu(['validate', '--file', file])).toMatchObject({ ok: true, body: { manifestSha256: createHash('sha256').update(raw).digest('hex') } });
+    const planned = await cu(['plan', '--file', file, ...scoped]); await writeFile(planPath, JSON.stringify(planned));
+    expect(await cu(applyArgs())).toMatchObject({ ok: true });
+    expect(JSON.parse(calls[0].init.body as string).manifest.documentTypes[0].description).toBe('Résumé 🧾');
+    expect(JSON.parse(calls.at(-1)!.init.body as string).manifest.documentTypes[0].description).toBe('Résumé 🧾');
+  });
+  test.each(['manifest', 'plan'])('local %s input retains the existing JSON refusal for a UTF-8 BOM', async kind => {
+    const path = kind === 'manifest' ? file : planPath;
+    await writeFile(path, Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), await readFile(path)]));
+    expect(await cu(kind === 'manifest' ? ['validate', '--file', file] : applyArgs()))
+      .toMatchObject({ ok: false, error: { code: kind === 'manifest' ? 'CU_INVALID_MANIFEST' : 'CU_PLAN_MISMATCH' } });
+    expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
   test('compiled local commands bypass expired or nonexistent profile loading', () => {
     for (const args of [['schema'], ['validate', '--file', file]]) {
       const result = spawnSync(process.execPath, ['dist/index.js', '--profile', 'missing-fixture', 'content-understanding', ...args, '--format', 'json'], {
