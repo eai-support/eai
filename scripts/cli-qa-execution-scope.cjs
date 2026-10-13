@@ -63,15 +63,14 @@ function primaryTransportMatches(command, observed) {
   }
   if (group === 'user') {
     const members = tenant + '/members';
-    const memberSegments = segments(members), userSegments = segments(tenant + '/users');
+    const memberSegments = segments(members);
     if (action === 'list') return observed.method === 'GET' && path === members;
     if (action === 'roles') return observed.method === 'GET' && path === tenant + '/role-definitions';
     if (action === 'invite' || (action === 'role' && command.split(' ')[3] === 'set'))
       return (observed.method === 'POST' && path === members + '/invite')
         || (action === 'role' && observed.method === 'PATCH' && memberSegments.length === 2
           && memberSegments[0] !== '' && memberSegments[1] === 'roles');
-    if (action === 'provision-me') return observed.method === 'POST' && userSegments.length === 2
-      && userSegments[0] !== '' && userSegments[1] === 'provision';
+    if (action === 'provision-me') return observed.method === 'POST' && path === '/v4/identity/me/provision';
     return false;
   }
   if (group === 'resources') {
@@ -154,13 +153,17 @@ function primaryTransportMatches(command, observed) {
     return chatSegments.length === 3 && chatSegments[0] === encodeURIComponent(observed.tenantId)
       && chatSegments[1] !== '' && chatSegments[2] !== '';
   }
-  if (group === 'provision') return action === 'resourceapi-bundle'
-    ? observed.method === 'POST' && path === tenant + '/resourceapi/passive-bundle'
-    : path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
+  if (group === 'provision') {
+    if (action === 'resourceapi-bundle' || action === 'resourceapi-refresh') return observed.method === 'POST'
+      && path === tenant + '/resourceapi/' + (action === 'resourceapi-bundle' ? 'passive-bundle' : 'passive-refresh');
+    if (action === 'storage') return observed.method === 'POST' && path === resources + '/storage/provision';
+    return path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
+  }
   if (group === 'deploy') return path.startsWith('/v4/platform/') && !/\/tenants\/[^/]+\/?$/.test(path);
-  if (group === 'verify') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me'
-    || path === '/v4/data/resources/health' || path === '/v4/data/resources/object-types'
-    || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId));
+  if (group === 'verify') return observed.method === 'GET' && (action === 'storage'
+    ? path === resources + '/storage' || path === resources + '/storage/doctor'
+    : path === '/health' || path === '/v4/identity/me' || path === '/v4/data/resources/health'
+      || path === '/v4/data/resources/object-types' || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId));
   return false;
 }
 function observationValid(value, executionId) {

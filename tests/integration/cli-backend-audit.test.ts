@@ -551,14 +551,37 @@ describe('CLI backend audit evidence', () => {
     expect(qa.cyclesVerified(input.evidence, input.candidate, { environment: 'DEV', publicApiUrl: input.evidence.expectedPublicApi, now: input.now })).toBe(false);
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(false);
   });
-  function unsupportedModel() {
-    const command = 'eai types define', executionId = '00000000-0000-4000-8000-000000000777';
-    return { schema: { command: 'eai', subcommands: [{ command: 'types', subcommands: [{ command: 'define' }] }] },
+  function unsupportedModel(command = 'eai types define') {
+    const executionId = '00000000-0000-4000-8000-000000000777';
+    return { schema: { command: 'eai', subcommands: [{ command: command.split(' ')[1], subcommands: [{ command: command.split(' ')[2] }] }] },
       evidence: { candidate, unsupported: [{ command, invokedCommand: command, executionId, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'refuses before auth/network', command, executionId, status: 'passed' }],
         exitCode: 1, authenticationBypassed: true, networkCalls: 0 }] },
       decisions: [{ command, crud: 'create', coverage: 'unsupported', notes: 'No public contract.' }] };
   }
+  test.each(['eai types define', 'eai resources indexes-apply'].flatMap(command =>
+    ['passed', 'failed', 'blocked', 'incomplete'].map(status => ({ command, status }))))(
+    'known unsupported $command in commands is malformed and preserves $status precedence', ({ command, status }) => {
+      const { schema, evidence, decisions } = unsupportedModel(command), row = evidence.unsupported[0];
+      Object.assign(row, { status }); Object.assign(evidence, { commands: [row], unsupported: [] });
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.evidenceValidation).toMatchObject({ valid: false, malformedAttempts: [{ collection: 'commands', index: 0,
+        reason: 'unsupported-command-outside-unsupported', command, status }] });
+      const expected = status === 'passed' ? 'incomplete' : status;
+      expect(report.commands[0].actualExecutionStatus).toBe(expected); expect(report.commands[0].status).toBe(expected);
+      expect(report.commands[0].capability).toBe('unsupported'); expect(report.unsupportedVerified).toBe(false);
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+  test.each(['eai types define', 'eai resources indexes-apply'])(
+    'actual alias-free unsupported %s rejects an aliases import and retains its proper denial collection', command => {
+      const { schema, evidence, decisions } = unsupportedModel(command);
+      expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
+      const row = { ...evidence.unsupported[0], alias: command };
+      Object.assign(evidence, { aliases: [row], unsupported: [] });
+      const report = buildAudit({ schema, candidate, evidence }, decisions);
+      expect(report.evidenceValidation.valid).toBe(false); expect(report.unsupportedVerified).toBe(false);
+      expect(report.commands[0].actualExecutionStatus).toBe('incomplete'); expect(report.fullCapabilityQualified).toBe(false);
+    });
   test('unsupported completion accepts a complete execution-bound denial observation', () => {
     const { schema, evidence, decisions } = unsupportedModel();
     expect(buildAudit({ schema, candidate, evidence }, decisions).unsupportedVerified).toBe(true);
