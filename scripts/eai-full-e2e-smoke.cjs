@@ -193,7 +193,7 @@ const SMOKE_CALLS = {
     'eai workspace info <workspace-id> --format json',
   ],
   'eai workspace create': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --home-region <region> --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --format json',
   ],
   'eai workspace bootstrap-admin': [
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
@@ -588,6 +588,7 @@ const OPTION_DECISIONS = {
   },
   'eai workspace create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
+    '--home-region': 'Root workspace region for --allow-root backfills only; the child smoke omits it because a child inherits its parent region.',
   },
   'eai workspace delete': {
     '--force-hard-purge': 'Only parent-authorized deletion of an exact run-created leaf is exercised; generic system-admin subtree purge remains controlled-test coverage.',
@@ -1987,7 +1988,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     phase = 'isolation'; childAttempted = true;
     const created = json(['tenant', 'create', '--name', 'EAI CLI Audit ' + runId + ' ' + nonce, '--slug', appName,
       '--parent', parentTenantId, '--domain', appName + '.example.invalid', '--usecase', 'generic', '--industry', 'test',
-      '--starter-template', 'eai-app-template', ...(env.EAI_E2E_CHILD_HOME_REGION ? ['--home-region', env.EAI_E2E_CHILD_HOME_REGION] : []),
+      '--starter-template', 'eai-app-template',
       '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
         const payload = parseJson(result.stdout, {});
         if (result.status !== 0 && payload.ok === false && [400, 401, 403, 404, 409, 422].includes(payload.status)) {
