@@ -18,6 +18,7 @@ import { resolveCommandContext } from '../../src/lib/context.js';
 import { parseContentUnderstandingManifest } from '../../src/lib/content-understanding-manifest.js';
 import { requireContentUnderstandingOperationId } from '../../src/lib/content-understanding-client.js';
 import * as out from '../../src/lib/output.js';
+import { setActiveProfile } from '../../src/lib/profile.js';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const gateway = 'https://dev-api.au.myenterprise.ai/public';
@@ -708,6 +709,66 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, request: { publicApiUrl: gateway, tenantId, path: '/v4/data/documents/jobs/job-one' }, body: job });
     expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
   });
+  test.each(['https://fixture-user:fixture-scope-value@api.au.myenterprise.ai/public',
+    'https://api.au.myenterprise.ai/public?opaque=fixture-scope-value', 'https://api.au.myenterprise.ai/public#fixture-scope-value',
+    'ftp://api.au.myenterprise.ai/public', 'not-a-gateway'])(
+    'default-profile request scope rejects unsafe configured gateway %s without echoing it', unsafeGateway => {
+      setActiveProfile('default');
+      const client = new PlatformAPIClient(unsafeGateway, tenantId);
+      let caught: unknown;
+      try { client.getRequestScope(); } catch (error) { caught = error; }
+      expect(caught).toBeInstanceOf(Error);
+      expect((caught as Error).message).toBe('PublicAPI request scope requires a safe HTTP(S) gateway without credentials, query or fragment.');
+      expect((caught as Error).message).not.toContain('fixture-scope-value');
+    });
+  test.each(['https://api.au.myenterprise.ai/public', 'https://api.au.myenterprise.ai/public/',
+    'https://custom-gateway.example.test:8443/public', 'http://127.0.0.1:8000', 'http://localhost:8000/public'])(
+    'default-profile request scope preserves the exact clean gateway %s', safeGateway => {
+      setActiveProfile('default');
+      expect(new PlatformAPIClient(safeGateway, tenantId).getRequestScope()).toEqual({ publicApiUrl: safeGateway, tenantId });
+    });
+  test.each(['job', 'get'].flatMap(command => ['userinfo', 'query', 'fragment', 'clean'].map(kind => ({ command, kind }))))(
+    'compiled default-profile docs $command rejects $kind scope before authenticated transport without leaking its value', async ({ command, kind }) => {
+      const marker = 'fixture-scope-value';
+      const unsafeGateway = kind === 'clean' ? 'https://api.au.myenterprise.ai/public'
+        : kind === 'userinfo' ? `https://fixture-user:${marker}@api.au.myenterprise.ai/public`
+          : `https://api.au.myenterprise.ai/public${kind === 'query' ? '?opaque=' : '#'}${marker}`;
+      const observer = join(directory, 'unsafe-scope-observer.mjs'), networkLog = join(directory, 'unsafe-scope-network.log');
+      const body = command === 'job' ? { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one' }] }
+        : { documentId: 'doc-one', tenantId, storageTarget: 'resourceapi', processingStatus: 'complete' };
+      await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
+      await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+      await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${unsafeGateway}\n`);
+      await writeFile(observer, `import {appendFileSync} from 'node:fs';globalThis.fetch=async(input)=>{
+        appendFileSync(${JSON.stringify(networkLog)},'attempt\\n');
+        if(String(input).includes('/v4/identity/tenants')) return Response.json({tenants:[{id:${JSON.stringify(tenantId)},slug:'owned-fixture',displayName:'Owned fixture',roles:['tenant-admin'],isActive:true,homeRegion:'au',hqCountryCode:'AU',parentId:null}]});
+        return Response.json(${JSON.stringify(body)});
+      };`, { mode: 0o600 });
+      const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '<scope-fixture-token>',
+        BASE_URL_PUBLIC_API: unsafeGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
+      const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
+        import {storeTokens} from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
+        import {DEFAULT_PROD_AUTH_TENANT_ID,DEFAULT_PROD_AUTH_TENANT_NAME,DEFAULT_PROD_AUTH_CLIENT_ID} from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
+        await storeTokens({accessToken:'<scope-fixture-token>',refreshToken:'<scope-fixture-refresh>',expiresAt:Date.now()+3600000,
+          tenantId:DEFAULT_PROD_AUTH_TENANT_ID,tenantName:DEFAULT_PROD_AUTH_TENANT_NAME,clientId:DEFAULT_PROD_AUTH_CLIENT_ID,
+          oid:'scope-fixture-actor',upn:'owned@example.invalid',activeTenantId:${JSON.stringify(tenantId)},publicApiUrl:${JSON.stringify(unsafeGateway)}});`],
+      { encoding: 'utf8', timeout: 5000, env: childEnv });
+      expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname,
+        'docs', command, command === 'job' ? 'job-one' : 'doc-one', ...scoped, '--format', 'json'],
+      { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
+      const printed = result.stdout.trim() || result.stderr.trim();
+      expect(printed).not.toBe('');
+      if (kind === 'clean') {
+        expect(result.status).toBe(0); expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, request: { publicApiUrl: unsafeGateway, tenantId }, body });
+        expect(existsSync(networkLog)).toBe(true); return;
+      }
+      expect(result.status).toBe(1);
+      expect(JSON.parse(printed)).toMatchObject({ error: { code: 'E006',
+        message: 'Failed to load configuration: Project and profile PublicAPI endpoints must be HTTP(S) URLs without credentials, queries or fragments.' } });
+      expect(result.stdout + result.stderr).not.toContain(marker); expect(result.stdout + result.stderr).not.toContain('fixture-user');
+      expect(existsSync(networkLog)).toBe(false);
+    });
   test.each(['job', 'get'])('document %s rejects path-normalizing dot identifiers before context or requests', async command => {
     for (const id of ['.', '..']) {
       expect(await docs([command, id, ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_IDENTIFIER_INVALID' } });
