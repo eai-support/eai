@@ -295,6 +295,28 @@ function readInvocationProfile(args: readonly string[]): string {
   return profile;
 }
 
+/** Recover only a CU command's own ID when bootstrap profile syntax fails. */
+function readContentUnderstandingBootstrapOperationId(args: readonly string[]): string | undefined {
+  const groupIndex = readTopLevelCommandIndex(args);
+  if (groupIndex === null || args[groupIndex] !== 'content-understanding') return undefined;
+  const relativeIndex = readTopLevelCommandIndex(args.slice(groupIndex + 1));
+  if (relativeIndex === null) return undefined;
+  const commandIndex = groupIndex + 1 + relativeIndex;
+  const command = contentUnderstandingCommand.commands.find(item => item.name() === args[commandIndex]);
+  if (!command || !['apply', 'status'].includes(command.name())) return undefined;
+  let operationId: string | undefined;
+  for (let index = commandIndex + 1; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--') break;
+    const equal = arg.indexOf('='), flag = equal < 0 ? arg : arg.slice(0, equal);
+    const option = [...program.options, ...command.options].find(item => item.long === flag || item.short === flag);
+    if (!option) continue;
+    const value = equal >= 0 ? arg.slice(equal + 1) : option.required || option.optional ? args[++index] : undefined;
+    if (option.long === '--operation-id') operationId = value;
+  }
+  return contentUnderstandingPreflightOperationId({ operationId, format: isMachineReadableInvocation(args) ? 'json' : 'text' });
+}
+
 function isHelpInvocation(args: readonly string[]): boolean {
   return (
     args.length === 0 ||
@@ -333,8 +355,9 @@ if (cliArgs.includes('--describe')) {
   try {
     setActiveProfile(readInvocationProfile(cliArgs));
   } catch (error) {
+    const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
     exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-      isMachineReadableInvocation(cliArgs) ? 'json' : 'text');
+      isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
   }
   const commandIndex = readTopLevelCommandIndex(cliArgs);
   const isLocalContentUnderstanding = topLevelCommandName === 'content-understanding' && commandIndex !== null

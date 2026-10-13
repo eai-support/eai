@@ -16,6 +16,7 @@ import { docsCommand } from '../../src/commands/docs.js';
 import { PlatformAPIClient } from '../../src/lib/api.js';
 import { resolveCommandContext } from '../../src/lib/context.js';
 import { parseContentUnderstandingManifest } from '../../src/lib/content-understanding-manifest.js';
+import { requireContentUnderstandingOperationId } from '../../src/lib/content-understanding-client.js';
 import * as out from '../../src/lib/output.js';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -168,6 +169,50 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     const result = spawnSync(process.execPath, ['--input-type=module', '-e', `import {json} from ${JSON.stringify(new URL('../../dist/lib/output.js', import.meta.url).href)};
       json({operationId:'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',note:${JSON.stringify(jwtShapedIdentifier)}});`], { encoding: 'utf8', timeout: 10000 });
     expect(result.status).toBe(0); expect(JSON.parse(result.stdout)).toEqual({ operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', note: '[redacted-jwt]' });
+  });
+  test('canonical UUID layouts accepted by the actual PublicAPI and Configurator contracts are preserved', () => {
+    const id = '11111111-1111-0111-0111-111111111111';
+    expect(parseContentUnderstandingManifest({ ...original, tenantId: id }).tenantId).toBe(id);
+    expect(requireContentUnderstandingOperationId(id)).toBe(id);
+  });
+  test.each(['apply', 'status'].flatMap(command => ['prefix', 'equals', 'trailing', 'environment'].map(selector => ({ command, selector }))))(
+    'compiled $command retains its valid UUID on malformed $selector profile before any auth', async ({ command, selector }) => {
+      const observer = join(directory, 'observe-malformed-profile.mjs'), networkLog = join(directory, 'malformed-profile-network.log');
+      await writeFile(observer, `import {appendFileSync} from 'node:fs';globalThis.fetch=async()=>{appendFileSync(${JSON.stringify(networkLog)},'attempt\\n');throw new Error('Unexpected malformed-profile request');};`, { mode: 0o600 });
+      const invocation = ['content-understanding', ...(command === 'apply'
+        ? applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'])
+        : ['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]), '--format', 'json'];
+      const args = selector === 'prefix' ? ['--profile', '../bad', ...invocation]
+        : selector === 'equals' ? ['--profile=../bad', ...invocation]
+          : selector === 'trailing' ? [...invocation, '--profile', '../bad'] : invocation;
+      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, ...args],
+        { encoding: 'utf8', timeout: 10000, cwd: directory, env: { ...process.env, HOME: directory, USERPROFILE: directory,
+          EAI_ACCESS_TOKEN: '', EAI_PROFILE: selector === 'environment' ? '../bad' : '', EAI_NO_UPDATE_CHECK: '1',
+          NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` } });
+      expect(result.status).toBe(1);
+      const payload = JSON.parse(result.stdout.trim() || result.stderr.trim());
+      expect(payload).toMatchObject({ error: { code: 'E006', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+      expect(payload).not.toHaveProperty('body'); expect(existsSync(networkLog)).toBe(false);
+    });
+  test.each(['apply', 'status'])('compiled %s rejects an invalid ID before a malformed profile can echo it or resolve auth', command => {
+    const id = jwtShapedIdentifier;
+    const args = command === 'apply' ? applyArgs(['--operation-id', id]) : ['status', '--operation-id', id, ...scoped];
+    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', '../bad',
+      'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
+      env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
+    const output = result.stdout.trim() || result.stderr.trim();
+    expect(result.status).toBe(1); expect(JSON.parse(output)).toMatchObject({ error: { code: 'CU_OPERATION_INVALID' } });
+    expect(output).not.toContain(id); expect(output).not.toContain('[redacted-jwt]');
+  });
+  test.each(['file-value', 'terminator'])('bootstrap retention never treats the %s text as an invoked operation selector', kind => {
+    const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const options = kind === 'file-value' ? ['--file', '--operation-id', id] : ['--', '--operation-id', id];
+    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', '../bad',
+      'content-understanding', 'apply', ...options, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
+      env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
+    const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
+    expect(result.status).toBe(1); expect(payload).toMatchObject({ error: { code: 'E006' } });
+    expect(payload.error).not.toHaveProperty('operationId'); expect(output).not.toContain(id);
   });
   test.each(['job-alias', 'record-alias', 'nested-error', 'feature-gate'])(
     'compiled CLI enforces the observed %s contract through actual profile/context/API/output', async scenario => {
