@@ -609,6 +609,72 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     }
     expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
   });
+  test.each(['job', 'get', 'job-option'].flatMap(target => [
+    { target, kind: 'lone-high', id: '\uD800' }, { target, kind: 'lone-low', id: '\uDFFF' },
+  ]))('document $target rejects $kind before context or dispatch', async ({ target, id }) => {
+    const args = target === 'job-option' ? ['get', 'doc-one', '--job-id', id] : [target, id];
+    expect(await docs([...args, ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_IDENTIFIER_INVALID' } });
+    expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+  test.each(['job', 'get', 'job-option'].flatMap(target => [
+    { target, kind: 'lone-high', id: '\uD800' }, { target, kind: 'lone-low', id: '\uDFFF' },
+    { target, kind: 'paired-unicode', id: 'r\u00e9sum\u00e9-\uD83D\uDE42' },
+  ]))('compiled document $target enforces $kind before auth and preserves valid Unicode', async ({ target, kind, id }) => {
+    const actualGateway = 'https://api.au.myenterprise.ai/public';
+    const observer = join(directory, 'observe-document-identifier.mjs'), networkLog = join(directory, 'document-identifier-network.jsonl');
+    const membership = { id: tenantId, slug: 'owned-fixture', displayName: 'Owned fixture', roles: ['tenant-admin'],
+      isActive: true, homeRegion: 'au', hqCountryCode: 'AU', parentId: null };
+    const body = target === 'job' ? { jobId: id, tenantId, status: 'completed', documents: [{ documentId: 'doc-one' }] }
+      : { documentId: target === 'get' ? id : 'doc-one', tenantId, storageTarget: 'resourceapi',
+        jobId: target === 'job-option' ? id : null };
+    await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
+    await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+    await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${actualGateway}\n`);
+    await writeFile(observer, `import {appendFileSync} from 'node:fs';
+      globalThis.fetch = async(input, init={}) => {
+        const url = new URL(String(input));
+        appendFileSync(${JSON.stringify(networkLog)},JSON.stringify({method:init.method||'GET',path:url.pathname,
+          query:url.search,tenant:new Headers(init.headers).get('X-Tenant-Id')})+'\\n');
+        if(url.pathname==='/public/v4/identity/tenants') return Response.json({tenants:[${JSON.stringify(membership)}]});
+        if(url.pathname.startsWith('/public/v4/data/documents/')) return Response.json(${JSON.stringify(body)});
+        throw new Error('Unexpected document identifier dispatch');
+      };`, { mode: 0o600 });
+    const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '<compiled-contract-token>',
+      EAI_PROFILE: '', BASE_URL_PUBLIC_API: actualGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
+    const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import {storeTokens} from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
+      import {DEFAULT_PROD_AUTH_TENANT_ID,DEFAULT_PROD_AUTH_TENANT_NAME,DEFAULT_PROD_AUTH_CLIENT_ID} from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
+      await storeTokens({accessToken:'<compiled-contract-token>',refreshToken:'<compiled-contract-refresh>',expiresAt:Date.now()+3600000,
+        tenantId:DEFAULT_PROD_AUTH_TENANT_ID,tenantName:DEFAULT_PROD_AUTH_TENANT_NAME,clientId:DEFAULT_PROD_AUTH_CLIENT_ID,
+        oid:'compiled-contract-actor',upn:'owned@example.invalid',activeTenantId:${JSON.stringify(tenantId)},publicApiUrl:${JSON.stringify(actualGateway)}});`],
+    { encoding: 'utf8', timeout: 5000, env: childEnv });
+    expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+    const args = target === 'job-option' ? ['docs', 'get', 'doc-one', '--job-id', id] : ['docs', target, id];
+    const cliUrl = new URL('../../dist/index.js', import.meta.url);
+    // Native argv encodes lone surrogates as replacement characters. Preserve the actual JS
+    // argument string in this subprocess, then exercise the real compiled index/parser/hooks.
+    const bootstrap = join(directory, 'document-identifier-bootstrap.mjs');
+    await writeFile(bootstrap, `
+      process.argv=[process.execPath,${JSON.stringify(cliUrl.pathname)},...${JSON.stringify([...args, ...scoped, '--format', 'json'])}];
+      await import(${JSON.stringify(cliUrl.href)});`, { mode: 0o600 });
+    const result = spawnSync(process.execPath, [bootstrap],
+    { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
+    const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
+    expect(result.signal).toBeNull();
+    const observations = existsSync(networkLog) ? (await readFile(networkLog, 'utf8')).trim().split('\n').map(row => JSON.parse(row)) : [];
+    if (kind === 'paired-unicode') {
+      expect(result.status, JSON.stringify(payload)).toBe(0); expect(payload).toMatchObject({ ok: true, body });
+      const documentReads = observations.filter(row => row.path.startsWith('/public/v4/data/documents/'));
+      expect(documentReads).toHaveLength(1); expect(documentReads[0].tenant).toBe(tenantId);
+      if (target === 'job-option') expect(new URLSearchParams(documentReads[0].query).get('job_id')).toBe(id);
+      else expect(documentReads[0].path).toBe(`/public/v4/data/documents/${target === 'job' ? 'jobs' : 'records'}/${encodeURIComponent(id)}`);
+      expect(observations.every(row => row.method === 'GET')).toBe(true);
+    } else {
+      expect(result.status).toBe(1); expect(payload).toMatchObject({ ok: false, error: { code: 'DOC_IDENTIFIER_INVALID' } });
+      expect(observations).toHaveLength(0);
+    }
+    expect(output).not.toContain('compiled-contract-token');
+  });
   test.each(['failed', 'completed_with_errors'])('document job %s is nonzero', async status => {
     routes = () => Response.json({ jobId: 'job-one', tenantId, status, documents: [{ documentId: 'doc-one' }] });
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, error: { code: 'DOC_JOB_FAILED', jobId: 'job-one' } });

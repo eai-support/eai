@@ -93,7 +93,7 @@ interface DocumentReadOptions extends DocumentCommandOptions {
   timeout?: string;
 }
 function readIdentifier(value: string, label: string): string {
-  if (!value || value === '.' || value === '..' || value.trim() !== value || value.length > 256 || [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
+  if (!value || value === '.' || value === '..' || value.trim() !== value || value.length > 256 || /[\uD800-\uDFFF]/u.test(value) || [...value].some(character => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)) {
     throw new ContentUnderstandingError('DOC_IDENTIFIER_INVALID', `${label} must be a nonempty bounded identifier.`);
   }
   return value;
