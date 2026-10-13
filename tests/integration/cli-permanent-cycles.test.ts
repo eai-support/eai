@@ -105,6 +105,7 @@ function controlled() {
     runLive: (_cli: string, dependencies: { env: Record<string, string> }) => {
       expect(dependencies.env.EAI_E2E_REQUIRE_FIRST_EMPTY).toBe('1'); expect(dependencies.env.EAI_E2E_RECREATE_AFTER_DELETE).toBe('1');
       expect(dependencies.env.EAI_E2E_CANONICAL_CYCLE_COMMANDS).toBe('1');
+      expect(dependencies.env.EAI_E2E_CHILD_HOME_REGION).toBeUndefined();
       expect(dependencies.env.EAI_E2E_PROVISION_ENTRA).toBe('1'); return liveReport();
     } };
   return { root, foundation, options, dependencies, deployments, preflight, buildReceipt, liveReport, runs: () => runs };

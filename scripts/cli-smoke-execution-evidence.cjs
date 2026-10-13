@@ -2,6 +2,7 @@
 const { randomUUID } = require('node:crypto');
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const UNSUPPORTED = new Set(['eai types define', 'eai resources indexes-apply']);
+const { requiresProtectedScope, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 function invocationIdentity(args, entries) {
   const matches = entries.flatMap(entry => [entry.command, ...(entry.aliases || [])]
@@ -42,6 +43,8 @@ function producerEvidence(report, entries, uuid = randomUUID) {
   }
   function receipt(value) { return value && typeof value === 'object' ? handles.get(value) : undefined; }
   function assert(entry, name, status, { option, contract = false, phase = entry?.phase } = {}) {
+    if (typeof name !== 'string' || name.trim() !== name || name.length < 1 || name.length > 200
+      || !['passed', 'failed', 'blocked', 'incomplete'].includes(status)) throw new Error('Assertion name/status must satisfy the bounded consumer contract.');
     if (entry && !report.executions.includes(entry)) throw new Error('Assertion execution was not actually recorded by this producer.');
     if (option !== undefined && (!entry || !entry.options.includes(option))) {
       throw new Error('An option assertion must describe an actually invoked option.');
@@ -66,6 +69,7 @@ function producerEvidence(report, entries, uuid = randomUUID) {
   function complete(entry) {
     const unsupported = UNSUPPORTED.has(entry.command);
     entry.coverageComplete = semanticContracts.has(entry) && entry.status === 'passed' && entry.exitCode === (unsupported ? 1 : 0)
+      && (!requiresProtectedScope(entry.command) || observedScopeVerified(entry))
       && (!unsupported || (entry.authenticationBypassed === true && entry.networkCalls === 0))
       && entry.assertions.length > 0 && entry.assertions.every(assertion => assertion.status === 'passed');
   }

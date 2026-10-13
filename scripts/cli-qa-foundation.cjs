@@ -272,7 +272,7 @@ function prepareFoundation(path, cliPath, dependencies = {}) {
         foundation.journal[slot] = { phase: 'creating', slug: workspace.slug }; foundation.state = 'partial'; save();
         const { result, body } = call(foundation.owner, ['workspace', 'create', '--name', workspace.name, '--slug', workspace.slug,
           '--parent', foundation.parentTenantId, '--domain', workspace.slug + '.example.invalid', '--usecase', 'generic', '--industry', 'test',
-          '--starter-template', 'eai-app-template', '--home-region', foundation.region, '--format', 'json'], foundation.parentTenantId);
+          '--starter-template', 'eai-app-template', '--format', 'json'], foundation.parentTenantId);
         const tenant = body?.tenant;
         if (UUID.test(tenant?.id || '') && tenant.id !== foundation.parentTenantId && tenant.slug === workspace.slug
           && (tenant.parentTenantId || tenant.parentTenant?.id || tenant.parentTenant) === foundation.parentTenantId

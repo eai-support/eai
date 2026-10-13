@@ -7,6 +7,7 @@ const smoke = require('./eai-full-e2e-smoke.cjs');
 const qualification = require('./cli-qa-foundation.cjs');
 const { sourceBuildVerified, candidateMatches } = require('./cli-qa-build-receipt.cjs');
 const ROOT = resolve(__dirname, '..');
+const { requiresProtectedScope, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const CONTRACTS = {
   workspace: { routes: ['/v4/identity/tenants', '/v4/platform/tenants', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'ResourceAPI'] },
@@ -44,7 +45,7 @@ function backendContract(command, operation) {
   const contract = CONTRACTS[group];
   if (!local && !contract) throw new Error('Unclassified CLI capability: ' + command);
   return {
-    requiresProtectedBackend: !local,
+    requiresProtectedBackend: requiresProtectedScope(command),
     routeFamilies: local ? [] : contract.routes,
     dependencies: local ? ['local CLI/app files or external tooling'] : contract.services,
     authorization: local ? 'local context' : group === 'env'
@@ -110,7 +111,7 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
   function scopedStatus(executions, option, malformed, contract) {
     const status = executionStatus(executions, option, malformed);
     if (status !== 'passed' || !contract.requiresProtectedBackend) return status;
-    return executions.every(item => scopeVerified(item)
+    return executions.every(item => observedScopeVerified(item) && scopeVerified(item)
       && executionAssertions(item, option).every(assertion => scopeVerified(assertion)
         && assertion.scopeTenantId === item.scopeTenantId)) ? 'passed' : 'incomplete';
   }

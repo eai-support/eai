@@ -94,6 +94,61 @@ describe('compiled managed deadline rejection handling', () => {
     })
 })
 
+describe('compiled private QA transport pipe', () => {
+  test.each(['enabled', 'absent', 'invalid-uuid', 'regular-file', 'redirected'])(
+    'captures only exact response scope for %s without changing normal API output', async mode => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-qa-pipe-process-'))
+      const fs = await import('node:fs')
+      const file = join(home, 'reserved-regular-file')
+      fs.writeFileSync(file, 'untouched', { mode: 0o600 })
+      const descriptor = mode === 'regular-file' ? fs.openSync(file, 'r+') : undefined
+      try {
+        const script = `
+          import assert from 'node:assert/strict';
+          import { createServer } from 'node:http';
+          import { PlatformAPIClient } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
+          const received = [];
+          const server = createServer((request, response) => {
+            received.push({ path: new URL(request.url, 'http://local.invalid').pathname, tenant: request.headers['x-tenant-id'] });
+            if (${JSON.stringify(mode)} === 'redirected' && request.url.includes('/resources/')) {
+              response.writeHead(302, { location: '/redirected' }); response.end();
+            } else { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"id":"owned-row","secret":"private-body"}'); }
+          });
+          await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+          try {
+            const gateway = 'http://127.0.0.1:' + server.address().port;
+            const resource = await new PlatformAPIClient(gateway, '11111111-1111-4111-8111-111111111111').createResource('project', { secret: 'private-request-body' });
+            assert.equal(resource.ok, true); assert.equal((await resource.json()).id, 'owned-row');
+            await new PlatformAPIClient(gateway, 'system').requestPublicApi('/v4/identity/me?ticket=private-query', { method: 'GET' });
+            console.log(JSON.stringify({ normalOutputPreserved: true, received, gateway }));
+          } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+        `
+        const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+          encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe', descriptor ?? 'pipe'],
+          env: { ...process.env, HOME: home, USERPROFILE: home, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '<private-header-canary>',
+            EAI_CLI_QA_TRANSPORT_FD: mode === 'absent' ? '' : '3',
+            EAI_CLI_QA_EXECUTION_ID: mode === 'invalid-uuid' ? 'invalid' : '22222222-2222-4222-8222-222222222222' },
+        })
+        expect(result.status).toBe(0); expect(result.signal).toBeNull(); expect(result.stderr).toBe('')
+        const normal = JSON.parse(String(result.stdout)); expect(normal.normalOutputPreserved).toBe(true)
+        const pipe = String(result.output[3] || '')
+        for (const secret of ['private-header-canary', 'private-body', 'private-request-body', 'private-query']) expect(pipe).not.toContain(secret)
+        if (['absent', 'invalid-uuid', 'regular-file'].includes(mode)) expect(pipe).toBe('')
+        else {
+          const observations = pipe.trim().split('\n').map(value => JSON.parse(value))
+          expect(observations).toHaveLength(2)
+          expect(observations[1]).toEqual({ schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222',
+            publicApiUrl: normal.gateway, tenantId: null, proofKind: 'transport-response', method: 'GET', path: '/v4/identity/me' })
+          expect(observations[0]).toEqual(mode === 'redirected'
+            ? { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', proofKind: 'unverified-response' }
+            : { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', publicApiUrl: normal.gateway,
+              tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response', method: 'POST', path: '/v4/data/resources/11111111-1111-4111-8111-111111111111/project' })
+        }
+        expect(fs.readFileSync(file, 'utf8')).toBe('untouched')
+      } finally { if (descriptor !== undefined) fs.closeSync(descriptor); await rm(home, { recursive: true, force: true }) }
+    })
+})
+
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
@@ -120,6 +175,21 @@ describe('PlatformAPIClient', () => {
     expect(JSON.stringify(withPublicRequestObservation({ id: 'a' }, a))).not.toContain('fixture-access-token')
     expect(() => withPublicRequestObservation({}, new Response('{}'))).toThrow('exact unredirected')
   })
+
+  test.each(['https://example.test', 'http://localhost:18000'])(
+    'root gateway %s retains exact response-bound resource scope', async gateway => {
+      const response = new Response('{"id":"owned-resource"}')
+      Object.defineProperty(response, 'url', { value: gateway + '/v4/data/resources/owned-tenant/project' })
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+      const observed = await new PlatformAPIClient(gateway, 'owned-tenant').createResource('project', {})
+      expect(fetchMock).toHaveBeenCalledWith(gateway + '/v4/data/resources/owned-tenant/project', expect.objectContaining({
+        method: 'POST', headers: expect.objectContaining({ 'X-Tenant-Id': 'owned-tenant' }),
+      }))
+      expect(observed).toBe(response)
+      expect(withPublicRequestObservation({ id: 'owned-resource' }, observed).request).toEqual({
+        publicApiUrl: gateway, tenantId: 'owned-tenant', proofKind: 'transport-response',
+      })
+    })
 
   test.each(['redirected', 'foreign-response-url', 'gateway-query', 'gateway-credentials', 'reused-response'])(
     'resource response scope cannot be manufactured from %s transport state', async kind => {
@@ -457,9 +527,11 @@ describe('PlatformAPIClient', () => {
     { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'This portal slug is already in use. Choose a different portal slug.' },
     { status: 422, code: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Use a lowercase kebab-case workspace slug, beginning and ending with a letter or number.' },
     { status: 422, code: 'TENANT_PORTAL_SLUG_INVALID', field: 'portalSlug', message: 'Use a lowercase kebab-case portal slug, beginning and ending with a letter or number.' },
-    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Pass --home-region au|ca|eu to select the child workspace home region.' },
-    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'Pass --home-region au|ca|eu with a supported home region.' },
-    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'Repair the parent workspace home-region metadata or pass --home-region au|ca|eu for the child workspace.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'HOME_REGION_INVALID', field: 'homeRegion', message: 'The parent workspace home region is not supported for a child workspace. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'PARENT_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'CHILD_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The existing child workspace has no supported home region. Ask a platform admin to repair the child workspace home region before reuse or recovery.' },
+    { status: 409, code: 'CHILD_TENANT_REGION_MUST_MATCH_PARENT', field: 'homeRegion', message: "A child workspace inherits its parent workspace home region. Omit homeRegion, or send the parent's region." },
   ])('keeps safe child-create guidance for $code/$field without rejected input', async ({ status, code, field, message }) => {
     for (const body of [
       { error: code, message: 'tax-file-secret', field, input: 'tax-file-secret' },
@@ -1022,7 +1094,7 @@ describe('PlatformAPIClient', () => {
     })
   })
 
-  test('sends child tenant homeRegion through the public platform router', async () => {
+  test('creates a child tenant without homeRegion so it inherits its parent region', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')
       .mockResolvedValue(new Response('{}', { status: 201 }))
@@ -1033,7 +1105,6 @@ describe('PlatformAPIClient', () => {
       slug: 'elevate',
       parent: 'tenant-parent',
       usecase: 'generic',
-      homeRegion: 'eu',
     })
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -1041,6 +1112,28 @@ describe('PlatformAPIClient', () => {
 
     expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children')
     expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      displayName: 'Elevate',
+      slug: 'elevate',
+      usecase: 'generic',
+    })
+  })
+
+  test('sends homeRegion only when creating a root tenant', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenant({
+      name: 'Elevate',
+      slug: 'elevate',
+      usecase: 'generic',
+      homeRegion: 'eu',
+    })
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants')
     expect(JSON.parse(String(init?.body))).toEqual({
       displayName: 'Elevate',
       slug: 'elevate',

@@ -6,8 +6,11 @@ import { createRequire } from 'node:module';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ts from 'typescript';
 import { findProjectRoot, loadEnvFile, validateObjectTypeDefinitions } from '../../src/lib/config.js';
+import { storeTokens } from '../../src/lib/auth.js';
+import { getActiveProfile, setActiveProfile, DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from '../../src/lib/profile.js';
+import { appCommand, buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
 
-interface CommandResult { status: number; stdout: string; stderr: string }
+interface CommandResult { status: number; stdout: string; stderr: string; transportOutput?: string }
 interface SmokeReport {
   environment: string;
   expectedPublicApi: string;
@@ -205,6 +208,68 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(app).toMatchObject({ scopeObservation: 'exact-owner-acknowledgment-required',
       scopeObservationLimitations: expect.stringContaining('No transport scope was emitted') });
   });
+  test('profile-bound execution scope comes from the same invocation transport receipt, not a selected tenant guess', () => {
+    const controlled = harness({ override(args, result, options) {
+      if (!matches(args, ['chat', 'send'])) return undefined;
+      return { ...result, transportOutput: JSON.stringify({ schemaVersion: 'eai.cli-qa-transport.v1',
+        executionId: options.env.EAI_CLI_QA_EXECUTION_ID, publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+        tenantId: 'run-child', proofKind: 'transport-response', method: 'POST', path: '/public/v4/ai/chat' }) + '\n' };
+    } });
+    const report = controlled.run({ EAI_E2E_WORKFLOW_PROVISION: '1', EAI_E2E_CHAT: '1',
+      EAI_E2E_AI_PROVIDER: 'controlled-provider', EAI_E2E_AI_MODEL: 'controlled-model' });
+    expect(report.executions.find(row => row.command === 'eai chat send')).toMatchObject({
+      scopeTenantId: 'run-child', scopeObservation: 'transport-response',
+    });
+  });
+  test.each(['missing', 'weak'])('protected semantic checks with %s response scope remain incomplete despite matching selected flags', kind => {
+    const controlled = harness({ override(args, result) {
+      if (kind === 'weak' && matches(args, ['app', 'provision'])) return { ...result, stdout: JSON.stringify({
+        ...JSON.parse(result.stdout), request: { publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'run-child' },
+      }) };
+      return undefined;
+    } });
+    const report = controlled.run();
+    const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
+    const read = saved.executions.find((row: { command: string }) => row.command === 'eai app provision');
+    expect(read.status).toBe('passed'); expect(read.scopeTenantId).toBe('run-child');
+    expect(read.coverageComplete).toBe(false);
+    expect(saved.coverage.find((row: { command: string }) => row.command === read.command).status).toBe('incomplete');
+  });
+  test('actual global profile namespace is retained and an unrelated owned request cannot certify it', () => {
+    const controlled = harness({ override(args, result, options) {
+      if (!matches(args, ['whoami'])) return undefined;
+      const common = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: options.env.EAI_CLI_QA_EXECUTION_ID,
+        publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', proofKind: 'transport-response', method: 'GET' };
+      return { ...result, transportOutput: [
+        { ...common, tenantId: 'unrelated-owned-workspace', path: '/public/v4/platform/tenants/unrelated-owned-workspace' },
+        { ...common, tenantId: null, path: '/public/v4/identity/tenants' },
+      ].map(value => JSON.stringify(value)).join('\n') + '\n' };
+    } });
+    const report = controlled.run();
+    const entry = report.executions.find(row => row.command === 'eai whoami') as Record<string, unknown>;
+    expect(entry.scopeTenantId).toBeNull(); expect(entry.observedPrimaryTenantId).toBeNull();
+    expect(entry.coverageComplete).toBe(false);
+    expect(entry.scopeObservationLimitations).toEqual(expect.stringContaining('separate identity/profile-scope audit contract'));
+  });
+  test.each(['uuid', 'gateway', 'tenant', 'malformed', 'unverified', 'auxiliary-owned'])(
+    'private transport %s cannot adopt resource IDs before full invocation validation', kind => {
+      const controlled = harness({ override(args, result, options) {
+        if (!matches(args, ['resources', 'create'])) return undefined;
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: options.env.EAI_CLI_QA_EXECUTION_ID,
+          publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'run-child', proofKind: 'transport-response',
+          method: 'POST', path: '/public/v4/data/resources/run-child/' + args[2] };
+        if (kind === 'uuid') observed.executionId = '00000000-0000-4000-8000-000000000999';
+        if (kind === 'gateway') observed.publicApiUrl = 'https://foreign.invalid/public';
+        if (kind === 'tenant') observed.tenantId = 'foreign-workspace';
+        if (kind === 'unverified') observed.proofKind = 'unverified-response';
+        const values = [observed];
+        if (kind === 'auxiliary-owned') values.push({ ...observed, tenantId: 'foreign-workspace', method: 'GET', path: '/public/v4/platform/tenants/foreign-workspace' });
+        return { ...result, transportOutput: kind === 'malformed' ? '{invalid' : values.map(value => JSON.stringify(value)).join('\n') + '\n' };
+      } });
+      const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
+      expect(report.created.resources).toEqual([]);
+      expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete']) && call.args[3] === 'resource-1')).toBe(false);
+    });
 
   test('general smoke alias receipts remain traceable and cannot substitute for canonical workspace ownership', () => {
     const report = harness().run();
@@ -213,6 +278,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(ownership.cleanup.command).toBeNull();
     expect(report.commands.some(row => row.command === 'eai workspace create')).toBe(false);
     expect(report.executions.some(row => row.command === 'eai workspace create')).toBe(true);
+  });
+
+  test('canonical lifecycle inherits child home region without forwarding an obsolete explicit region override', () => {
+    const controlled = harness();
+    const report = controlled.run({ EAI_E2E_CANONICAL_CYCLE_COMMANDS: '1', EAI_E2E_CHILD_HOME_REGION: 'eu' });
+    expect(report.status).toBe('passed');
+    const creation = controlled.calls.find(call => matches(call.args, ['workspace', 'create']));
+    expect(creation).toBeDefined();
+    expect(creation!.args).not.toContain('--home-region');
+    expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
   });
 
   // The receiver forbids unknown property and storage-binding fields. Local
@@ -314,6 +389,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         appKey = flag(args, '--key'); appExists = true; appCreations++;
         enrollmentId = appCreations === 1 ? 'run-enrollment' : 'recreated-enrollment';
         return ok({ tenantId: createdTenantId, appKey,
+          request: buildVerticalEnrollmentData(args[2], createdTenantId, { key: appKey }),
           response: { tenantId: createdTenantId, appKey, verticalKey: appKey,
             app: { id: enrollmentId, tenantId: createdTenantId, parentTenantId: createdTenantId, verticalKey: appKey,
               ...(appCreations === 1 || runtime !== createdTenantId ? { childTenantId: runtime } : {}) }, childTenant: { id: runtime },
@@ -501,13 +577,123 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     throw new Error('Expected controlled lifecycle failure');
   }
 
+  test('real app-create JSON domain requests allow exact owned creation and recreation without becoming transport evidence', async () => {
+    const selectedProfile = getActiveProfile();
+    const savedEnv = Object.fromEntries(['HOME', 'USERPROFILE', 'BASE_URL_PUBLIC_API', 'EAI_ACCESS_TOKEN', 'EAI_PROFILE']
+      .map(key => [key, process.env[key]]));
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'eai-smoke-real-app-producer-'))); fixtureRoots.push(home);
+    const originalCwd = process.cwd();
+    const gateway = 'https://dev-api.au.myenterprise.ai/public', tenantId = 'run-child';
+    const appKey = 'eai-e2e-20261008123456-12345678';
+    const outputs: Record<string, unknown>[] = [];
+    const requests: { url: string; tenant: string | null; body: unknown }[] = [];
+    let creations = 0;
+    try {
+      setActiveProfile('default');
+      Object.assign(process.env, { HOME: home, USERPROFILE: home, BASE_URL_PUBLIC_API: gateway,
+        EAI_ACCESS_TOKEN: '<owned-app-producer-token>', EAI_PROFILE: 'default' });
+      process.chdir(home);
+      await storeTokens({ accessToken: '<owned-app-producer-token>', refreshToken: '<owned-app-producer-refresh>',
+        expiresAt: Date.now() + 3600000, tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+        tenantName: DEFAULT_PROD_AUTH_TENANT_NAME, clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
+        oid: 'qa-actor', upn: 'qa@example.invalid', activeTenantId: tenantId, publicApiUrl: gateway,
+        activeTenantName: 'Owned child', activeTenantSlug: 'owned-child', membershipsCachedAt: Date.now() });
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const url = String(input), method = init?.method || 'GET';
+        if (url === gateway + '/v4/identity/tenants') return new Response(JSON.stringify({ tenants: [
+          { id: tenantId, isActive: true, roles: ['tenant-admin'] },
+        ] }));
+        if (url === gateway + '/v4/platform/tenants/' + tenantId) return new Response(JSON.stringify({
+          id: tenantId, isActive: true, roles: ['tenant-admin'], homeRegion: 'au',
+        }));
+        if (url === gateway + '/v4/platform/tenants/' + tenantId + '/apps' && method === 'POST') {
+          requests.push({ url, tenant: new Headers(init?.headers).get('X-Tenant-Id'), body: JSON.parse(String(init?.body)) });
+          const initial = ++creations === 1;
+          const id = initial ? 'run-enrollment' : 'recreated-enrollment';
+          return new Response(JSON.stringify({ tenantId, appKey, verticalKey: appKey,
+            app: { id, tenantId, parentTenantId: tenantId, verticalKey: appKey,
+              ...(initial ? { childTenantId: tenantId } : {}) },
+            childTenant: { id: tenantId }, created: { app: true, childTenant: false } }), { status: 201 });
+        }
+        throw new Error('Unexpected controlled app producer request: ' + method + ' ' + url);
+      });
+      const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      for (let index = 0; index < 2; index++) {
+        await appCommand.parseAsync(['create', appKey, '--tenant-id', tenantId, '--key', appKey, '--format', 'json'], { from: 'user' });
+        outputs.push(JSON.parse(String(output.mock.calls.at(-1)?.[0])));
+      }
+      output.mockRestore();
+      expect(requests).toHaveLength(2);
+      expect(requests.every(row => row.tenant === tenantId)).toBe(true);
+      expect(requests[0].body).toEqual({ appDisplayName: appKey, verticalKey: appKey, source: 'eai-cli' });
+      expect(outputs[0].request).toEqual(buildVerticalEnrollmentData(appKey, tenantId, { key: appKey }));
+      let outputIndex = 0;
+      const controlled = harness({ override(args) {
+        if (matches(args, ['app', 'create'])) return ok(outputs[outputIndex++]);
+        return undefined;
+      } });
+      const report = controlled.run({ EAI_E2E_RECREATE_AFTER_DELETE: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1' });
+      expect(report.status).toBe('passed'); expect(outputIndex).toBe(2);
+      expect(report.created.enrollmentId).toBe('run-enrollment');
+      expect(report.created.recreatedEnrollmentId).toBe('recreated-enrollment');
+      expect(report.executions.filter(row => row.command === 'eai app create')).toHaveLength(2);
+      expect(report.executions.filter(row => row.command === 'eai app create').every(row =>
+        row.scopeObservation === 'exact-owner-acknowledgment-required')).toBe(true);
+      expect(report.cleanupVerified).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+      process.chdir(originalCwd);
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      setActiveProfile(selectedProfile);
+    }
+  });
+
+  test.each(['tenant', 'key', 'name', 'missing', 'extra', 'gateway', 'proof', 'array', 'null'])(
+    'app domain request %s mismatch remains contained before enrollment adoption', kind => {
+      const controlled = harness({ override(args, result) {
+        if (!matches(args, ['app', 'create'])) return undefined;
+        const payload = JSON.parse(result.stdout);
+        if (kind === 'tenant') payload.request.tenantId = 'foreign-workspace';
+        if (kind === 'key') payload.request.verticalKey = 'foreign-app';
+        if (kind === 'name') payload.request.displayName = 'foreign-name';
+        if (kind === 'missing') delete payload.request.source;
+        if (kind === 'extra') payload.request.unrecognizedScope = 'foreign';
+        if (kind === 'gateway') payload.request.publicApiUrl = 'https://foreign.invalid';
+        if (kind === 'proof') payload.request.proofKind = 'transport-response';
+        if (kind === 'array') payload.request = [];
+        if (kind === 'null') payload.request = null;
+        return ok(payload);
+      } });
+      const report = failure(controlled).report;
+      expect(report.created.enrollmentId).toBe('');
+      expect(report.created.appKey).toBe('');
+      expect(report.executions.find(row => row.command === 'eai app create')?.scopeObservation).toBe('unverified');
+      expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+      expect(JSON.stringify(report)).not.toContain('unrecognizedScope');
+    });
+
+  test('an exact app domain request cannot adopt a foreign enrollment acknowledgment', () => {
+    const controlled = harness({ override(args, result) {
+      if (!matches(args, ['app', 'create'])) return undefined;
+      const payload = JSON.parse(result.stdout);
+      payload.response.app.tenantId = 'foreign-workspace';
+      return ok(payload);
+    } });
+    const report = failure(controlled).report;
+    expect(report.created.enrollmentId).toBe(''); expect(report.created.appKey).toBe('');
+    expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+  });
+
   test('actual controlled live producer keeps aliases, parent forwarding and UUID-bound assertions without inventing canonical or backend qualification', () => {
     const report = harness().run();
     const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
     expect(new Set(saved.executions.map((row: { executionId: string }) => row.executionId)).size).toBe(saved.executions.length);
     expect(saved.commands.every((row: { command: string; alias?: string }) => row.command.startsWith('eai ') && row.alias === undefined)).toBe(true);
     const created = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant create');
-    expect(created).toMatchObject({ command: 'eai workspace create', scopeTenantId: saved.parentTenantId, coverageComplete: true });
+    expect(created).toMatchObject({ command: 'eai workspace create', scopeTenantId: saved.parentTenantId, coverageComplete: false });
     expect(created.assertions).toContainEqual(expect.objectContaining({ command: created.command, alias: created.alias,
       executionId: created.executionId, scopeTenantId: saved.parentTenantId, name: 'created-child-ownership', status: 'passed' }));
     const bootstrap = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant bootstrap-admin');
@@ -1475,6 +1661,8 @@ describe('producer execution receipt controls', () => {
     const report = { assertions: [] }, producer = producerEvidence(report, entries);
     const alias = producer.start(['tenant', 'list', '--format', 'json'], 'read', { environment: 'DEV', publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', scopeTenantId: '11111111-1111-4111-8111-111111111111' });
     Object.assign(alias, { status: 'passed', exitCode: 0 });
+    alias.transportObservations = [{ schemaVersion: 'eai.cli-qa-transport.v1', executionId: alias.executionId,
+      publicApiUrl: alias.publicApiUrl, tenantId: alias.scopeTenantId, proofKind: 'transport-response', method: 'GET', path: '/public/v4/identity/tenants' }];
     producer.assert(alias, 'actual-listed-workspace', 'passed', { contract: true });
     expect(report).toMatchObject({ commands: [], unsupported: [], aliases: [expect.objectContaining({ command: 'eai workspace list', alias: 'eai tenant list', invokedCommand: 'eai tenant list', coverageComplete: true })] });
     expect(alias.assertions[0]).toMatchObject({ executionId: alias.executionId, command: alias.command, alias: alias.alias,
@@ -1509,6 +1697,14 @@ describe('producer execution receipt controls', () => {
     expect(() => producer.start(['blocks', 'list'], 'local')).toThrow('fresh execution UUID');
     expect(() => producer.assert({}, 'fabricated', 'passed')).toThrow('actually recorded');
   });
+  test.each([{ name: '', status: 'passed' }, { name: ' padded', status: 'passed' }, { name: 'x'.repeat(201), status: 'passed' },
+    { name: null, status: 'passed' }, { name: 'bounded', status: 'success' }, { name: 'bounded', status: undefined }])(
+    'rejects invalid assertion name/status before appending either projection: %j', ({ name, status }) => {
+      const report = { assertions: [] }, producer = producerEvidence(report, entries);
+      const execution = producer.start(['blocks', 'list'], 'local');
+      expect(() => producer.assert(execution, name, status, { contract: true })).toThrow('Assertion name/status');
+      expect(report.assertions).toEqual([]); expect(execution.assertions).toEqual([]); expect(execution.coverageComplete).toBe(false);
+    });
 });
 
 describe('local CLI qualification', () => {

@@ -400,6 +400,31 @@ IDs into cleanup. Other existing owner acknowledgments remain explicitly labeled
 without transport proof; workflow resources require an exact tenant and owner
 readback before deletion. No flags, generic success or returned ID invents scope
 proof. Independent cleanup of an already verified disposable child continues.
+The app-create JSON `request` is an enrollment payload. The runner accepts only
+its exact invocation-bound tenant, app key, display name and authored options,
+then requires the full owned enrollment acknowledgment before adopting its ID.
+This domain payload remains acknowledgment-only and supplies no transport proof;
+foreign or malformed forwarding metadata still blocks every ownership observer.
+
+Protected command qualification additionally requires an actual response-bound
+scope for that exact execution UUID. The QA runner reserves a private pipe on
+descriptor 3; the API client emits only safe gateway, actual tenant header,
+method and pathname after receiving that exact unredirected response. Query
+strings, credentials, headers and bodies are omitted. The runner collects the
+whole bounded pipe before adoption, checks primary routes/methods, and rejects
+foreign non-global scopes. A regular-file descriptor is never written. Missing
+or weak request metadata remains incomplete despite successful semantic checks.
+
+Full qualification still has a tracked source dependency in CLI issue #384:
+`whoami`, `workspace list`, `workspace info`, `workspace select` (and their tenant
+aliases), `doctor` and `login` need an authenticated identity/profile-scope audit
+contract. Their actual inventory/auth transport uses null/system scope or cached
+state; an auxiliary regional tenant lookup cannot turn that into owned-workspace
+proof. The new contract must bind the real authenticated actor, profile, gateway,
+response outcome and execution identity without inventing an owned tenant header.
+`env pull/push` and `support` additionally need evidence for their Azure CLI and
+Website transports. These are source follow-ups; live testing alone cannot make
+the current generic owned-tenant consumer certify every command.
 
 Only a verified semantic contract can set command completion. Exit zero, JSON
 shape, read-only preservation, global preflight success and later passing

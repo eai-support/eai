@@ -10,6 +10,7 @@ const ts = require('typescript');
 const { operationalEnvironment, installedGitExecution } = require('./cli-qa-operational-env.cjs');
 const qa = require('./cli-qa-foundation.cjs');
 const { producerEvidence } = require('./cli-smoke-execution-evidence.cjs');
+const { SCHEMA: TRANSPORT_SCHEMA, observationValid, primaryTransportMatches, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
@@ -208,7 +209,7 @@ const SMOKE_CALLS = {
     'eai workspace info <workspace-id> --format json',
   ],
   'eai workspace create': [
-    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --home-region <region> --format json',
+    'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace create --name <child-name> --slug <child-slug> --parent <workspace-id> --domain smoke.example.invalid --usecase generic --industry test --starter-template eai-app-template --format json',
   ],
   'eai workspace bootstrap-admin': [
     'EAI_E2E_CREATE_CHILD_TENANT=1 eai workspace bootstrap-admin --parent <workspace-id> --child <child-tenant-id> --user-oid <oid> --user-email <email> --format json',
@@ -611,6 +612,7 @@ const OPTION_DECISIONS = {
   },
   'eai workspace create': {
     '--allow-root': 'Administrative backfill escape hatch; intentionally excluded from normal e2e smoke.',
+    '--home-region': 'Root workspace region for --allow-root backfills only; the child smoke omits it because a child inherits its parent region.',
   },
   'eai workspace delete': {
     '--force-hard-purge': 'Only parent-authorized deletion of an exact run-created leaf is exercised; generic system-admin subtree purge remains controlled-test coverage.',
@@ -1142,6 +1144,7 @@ function runCommand(command, args, options = {}) {
     shell: false,
     timeout: options.timeout,
     maxBuffer: 8 * 1024 * 1024,
+    ...(options.transportReceipt ? { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] } : {}),
   });
 
   const stdout = result.stdout || '';
@@ -1149,7 +1152,8 @@ function runCommand(command, args, options = {}) {
   if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`Command failed: eai ${args.join(' ')}\n${redact(`${stdout}\n${stderr}`).trim()}`);
   }
-  return { status: result.status ?? 1, stdout, stderr };
+  return { status: result.status ?? 1, stdout, stderr,
+    ...(options.transportReceipt ? { transportOutput: result.output?.[3] || '' } : {}) };
 }
 
 function redact(value) {
@@ -1821,26 +1825,69 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     // Record the actual invoked spelling and scope used in this subprocess. No argument values are retained.
     const entry = evidence.start(args, phase, { environment: report.environment, publicApiUrl: expectedApi,
       scopeTenantId: selector ? args[args.indexOf(selector) + 1] : options.scopeTenantId });
+    entry.selectedScopeTenantId = entry.scopeTenantId;
     checkpoint();
     const started = now();
     try {
       const result = execute(command, ['--profile', profile, ...args], { cwd: options.cwd || projectRoot,
+        transportReceipt: true,
         allowFailure: true, replaceEnv: true, env: { ...childEnv, EAI_PROFILE: profile, BASE_URL_PUBLIC_API: expectedApi,
           EAI_TENANT_ID: (options.cwd || projectRoot) === projectRoot ? runtime() || undefined : undefined,
           EAI_PARENT_TENANT_ID: (options.cwd || projectRoot) === projectRoot ? child() || undefined : undefined,
-          EAI_APP_KEY: (options.cwd || projectRoot) === projectRoot ? report.created.appKey || undefined : undefined },
+          EAI_APP_KEY: (options.cwd || projectRoot) === projectRoot ? report.created.appKey || undefined : undefined,
+          EAI_CLI_QA_EXECUTION_ID: entry.executionId, EAI_CLI_QA_TRANSPORT_FD: '3' },
         timeout: options.timeout || 60000 });
       entry.exitCode = result.status;
       entry.durationMs = Math.max(0, now() - started);
+      // The reserved pipe belongs to this exact subprocess. Complete collection
+      // and validation before any ownership observer can adopt backend IDs.
+      let transports = [];
+      const pipe = result.transportOutput;
+      if (pipe !== undefined && (typeof pipe !== 'string' || Buffer.byteLength(pipe) > 128 * 1024))
+        throw new Error('QA transport receipt is malformed or exceeds its bound. Returned IDs were not adopted.');
+      if (pipe) {
+        try { transports = pipe.trim().split('\n').map(value => JSON.parse(value)); }
+        catch { throw new Error('QA transport receipt is malformed. Returned IDs were not adopted.'); }
+        if (transports.length > 256 || !transports.every(value => observationValid(value, entry.executionId) && value.source === undefined
+          && value.publicApiUrl === expectedApi)) throw new Error('QA transport receipt does not match this exact invocation or gateway. Returned IDs were not adopted.');
+        const primary = transports.filter(value => primaryTransportMatches(entry.command, value));
+        const actualScopes = [...new Set(primary.map(value => value.tenantId))];
+        if (actualScopes.length === 1) entry.observedPrimaryTenantId = actualScopes[0];
+        if (actualScopes.length === 1 && (entry.scopeTenantId === undefined || actualScopes[0] === null || actualScopes[0] === 'system'))
+          entry.scopeTenantId = actualScopes[0];
+        const foreignScope = transports.some(value => value.tenantId !== null && value.tenantId !== 'system' && value.tenantId !== entry.scopeTenantId);
+        // A global read may include a regional-routing lookup. Keep both actual
+        // namespaces incomplete; no observer is permitted to adopt from it.
+        if (foreignScope && (options.observe || entry.selectedScopeTenantId !== undefined
+          || (entry.scopeTenantId !== null && entry.scopeTenantId !== 'system')))
+          throw new Error('QA transport receipt observed a foreign non-global scope. Returned IDs were not adopted.');
+        entry.transportObservations = transports;
+      }
       const payload = parseJson(result.stdout, {});
       const supplied = payload && typeof payload === 'object' && Object.hasOwn(payload, 'request');
       const observedRequest = supplied ? payload.request : undefined;
+      // App create already emits its enrollment request, not transport scope.
+      // Accept only that exact command-bound domain shape; the observer still
+      // requires the full owned response acknowledgment before adopting IDs.
+      const optionValue = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
+      const expectedAppRequest = entry.command === 'eai app create' && typeof args[2] === 'string' && optionValue('--key')
+        ? { tenantId: entry.scopeTenantId, verticalKey: optionValue('--key').trim(), displayName: args[2].trim(),
+          status: optionValue('--status') || 'pending', source: optionValue('--source') || 'eai-cli',
+          ...(optionValue('--template') ? { templateKey: optionValue('--template') } : {}),
+          ...(optionValue('--app-url') ? { appUrl: optionValue('--app-url') } : {}) } : undefined;
+      const appDomainRequest = supplied && expectedAppRequest && observedRequest && typeof observedRequest === 'object'
+        && !Array.isArray(observedRequest) && Object.keys(observedRequest).length === Object.keys(expectedAppRequest).length
+        && Object.entries(expectedAppRequest).every(([key, value]) => Object.hasOwn(observedRequest, key) && observedRequest[key] === value)
+        && payload.tenantId === entry.scopeTenantId && payload.appKey === expectedAppRequest.verticalKey;
       const resourceMutation = ['eai resources create', 'eai resources batch-create', 'eai resources batch-import',
         'eai resources delete', 'eai resources batch-delete'].includes(entry.command);
       const requestMatches = observedRequest && typeof observedRequest === 'object' && !Array.isArray(observedRequest)
         && observedRequest.publicApiUrl === entry.publicApiUrl && observedRequest.tenantId === entry.scopeTenantId
-        && typeof observedRequest.tenantId === 'string' && observedRequest.tenantId.length > 0;
-      if ((supplied && !requestMatches) || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'))) {
+        && typeof observedRequest.tenantId === 'string' && observedRequest.tenantId.length > 0
+        && (!Object.hasOwn(observedRequest, 'proofKind') || observedRequest.proofKind === 'transport-response');
+      if ((supplied && !requestMatches && !appDomainRequest)
+        || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'
+          || Object.keys(observedRequest).some(key => !['publicApiUrl', 'tenantId', 'proofKind'].includes(key))))) {
         // Never copy unverifiable backend IDs into adoption or cleanup journals.
         entry.scopeObservation = 'unverified';
         if (supplied) {
@@ -1859,11 +1906,23 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           reason: 'Mutation response scope is missing, invalid or differs from the selected invocation; returned IDs were not adopted.' });
         throw new Error('Observed PublicAPI forwarding is missing or differs from the actual selected invocation scope.');
       }
+      if (resourceMutation && requestMatches && observedRequest.proofKind === 'transport-response') {
+        entry.transportObservations = [...transports, { schemaVersion: TRANSPORT_SCHEMA, executionId: entry.executionId,
+          publicApiUrl: observedRequest.publicApiUrl, tenantId: observedRequest.tenantId,
+          proofKind: 'transport-response', source: 'resource-json' }];
+      }
       if (requestMatches) entry.scopeObservation = observedRequest.proofKind === 'transport-response'
         ? 'transport-response' : 'cli-request-metadata';
       else if (options.observe) {
         entry.scopeObservation = 'exact-owner-acknowledgment-required';
         entry.scopeObservationLimitations = 'No transport scope was emitted; only exact owned acknowledgments with authoritative cleanup readback are eligible.';
+      }
+      if (observedScopeVerified(entry)) entry.scopeObservation = 'transport-response';
+      else if (!options.observe) {
+        entry.scopeObservation = 'qualification-incomplete';
+        entry.scopeObservationLimitations = entry.scopeTenantId === 'system' || entry.scopeTenantId === null
+          ? 'Actual global/system transport requires a separate identity/profile-scope audit contract; it is not an owned workspace observation.'
+          : 'Selected flags and profile state do not prove the actual protected response scope.';
       }
       evidence.bind(result, entry);
       options.observe?.(result); // Adopt only after the supplied/required transport scope gate.
@@ -2062,7 +2121,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     phase = 'isolation'; childAttempted = true;
     const created = json(['tenant', 'create', '--name', 'EAI CLI Audit ' + runId + ' ' + nonce, '--slug', appName,
       '--parent', parentTenantId, '--domain', appName + '.example.invalid', '--usecase', 'generic', '--industry', 'test',
-      '--starter-template', 'eai-app-template', ...(env.EAI_E2E_CHILD_HOME_REGION ? ['--home-region', env.EAI_E2E_CHILD_HOME_REGION] : []),
+      '--starter-template', 'eai-app-template',
       '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
         const payload = parseJson(result.stdout, {});
         if (result.status !== 0 && payload.ok === false && [400, 401, 403, 404, 409, 422].includes(payload.status)) {
@@ -2790,7 +2849,7 @@ function main() {
   else runLiveSmoke(args.cli);
 }
 
-module.exports = { runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, checkTraceability, candidateEvidence, entraDeletionReceiptVerified, TRACEABILITY, redact };
+module.exports = { runCommand, runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, checkTraceability, candidateEvidence, entraDeletionReceiptVerified, TRACEABILITY, redact };
 
 if (require.main === module) {
   try {

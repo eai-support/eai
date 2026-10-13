@@ -1087,6 +1087,10 @@ test.each([false, true])(
       expect(result.exitCode, result.stderr).toBe(0);
       for (const file of ["AGENTS.md", ".github/copilot-instructions.md"]) {
         const content = await readFile(join(environment.dir, file), "utf8");
+        if (eai) {
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        } else expect(content).not.toContain('For `MISSING_TENANT`');
         expect(content, file).toContain(
           "Never retry or explain a failed `eai errors explain` command",
         );
@@ -1109,3 +1113,81 @@ test.each([false, true])(
     }
   },
 );
+
+test.each(['missing', 'regular', 'symlink', 'directory'])(
+  'bundled packager preserves the filesystem boundary for AGENTS=%s',
+  async (kind) => {
+    const outer = await mkdtemp(join(tmpdir(), 'cli-packager-agents-'));
+    const root = join(outer, 'source');
+    const sentinel = join(outer, 'outside.md');
+    const original = '# Unrelated file\nPreserve these bytes.\n';
+    try {
+      await mkdir(join(root, 'extension'), { recursive: true });
+      await writeFile(join(root, 'extension/package.json'), '{"version":"3.14.3"}');
+      await writeFile(join(root, 'extension/icon.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXkQAAAAASUVORK5CYII=', 'base64'));
+      await mkdir(join(root, '.specify/commands'), { recursive: true });
+      await cp(join(BUNDLED_GOFER_RESOURCES, 'commands/0_gofer_start.md'), join(root, '.specify/commands/0_gofer_start.md'));
+      await writeFile(sentinel, original);
+      if (kind === 'regular') await writeFile(join(root, 'AGENTS.md'), original);
+      if (kind === 'symlink') await symlink(sentinel, join(root, 'AGENTS.md'));
+      if (kind === 'directory') await mkdir(join(root, 'AGENTS.md'));
+      const result = await runChild(process.execPath, [join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'out'], { cwd: root });
+      expect(await readFile(sentinel, 'utf8')).toBe(original);
+      if (kind === 'symlink' || kind === 'directory') {
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain('AGENTS.md must be a regular file');
+      } else {
+        expect(result.exitCode, result.stderr).toBe(0);
+        const plugin = join(root, 'out/eai-gofer-agent-plugin-3.14.3/eai-gofer');
+        expect(existsSync(join(plugin, 'AGENTS.md'))).toBe(kind === 'regular');
+        if (kind === 'regular') {
+          const content = await readFile(join(plugin, 'AGENTS.md'), 'utf8');
+          expect(content).toContain(original.trim());
+          expect(content.split('## Support only when the person asks')).toHaveLength(2);
+        }
+        for (const file of ['README.md', 'skills/eai/SKILL.md']) {
+          const content = await readFile(join(plugin, file), 'utf8');
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        }
+      }
+    } finally { await rm(outer, { recursive: true, force: true }); }
+  },
+);
+
+
+test.each(['open-error', 'open-enoent-present', 'open-enoent-absent', 'read-error', 'write-error', 'close-error', 'short-write', 'zero-write', 'empty-input'])(
+    'closes packaged AGENTS handles and preserves complete bytes for %s',
+    async (mode) => {
+      const outer = await mkdtemp(join(tmpdir(), 'gofer-agents-handle-'));
+      const root = join(outer, 'source'), trace = join(outer, 'trace.log');
+      const original = mode === 'empty-input' ? '' : '# Local instructions\nUnicode: café λ.\n';
+      try {
+        await mkdir(join(root, 'extension'), { recursive: true });
+        await writeFile(join(root, 'extension/package.json'), JSON.stringify({ version: '3.14.3' }));
+        await writeFile(join(root, 'extension/icon.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXkQAAAAASUVORK5CYII=', 'base64'));
+        await mkdir(join(root, '.specify/commands'), { recursive: true });
+        await cp(join(BUNDLED_GOFER_RESOURCES, 'commands/0_gofer_start.md'), join(root, '.specify/commands/0_gofer_start.md'));
+        if (mode !== 'open-enoent-absent') await writeFile(join(root, 'AGENTS.md'), original);
+        const preload = join(outer, 'observe.mjs');
+        await writeFile(preload, "import { promises as fs } from 'node:fs';\nimport path from 'node:path';\nconst mode = MODE, trace = TRACE;\nconst record = event => fs.appendFile(trace, event + '\\n');\nconst originalOpen = fs.open.bind(fs);\nfs.open = async (file, ...args) => {\n  const tracked = path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out');\n  if (tracked && mode === 'open-error') throw new Error('controlled AGENTS open failure');\n  if (tracked && mode.startsWith('open-enoent-')) throw Object.assign(new Error('controlled AGENTS ENOENT'), { code: 'ENOENT' });\n  const handle = await originalOpen(file, ...args);\n  if (!tracked) return handle;\n  await record('opened');\n  const originalClose = handle.close.bind(handle);\n  handle.close = async () => { try { const value = await originalClose(); if (mode === 'close-error') throw new Error('controlled AGENTS close failure'); return value; } finally { await record('closed'); } };\n  const originalRead = handle.readFile.bind(handle);\n  handle.readFile = async (...readArgs) => { if (mode === 'read-error') throw new Error('controlled AGENTS read failure'); return originalRead(...readArgs); };\n  const originalWrite = handle.write.bind(handle);\n  handle.write = async (buffer, offset, length, position) => {\n    if (mode === 'write-error') throw new Error('controlled AGENTS write failure');\n    if (mode === 'zero-write') return { bytesWritten: 0, buffer };\n    return originalWrite(buffer, offset, mode === 'short-write' ? Math.min(length, 17) : length, position);\n  };\n  return handle;\n};\nconst originalReadFile = fs.readFile.bind(fs), originalWriteFile = fs.writeFile.bind(fs);\nfs.readFile = async (file, ...args) => { if (mode === 'read-error' && path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out')) throw new Error('controlled AGENTS read failure'); return originalReadFile(file, ...args); };\nfs.writeFile = async (file, ...args) => { if (mode === 'write-error' && path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out')) throw new Error('controlled AGENTS write failure'); return originalWriteFile(file, ...args); };\n".replace('MODE', JSON.stringify(mode)).replace('TRACE', JSON.stringify(trace)));
+        const result = await runChild(process.execPath, ['--import', preload, join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'out'], { cwd: root });
+        const events = existsSync(trace) ? (await readFile(trace, 'utf8')).trim().split('\n') : [];
+        if (mode === 'open-enoent-absent') { expect(result.exitCode, result.stderr).toBe(0); expect(events).toEqual([]); }
+        else if (mode === 'open-enoent-present') { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain('controlled AGENTS ENOENT'); expect(events).toEqual([]); }
+        else if (mode === 'open-error') { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain('controlled AGENTS open failure'); expect(events).toEqual([]); }
+        else {
+          expect(events).toEqual(['opened', 'closed']);
+          if (mode === 'short-write' || mode === 'empty-input') {
+            expect(result.exitCode, result.stderr).toBe(0);
+            const control = await runChild(process.execPath, [join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'control'], { cwd: root }); expect(control.exitCode, control.stderr).toBe(0);
+            const entry = `eai-gofer-agent-plugin-3.14.3/eai-gofer/AGENTS.md`;
+            const actual = await readFile(join(root, 'out', entry));
+            expect(actual).toEqual(await readFile(join(root, 'control', entry)));
+            expect(actual.toString()).toContain(original.trim());
+            expect(actual.includes(0)).toBe(false);
+          } else { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain(mode === 'zero-write' ? 'AGENTS.md normalization write made no progress.' : `controlled AGENTS ${mode.split('-')[0]} failure`); }
+        }
+      } finally { await rm(outer, { recursive: true, force: true }); }
+    }
+  );

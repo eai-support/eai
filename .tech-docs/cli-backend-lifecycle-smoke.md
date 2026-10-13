@@ -90,8 +90,8 @@ initializer with the exact fixture JSON. Unexpected producer layouts fail before
 generation or seed and still require owned cleanup. It then runs the template's
 `npm run build:object-types` and `npm run check:object-types` before validation
 and seed. Both generated JSON artifacts must be current; the normal app build
-keeps its producer checks. `EAI_E2E_BUILD=0` omits the app build. `EAI_E2E_CHILD_HOME_REGION` supplies an
-explicit child region when required; `EAI_E2E_RUN_ID` can supply 1–14 digits.
+keeps its producer checks. `EAI_E2E_BUILD=0` omits the app build. The run-created child inherits its
+parent's home region; `EAI_E2E_RUN_ID` can supply 1–14 digits.
 
 | Variable | Additional execution and prerequisites |
 | --- | --- |

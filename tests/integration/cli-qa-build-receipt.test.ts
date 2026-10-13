@@ -75,7 +75,7 @@ function fixture() {
 }
 function normalFixture() {
   const value = fixture();
-  for (const name of ['cli-qa-build-receipt.cjs', 'cli-qa-foundation.cjs', 'eai-full-e2e-smoke.cjs', 'cli-qa-operational-env.cjs', 'cli-qa-npm-execution.cjs', 'cli-smoke-execution-evidence.cjs']) {
+  for (const name of ['cli-qa-build-receipt.cjs', 'cli-qa-foundation.cjs', 'eai-full-e2e-smoke.cjs', 'cli-qa-operational-env.cjs', 'cli-qa-npm-execution.cjs', 'cli-smoke-execution-evidence.cjs', 'cli-qa-execution-scope.cjs']) {
     const path = resolve('scripts', name);
     if (existsSync(path)) writeFileSync(join(value.root, 'scripts', name), readFileSync(path));
   }
