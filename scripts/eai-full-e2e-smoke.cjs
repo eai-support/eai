@@ -96,6 +96,7 @@ const TRACEABILITY_BASE = [
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
   ['eai deploy app', 'create/update/read', 'live-optional', 'EAI_E2E_DEPLOY=1 publishes only the run-created app through EAI-managed source, requires exact successful deployment evidence and operation-bound doctor; actor proof or review pending is blocked.'],
   ['eai deploy source move', 'read/browser-handoff', 'manual', 'The CLI checks the exact active EAI-managed source and deployment, then opens the Portal for actor-bound native transfer. Controlled command tests cover the handoff; the local SOT journey owns live transfer, rebind and cleanup evidence.'],
+  ['eai deploy source authorize-commit', 'create/update', 'manual', 'Explicit linked-customer consent admits one provider-verified already-merged commit in the retained CLI-managed repository. This is not GitHub APPROVED review or deployed success. Controlled consent/provenance tests own behavior; the protected customer journey owns live authorization and subsequent Portal dispatch.'],
   ['eai deploy source validate', 'read-local', 'live-optional', 'EAI_E2E_DEPLOY=1 validates local app source before managed publication; controlled fixtures cover supported edits and rejected platform edits.'],
   ['eai deploy setup', 'create-local', 'live', 'Generates deployment workflow in the disposable workspace.'],
   ['eai deploy trigger', 'create', 'manual', 'Not run by release smoke because it triggers a host deployment outside the CLI test tenant.'],
@@ -389,6 +390,9 @@ const SMOKE_CALLS = {
   ],
   'eai deploy source move': [
     'eai deploy source move <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --source-operation <cli-managed-operation-id> --no-open --format json',
+  ],
+  'eai deploy source authorize-commit': [
+    'eai deploy source authorize-commit <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --github-link-session <verified-session-uuid> --predecessor-operation <cli-managed-operation-id> --predecessor-integrity <sha256-digest> --predecessor-commit <40-char-sha> --pull-request <number> --commit <40-char-merged-sha> --authorize-exact-commit --format json',
   ],
   'eai deploy source validate': [
     'eai deploy source validate --project-dir <generated-app-directory> --format json',
@@ -984,6 +988,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'No - CLI verifies source and returns a Portal handoff; a later customer-authorized Portal action can transfer the repository',
     cleanupMechanism: 'Not required for the CLI handoff; the local SOT journey verifies any subsequent backup retention and cleanup',
     cleanupVerified: 'Not applicable to the handoff; a successful native transfer requires separate same-repository and hosted-rebind evidence',
+  },
+  'eai deploy source authorize-commit': {
+    createsExternalArtifact: 'Yes - one actor-bound source continuation operation; no repository, PR, bundle or app is created by this command',
+    cleanupMechanism: 'Manual retained-customer journey; preserve exact authorization and operation, and use only separately authorized app/resource cleanup',
+    cleanupVerified: 'Not verified by the default smoke; live continuation, deployment and cleanup require separate recorded evidence',
   },
   'eai deploy source validate': {
     createsExternalArtifact: 'No - local source check only',

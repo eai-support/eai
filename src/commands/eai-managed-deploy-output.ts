@@ -73,9 +73,13 @@ export function printManagedSourceOperation(
     configHash: operation.configHash,
     sourceBinding: {
       repository: `${operation.repository.owner}/${operation.repository.name}`,
-      commitSha: operation.review?.mergedSha,
+      commitSha: operation.sourceProvenance?.commitSha ?? operation.review?.mergedSha,
     },
     review: operation.review,
+    ...(operation.sourceProvenance ? {
+      sourceProvenance: operation.sourceProvenance, customerAuthorization: operation.customerAuthorization,
+      githubApprovedReviewClaim: false,
+    } : {}),
     deploymentId: operation.deployment?.requestId,
     activeUrl: operation.deployment?.liveUrl,
     runtimeIdentity: operation.deployment?.runtimeIdentity,
@@ -123,7 +127,7 @@ export async function printManagedSourceCompletion(
   const revision = isRecord(operation.sourceRevision)
     ? operation.sourceRevision
     : undefined;
-  const mergedSha = publication.review?.mergedSha;
+  const mergedSha = publication.sourceProvenance?.commitSha ?? publication.review?.mergedSha;
   const hasExactMergedSha =
     typeof mergedSha === "string" && /^[a-f0-9]{40}$/.test(mergedSha);
   if (

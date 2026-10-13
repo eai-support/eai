@@ -14,6 +14,7 @@ import { fail, MANAGED_DEPLOY_ENVIRONMENTS } from "./eai-managed-deploy-contract
 import { readUnifiedExactOperation } from "./eai-managed-deploy-operation.js";
 import { printFailure } from "./eai-managed-deploy-output.js";
 import { createManagedSourceValidateCommand } from "./eai-managed-source-validate.js";
+import { createCustomerCommitCommand } from "./eai-managed-source-authorize-commit.js";
 
 const exec = promisify(execFile);
 
@@ -31,6 +32,7 @@ export const eaiManagedSourceCommand = new Command("source")
   .description("Manage the source of an EAI-hosted app");
 
 eaiManagedSourceCommand.addCommand(createManagedSourceValidateCommand());
+eaiManagedSourceCommand.addCommand(createCustomerCommitCommand());
 
 eaiManagedSourceCommand.command("move")
   .description("Continue a completed EAI-managed source move in the browser")
