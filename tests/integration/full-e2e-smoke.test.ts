@@ -17,12 +17,13 @@ interface SmokeReport {
   cleanupVerified: boolean;
   cleanupStatus: string;
   coverageComplete: boolean;
-  commands: { command: string; status: string; phase: string; exitCode?: number; scopeTenantId?: string }[];
+  commands: { command: string; status: string; phase: string; exitCode?: number; scopeTenantId?: string;
+    scopeObservation?: string; scopeObservationLimitations?: string; assertions?: { name: string }[] }[];
   executions: SmokeReport['commands'];
   cleanup: { artifact: string; status: string; evidence?: { tenantId?: string }; reason?: string }[];
   coverage: { command: string; status: string; executions: number }[];
   created: { childTenantId: string; runtimeTenantId: string; appKey: string; resources: { type: string; id: string }[]; entraClientId: string; workflowIds: string[];
-    enrollmentId?: string; recreatedEnrollmentId?: string;
+    enrollmentId?: string; recreatedEnrollmentId?: string; directoryUsers?: string[];
     childCreation?: { tenantId: string; parentTenantId: string; slug: string; newChild: boolean; exitCode: number } };
   deletionCycle?: { firstInventoryEmpty: boolean; recreatedSameKey: boolean; enrollmentId: string; recreatedEnrollmentId?: string };
   rotationCycle?: { commandDispatches: number; credentialChanged: boolean };
@@ -171,8 +172,48 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   const ok = (body: unknown): CommandResult => ({ status: 0, stdout: JSON.stringify(body), stderr: '' });
   const gone: CommandResult = { status: 1, stdout: JSON.stringify({ ok: false, status: 404 }), stderr: '' };
   const denied: CommandResult = { status: 1, stdout: JSON.stringify({ ok: false, status: 403 }), stderr: '' };
-  const flag = (args: string[], name: string): string => args[args.indexOf(name) + 1] || '';
+  const flag = (args: string[], name: string): string => args.includes(name) ? args[args.indexOf(name) + 1] || '' : '';
   const matches = (args: string[], prefix: string[]) => prefix.every((part, index) => args[index] === part);
+
+  test('every live semantic assertion requires an explicit recorded response or explicit global scope', () => {
+    const source = readFileSync(new URL('../../scripts/eai-full-e2e-smoke.cjs', import.meta.url), 'utf8');
+    const module = ts.createSourceFile('smoke.cjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+    const live = module.statements.find(statement => ts.isFunctionDeclaration(statement) && statement.name?.text === 'runLiveSmoke') as ts.FunctionDeclaration;
+    const implicit: string[] = [];
+    function visit(node: ts.Node) {
+      if (ts.isFunctionDeclaration(node) && node.name?.text === 'assertion') {
+        expect(node.parameters.find(parameter => parameter.name.getText(module) === 'source')?.initializer).toBeUndefined();
+      }
+      if (ts.isCallExpression(node) && node.expression.getText(module) === 'assertion'
+        && (node.arguments.length < 5 || node.arguments[4].getText(module).includes('executions.at(-1)'))) {
+        implicit.push(node.arguments[0].getText(module));
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(live);
+    expect(implicit).toEqual([]);
+  });
+
+  test('provision assertions stay bound to the observed provision response and do not qualify a later storage command', () => {
+    const controlled = harness();
+    const report = controlled.run();
+    const provision = report.executions.find(row => row.command === 'eai app provision');
+    const storage = report.executions.find(row => row.command === 'eai provision storage');
+    expect(provision?.assertions).toContainEqual(expect.objectContaining({ name: 'provision-keeps-runtime' }));
+    expect(storage?.assertions?.some(row => row.name === 'provision-keeps-runtime')).toBe(false);
+    const app = report.executions.find(row => row.command === 'eai app create');
+    expect(app).toMatchObject({ scopeObservation: 'exact-owner-acknowledgment-required',
+      scopeObservationLimitations: expect.stringContaining('No transport scope was emitted') });
+  });
+
+  test('general smoke alias receipts remain traceable and cannot substitute for canonical workspace ownership', () => {
+    const report = harness().run();
+    const ownership = require('../../scripts/cli-qa-cycle-steps.cjs').cycleOwnershipEvidence(report);
+    expect(ownership.creation.command).toBeNull();
+    expect(ownership.cleanup.command).toBeNull();
+    expect(report.commands.some(row => row.command === 'eai workspace create')).toBe(false);
+    expect(report.executions.some(row => row.command === 'eai workspace create')).toBe(true);
+  });
 
   // The receiver forbids unknown property and storage-binding fields. Local
   // types validate alone does not establish this deployed manifest contract.
@@ -245,6 +286,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       });
     }
     function base(args: string[], options: ControlledOptions): CommandResult {
+      if (args[0] === 'workspace') args = ['tenant', ...args.slice(1)];
       if (matches(args, ['run', 'build:object-types'])) {
         for (const [name, contents] of Object.entries(generatedArtifacts(options.cwd))) {
           writeFileSync(join(options.cwd, 'src', 'eai.config', name), contents);
@@ -377,7 +419,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
           { objectType: 'shared-ai-profile', id: 'run-ai-profile', key: key + '-default-model', action: 'created' },
           { objectType: 'shared-chatbot-config', id: 'run-chatbot-config', key: key + '-chat', action: 'created' },
         ] : [];
-        for (const row of aiRuntime) resources.set(row.id, { type: row.objectType, data: { tenantId: runtime, key: row.key } });
+        for (const row of aiRuntime) resources.set(row.id, { type: row.objectType, data: { tenantId: runtime,
+          [row.objectType === 'shared-ai-profile' ? 'profileKey' : 'configKey']: row.key } });
         return ok({ tenantId: runtime,
           workflow: { objectType: 'shared-workflow-config', id: 'run-workflow', workflowKey: key, action: 'created' },
           app: { objectType: 'vertical-product-config', id: 'run-workflow-app', appKey, configKey: 'workflow:' + key, action: 'created' },
@@ -434,6 +477,12 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       expect(options.timeout).toBeGreaterThan(0);
       calls.push({ args, cwd: options.cwd });
       const result = base(args, options);
+      // Explicit controlled transport observation matching the new resource JSON contract.
+      if (args[0] === 'resources' && ['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].includes(args[1])) {
+        const payload = JSON.parse(result.stdout);
+        result.stdout = JSON.stringify({ ...payload, request: { publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+          tenantId: flag(args, '--tenant-id'), proofKind: 'transport-response' } });
+      }
       return settings.override?.(args, result, { ...options, executedFile: command.file,
         executedArgs: [...command.baseArgs, ...invocation] }) || result;
     };
@@ -496,6 +545,77 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(observed?.status).toBe('failed');
     expect(observed?.scopeTenantId).toBe(kind === 'tenant' ? 'foreign-workspace' : 'qa-parent');
   });
+  test.each(['create', 'batch-create', 'batch-import'].flatMap(operation => ['gateway', 'tenant', 'missing'].map(failure => ({ operation, failure }))))(
+    'observed $operation scope $failure cannot adopt foreign resource IDs or schedule their cleanup', ({ operation, failure: kind }) => {
+      let rejectedIds: string[] = [];
+      const controlled = harness({ override(args, result) {
+        if (!matches(args, ['resources', operation])) return undefined;
+        const payload = JSON.parse(result.stdout);
+        rejectedIds = operation === 'create' ? [payload.id] : payload.results.map((row: { id: string }) => row.id);
+        if (kind === 'missing') delete payload.request;
+        else payload.request = { publicApiUrl: kind === 'gateway' ? 'https://test-api.au.myenterprise.ai/public' : 'https://dev-api.au.myenterprise.ai/public',
+          tenantId: kind === 'tenant' ? 'foreign-workspace' : flag(args, '--tenant-id') };
+        return ok(payload);
+      } });
+      const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
+      expect(rejectedIds.length).toBeGreaterThan(0);
+      expect(report.created.resources.some(row => rejectedIds.includes(row.id))).toBe(false);
+      expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete']) && rejectedIds.includes(call.args[3]))).toBe(false);
+      expect(report.cleanup.some(row => rejectedIds.some(id => row.artifact.includes(id)))).toBe(false);
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+      expect(report.cleanupVerified).toBe(false);
+    });
+  test.each(['child', 'app', 'recreated-app', 'workflow', 'invite', 'role'].flatMap(command => ['gateway', 'tenant'].map(failure => ({ command, failure }))))(
+    'observed $command scope $failure is contained before any ownership observer', ({ command, failure: kind }) => {
+      let appCreates = 0, observed = 0;
+      const controlled = harness({ override(args, result) {
+        const prefix = command === 'child' ? ['tenant', 'create'] : command === 'workflow' ? ['workflow', 'provision']
+          : command === 'invite' ? ['user', 'invite'] : command === 'role' ? ['user', 'role', 'set'] : ['app', 'create'];
+        if (!matches(args, prefix)) return undefined;
+        if (command === 'recreated-app' && ++appCreates !== 2) return undefined;
+        observed++;
+        const payload = JSON.parse(result.stdout);
+        payload.request = { publicApiUrl: kind === 'gateway' ? 'https://test-api.au.myenterprise.ai/public' : 'https://dev-api.au.myenterprise.ai/public',
+          tenantId: kind === 'tenant' ? 'foreign-workspace' : flag(args, '--parent') || flag(args, '--tenant-id') || flag(args, '--tenant') };
+        return ok(payload);
+      } });
+      const report = failure(controlled, { EAI_E2E_WORKFLOW_PROVISION: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1',
+        EAI_E2E_INVITE_TEST_USER: 'fixture@example.invalid', EAI_E2E_INVITE_TEST_USER_OID: 'existing-user' }).report;
+      expect(observed).toBe(1);
+      if (command === 'app') {
+        expect(report.created.enrollmentId).toBe('');
+        expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+      } else if (command === 'workflow') {
+        expect(report.created.workflowIds).toEqual([]);
+        expect(report.created.resources).toEqual([]);
+      } else if (command === 'child') {
+        expect(report.created.childTenantId).toBe('');
+        expect(controlled.calls.some(call => matches(call.args, ['tenant', 'delete']))).toBe(false);
+      } else if (command === 'recreated-app') {
+        expect(report.created.recreatedEnrollmentId).toBeUndefined();
+        expect(controlled.calls.filter(call => matches(call.args, ['app', 'delete']))).toHaveLength(1);
+      } else {
+        expect(report.created.directoryUsers).toEqual([]);
+      }
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+      expect(report.cleanupVerified).toBe(false);
+    });
+
+  test.each(['delete', 'batch-delete'].flatMap(operation => ['missing', 'gateway', 'tenant'].map(failure => ({ operation, failure }))))(
+    'cleanup $operation scope $failure cannot certify a resource deletion', ({ operation, failure: kind }) => {
+      const controlled = harness({ override(args, result) {
+        if (!matches(args, ['resources', operation])) return undefined;
+        const payload = JSON.parse(result.stdout);
+        if (kind === 'missing') delete payload.request;
+        else payload.request = { publicApiUrl: kind === 'gateway' ? 'https://test-api.au.myenterprise.ai/public' : 'https://dev-api.au.myenterprise.ai/public',
+          tenantId: kind === 'tenant' ? 'foreign-workspace' : flag(args, '--tenant-id'), proofKind: 'transport-response' };
+        return ok(payload);
+      } });
+      const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
+      expect(report.cleanupVerified).toBe(false);
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+      expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
+    });
 
   function retainedContext() {
     const tenantIds = { a: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', b: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' };
@@ -909,8 +1029,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   test('partial batch result fails and retains returned IDs for cleanup instead of relying on zero exit code', () => {
     const controlled = harness({ override(args, result) {
       if (matches(args, ['resources', 'batch-create'])) {
-        const body = JSON.parse(result.stdout) as { results: { id: string }[] };
-        return ok({ results: body.results, succeeded: 1, failed: 1 });
+        const body = JSON.parse(result.stdout) as { results: { id: string }[]; request: unknown };
+        return ok({ results: body.results, succeeded: 1, failed: 1, request: body.request });
       }
       return undefined;
     } });
@@ -921,11 +1041,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   });
 
   test('partial batch deletion verifies already removed IDs and continues exact per-row cleanup', () => {
-    const controlled = harness({ override(args) {
-      if (matches(args, ['resources', 'batch-delete'])) return ok({ succeeded: 1, failed: 1 });
+    const controlled = harness({ override(args, result) {
+      if (matches(args, ['resources', 'batch-delete'])) return ok({ succeeded: 1, failed: 1, request: JSON.parse(result.stdout).request });
       return undefined;
     } });
-    const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
+    const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_CANONICAL_CYCLE_COMMANDS: '1' }).report;
     expect(report.status).toBe('failed');
     expect(report.cleanup.find(row => row.artifact === 'batch-resources')?.status).toBe('failed');
     expect(report.cleanupVerified).toBe(true); expect(report.leftovers).toEqual([]);
@@ -1037,7 +1157,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   test('same-key recreation proves a new enrollment and deletes both enrollments with first-read freshness', () => {
     const controlled = harness();
     const report = controlled.run({ EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1',
-      EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1' });
+      EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1', EAI_E2E_CANONICAL_CYCLE_COMMANDS: '1' });
     expect(report.deletionCycle).toMatchObject({ firstInventoryEmpty: true, recreatedSameKey: true,
       enrollmentId: 'run-enrollment', recreatedEnrollmentId: 'recreated-enrollment' });
     expect(report.rotationCycle).toMatchObject({ commandDispatches: 1, credentialChanged: true });
@@ -1206,7 +1326,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     const controlled = harness();
     const report = controlled.run({ EAI_E2E_WORKFLOW_PROVISION: '1' });
     expect(report.created.workflowIds).toEqual(['run-workflow']);
-    expect(report.created.resources).toEqual([
+    expect(report.created.resources.map(({ type, id }) => ({ type, id }))).toEqual([
       { type: 'shared-workflow-config', id: 'run-workflow' },
       { type: 'vertical-product-config', id: 'run-workflow-app' },
     ]);
@@ -1215,6 +1335,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete', type, id]))).toBe(true);
       expect(report.cleanup.find(row => row.artifact === 'resource:' + type + '/' + id)?.status).toBe('passed');
     }
+    expect(report.executions.find(row => row.command === 'eai workflow provision')?.scopeObservation).toBe('exact-owner-acknowledgment-required');
     expect(controlled.resources.size).toBe(0);
     expect(report.workflowReadiness?.executable).toBe(true);
   });
@@ -1242,14 +1363,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(controlled.resources.size).toBe(0);
   });
 
-  test('workflow readback scope drift fails and still cleans every acknowledged owned config', () => {
+  test('workflow owner readback scope drift blocks deletion of its unverified ID while independent cleanup continues', () => {
     const controlled = harness({ override: (args, result) => matches(args, ['resources', 'get', 'shared-workflow-config'])
       ? ok({ ...JSON.parse(result.stdout), data: { tenantId: 'foreign-runtime', workflowKey: 'foreign-workflow' } }) : undefined });
     const report = failure(controlled, { EAI_E2E_WORKFLOW_PROVISION: '1' }).report;
     expect(report.status).toBe('failed');
     expect(report.commands.find(row => row.command === 'eai resources get')?.status).toBe('failed');
-    expect(report.cleanupVerified).toBe(true);
-    expect(controlled.resources.size).toBe(0);
+    expect(report.cleanupVerified).toBe(false);
+    expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete', 'shared-workflow-config', 'run-workflow']))).toBe(false);
+    expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete', 'vertical-product-config', 'run-workflow-app']))).toBe(true);
+    expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
   });
 
   test('managed publication pending is blocked and cleaned; completed exact operation runs doctor', () => {

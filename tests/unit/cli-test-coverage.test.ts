@@ -30,6 +30,10 @@ describe('focused CLI evidence ownership', () => {
     expect(feature?.owned_paths).toContain('scripts/cli-qa-npm-execution.cjs');
     expect(feature?.required_repo_tests).toContain('tests/integration/cli-qa-build-receipt.test.ts');
     expect(feature?.required_repo_tests).toContain('tests/integration/full-e2e-smoke.test.ts');
+    expect(feature?.owned_paths).toContain('src/lib/api.ts');
+    expect(feature?.owned_paths).toContain('src/commands/resources.ts');
+    expect(feature?.required_repo_tests).toContain('tests/integration/platform-api-client.test.ts');
+    expect(feature?.required_repo_tests).toContain('tests/integration/resources-command.test.ts');
   });
   test('the focused gate selects existing explicit suites without duplicates', () => {
     expect(focusedSuites.length).toBeGreaterThan(0);

@@ -28,7 +28,7 @@ const guide: AgentGuide = {
   schemaVersion: 1,
   audience: 'ai-agents',
   purpose: 'Help an AI agent discover EAI CLI capabilities, prefer structured output, and recover from known errors without private platform knowledge.',
-  capabilities: ['app-manifest-name-slug-negotiation-v1'],
+  capabilities: ['app-manifest-name-slug-negotiation-v1', 'resource-mutation-response-scope-v1'],
   firstCommands: [
     {
       command: 'eai --describe',
@@ -54,6 +54,7 @@ const guide: AgentGuide = {
   operatingRules: [
     'Prefer commands that advertise --format json in eai --describe or command help.',
     'Run read-only diagnostics before mutating fixes.',
+    'For resource create, batch-create, batch-import, delete and batch-delete JSON, resource-mutation-response-scope-v1 supplies request.publicApiUrl, request.tenantId and request.proofKind=transport-response from the exact transport response. Verify that scope before adopting returned IDs or certifying cleanup; missing or mismatched proof requires reconciliation without guessed deletion.',
     'Use named eai commands before calling eai publicapi directly.',
     'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',

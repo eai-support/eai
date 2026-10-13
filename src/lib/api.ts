@@ -44,6 +44,26 @@ export const MANAGED_SOURCE_UPLOAD_TIMEOUT_MS = 180_000;
 export const INIT_APP_CREATE_REQUEST_TIMEOUT_MS = 90_000;
 const managedResponseSignals = new WeakMap<Response, AbortSignal>();
 const managedTimeoutReasons = new WeakSet<object>();
+/** Safe scope captured at dispatch and bound to that exact returned response. */
+export interface PublicRequestObservation {
+  readonly publicApiUrl: string;
+  readonly tenantId: string | null;
+  readonly proofKind: 'transport-response';
+}
+const publicResponseRequests = new WeakMap<Response, Readonly<PublicRequestObservation> | null>();
+
+/** Backend-provided request assertions cannot override the actual transport scope. */
+export function withPublicRequestObservation<T extends Record<string, unknown>>(
+  payload: T,
+  response: Response,
+): Omit<T, 'request'> & { request: Readonly<PublicRequestObservation> } {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw new Error('Resource mutation response must be a JSON object.');
+  }
+  const request = publicResponseRequests.get(response);
+  if (!request) throw new Error('Resource mutation response lacks an exact unredirected PublicAPI transport observation.');
+  return { ...payload, request };
+}
 
 /** Distinguish this client's issued deadline from unrelated provider/caller aborts. */
 export function isManagedPublicRequestTimeout(error: unknown): boolean {
@@ -1043,10 +1063,27 @@ export class PlatformAPIClient {
     if (this.profileAuthorizedGateway) this.baseUrl = requireManagedPublicApiUrl(baseUrl);
   }
 
-  private fetchPublic(url: string, options: RequestInit): Promise<Response> {
+  private async fetchPublic(url: string, options: RequestInit): Promise<Response> {
     this.assertProfileAuthority();
+    // Snapshot only safe gateway/tenant scope before the request starts. Neither
+    // mutable "last request" state nor backend JSON can supply this evidence.
+    const gateway = new URL(this.baseUrl);
+    const dispatchedUrl = new URL(url);
+    const safeGateway = !gateway.username && !gateway.password && !gateway.search && !gateway.hash
+      && ['http:', 'https:'].includes(gateway.protocol) && dispatchedUrl.origin === gateway.origin
+      && dispatchedUrl.pathname.startsWith(gateway.pathname.replace(/\/$/, '') + '/')
+      && !dispatchedUrl.username && !dispatchedUrl.password && !dispatchedUrl.hash;
+    const tenantId = new Headers(options.headers).get('X-Tenant-Id');
+    const observation = Object.freeze({ publicApiUrl: this.baseUrl.replace(/\/$/, ''), tenantId,
+      proofKind: 'transport-response' as const });
     // SECURITY: an explicitly authorized private gateway cannot redirect its credentials to another destination.
-    return fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
+    const response = await fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
+    // A redirected, foreign or reused response handle cannot identify this
+    // invocation, even if an earlier request once qualified the same handle.
+    const observed = safeGateway && !response.redirected && (!response.url || response.url === new URL(url).href)
+      && !publicResponseRequests.has(response);
+    publicResponseRequests.set(response, observed ? observation : null);
+    return response;
   }
 
   /** SECURITY: callers sending directly to a bound upload origin must recheck this after credential awaits. */

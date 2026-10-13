@@ -25,7 +25,7 @@ export function cycleStepModel(identity: CycleIdentity) {
   return { schemaVersion: 'eai.cli-cycle-step-evidence.v1', ...identity, ...scope,
     commands: definitions.map(([command, phase, name, sequence], index) => {
       const executionId = randomUUID();
-      return { command, executionId, phase, sequence: sequence + 1, executionSequence: sequence + 1, status: 'passed', exitCode: 0,
+      return { command, invokedCommand: command, executionId, phase, sequence: sequence + 1, executionSequence: sequence + 1, status: 'passed', exitCode: 0,
         ...scope, options: index === 0 ? ['--rotate-secret'] : [],
         npmExecution: index === 1 ? structuredClone(appNpmModel) : undefined,
         assertions: [{ name, command, executionId, phase, executionSequence: sequence + 1, status: 'passed', ...scope }] };
@@ -44,7 +44,7 @@ export function cycleOwnershipModel(identity: CycleIdentity, foundation: CycleFo
   const scope = { environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, scopeTenantId: parentTenantId };
   const command = (name: string, phase: string, sequence: number, assertion: string, options: string[]) => {
     const executionId = randomUUID();
-    return { command: name, executionId, phase, sequence, executionSequence: sequence, status: 'passed', exitCode: 0, ...scope, options,
+    return { command: name, invokedCommand: name, executionId, phase, sequence, executionSequence: sequence, status: 'passed', exitCode: 0, ...scope, options,
       assertion: { name: assertion, command: name, executionId, phase, executionSequence: sequence, status: 'passed', ...scope } };
   };
   return { schemaVersion: 'eai.cli-cycle-ownership.v1', fixtureId: foundation.fixtureId,
