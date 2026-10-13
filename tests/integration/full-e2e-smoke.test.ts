@@ -260,9 +260,11 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   test('profile-bound execution scope comes from the same invocation transport receipt, not a selected tenant guess', () => {
     const controlled = harness({ override(args, result, options) {
       if (!matches(args, ['chat', 'send'])) return undefined;
+      const tenantId = options.env.EAI_TENANT_ID;
       return { ...result, transportOutput: JSON.stringify({ schemaVersion: 'eai.cli-qa-transport.v1',
         executionId: options.env.EAI_CLI_QA_EXECUTION_ID, publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
-        tenantId: 'run-child', proofKind: 'transport-response', method: 'POST', path: '/public/v4/ai/chat' }) + '\n' };
+        tenantId, proofKind: 'transport-response', method: 'POST',
+        path: `/public/v4/ai/chat/${tenantId}/${flag(args, '--workflow')}/${flag(args, '--stage')}` }) + '\n' };
     } });
     const report = controlled.run({ EAI_E2E_WORKFLOW_PROVISION: '1', EAI_E2E_CHAT: '1',
       EAI_E2E_AI_PROVIDER: 'controlled-provider', EAI_E2E_AI_MODEL: 'controlled-model' });
