@@ -20,7 +20,7 @@ describe('installed unsupported capability contracts', () => {
       expect(result.status).toBe(1);
       expect(JSON.parse(result[channel]).error.code).toBe(code);
       if (channel === 'stdout') {
-        expect(result.stderr).toMatch(/^(?:Run eai support to prepare a report for your approval\.\n)?$/);
+        expect(result.stderr).toMatch(/^(?:Need help\? Run eai support, or ask your AI assistant to get help\. Nothing is sent without your approval\.\n)?$/);
       } else expect(result.stdout).toBe('');
     } finally { rmSync(home, { recursive: true, force: true }); }
   });

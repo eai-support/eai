@@ -188,7 +188,7 @@ describe("eai gofer refresh", () => {
         const update = buildPublicEntrypointPrompt({name:'eai-update', title:'EAI update', description:'Update EAI'}, [], host);
         return {
           host,
-          support: eai.split('## Support after an unresolved EAI error')[1]?.split('## Verified EAI CLI Command Contract')[0],
+          support: eai.split('## Support only when the person asks')[1]?.split('## Verified EAI CLI Command Contract')[0],
           welcome: eai.split('### Required First-Run Response')[1]?.split('## Route The Pipeline')[0],
           updateHasSupport: update.includes('eai support --source harness'),
         };
@@ -198,11 +198,19 @@ describe("eai gofer refresh", () => {
     const entries = JSON.parse(result.stdout) as Array<{ host: string; support: string; welcome: string; updateHasSupport: boolean }>;
     expect(entries).toHaveLength(6);
     for (const { host, support, welcome, updateHasSupport } of entries) {
-      expect(support, host).toContain("eai support --source harness --tool <current-tool> --format json");
-      expect(support, host).toContain("Only after they approve that bundle");
-      expect(support, host).toContain("--yes --no-open");
-      expect(support, host).toContain("Never assume consent");
-      expect(welcome, host).toContain('If anything fails, say "get help" or type `eai support`');
+      expect(support, host).toContain("Start a support report only when the person explicitly asks for EAI Support");
+      expect(support, host).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+      expect(support, host).toContain('allocation, preview, sending or decline');
+      expect(support, host).toContain('chat problem, attempts and results');
+      expect(support, host).toContain('without raw transcripts, environment values or file contents');
+      expect(support, host).toContain("Never start one on your own.");
+      expect(support, host).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
+      expect(support, host).toContain("Only after a clear yes");
+      expect(support, host).toContain("--yes --approved-digest <bundleDigest> --no-open");
+      expect(support, host).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
+      expect(support, host).toContain("If `eai support --help` does not list `--context-file`");
+      expect(welcome, host).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+      expect(welcome, host).not.toContain(['If anything fails,', 'say'].join(' '));
       expect(updateHasSupport, host).toBe(false);
     }
     });
@@ -515,7 +523,7 @@ describe("eai gofer refresh", () => {
     const skillPath = join(env.dir, ".agents/skills/eai/SKILL.md");
     const skill = await readFile(skillPath, "utf8");
     await writeFile(skillPath, skill.replace(
-      /## Support after an unresolved EAI error\n[\s\S]*?(?=## Verified EAI CLI Command Contract)/,
+      /## Support only when the person asks\n[\s\S]*?(?=## Verified EAI CLI Command Contract)/,
       "",
     ));
     await writeFile(join(env.dir, "CLAUDE.md"), "# Project notes\nKeep this custom instruction.\n");
@@ -523,8 +531,8 @@ describe("eai gofer refresh", () => {
 
     const result = await runCommand(ctx, "eai gofer refresh");
     expectCommandSucceeded(result);
-    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after they approve that bundle");
-    await expectFileContains(ctx, ".agents/skills/eai/SKILL.md", "--yes --no-open");
+    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after a clear yes");
+    await expectFileContains(ctx, ".agents/skills/eai/SKILL.md", "--yes --approved-digest <bundleDigest> --no-open");
     await expectFileContains(ctx, ".grok/skills/eai/SKILL.md", 'say "get help"');
     expect(await readFile(join(env.dir, "CLAUDE.md"), "utf8")).toBe("# Project notes\nKeep this custom instruction.\n");
     expect(await readFile(join(env.dir, "AGENTS.md"), "utf8")).toBe("# Agent notes\nKeep this custom instruction.\n");
@@ -995,3 +1003,109 @@ describe("current AI workspace documentation", () => {
     expect(catalogSection).not.toMatch(/Gemini/i);
   });
 });
+
+
+test('fresh installer-created CLAUDE.md retains help-on-request within its line budget', async () => {
+  const environment = await createTestEnvironment();
+  try {
+    await installGoferResources(environment.dir, { workflowProfile: 'enterpriseai' });
+    const content = await readFile(join(environment.dir, 'CLAUDE.md'), 'utf8');
+    expect(content.split('\n').length).toBeLessThan(65);
+    expect(content).toContain('Support starts only when the person asks "get help".');
+    expect(content).toContain('Follow the full support contract in AGENTS.md.');
+    expect(content).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+  } finally { await environment.cleanup(); }
+});
+
+
+test('hand-kept support mirror blocks equal the canonical generator contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['commands/0_gofer_start.md', 'commands/gofer_eai_first_run.md', 'references/platform/eai-support.md', 'instruction-templates/base/agents-base.md', 'instruction-templates/base/copilot-base.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, file), 'utf8'), file).toContain(contract);
+  }
+});
+
+
+test('active generated CLI instructions carry the canonical support producer contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['.gemini/commands/gofer/eai.md', '.github/prompts/eai.prompt.md',
+    '.agents/skills/eai/SKILL.md',
+    '.github/skills/eai/SKILL.md', '.grok/skills/eai/SKILL.md', '.system/skills/eai/SKILL.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, '../..', file), 'utf8'), file).toContain(contract);
+  }
+});
+
+test.each([false, true])(
+  "installed tagged bootstrap emits singular support instructions (EAI=%s)",
+  async (eai) => {
+    const environment = await createTestEnvironment();
+    try {
+      await mkdir(join(environment.dir, ".git"));
+      await writeFile(
+        join(environment.dir, "package.json"),
+        '{"name":"tagged-bootstrap-fixture"}',
+      );
+      if (eai)
+        await writeFile(
+          join(environment.dir, "eai.runtime.json"),
+          '{"schemaVersion":1}',
+        );
+      await installGoferResources(environment.dir, {
+        workflowProfile: "enterpriseai",
+      });
+      for (const file of [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/copilot-instructions.md",
+      ])
+        await rm(join(environment.dir, file), { force: true });
+      const result = await runChild(
+        process.execPath,
+        [
+          join(
+            environment.dir,
+            ".specify/scripts/node/gofer-workspace-bootstrap.mjs",
+          ),
+          "--workspace",
+          environment.dir,
+          "--host",
+          eai ? "claude" : "copilot",
+          "--include-mirrors",
+        ],
+        { cwd: environment.dir },
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      for (const file of ["AGENTS.md", ".github/copilot-instructions.md"]) {
+        const content = await readFile(join(environment.dir, file), "utf8");
+        expect(content, file).toContain(
+          "Never retry or explain a failed `eai errors explain` command",
+        );
+        expect(
+          content.split("## Support only when the person asks"),
+          file,
+        ).toHaveLength(2);
+        expect(content).not.toMatch(/After any .*eai.* command error/);
+        expect(content).not.toContain('offer "get help"');
+        expect(content).toContain("stop and wait for the person to ask");
+      }
+      const claude = await readFile(join(environment.dir, "CLAUDE.md"), "utf8");
+      expect(claude).toContain(
+        "Follow the full support contract in AGENTS.md.",
+      );
+      expect(claude).not.toContain("## Support only when the person asks");
+      expect(claude.split("\n").length).toBeLessThanOrEqual(65);
+    } finally {
+      await environment.cleanup();
+    }
+  },
+);

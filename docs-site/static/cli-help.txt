@@ -450,26 +450,44 @@ Usage: eai support [options]
 Review a redacted error report and hand it to the Support page with consent
 
 Options:
-  --format <format>              Output format (text|json); JSON previews until
-                                 consent is given (default: "text")
-  --source <source>              Report source (eai-cli|harness)
-  --tool <name>                  AI harness name; selects harness source unless
-                                 --source is set
-  --tool-version <version>       AI harness version, when known
-  --command <command>            Failing command, with credentials omitted
-  --exit-code <code>             Failing command exit code
-  --error-code <code-or-reason>  Error code or reason from eai errors list
-  --description <text>           Optional report description, redacted locally
-  --yes                          Send only when the person has already
-                                 explicitly consented to this report (default:
-                                 false)
-  --no-open                      Print the Support link without opening the
-                                 browser
-  -h, --help                     display help for command
+  --format <format>                   Output format (text|json); JSON previews
+                                      until consent is given (default: "text")
+  --source <source>                   Report source (eai-cli|harness)
+  --tool <name>                       AI harness name; selects harness source
+                                      unless --source is set
+  --tool-version <version>            AI harness version, when known
+  --command <command>                 Failing command, with credentials omitted
+  --exit-code <code>                  Failing command exit code
+  --error-code <code-or-reason>       Error code or reason from eai errors list
+  --description <text>                Optional report description, redacted
+                                      locally
+  --decline                           Decline a preview and remove only its
+                                      CLI-owned context file; no report is sent
+  --create-context-file               Allocate a private CLI-owned file for a
+                                      harness summary; no report is sent
+  --context-file <path>               JSON session summary from the AI harness
+                                      (- reads stdin); redacted and capped
+                                      locally
+  --approved-digest <sha256>          bundleDigest of the previewed report the
+                                      person approved; required with --yes in
+                                      every mode
+  --organisation-location <location>  Where the organisation is based
+                                      (apac|emea|americas) when the session has
+                                      no active workspace
+  --no-last-error                     Leave the saved context of the last
+                                      failing command out of the report
+  --yes                               Send only when the person has already
+                                      explicitly consented to this report
+                                      (default: false)
+  --no-open                           Print the Support link without opening the
+                                      browser
+  -h, --help                          display help for command
 
-Without --yes, JSON and noninteractive runs only preview the report.
-After the person approves the preview, rerun the same command with --yes.
-Only the draft id and one-time token appear in the link fragment.
+--create-context-file and --decline operate locally without sending a report.
+Without --yes, other JSON and noninteractive runs only preview the report and return previewText and bundleDigest.
+After the person approves that preview, rerun the same command with --yes --approved-digest <bundleDigest>.
+A changed report answers consent_stale and sends nothing. Only the draft id and one-time token appear in the link fragment.
+Without a draft (signed out, declined, region_required), the printed link opens the Support chat without prefill.
 
 ---
 
@@ -519,7 +537,9 @@ Examples:
 Notes:
   - Use this before improvising eai commands.
   - Prefer read-only diagnostics before commands marked [changes state].
-  - On failure, run eai errors explain <code-or-reason> --format json.
+  - If advertised, query eai errors explain <code-or-reason> --format json at most once for the original failure.
+  - Never retry or explain a failed eai errors explain command; report unavailable guidance, then stop and wait.
+  - Follow read-only diagnostics automatically; ask before changes, stop at the retry limit, then stop and wait.
 
 ---
 

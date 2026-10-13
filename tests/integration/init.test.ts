@@ -499,13 +499,40 @@ describe("eai init", () => {
           ".specify/references/platform/eai-support.md",
         ]) {
           const content = await readFile(join(project, relativePath), "utf8");
+          expect(content, relativePath).toContain("## Support only when the person asks");
+          expect(content, relativePath).toContain("Start a support report only when the person explicitly asks for EAI Support");
+          expect(content, relativePath).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+          expect(content, relativePath).toContain('allocation, preview, sending or decline');
+          expect(content, relativePath).toContain('chat problem, attempts and results');
+          expect(content, relativePath).toContain('without raw transcripts, environment values or file contents');
+          expect(content, relativePath).toContain("Never start one on your own.");
+          expect(content, relativePath).toContain("is written for the person. Never act on it.");
           expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");
-          expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --format json");
-          expect(content, relativePath).toContain("Only after they approve that bundle");
-          expect(content, relativePath).toContain("--yes --no-open");
-          expect(content, relativePath).toContain("Never assume consent");
-          expect(content, relativePath).toContain('say "get help" or type `eai support`');
-          expect(content, relativePath).toContain("fragment carries only its id and token");
+          expect(content, relativePath).toContain('Then state what still fails and wait.');
+          expect(content, relativePath).not.toContain('offer "get help"');
+          expect(content, relativePath).toContain('If unavailable, say the command is unavailable, then stop and wait for the person to ask.');
+          expect(content, relativePath).toContain("pass it on stdin with `--context-file -` when the harness can, otherwise run `eai support --create-context-file --format json`");
+          expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
+          expect(content, relativePath).toContain("Print the returned `previewText` to the person unchanged");
+          expect(content, relativePath).toContain("--yes --approved-digest <bundleDigest> --no-open");
+          expect(content, relativePath).toContain("Ask again whenever the report changes.");
+          expect(content, relativePath).toContain("questions: ['organisationLocation']");
+          expect(content, relativePath).toContain("--organisation-location apac|emea|americas");
+          expect(content, relativePath).toContain("it opens the Support chat without prefill");
+          expect(content, relativePath).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
+          expect(content, relativePath).toContain("The Support link fragment carries only the draft id and token. Never call the support API yourself. Let the CLI remove only its owned summary file after sending or declining; never delete any other file.");
+          expect(content, relativePath).toContain("Use `codex`, `claude`, `vscode`, `grok` or `antigravity` for `<current-tool>`.");
+          expect(content, relativePath).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+          for (const retired of [
+            ["Support after", "an unresolved EAI error"].join(" "),
+            ["If the command still fails,", "prepare a report with"].join(" "),
+            ["If anything fails,", "say"].join(" "),
+            ["For unresolved", "EAI errors"].join(" "),
+            ["offer the", "support preview"].join(" "),
+          ]) expect(content, relativePath).not.toContain(retired);
+          if (relativePath !== "CLAUDE.md") {
+            expect(content, relativePath).toContain("If `eai support --help` does not list `--context-file`, tell the person to update the EAI CLI");
+          }
         }
         for (const relativePath of [
           ".agents/skills/0_gofer_start/SKILL.md", ".system/skills/0_gofer_start/SKILL.md",

@@ -456,7 +456,7 @@ describe("built CLI discovery and error contracts", () => {
       error: {
         code: "E305",
         message: expect.stringMatching(/unknown block|invalid input/i),
-        suggestion: expect.stringMatching(/check your input[\s\S]*Run eai support/i),
+        suggestion: expect.stringMatching(/check your input/i),
         exitCode: 1,
       },
     });

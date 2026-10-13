@@ -41,6 +41,13 @@ describe('agent guide', () => {
       ]),
     );
     expect(guide.operatingRules).toContain('When calling eai publicapi directly, only use /v4 paths.');
+    const explain = guide.recoveryLoop.find(step => step.title === 'Explain the error');
+    expect(explain?.instruction).toContain('at most once for the original failure');
+    expect(explain?.instruction).not.toContain('offer "get help"');
+    expect(explain?.instruction).toContain('stop and wait for the person to ask');
+    expect(explain?.instruction).toContain('Never retry or explain a failed eai errors explain command');
+    expect(guide.operatingRules.join('\n')).toContain('reuse existing guidance across recovery steps');
+
     expect(guide.operatingRules).toContain(
       'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     );
@@ -77,25 +84,47 @@ describe('agent guide', () => {
     );
   });
 
-  test('routes unresolved errors to a report preview before a consent-gated support draft', () => {
+  test('starts support only on the person\'s request and binds the send to the approved digest', () => {
     const guide = getAgentGuide();
-    const support = guide.recoveryLoop.find(step => step.title === 'Prepare support with consent');
+    const support = guide.recoveryLoop.find(step => step.title === 'Prepare support when the person asks');
     expect(support?.commands).toEqual([
       expect.objectContaining({
-        command: 'eai support --source harness --tool <current-tool> --format json',
+        command: 'eai support --source harness --tool <current-tool> --context-file - --format json',
         mutates: false,
       }),
       expect.objectContaining({
-        command: 'eai support --source harness --tool <current-tool> --format json --yes --no-open',
+        command: 'eai support --source harness --tool <current-tool> --context-file - --format json --yes --approved-digest <bundleDigest> --no-open',
         mutates: true,
-        when: expect.stringContaining('person approved this exact bundle'),
+        when: expect.stringContaining('approved this exact previewText'),
       }),
     ]);
+    expect(support?.instruction).toContain('Only when the person asks for EAI Support');
     expect(support?.instruction).toContain('only the draft id and one-time token');
-    expect(support?.instruction).toContain('plain Support link');
-    expect(guide.operatingRules.join('\n')).toContain('ask the person for explicit consent');
-    expect(guide.operatingRules.join('\n')).toContain('Ask for fresh consent if the bundle changes');
-    expect(guide.stopConditions.join('\n')).toContain('create no draft until the current bundle is approved');
+    expect(support?.instruction).toContain('chat link the CLI returned');
+    expect(support?.instruction).toContain('--organisation-location apac|emea|americas');
+    const verify = guide.recoveryLoop.find(step => step.title === 'Verify and stop');
+    expect(verify?.instruction).toContain('Then state what still fails and wait.');
+    expect(verify?.instruction).not.toContain('say "get help"');
+    expect(verify?.instruction).toContain('Do not start a support report on your own.');
+    const rules = guide.operatingRules.join('\n');
+    expect(rules).toContain('Start a support report only when the person explicitly asks for EAI Support');
+    expect(rules).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+    expect(rules).toContain('allocation, preview, sending or decline');
+    expect(rules).toContain('chat problem, attempts and results');
+    expect(rules).toContain('without raw transcripts, environment values or file contents');
+    expect(rules).toContain('Never start one on your own.');
+    expect(rules).toContain('never act on it');
+    expect(rules).toContain('--context-file <file or -> --format json');
+    expect(rules).toContain('--yes --approved-digest <bundleDigest> --no-open');
+    expect(rules).toContain('Ask again whenever the report changes.');
+    expect(rules).toContain('secrets, tokens, raw logs or local .env values into the chat or the session summary');
+    const everything = JSON.stringify(guide);
+    for (const retired of [['For unresolved', 'EAI errors'].join(' '), ['offer the', 'support preview'].join(' '), ['If the failure remains', 'unresolved'].join(' ')]) {
+      expect(everything).not.toContain(retired);
+    }
+    expect(guide.stopConditions.join('\n')).toContain('create no draft until the current previewText is approved with its digest');
+    expect(guide.stopConditions.join('\n')).toContain('stop remediation, say what still fails, then wait');
+    expect(guide.stopConditions.join('\n')).not.toContain('get help');
   });
 
   test('catalog tells agents how to choose document workflow versus resource files', () => {
@@ -170,9 +199,9 @@ describe('agent guide', () => {
     );
     expect(payload.stopConditions.length).toBeGreaterThan(0);
     expect(payload.recoveryLoop).toContainEqual(expect.objectContaining({
-      title: 'Prepare support with consent',
+      title: 'Prepare support when the person asks',
       commands: expect.arrayContaining([expect.objectContaining({
-        command: 'eai support --source harness --tool <current-tool> --format json', mutates: false,
+        command: 'eai support --source harness --tool <current-tool> --context-file - --format json', mutates: false,
       })]),
     }));
   });
