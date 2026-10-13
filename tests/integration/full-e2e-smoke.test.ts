@@ -6,6 +6,9 @@ import { createRequire } from 'node:module';
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import ts from 'typescript';
 import { findProjectRoot, loadEnvFile, validateObjectTypeDefinitions } from '../../src/lib/config.js';
+import { storeTokens } from '../../src/lib/auth.js';
+import { getActiveProfile, setActiveProfile, DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from '../../src/lib/profile.js';
+import { appCommand, buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
 
 interface CommandResult { status: number; stdout: string; stderr: string }
 interface SmokeReport {
@@ -324,6 +327,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         appKey = flag(args, '--key'); appExists = true; appCreations++;
         enrollmentId = appCreations === 1 ? 'run-enrollment' : 'recreated-enrollment';
         return ok({ tenantId: createdTenantId, appKey,
+          request: buildVerticalEnrollmentData(args[2], createdTenantId, { key: appKey }),
           response: { tenantId: createdTenantId, appKey, verticalKey: appKey,
             app: { id: enrollmentId, tenantId: createdTenantId, parentTenantId: createdTenantId, verticalKey: appKey,
               ...(appCreations === 1 || runtime !== createdTenantId ? { childTenantId: runtime } : {}) }, childTenant: { id: runtime },
@@ -510,6 +514,116 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     }
     throw new Error('Expected controlled lifecycle failure');
   }
+
+  test('real app-create JSON domain requests allow exact owned creation and recreation without becoming transport evidence', async () => {
+    const selectedProfile = getActiveProfile();
+    const savedEnv = Object.fromEntries(['HOME', 'USERPROFILE', 'BASE_URL_PUBLIC_API', 'EAI_ACCESS_TOKEN', 'EAI_PROFILE']
+      .map(key => [key, process.env[key]]));
+    const home = realpathSync(mkdtempSync(join(tmpdir(), 'eai-smoke-real-app-producer-'))); fixtureRoots.push(home);
+    const originalCwd = process.cwd();
+    const gateway = 'https://dev-api.au.myenterprise.ai/public', tenantId = 'run-child';
+    const appKey = 'eai-e2e-20261008123456-12345678';
+    const outputs: Record<string, unknown>[] = [];
+    const requests: { url: string; tenant: string | null; body: unknown }[] = [];
+    let creations = 0;
+    try {
+      setActiveProfile('default');
+      Object.assign(process.env, { HOME: home, USERPROFILE: home, BASE_URL_PUBLIC_API: gateway,
+        EAI_ACCESS_TOKEN: '<owned-app-producer-token>', EAI_PROFILE: 'default' });
+      process.chdir(home);
+      await storeTokens({ accessToken: '<owned-app-producer-token>', refreshToken: '<owned-app-producer-refresh>',
+        expiresAt: Date.now() + 3600000, tenantId: DEFAULT_PROD_AUTH_TENANT_ID,
+        tenantName: DEFAULT_PROD_AUTH_TENANT_NAME, clientId: DEFAULT_PROD_AUTH_CLIENT_ID,
+        oid: 'qa-actor', upn: 'qa@example.invalid', activeTenantId: tenantId, publicApiUrl: gateway,
+        activeTenantName: 'Owned child', activeTenantSlug: 'owned-child', membershipsCachedAt: Date.now() });
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+        const url = String(input), method = init?.method || 'GET';
+        if (url === gateway + '/v4/identity/tenants') return new Response(JSON.stringify({ tenants: [
+          { id: tenantId, isActive: true, roles: ['tenant-admin'] },
+        ] }));
+        if (url === gateway + '/v4/platform/tenants/' + tenantId) return new Response(JSON.stringify({
+          id: tenantId, isActive: true, roles: ['tenant-admin'], homeRegion: 'au',
+        }));
+        if (url === gateway + '/v4/platform/tenants/' + tenantId + '/apps' && method === 'POST') {
+          requests.push({ url, tenant: new Headers(init?.headers).get('X-Tenant-Id'), body: JSON.parse(String(init?.body)) });
+          const initial = ++creations === 1;
+          const id = initial ? 'run-enrollment' : 'recreated-enrollment';
+          return new Response(JSON.stringify({ tenantId, appKey, verticalKey: appKey,
+            app: { id, tenantId, parentTenantId: tenantId, verticalKey: appKey,
+              ...(initial ? { childTenantId: tenantId } : {}) },
+            childTenant: { id: tenantId }, created: { app: true, childTenant: false } }), { status: 201 });
+        }
+        throw new Error('Unexpected controlled app producer request: ' + method + ' ' + url);
+      });
+      const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      for (let index = 0; index < 2; index++) {
+        await appCommand.parseAsync(['create', appKey, '--tenant-id', tenantId, '--key', appKey, '--format', 'json'], { from: 'user' });
+        outputs.push(JSON.parse(String(output.mock.calls.at(-1)?.[0])));
+      }
+      output.mockRestore();
+      expect(requests).toHaveLength(2);
+      expect(requests.every(row => row.tenant === tenantId)).toBe(true);
+      expect(requests[0].body).toEqual({ appDisplayName: appKey, verticalKey: appKey, source: 'eai-cli' });
+      expect(outputs[0].request).toEqual(buildVerticalEnrollmentData(appKey, tenantId, { key: appKey }));
+      let outputIndex = 0;
+      const controlled = harness({ override(args) {
+        if (matches(args, ['app', 'create'])) return ok(outputs[outputIndex++]);
+        return undefined;
+      } });
+      const report = controlled.run({ EAI_E2E_RECREATE_AFTER_DELETE: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1' });
+      expect(report.status).toBe('passed'); expect(outputIndex).toBe(2);
+      expect(report.created.enrollmentId).toBe('run-enrollment');
+      expect(report.created.recreatedEnrollmentId).toBe('recreated-enrollment');
+      expect(report.executions.filter(row => row.command === 'eai app create')).toHaveLength(2);
+      expect(report.executions.filter(row => row.command === 'eai app create').every(row =>
+        row.scopeObservation === 'exact-owner-acknowledgment-required')).toBe(true);
+      expect(report.cleanupVerified).toBe(true);
+    } finally {
+      vi.restoreAllMocks();
+      process.chdir(originalCwd);
+      for (const [key, value] of Object.entries(savedEnv)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      setActiveProfile(selectedProfile);
+    }
+  });
+
+  test.each(['tenant', 'key', 'name', 'missing', 'extra', 'gateway', 'proof', 'array', 'null'])(
+    'app domain request %s mismatch remains contained before enrollment adoption', kind => {
+      const controlled = harness({ override(args, result) {
+        if (!matches(args, ['app', 'create'])) return undefined;
+        const payload = JSON.parse(result.stdout);
+        if (kind === 'tenant') payload.request.tenantId = 'foreign-workspace';
+        if (kind === 'key') payload.request.verticalKey = 'foreign-app';
+        if (kind === 'name') payload.request.displayName = 'foreign-name';
+        if (kind === 'missing') delete payload.request.source;
+        if (kind === 'extra') payload.request.unrecognizedScope = 'foreign';
+        if (kind === 'gateway') payload.request.publicApiUrl = 'https://foreign.invalid';
+        if (kind === 'proof') payload.request.proofKind = 'transport-response';
+        if (kind === 'array') payload.request = [];
+        if (kind === 'null') payload.request = null;
+        return ok(payload);
+      } });
+      const report = failure(controlled).report;
+      expect(report.created.enrollmentId).toBe('');
+      expect(report.created.appKey).toBe('');
+      expect(report.executions.find(row => row.command === 'eai app create')?.scopeObservation).toBe('unverified');
+      expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+      expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+      expect(JSON.stringify(report)).not.toContain('unrecognizedScope');
+    });
+
+  test('an exact app domain request cannot adopt a foreign enrollment acknowledgment', () => {
+    const controlled = harness({ override(args, result) {
+      if (!matches(args, ['app', 'create'])) return undefined;
+      const payload = JSON.parse(result.stdout);
+      payload.response.app.tenantId = 'foreign-workspace';
+      return ok(payload);
+    } });
+    const report = failure(controlled).report;
+    expect(report.created.enrollmentId).toBe(''); expect(report.created.appKey).toBe('');
+    expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']))).toBe(false);
+  });
 
   test('actual controlled live producer keeps aliases, parent forwarding and UUID-bound assertions without inventing canonical or backend qualification', () => {
     const report = harness().run();

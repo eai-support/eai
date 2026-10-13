@@ -114,6 +114,8 @@ describe('eai resources command guidance', () => {
       await resourcesCommand.parseAsync(args, { from: 'user' });
       expect(exit).not.toHaveBeenCalled();
       expect(observed).toHaveLength(1);
+      expect(new URL(observed[0].url).pathname).toBe('/v4/data/resources/test-tenant-id/project' +
+        (operation === 'delete' ? '/owned-resource' : operation.startsWith('batch-') ? '/' + operation.replace('-', '/') : ''));
       expect(observed[0].tenant).toBe('test-tenant-id');
       const payload = JSON.parse(String(log.mock.calls.at(-1)?.[0]));
       expect(payload.request).toEqual({ publicApiUrl: API_BASE, tenantId: 'test-tenant-id', proofKind: 'transport-response' });

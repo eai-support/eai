@@ -1819,12 +1819,26 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       const payload = parseJson(result.stdout, {});
       const supplied = payload && typeof payload === 'object' && Object.hasOwn(payload, 'request');
       const observedRequest = supplied ? payload.request : undefined;
+      // App create already emits its enrollment request, not transport scope.
+      // Accept only that exact command-bound domain shape; the observer still
+      // requires the full owned response acknowledgment before adopting IDs.
+      const optionValue = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
+      const expectedAppRequest = entry.command === 'eai app create' && typeof args[2] === 'string' && optionValue('--key')
+        ? { tenantId: entry.scopeTenantId, verticalKey: optionValue('--key').trim(), displayName: args[2].trim(),
+          status: optionValue('--status') || 'pending', source: optionValue('--source') || 'eai-cli',
+          ...(optionValue('--template') ? { templateKey: optionValue('--template') } : {}),
+          ...(optionValue('--app-url') ? { appUrl: optionValue('--app-url') } : {}) } : undefined;
+      const appDomainRequest = supplied && expectedAppRequest && observedRequest && typeof observedRequest === 'object'
+        && !Array.isArray(observedRequest) && Object.keys(observedRequest).length === Object.keys(expectedAppRequest).length
+        && Object.entries(expectedAppRequest).every(([key, value]) => Object.hasOwn(observedRequest, key) && observedRequest[key] === value)
+        && payload.tenantId === entry.scopeTenantId && payload.appKey === expectedAppRequest.verticalKey;
       const resourceMutation = ['eai resources create', 'eai resources batch-create', 'eai resources batch-import',
         'eai resources delete', 'eai resources batch-delete'].includes(entry.command);
       const requestMatches = observedRequest && typeof observedRequest === 'object' && !Array.isArray(observedRequest)
         && observedRequest.publicApiUrl === entry.publicApiUrl && observedRequest.tenantId === entry.scopeTenantId
         && typeof observedRequest.tenantId === 'string' && observedRequest.tenantId.length > 0;
-      if ((supplied && !requestMatches) || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'))) {
+      if ((supplied && !requestMatches && !appDomainRequest)
+        || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'))) {
         // Never copy unverifiable backend IDs into adoption or cleanup journals.
         entry.scopeObservation = 'unverified';
         if (supplied) {

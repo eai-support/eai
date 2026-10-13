@@ -400,6 +400,11 @@ IDs into cleanup. Other existing owner acknowledgments remain explicitly labeled
 without transport proof; workflow resources require an exact tenant and owner
 readback before deletion. No flags, generic success or returned ID invents scope
 proof. Independent cleanup of an already verified disposable child continues.
+The app-create JSON `request` is an enrollment payload. The runner accepts only
+its exact invocation-bound tenant, app key, display name and authored options,
+then requires the full owned enrollment acknowledgment before adopting its ID.
+This domain payload remains acknowledgment-only and supplies no transport proof;
+foreign or malformed forwarding metadata still blocks every ownership observer.
 
 Only a verified semantic contract can set command completion. Exit zero, JSON
 shape, read-only preservation, global preflight success and later passing

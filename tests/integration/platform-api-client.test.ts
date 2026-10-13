@@ -121,6 +121,21 @@ describe('PlatformAPIClient', () => {
     expect(() => withPublicRequestObservation({}, new Response('{}'))).toThrow('exact unredirected')
   })
 
+  test.each(['https://example.test', 'http://localhost:18000'])(
+    'root gateway %s retains exact response-bound resource scope', async gateway => {
+      const response = new Response('{"id":"owned-resource"}')
+      Object.defineProperty(response, 'url', { value: gateway + '/v4/data/resources/owned-tenant/project' })
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+      const observed = await new PlatformAPIClient(gateway, 'owned-tenant').createResource('project', {})
+      expect(fetchMock).toHaveBeenCalledWith(gateway + '/v4/data/resources/owned-tenant/project', expect.objectContaining({
+        method: 'POST', headers: expect.objectContaining({ 'X-Tenant-Id': 'owned-tenant' }),
+      }))
+      expect(observed).toBe(response)
+      expect(withPublicRequestObservation({ id: 'owned-resource' }, observed).request).toEqual({
+        publicApiUrl: gateway, tenantId: 'owned-tenant', proofKind: 'transport-response',
+      })
+    })
+
   test.each(['redirected', 'foreign-response-url', 'gateway-query', 'gateway-credentials', 'reused-response'])(
     'resource response scope cannot be manufactured from %s transport state', async kind => {
       const response = new Response('{}')
