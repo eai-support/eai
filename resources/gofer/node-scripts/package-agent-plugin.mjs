@@ -8,7 +8,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { constants, promises as fs } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { parseStageCommand } from './parse-stage-command.mjs';
@@ -1242,6 +1242,42 @@ async function assertNoPersonalPaths(pluginRoot) {
   }
 }
 
+async function normalizeSupportAgents(supportAgentsPath) {
+  // Keep one opened identity; path-based normalization can follow a replaced entry.
+  const flags = typeof constants.O_NOFOLLOW === 'number'
+    ? constants.O_RDWR | constants.O_NOFOLLOW : constants.O_RDWR;
+  let handle;
+  try {
+    handle = await fs.open(supportAgentsPath, flags);
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    if (error?.code === 'ELOOP' || error?.code === 'EISDIR') {
+      throw new Error('AGENTS.md must be a regular file, not a symlink.');
+    }
+    throw error;
+  }
+  try {
+    const metadata = await handle.stat();
+    // Windows lacks O_NOFOLLOW; reject a link or mismatched entry before reading.
+    const entry = await fs.lstat(supportAgentsPath);
+    if (!metadata.isFile() || !entry.isFile() || entry.isSymbolicLink()
+      || metadata.dev !== entry.dev || metadata.ino !== entry.ino) {
+      throw new Error('AGENTS.md must be a regular file, not a symlink.');
+    }
+    const supportAgents = await handle.readFile('utf8');
+    const content = Buffer.from(ensureSupportReportContract(supportAgents), 'utf8');
+    let written = 0;
+    while (written < content.length) {
+      const { bytesWritten } = await handle.write(content, written, content.length - written, written);
+      if (bytesWritten <= 0) throw new Error('AGENTS.md normalization write made no progress.');
+      written += bytesWritten;
+    }
+    await handle.truncate(content.length);
+  } finally {
+    await handle.close();
+  }
+}
+
 async function writePluginFolder(pluginRoot, root, version, stages) {
   await fs.rm(pluginRoot, { recursive: true, force: true });
   await fs.mkdir(pluginRoot, { recursive: true });
@@ -1312,16 +1348,7 @@ async function writePluginFolder(pluginRoot, root, version, stages) {
   for (const relativePath of copiedResources) {
     await copyIfExists(root, relativePath, pluginRoot);
   }
-  const supportAgentsPath = path.join(pluginRoot, 'AGENTS.md');
-  try {
-    // Copy preserves symlinks; normalization must not write outside the plugin root.
-    const metadata = await fs.lstat(supportAgentsPath);
-    if (!metadata.isFile() || metadata.isSymbolicLink()) throw new Error('AGENTS.md must be a regular file, not a symlink.');
-    const supportAgents = await fs.readFile(supportAgentsPath, 'utf8');
-    await fs.writeFile(supportAgentsPath, ensureSupportReportContract(supportAgents), 'utf8');
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-  }
+  await normalizeSupportAgents(path.join(pluginRoot, 'AGENTS.md'));
   await writeJson(path.join(pluginRoot, '.gemini', 'extension.json'), geminiManifest);
   await copyIfExistsAs(root, '.claude/commands', 'commands', pluginRoot);
   await copyIfExistsAs(root, '.claude/agents', 'agents', pluginRoot);
