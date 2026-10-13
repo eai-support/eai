@@ -151,6 +151,116 @@ describe('QA self-provisioning uses actual identity route and header namespace',
     })
 })
 
+describe('QA provision and deploy require their declared primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified, requiresProtectedScope } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  const appKey = 'owned-app', operationId = 'cli-managed-owned', targetTenant = 'owned-runtime'
+  const routes: { name: string; commands: string[]; invoke: (client: PlatformAPIClient) => Promise<unknown>; response?: Record<string, unknown> }[] = [
+    { name: 'Entra create', commands: ['eai provision entra'], invoke: client => client.provisionEntraApp({ tenantId: tenant, appName: appKey, redirectUris: [] }), response: { client_id: 'owned-client' } },
+    { name: 'Entra rotate', commands: ['eai provision entra'], invoke: client => client.rotateEntraAppSecret({ tenantId: tenant, clientId: 'owned-client' }), response: { client_id: 'owned-client', tenant_id: tenant, client_secret: '<fixture-secret>' } },
+    { name: 'Entra delete', commands: ['eai provision entra'], invoke: client => client.deprovisionEntraApp({ tenantId: tenant, clientId: 'owned-client' }), response: {
+      client_id: 'owned-client', tenant_id: tenant, tenant_deauthorization: { removed: true, already_absent: false },
+      app_registration_found: true, app_registration_deleted: true, app_registration_already_absent: false, app_registration_absence_verified: true,
+    } },
+    { name: 'managed source preparation', commands: ['eai deploy app'], invoke: client => client.prepareCliManagedSource(tenant, appKey, {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1', templateCommitSha: 'a'.repeat(40), bundleSha256: 'sha256:' + 'b'.repeat(64),
+      configHash: 'sha256:' + 'c'.repeat(64), fileCount: 2, totalBytes: 120, githubLinkSessionId: 'owned-link',
+      targetTenantId: targetTenant, environment: 'preview', idempotencyKey: executionId,
+    }) },
+    // Shared prerequisite reads do not prove the Portal handoff or external doctor probes.
+    { name: 'exact managed source read', commands: ['eai deploy app'], invoke: client => client.getCliManagedSourceOperation(tenant, appKey, operationId, targetTenant, 'preview') },
+    { name: 'exact deployment read', commands: ['eai deploy app'], invoke: client => client.getManagedDeploymentOperation(tenant, appKey, operationId, targetTenant) },
+    { name: 'customer source registration', commands: ['eai deploy app'], invoke: client => client.registerSourceUnknownApp(tenant, appKey, { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'connect-existing' }) },
+    { name: 'customer workflow setup', commands: ['eai deploy app'], invoke: client => client.setupSourceUnknownWorkflow(tenant, appKey, { environment: 'preview', targetTenantId: targetTenant }) },
+    { name: 'customer runtime bootstrap', commands: ['eai deploy app'], invoke: client => client.bootstrapSourceUnknownRuntime(tenant, appKey, 'preview', 'source-unknown-owned', targetTenant) },
+    { name: 'customer retry handoff', commands: ['eai deploy app'], invoke: client => client.requestSourceUnknownDeployment(tenant, appKey, { operationId: 'source-unknown-owned', targetTenantId: targetTenant }) },
+  ]
+  const candidates = ['eai provision entra', 'eai provision unknown-action', 'eai deploy app', 'eai deploy doctor',
+    'eai deploy source move', 'eai deploy source unknown-action', 'eai deploy unknown-action', 'eai deploy trigger', 'eai deploy status',
+    'eai deploy setup', 'eai deploy env', 'eai deploy source validate']
+  const gateways = ['https://dev-api.au.myenterprise.ai/public', 'https://test-api.au.myenterprise.ai/public']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => gateways.map(gateway => ({ ...route, gateway }))))(
+    '$name binds the actual SDK method and path at $gateway', async ({ commands, invoke, response, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response || {})))
+      await invoke(new PlatformAPIClient(gateway, tenant))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(observed.tenantId).toBe(tenant)
+      for (const command of commands) {
+        expect(primaryTransportMatches(command, observed)).toBe(true)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(true)
+        expect(primaryTransportMatches(command, { ...observed, method: 'HEAD' })).toBe(false)
+      }
+      for (const command of candidates) {
+        const expected = commands.includes(command)
+        expect(primaryTransportMatches(command, observed), `${command} cannot borrow ${request?.method} ${observed.path}`).toBe(expected)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(expected)
+      }
+    })
+  test.each([
+    { name: 'app enrollment', invoke: (client: PlatformAPIClient) => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: appKey }) },
+    { name: 'actor link creation', invoke: (client: PlatformAPIClient) => client.createCliManagedGithubLinkSession(tenant, appKey, { schemaVersion: 'eai.cli_managed_github_link.v1', targetTenantId: targetTenant, environment: 'preview', idempotencyKey: executionId }) },
+    { name: 'actor link read', invoke: (client: PlatformAPIClient) => client.getCliManagedGithubLinkSession(tenant, appKey, 'owned-link', targetTenant, 'preview') },
+    { name: 'latest deployment pointer', invoke: (client: PlatformAPIClient) => client.getLatestSourceUnknownDeployment(tenant, appKey) },
+    { name: 'schema inventory', invoke: (client: PlatformAPIClient) => client.getSchema() },
+  ])('$name cannot substitute for a primary provision or deploy call', async ({ invoke }) => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await invoke(new PlatformAPIClient(gateway, tenant))
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    for (const command of candidates) {
+      expect(primaryTransportMatches(command, observed)).toBe(false)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+    }
+  })
+  test.each([
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/another-capability' },
+    { command: 'eai provision entra', method: 'GET', path: '/v4/platform/provisioning/entra-apps' },
+    { command: 'eai provision entra', method: 'DELETE', path: '/v4/platform/provisioning/entra-apps' },
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/entra-apps/owned-client' },
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/entra-apps/owned-client/rotate-secret/extra' },
+    { command: 'eai provision entra', method: 'DELETE', path: '/v4/platform/provisioning/entra-apps/owned-client/rotate-secret' },
+    { command: 'eai deploy app', method: 'POST', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/source-unknown/another-capability` },
+    { command: 'eai deploy app', method: 'GET', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/managed-deployments/operations/${operationId}/extra` },
+    { command: 'eai deploy source move', method: 'GET', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/cli-managed-source/operations/${operationId}/extra` },
+    { command: 'eai deploy doctor', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/apps/${appKey}/managed-deployments/operations/${operationId}` },
+  ])('rejects undeclared $command $method $path', ({ command, method, path }) => {
+    const gateway = gateways[0], observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each([
+    { command: 'eai deploy source move', invoke: (client: PlatformAPIClient) => client.getCliManagedSourceOperation(tenant, appKey, operationId, targetTenant, 'preview') },
+    { command: 'eai deploy doctor', invoke: (client: PlatformAPIClient) => client.getManagedDeploymentOperation(tenant, appKey, operationId, targetTenant) },
+  ])('$command cannot qualify external work from its actual prerequisite SDK read', async ({ command, invoke }) => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await invoke(new PlatformAPIClient(gateway, tenant))
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(observed.tenantId).toBe(tenant)
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['system', ''])('Entra body scope cannot replace the actual %s client namespace', async clientTenant => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ client_id: 'owned-client' })))
+    await new PlatformAPIClient(gateway, clientTenant).provisionEntraApp({ tenantId: tenant, appName: appKey, redirectUris: [] })
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(observed.tenantId).toBeNull()
+    expect(observedScopeVerified({ command: 'eai provision entra', executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['eai deploy setup', 'eai deploy env', 'eai deploy source validate'])('preserves offline scope exemption for %s', command => {
+    expect(requiresProtectedScope(command)).toBe(false)
+  })
+})
+
 describe('QA app source actions require their declared primary routes', () => {
   const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
   const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'

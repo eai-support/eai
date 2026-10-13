@@ -157,9 +157,25 @@ function primaryTransportMatches(command, observed) {
     if (action === 'resourceapi-bundle' || action === 'resourceapi-refresh') return observed.method === 'POST'
       && path === tenant + '/resourceapi/' + (action === 'resourceapi-bundle' ? 'passive-bundle' : 'passive-refresh');
     if (action === 'storage') return observed.method === 'POST' && path === resources + '/storage/provision';
-    return path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
+    if (action !== 'entra') return false;
+    const entra = '/v4/platform/provisioning/entra-apps', entraSegments = segments(entra);
+    return (observed.method === 'POST' && path === entra)
+      || (observed.method === 'POST' && entraSegments.length === 2 && entraSegments[0] !== '' && entraSegments[1] === 'rotate-secret')
+      || (observed.method === 'DELETE' && entraSegments.length === 1 && entraSegments[0] !== '');
   }
-  if (group === 'deploy') return path.startsWith('/v4/platform/') && !/\/tenants\/[^/]+\/?$/.test(path);
+  if (group === 'deploy') {
+    // Source move and doctor require Portal/external evidence beyond prerequisite reads.
+    if (action !== 'app') return false;
+    const appSegments = segments(tenant + '/apps');
+    if (!appSegments.length || appSegments.some(part => part === '')) return false;
+    if (observed.method === 'GET' && appSegments.length === 4 && appSegments[2] === 'operations') {
+      return ['managed-deployments', 'cli-managed-source'].includes(appSegments[1]);
+    }
+    if (observed.method !== 'POST') return false;
+    return (appSegments.length === 3 && ((appSegments[1] === 'cli-managed-source' && appSegments[2] === 'preparations')
+      || (appSegments[1] === 'source-unknown' && ['register', 'workflow-setup', 'deploy'].includes(appSegments[2]))))
+      || (appSegments.length === 4 && appSegments[1] === 'environments' && appSegments[3] === 'runtime-bootstrap');
+  }
   if (group === 'verify') return observed.method === 'GET' && (action === 'storage'
     ? path === resources + '/storage' || path === resources + '/storage/doctor'
     : path === '/health' || path === '/v4/identity/me' || path === '/v4/data/resources/health'
