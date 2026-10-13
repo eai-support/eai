@@ -2,19 +2,29 @@ import { createHash } from 'node:crypto';
 import { Command } from 'commander';
 import { PlatformAPIClient, readManagedPublicResponseText, type CliCustomerCommitRequest } from '../lib/api.js';
 import { normalizeFormat, resolveCommandContext } from '../lib/context.js';
+import { ManagedSourceError } from '../lib/eai-managed-source.js';
 import { requireManagedPublicApiUrl } from '../lib/eai-managed-deploy.js';
 import { CLI_MANAGED_SOURCE_OPERATION_ID, isManagedScopeIdentifier } from '../lib/eai-managed-identifiers.js';
 import { validateCliGithubLinkSession } from '../lib/eai-managed-source-link-client.js';
 import { cliManagedSourceIdempotencyKey, responseOperation, validateCliManagedSourceOperation } from '../lib/eai-managed-source-operation-client.js';
 import type { CliManagedSourceScope } from '../lib/eai-managed-source-client-types.js';
 import * as out from '../lib/output.js';
-import { fail, MANAGED_DEPLOY_ENVIRONMENTS } from './eai-managed-deploy-contract.js';
+import { fail, ManagedDeployFailure, MANAGED_DEPLOY_ENVIRONMENTS } from './eai-managed-deploy-contract.js';
 import { printFailure } from './eai-managed-deploy-output.js';
 
 interface CommitOptions {
   tenantId: string; targetTenantId: string; environment: string; githubLinkSession: string;
   predecessorOperation: string; predecessorIntegrity: string; predecessorCommit: string;
   pullRequest: string; commit: string; authorizeExactCommit?: boolean; format: string;
+}
+
+/** Once consent was submitted, generic same-command retry guidance cannot preserve its one-shot body. */
+export function customerCommitFailure(error: unknown, admissionIssued: boolean): unknown {
+  if (!admissionIssued) return error;
+  const code = error instanceof ManagedDeployFailure || error instanceof ManagedSourceError
+    ? error.code : 'EAI_MANAGED_DEPLOY_FAILED';
+  return new ManagedDeployFailure(code, error instanceof Error ? error.message : String(error),
+    'Observe the current operation/status read-only before another authorization. Do not repeat consent or change the idempotency key after an ambiguous response; an existing authorization remains immutable.');
 }
 
 /** This explicit action authorizes already-merged bytes, never supplies a provider review claim. */
@@ -61,6 +71,7 @@ export function createCustomerCommitCommand(): Command {
     .option('--format <format>', 'Output format (text|json)', 'text')
     .action(async (appKey: string, options: CommitOptions): Promise<void> => {
       const format = normalizeFormat(options);
+      let admissionIssued = false;
       try {
         if (!['text', 'json'].includes(format)) throw new Error('Choose --format text or --format json.');
         // Validate consent before credential/profile access or any provider/customer request.
@@ -81,6 +92,7 @@ export function createCustomerCommitCommand(): Command {
         const link = validateCliGithubLinkSession(JSON.parse(await readManagedPublicResponseText(linkResponse)), scope, options.githubLinkSession);
         if (link.status !== 'verified') throw new Error('A verified same-customer GitHub link is required.');
         client.assertProfileAuthority();
+        admissionIssued = true;
         const operation = validateCliManagedSourceOperation(await responseOperation(
           await client.authorizeCliCustomerCommit(scope.tenantId, appKey, request)), scope,
         { githubLinkSessionId: options.githubLinkSession, verifiedGithubUser: link.verifiedGithubUser });
@@ -98,6 +110,6 @@ export function createCustomerCommitCommand(): Command {
           nextAction: `Observe the exact operation with eai deploy app ${appKey} --target eai --tenant-id ${scope.tenantId} --target-tenant-id ${scope.targetTenantId} --environment ${scope.environment} --resume ${operation.operationId} --format json` };
         if (format === 'json') out.json(result);
         else { out.success('Exact merged customer commit authorized. Deployment completion is separate.'); out.info(result.nextAction); }
-      } catch (error) { printFailure(format, error); }
+      } catch (error) { printFailure(format, customerCommitFailure(error, admissionIssued)); }
     });
 }

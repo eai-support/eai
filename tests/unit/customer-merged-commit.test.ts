@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest';
-import { customerCommitRequest, createCustomerCommitCommand } from '../../src/commands/eai-managed-source-authorize-commit.js';
+import { customerCommitRequest, customerCommitFailure, createCustomerCommitCommand } from '../../src/commands/eai-managed-source-authorize-commit.js';
+import { ManagedDeployFailure } from '../../src/commands/eai-managed-deploy-contract.js';
 import { validateCliManagedSourceOperation } from '../../src/lib/eai-managed-source-operation-client.js';
 import type { CliManagedSourceOperation, CliManagedSourceScope } from '../../src/lib/eai-managed-source-client-types.js';
 
@@ -26,6 +27,26 @@ function operation(): CliManagedSourceOperation {
 }
 
 describe('explicit exact-commit customer authority', () => {
+  test('a submitted consent failure preserves its error and directs read-only observation rather than replay', () => {
+    const original = new ManagedDeployFailure('CUSTOMER_COMMIT_CONFLICT', 'Exact admission conflicts.', 'Retry the same exact command.');
+    const failure = customerCommitFailure(original, true) as ManagedDeployFailure;
+    expect(failure.code).toBe(original.code);
+    expect(failure.message).toBe(original.message);
+    expect(failure.nextAction).toContain('operation/status read-only');
+    expect(failure.nextAction).toContain('Do not repeat consent or change the idempotency key');
+    expect(failure.nextAction).not.toContain('Retry');
+  });
+  test('pre-request errors keep their original recovery without implying an admission was submitted', () => {
+    const failure = new ManagedDeployFailure('CUSTOMER_COMMIT_CONSENT_INVALID', 'Missing explicit consent.', 'Verify the exact scope first.');
+    expect(customerCommitFailure(failure, false)).toBe(failure);
+  });
+  test('an uncertain submitted response never asserts success or invites a new authorization key', () => {
+    const failure = customerCommitFailure(new Error('Response interrupted.'), true) as ManagedDeployFailure;
+    expect(failure.code).toBe('EAI_MANAGED_DEPLOY_FAILED');
+    expect(failure.message).toBe('Response interrupted.');
+    expect(failure.nextAction).toContain('existing authorization remains immutable');
+    expect(failure.nextAction).not.toContain('authorized successfully');
+  });
   test('requires a separate customer action and emits no provider review claim or source bundle', () => {
     const request = customerCommitRequest(options, scope);
     expect(request.customerAuthorization).toEqual({ kind: 'authenticated-exact-commit', pullRequestNumber: 7, mergedCommitSha: options.commit });
