@@ -51,6 +51,10 @@ describe('QA primary scope follows declared client routes', () => {
     { name: 'chat send', command: 'eai chat send', invoke: client => client.sendChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat stream'] },
     { name: 'chat stream', command: 'eai chat stream', invoke: client => client.streamChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat send'] },
     { name: 'PublicAPI passive bundle request', command: 'eai provision resourceapi-bundle', invoke: client => client.requestPublicApi(`/v4/platform/tenants/${tenant}/resourceapi/passive-bundle`, { method: 'POST', body: { installId: 'owned-install', apply: true } }) },
+    { name: 'workspace storage provisioning', command: 'eai provision storage', invoke: client => client.provisionStorage({ backend: 'all' }) },
+    { name: 'PublicAPI passive refresh request', command: 'eai provision resourceapi-refresh', invoke: client => client.requestPublicApi(`/v4/platform/tenants/${tenant}/resourceapi/passive-refresh`, { method: 'POST', body: { installId: 'owned-install' } }) },
+    { name: 'storage verification inventory', command: 'eai verify storage', invoke: client => client.getResourceStorageStatus() },
+    { name: 'storage verification doctor', command: 'eai verify storage', invoke: client => client.getResourceStorageDoctor() },
   ]
   afterEach(() => vi.restoreAllMocks())
   test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))(
@@ -110,6 +114,40 @@ describe('QA primary scope follows declared client routes', () => {
       expect(primaryTransportMatches('eai doctor', observed)).toBe(false)
       expect(observedScopeVerified({ command: 'eai doctor', executionId, scopeTenantId: tenant,
         publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+    })
+})
+
+describe('QA self-provisioning uses actual identity route and header namespace', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  afterEach(() => vi.restoreAllMocks())
+  test.each([tenant, 'system', ''].flatMap(namespace => ['https://example.test', 'https://example.test/public'].map(gateway => ({ namespace, gateway }))))(
+    'matches actual provisionMe at $gateway with namespace $namespace without borrowing body scope', async ({ namespace, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      const response = await new PlatformAPIClient(gateway, namespace).provisionMe()
+      const [url, request] = fetchMock.mock.calls[0]
+      const metadata = withPublicRequestObservation({}, response).request as { tenantId: string | null; publicApiUrl: string; proofKind: string }
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, ...metadata,
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(new Headers(request?.headers).get('X-Tenant-Id')).toBe(namespace === tenant ? tenant : null)
+      expect(metadata.tenantId).toBe(namespace === tenant ? tenant : null)
+      expect(JSON.parse(String(request?.body))).toEqual({ tenant_id: namespace })
+      expect(primaryTransportMatches('eai user provision-me', observed)).toBe(true)
+      expect(observedScopeVerified({ command: 'eai user provision-me', executionId, scopeTenantId: tenant,
+        publicApiUrl: gateway, transportObservations: [observed] })).toBe(namespace === tenant)
+      expect(primaryTransportMatches('eai user provision-me', { ...observed, method: 'GET' })).toBe(false)
+    })
+  test.each(['https://example.test', 'https://example.test/public'])(
+    'another user provisioning SDK route cannot qualify provision-me at %s', async gateway => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await new PlatformAPIClient(gateway, tenant).provisionUserToTenant(tenant, 'another-user')
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(primaryTransportMatches('eai user provision-me', observed)).toBe(false)
+      expect(observedScopeVerified({ command: 'eai user provision-me', executionId, scopeTenantId: tenant,
+        publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
     })
 })
 

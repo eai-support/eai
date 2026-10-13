@@ -127,13 +127,13 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
         && (name === 'aliases' || row.alias === undefined)
         && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
-      const misclassified = valid && name === 'unsupported' && !UNSUPPORTED.has(row.command);
+      const misclassified = valid && (name === 'unsupported' ? !UNSUPPORTED.has(row.command) : UNSUPPORTED.has(row.command));
       const wrongInvocation = valid && row.invokedCommand !== (name === 'aliases' ? row.alias : row.command);
       const executionId = valid && uuid(row.executionId) ? row.executionId.toLowerCase() : undefined;
       const duplicateExecution = executionId !== undefined && executionIds.has(executionId);
       if (executionId !== undefined) executionIds.add(executionId);
       if (!valid || misclassified || wrongInvocation || duplicateExecution) malformedAttempts.push({ collection: name, index,
-        ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status }
+        ...(misclassified ? { reason: name === 'unsupported' ? 'supported-command-in-unsupported' : 'unsupported-command-outside-unsupported', command: row.command, status: row.status }
           : wrongInvocation ? { reason: 'invoked-spelling-mismatch', command: row.command, status: row.status }
             : duplicateExecution ? { reason: 'duplicate-execution-id', command: row.command, status: row.status } : {}) });
       // Retain known failed attempts even when spelling is inconsistent. The
