@@ -251,7 +251,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(entry.coverageComplete).toBe(false);
     expect(entry.scopeObservationLimitations).toEqual(expect.stringContaining('separate identity/profile-scope audit contract'));
   });
-  test.each(['uuid', 'gateway', 'tenant', 'malformed', 'unverified', 'auxiliary-owned'])(
+  test.each(['uuid', 'gateway', 'tenant', 'malformed', 'unverified', 'auxiliary-owned', 'oversized', 'too-many'])(
     'private transport %s cannot adopt resource IDs before full invocation validation', kind => {
       const controlled = harness({ override(args, result, options) {
         if (!matches(args, ['resources', 'create'])) return undefined;
@@ -264,7 +264,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
         if (kind === 'unverified') observed.proofKind = 'unverified-response';
         const values = [observed];
         if (kind === 'auxiliary-owned') values.push({ ...observed, tenantId: 'foreign-workspace', method: 'GET', path: '/public/v4/platform/tenants/foreign-workspace' });
-        return { ...result, transportOutput: kind === 'malformed' ? '{invalid' : values.map(value => JSON.stringify(value)).join('\n') + '\n' };
+        return { ...result, transportOutput: kind === 'malformed' ? '{invalid' : kind === 'oversized' ? ' '.repeat(128 * 1024 + 1)
+          : (kind === 'too-many' ? Array.from({ length: 257 }, () => observed) : values).map(value => JSON.stringify(value)).join('\n') + '\n' };
       } });
       const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
       expect(report.created.resources).toEqual([]);

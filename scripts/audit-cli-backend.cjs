@@ -128,8 +128,12 @@ function buildAudit({ schema, candidate, evidence, buildReceipt, deployments = [
         && (name !== 'aliases' || entries.some(entry => entry.command === row.command && entry.aliases.includes(row.alias)))
         && (row.options === undefined || (Array.isArray(row.options) && row.options.every(option => typeof option === 'string')));
       const misclassified = valid && name === 'unsupported' && !UNSUPPORTED.has(row.command);
-      if (!valid || misclassified) malformedAttempts.push({ collection: name, index,
-        ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status } : {}) });
+      const wrongInvocation = valid && row.invokedCommand !== (name === 'aliases' ? row.alias : row.command);
+      if (!valid || misclassified || wrongInvocation) malformedAttempts.push({ collection: name, index,
+        ...(misclassified ? { reason: 'supported-command-in-unsupported', command: row.command, status: row.status }
+          : wrongInvocation ? { reason: 'invoked-spelling-mismatch', command: row.command, status: row.status } : {}) });
+      // Retain known failed attempts even when spelling is inconsistent. The
+      // malformed contract prevents all positive qualification independently.
       return Boolean(valid);
     });
   }

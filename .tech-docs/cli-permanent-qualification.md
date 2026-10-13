@@ -6,6 +6,12 @@ retained QA foundation, permission probes and disposable lifecycle runner.
 read-only canaries in `eai-testing-dev` check the released artifact. Neither
 controlled tests nor a successful selected lifecycle certify every CLI command.
 
+Every canonical or unsupported receipt must retain `invokedCommand` exactly
+equal to its canonical `command`. An alias receipt must retain the exact
+declared alias in both `invokedCommand` and `alias`. Missing, padded or different
+spellings keep qualification incomplete even when transport and assertions
+otherwise match. Observed failures remain visible when spelling is inconsistent.
+
 ## Candidate and private evidence
 
 Use Node 24, install the locked dependencies, and commit the candidate before
