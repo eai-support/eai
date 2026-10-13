@@ -9,7 +9,8 @@ function requiresProtectedScope(command) {
   return command.startsWith('eai ') && !LOCAL_GROUPS.has(command.split(' ')[1]) && !LOCAL_COMMANDS.has(command);
 }
 function primaryTransportMatches(command, observed) {
-  if (observed.source === 'resource-json') return RESOURCE_RESPONSES.has(command);
+  // Response metadata binds scope; only the separate request receipt proves a primary route.
+  if (observed.source === 'resource-json') return false;
   if (typeof observed.method !== 'string' || typeof observed.path !== 'string' || observed.path.length > 2048
     || !observed.path.startsWith('/') || /[?#\r\n]/.test(observed.path)) return false;
   let gateway;
