@@ -50,6 +50,7 @@ function primaryTransportMatches(command, observed) {
       && ((observed.method === 'POST' && appSegments.length === 2)
         || (observed.method === 'GET' && appSegments.length === 3 && appSegments[2] !== ''));
     if (action === 'list' || action === 'select') return observed.method === 'GET' && path === enrollment;
+    if (action === 'auth' && command.split(' ')[3] === 'status') return observed.method === 'GET' && path === tenant + '/authorized-apps';
     return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(observed.method) && (below(apps) || below(enrollment));
   }
   if (group === 'user') {
@@ -100,10 +101,45 @@ function primaryTransportMatches(command, observed) {
     return action === 'seed' && ((observed.method === 'POST' && path === definitions)
       || (observed.method === 'PATCH' && definitionSegments.length === 1 && definitionSegments[0] !== ''));
   }
-  if (group === 'classifier') return /\/v4\/data\/resources\/.*classifier/.test(path);
-  if (group === 'docs' || group === 'content-understanding') return path.startsWith('/v4/data/documents/');
-  if (group === 'workflow') return /^\/v4\/(?:workflows|integrations)(?:\/|$)/.test(path)
-    || /\/(?:shared-workflow-config|vertical-product-config|shared-ai-profile|shared-chatbot-config)(?:\/|$)/.test(path);
+  if (group === 'classifier') {
+    const drafts = resources + '/shared-document-classifier', draftSegments = segments(drafts);
+    if (action === 'list') return observed.method === 'GET' && path === drafts;
+    if (action === 'save') return (observed.method === 'POST' && path === drafts)
+      || (observed.method === 'PUT' && draftSegments.length === 1 && draftSegments[0] !== '');
+    const classifierSegments = segments('/v4/data/documents/content-understanding/classifiers');
+    if (action === 'delete') return observed.method === 'DELETE' && classifierSegments.length === 1 && classifierSegments[0] !== '';
+    const operation = { publish: 'publish', target: 'targets', disable: 'disable', enable: 'enable' }[action];
+    return operation !== undefined && observed.method === 'POST' && classifierSegments.length === 2
+      && classifierSegments[0] !== '' && classifierSegments[1] === operation;
+  }
+  if (group === 'docs') {
+    if (action === 'upload' || action === 'classify') return observed.method === 'POST' && path === '/v4/data/documents/upload';
+    if (action === 'index') return observed.method === 'POST' && path === '/v4/data/documents/rag-index';
+    const collection = { job: 'jobs', get: 'records' }[action];
+    if (collection === undefined) return false;
+    const documentSegments = segments('/v4/data/documents/' + collection);
+    return observed.method === 'GET' && documentSegments.length === 1 && documentSegments[0] !== '';
+  }
+  if (group === 'content-understanding') {
+    const base = '/v4/data/documents/content-understanding';
+    if (action === 'capabilities') return observed.method === 'GET' && path === base + '/capabilities';
+    if (action === 'plan' || action === 'apply') return observed.method === 'POST' && path === base + '/configurations/' + action;
+    if (action !== 'status') return false;
+    const operationSegments = segments(base + '/configurations/operations');
+    return observed.method === 'GET' && operationSegments.length === 1 && operationSegments[0] !== '';
+  }
+  if (group === 'workflow') {
+    if (action === 'readiness') return observed.method === 'GET' && path === '/v4/integrations/builder/readiness';
+    if (action === 'request') return observed.method === 'POST' && path === '/v4/workflows/runtime-requests';
+    if (action === 'status') {
+      const workflowSegments = segments('/v4/workflows/runtime');
+      return observed.method === 'GET' && workflowSegments.length === 2 && workflowSegments[0] !== '' && workflowSegments[1] === 'status';
+    }
+    const configurationSegments = segments(resources);
+    return action === 'provision' && ['shared-workflow-config', 'vertical-product-config', 'shared-ai-profile', 'shared-chatbot-config'].includes(configurationSegments[0])
+      && ((observed.method === 'POST' && configurationSegments.length === 1)
+        || (observed.method === 'PUT' && configurationSegments.length === 2 && configurationSegments[1] !== ''));
+  }
   if (group === 'chat') {
     if (observed.method !== 'POST' || !['send', 'stream'].includes(action)) return false;
     const chatSegments = segments('/v4/ai/chat' + (action === 'stream' ? '/stream' : ''));

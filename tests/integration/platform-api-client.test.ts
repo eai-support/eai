@@ -25,12 +25,13 @@ describe('QA primary scope follows declared client routes', () => {
     { name: 'direct deletion', command: 'eai workspace delete', invoke: client => client.deleteTenant(tenant) },
     { name: 'storage inventory', command: 'eai workspace storage list', invoke: client => client.getStorageStatus() },
     { name: 'storage readiness', command: 'eai workspace storage verify', invoke: client => client.getStorageDoctor() },
-    { name: 'app creation', command: 'eai app create', invoke: client => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: 'owned-app' }) },
-    { name: 'app inventory', command: 'eai app list', invoke: client => client.listResources('tenant-vertical-enrollment') },
+    { name: 'app creation', command: 'eai app create', invoke: client => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: 'owned-app' }), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app inventory', command: 'eai app list', invoke: client => client.listResources('tenant-vertical-enrollment'), refuse: ['eai app auth status', 'eai vertical auth status'] },
     { name: 'app selection', command: 'eai app select', invoke: client => client.listResources('tenant-vertical-enrollment') },
-    { name: 'app provisioning start', command: 'eai app provision', invoke: client => client.createAppProvisioningJob('owned-app') },
-    { name: 'app provisioning observation', command: 'eai app provision', invoke: client => client.getAppProvisioningJob('owned-app', 'owned-operation') },
-    { name: 'app deletion', command: 'eai app delete', invoke: client => client.deleteApp(tenant, 'owned-app', { confirmationAppKey: 'owned-app', ownershipManifestHash: 'a'.repeat(64), environments: [] }) },
+    { name: 'app provisioning start', command: 'eai app provision', invoke: client => client.createAppProvisioningJob('owned-app'), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app provisioning observation', command: 'eai app provision', invoke: client => client.getAppProvisioningJob('owned-app', 'owned-operation'), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app deletion', command: 'eai app delete', invoke: client => client.deleteApp(tenant, 'owned-app', { confirmationAppKey: 'owned-app', ownershipManifestHash: 'a'.repeat(64), environments: [] }), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app authorization status', command: 'eai app auth status', invoke: client => client.getTenantAuthorizedApps(tenant) },
     { name: 'membership inventory', command: 'eai user list', invoke: client => client.listTenantMembers(tenant) },
     { name: 'role definitions', command: 'eai user roles', invoke: client => client.listTenantRoleDefinitions(tenant) },
     { name: 'member invitation', command: 'eai user invite', invoke: client => client.inviteTenantMember(tenant, { email: 'owned@example.invalid', role: 'tenant-viewer' }) },
@@ -84,6 +85,8 @@ describe('QA primary scope follows declared client routes', () => {
     { command: 'eai app create', method: 'POST', path: `/v4/platform/tenants/${tenant}/apps-malicious` },
     { command: 'eai app list', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious` },
     { command: 'eai app select', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious/id` },
+    { command: 'eai app auth status', method: 'GET', path: `/v4/platform/tenants/${tenant}/authorized-apps-malicious` },
+    { command: 'eai app auth status', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/authorized-apps` },
     { command: 'eai user list', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/users` },
     { command: 'eai user roles', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/role-definitions` },
     { command: 'eai user invite', method: 'POST', path: `/v4/platform/users/foreign/invite` },
@@ -206,6 +209,105 @@ describe('QA resource operations require their actual route shape', () => {
     expect(primaryTransportMatches(command, observed)).toBe(false)
     expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
       transportObservations: [observed] })).toBe(false)
+  })
+})
+
+describe('QA classifier document and workflow actions require their actual primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified, requiresProtectedScope } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const classifier = '/v4/data/documents/content-understanding/classifiers/owned-classifier'
+  const cu = '/v4/data/documents/content-understanding'
+  const workflowTypes = ['shared-workflow-config', 'vertical-product-config', 'shared-ai-profile', 'shared-chatbot-config']
+  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient, file: string) => Promise<unknown>;
+    equivalent?: string[]; processingMode?: string }[] = [
+    { name: 'classifier inventory', command: 'eai classifier list', invoke: client => client.listResources('shared-document-classifier') },
+    { name: 'classifier draft create', command: 'eai classifier save', invoke: client => client.createResource('shared-document-classifier', { classifierKey: 'owned-classifier' }) },
+    { name: 'classifier draft update', command: 'eai classifier save', invoke: client => client.updateResource('shared-document-classifier', 'owned-draft', { classifierKey: 'owned-classifier' }, 1) },
+    ...['publish', 'target', 'disable', 'enable'].map(action => ({ name: 'classifier ' + action, command: 'eai classifier ' + action,
+      invoke: (client: PlatformAPIClient) => client.requestPublicApi(classifier + '/' + (action === 'target' ? 'targets' : action), { method: 'POST', body: { tenantId: tenant } }) })),
+    { name: 'classifier delete', command: 'eai classifier delete', invoke: client => client.requestPublicApi(classifier, { method: 'DELETE', body: { tenantId: tenant, expectedVersion: 1, confirmation: 'owned-classifier' } }) },
+    { name: 'document upload', command: 'eai docs upload', invoke: (client, file) => client.uploadDocument(file, { verticalKey: 'owned-app', workflowKey: 'owned-workflow' }), equivalent: ['eai docs classify'], processingMode: 'full' },
+    { name: 'document classify', command: 'eai docs classify', invoke: (client, file) => client.classifyDocument(file, { verticalKey: 'owned-app', workflowKey: 'owned-workflow' }), equivalent: ['eai docs upload'], processingMode: 'classification' },
+    { name: 'document index', command: 'eai docs index', invoke: client => client.indexDocument('owned-document') },
+    // These inherited CU/read routes use the existing SDK dispatcher here;
+    // their specialized SDK/command routines are owned by the stacked CU tests.
+    { name: 'document job read', command: 'eai docs job', invoke: client => client.requestPublicApi('/v4/data/documents/jobs/owned-job', { method: 'GET' }) },
+    { name: 'document record read', command: 'eai docs get', invoke: client => client.requestPublicApi('/v4/data/documents/records/owned-document', { method: 'GET', params: { storage_target: 'resourceapi' } }) },
+    { name: 'typed CU capabilities', command: 'eai content-understanding capabilities', invoke: client => client.requestPublicApi(cu + '/capabilities', { method: 'GET', params: { tenant_id: tenant } }) },
+    { name: 'typed CU plan', command: 'eai content-understanding plan', invoke: client => client.requestPublicApi(cu + '/configurations/plan', { method: 'POST', body: { tenantId: tenant, manifest: {} } }) },
+    { name: 'typed CU apply', command: 'eai content-understanding apply', invoke: client => client.requestPublicApi(cu + '/configurations/apply', { method: 'POST', body: { tenantId: tenant, manifest: {} } }) },
+    { name: 'typed CU status', command: 'eai content-understanding status', invoke: client => client.requestPublicApi(cu + '/configurations/operations/22222222-2222-4222-8222-222222222223', { method: 'GET', params: { tenant_id: tenant } }) },
+    { name: 'workflow readiness', command: 'eai workflow readiness', invoke: client => client.getBuilderReadiness() },
+    { name: 'workflow status', command: 'eai workflow status', invoke: client => client.getRuntimeWorkflowStatus('owned-workflow') },
+    { name: 'workflow request', command: 'eai workflow request', invoke: client => client.requestRuntimeWorkflow({ workflowKey: 'owned-workflow', reason: 'Controlled route check' }) },
+    ...workflowTypes.flatMap(type => [
+      { name: 'workflow ' + type + ' create', command: 'eai workflow provision', invoke: (client: PlatformAPIClient) => client.createResource(type, { workflowKey: 'owned-workflow' }) },
+      { name: 'workflow ' + type + ' update', command: 'eai workflow provision', invoke: (client: PlatformAPIClient) => client.updateResource(type, 'owned-config', { workflowKey: 'owned-workflow' }, 1) },
+    ]),
+  ]
+  const candidates = [...new Set(routes.map(route => route.command))]
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))
+    ('$name binds its actual SDK primary route at $gateway', async ({ command, invoke, equivalent, processingMode, gateway }) => {
+      const directory = await mkdtemp(join(tmpdir(), 'eai-primary-action-'))
+      try {
+        const file = join(directory, 'owned.txt'); await writeFile(file, 'controlled document')
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+        await invoke(new PlatformAPIClient(gateway, tenant), file)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [url, request] = fetchMock.mock.calls[0]
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+          tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+          method: request?.method || 'GET', path: new URL(String(url)).pathname }
+        expect(observed.tenantId).toBe(tenant)
+        for (const candidate of candidates) {
+          const expected = candidate === command || equivalent?.includes(candidate) === true
+          expect(primaryTransportMatches(candidate, observed), `${candidate} cannot borrow ${command} evidence`).toBe(expected)
+          expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway,
+            transportObservations: [observed] })).toBe(expected)
+        }
+        expect(primaryTransportMatches(command, { ...observed, method: 'HEAD' })).toBe(false)
+        if (processingMode) {
+          expect(request?.body).toBeInstanceOf(FormData)
+          expect((request?.body as FormData).get('processing_mode')).toBe(processingMode)
+        }
+      } finally { await rm(directory, { recursive: true, force: true }) }
+    })
+  test.each(workflowTypes.flatMap(type => ['https://example.test', 'https://example.test/public'].map(gateway => ({ type, gateway }))))
+    ('workflow discovery of $type at $gateway is auxiliary to provisioning', async ({ type, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await new PlatformAPIClient(gateway, tenant).listResources(type)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway, tenantId: tenant,
+        proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      for (const command of candidates) {
+        expect(primaryTransportMatches(command, observed)).toBe(false)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+      }
+    })
+  test.each([
+    ['eai classifier list', 'GET', `/v4/data/resources/${tenant}/shared-document-classifier-other`],
+    ['eai classifier delete', 'DELETE', classifier + '/targets'],
+    ['eai docs job', 'GET', '/v4/data/documents/jobs/owned-job/status'],
+    ['eai docs get', 'GET', '/v4/data/documents/records/owned-document/extra'],
+    ['eai content-understanding status', 'GET', cu + '/configurations/operations/22222222-2222-4222-8222-222222222223/extra'],
+    ['eai content-understanding capabilities', 'GET', cu + '/capabilities-other'],
+    ['eai workflow readiness', 'GET', '/v4/integrations/builder/readiness-other'],
+    ['eai workflow status', 'GET', '/v4/workflows/runtime/owned-workflow/status/extra'],
+    ['eai workflow provision', 'PUT', `/v4/data/resources/${tenant}/vertical-product-config/owned-id/actions/extra`],
+    ['eai workflow provision', 'POST', `/v4/data/resources/${tenant}-foreign/shared-workflow-config`],
+  ])('refuses %s %s with undeclared shape %s', (command, method, path) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['schema', 'validate'])('local CU %s requires no protected backend and cannot manufacture primary transport', action => {
+    const command = 'eai content-understanding ' + action
+    expect(requiresProtectedScope(command)).toBe(false)
+    expect(primaryTransportMatches(command, { publicApiUrl: 'https://example.test/public', tenantId: tenant,
+      method: 'GET', path: '/public' + cu + '/capabilities' })).toBe(false)
   })
 })
 
