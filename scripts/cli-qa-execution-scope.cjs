@@ -1,7 +1,7 @@
 const SCHEMA = 'eai.cli-qa-transport.v1';
 const LOCAL_GROUPS = new Set(['start', 'dev', 'logout', 'runtime', 'update', 'gofer', 'template', 'blocks', 'errors', 'agent']);
 const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env',
-  'eai provision resourceapi-bundle', 'eai types define', 'eai resources indexes-apply', 'eai content-understanding schema', 'eai content-understanding validate']);
+  'eai types define', 'eai resources indexes-apply', 'eai content-understanding schema', 'eai content-understanding validate']);
 const RESOURCE_RESPONSES = new Set(['eai resources create', 'eai resources batch-create', 'eai resources batch-import',
   'eai resources delete', 'eai resources batch-delete']);
 const record = value => value && typeof value === 'object' && !Array.isArray(value);
@@ -52,7 +52,14 @@ function primaryTransportMatches(command, observed) {
         || (observed.method === 'GET' && appSegments.length === 3 && appSegments[2] !== ''));
     if (action === 'list' || action === 'select') return observed.method === 'GET' && path === enrollment;
     if (action === 'auth' && command.split(' ')[3] === 'status') return observed.method === 'GET' && path === tenant + '/authorized-apps';
-    return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(observed.method) && (below(apps) || below(enrollment));
+    // Preserve the separate initializer contracts; app actions require their declared endpoints.
+    if (group === 'init' || group === 'create') return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(observed.method) && (below(apps) || below(enrollment));
+    if (action === 'deploy-source-unknown-status') return observed.method === 'GET' && appSegments.length === 4
+      && appSegments[0] !== '' && appSegments[1] === 'source-unknown' && appSegments[2] === 'deployments' && appSegments[3] === 'latest';
+    const operation = { 'connect-existing': 'register', 'adopt-observed': 'register', 'workflow-setup': 'workflow-setup',
+      'workflow-evidence': 'workflow-evidence', 'deploy-source-unknown': 'deploy' }[action];
+    return operation !== undefined && observed.method === 'POST' && appSegments.length === 3
+      && appSegments[0] !== '' && appSegments[1] === 'source-unknown' && appSegments[2] === operation;
   }
   if (group === 'user') {
     const members = tenant + '/members';
@@ -147,7 +154,9 @@ function primaryTransportMatches(command, observed) {
     return chatSegments.length === 3 && chatSegments[0] === encodeURIComponent(observed.tenantId)
       && chatSegments[1] !== '' && chatSegments[2] !== '';
   }
-  if (group === 'provision') return path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
+  if (group === 'provision') return action === 'resourceapi-bundle'
+    ? observed.method === 'POST' && path === tenant + '/resourceapi/passive-bundle'
+    : path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
   if (group === 'deploy') return path.startsWith('/v4/platform/') && !/\/tenants\/[^/]+\/?$/.test(path);
   if (group === 'verify') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me'
     || path === '/v4/data/resources/health' || path === '/v4/data/resources/object-types'

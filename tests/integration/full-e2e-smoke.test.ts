@@ -1750,6 +1750,36 @@ describe('producer execution receipt controls', () => {
   const { producerEvidence } = require('../../scripts/cli-smoke-execution-evidence.cjs');
   const entries = [{ command: 'eai workspace list', aliases: ['eai tenant list'] },
     { command: 'eai types define', aliases: [] }, { command: 'eai blocks list', aliases: [] }];
+  test.each([
+    { mode: 'offline schema', args: ['--schema', 'owned.json'] }, { mode: 'apply', args: ['--apply'] },
+    { mode: 'server schema', args: [] }, { mode: 'empty schema', args: ['--schema', ''] },
+    { mode: 'whitespace schema', args: ['--schema', ' '] }, { mode: 'schema apply', args: ['--schema', 'owned.json', '--apply'] },
+  ])('bundle $mode evidence stays incomplete without actual mode/request proof', ({ args }) => {
+    const { requiresProtectedScope } = require('../../scripts/cli-qa-execution-scope.cjs')
+    const command = 'eai provision resourceapi-bundle', report = { assertions: [] }
+    const producer = producerEvidence(report, [{ command, aliases: [] }])
+    const row = producer.start(['provision', 'resourceapi-bundle', ...args], 'bundle')
+    Object.assign(row, { status: 'passed', exitCode: 0 })
+    producer.assert(row, 'controlled-bundle-output', 'passed', { contract: true })
+    expect(requiresProtectedScope(command)).toBe(true)
+    expect(row.coverageComplete).toBe(false)
+  })
+  test('compiled offline bundle generation remains usable without authentication or transport', () => {
+    const dir = realpathSync(mkdtempSync(join(tmpdir(), 'eai-offline-bundle-contract-')))
+    try {
+      const schema = join(dir, 'object-types.json')
+      writeFileSync(schema, JSON.stringify({ objectTypes: [{ id: 'project', name: 'Project', slug: 'project', status: 'published', storageBackend: 'postgresql' }] }))
+      const result = spawnSync(process.execPath, [cliPath, 'provision', 'resourceapi-bundle', '--schema', schema,
+        '--tenant-id', 'owned-tenant', '--install-id', 'owned-install', '--format', 'json'], {
+        cwd: dir, encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+        env: { ...process.env, HOME: dir, USERPROFILE: dir, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '',
+          BASE_URL_PUBLIC_API: 'http://127.0.0.1:9', EAI_CLI_QA_TRANSPORT_FD: '3', EAI_CLI_QA_EXECUTION_ID: '22222222-2222-4222-8222-222222222222' },
+      })
+      expect(result.status).toBe(0); expect(result.signal).toBeNull(); expect(result.stderr).toBe('')
+      expect(JSON.parse(result.stdout)).toMatchObject({ tenantId: 'owned-tenant', installId: 'owned-install', objectTypes: [expect.objectContaining({ slug: 'project' })] })
+      expect(String(result.output[3])).toBe('')
+    } finally { rmSync(dir, { recursive: true, force: true }) }
+  })
   test('retains actual alias spelling separately and never manufactures its canonical invocation', () => {
     const report = { assertions: [] }, producer = producerEvidence(report, entries);
     const alias = producer.start(['tenant', 'list', '--format', 'json'], 'read', { environment: 'DEV', publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', scopeTenantId: '11111111-1111-4111-8111-111111111111' });
