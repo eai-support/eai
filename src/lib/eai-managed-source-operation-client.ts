@@ -48,6 +48,17 @@ export function validateCliManagedSourceOperation(
   scope: CliManagedSourceScope,
   expected?: ExpectedCliManagedSourceOperation,
 ): CliManagedSourceOperation {
+  const customerRepository = value?.repositoryAuthority === "customer-owned"
+    && value.repository?.private === true
+    && /^[a-z\d][a-z\d-]{0,38}$/i.test(value.repository.owner)
+    && value.repository.owner.toLowerCase() !== "eai-generated-apps"
+    && Number.isSafeInteger(value.repository.id) && (value.repository.id ?? 0) > 0
+    && typeof value.repository.nodeId === "string" && value.repository.nodeId.length > 0
+    && typeof value.repository.defaultBranch === "string" && value.repository.defaultBranch.length > 0
+    && /^[1-9][0-9]*$/.test(value.repository.installationId ?? "")
+    && /^cli-managed-[a-f0-9]{32}$/.test(value.predecessor?.operationId ?? "")
+    && /^sha256:[a-f0-9]{64}$/.test(value.predecessor?.integrityHash ?? "")
+    && /^[a-f0-9]{40}$/.test(value.predecessor?.mergedCommitSha ?? "");
   if (
     !value ||
     value.schemaVersion !== "eai.cli_managed_source_operation.v1" ||
@@ -80,7 +91,8 @@ export function validateCliManagedSourceOperation(
       "completed",
       "failed",
     ].includes(value.status) ||
-    value.repository?.owner !== "eai-generated-apps" ||
+    !((value.repositoryAuthority === undefined || value.repositoryAuthority === "eai-managed")
+      && value.repository?.owner === "eai-generated-apps") && !customerRepository ||
     !/^[A-Za-z0-9_.-]+$/.test(value.repository?.name || "") ||
     value.verifiedGithubUser?.actorId !== scope.actorId ||
     !Number.isSafeInteger(value.verifiedGithubUser?.id) ||
