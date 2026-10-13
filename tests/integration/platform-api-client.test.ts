@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,6 +12,78 @@ vi.mock('../../src/lib/auth.js', () => ({
 import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText, withPublicRequestObservation } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
+
+describe('QA primary scope follows declared client routes', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient) => Promise<Response> }[] = [
+    { name: 'child creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned', parent: tenant }) },
+    { name: 'root creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned' }) },
+    { name: 'child bootstrap', command: 'eai workspace bootstrap-admin', invoke: client => client.bootstrapChildTenantAdmin(tenant, 'owned-child', { userOid: 'owned-actor', userEmail: 'owned@example.invalid' }) },
+    { name: 'parent deletion', command: 'eai workspace delete', invoke: client => client.deleteTenant('owned-child', { parentTenantId: tenant, forceHardPurge: true }) },
+    { name: 'direct deletion', command: 'eai workspace delete', invoke: client => client.deleteTenant(tenant) },
+    { name: 'storage inventory', command: 'eai workspace storage list', invoke: client => client.getStorageStatus() },
+    { name: 'storage readiness', command: 'eai workspace storage verify', invoke: client => client.getStorageDoctor() },
+    { name: 'app creation', command: 'eai app create', invoke: client => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: 'owned-app' }) },
+    { name: 'app inventory', command: 'eai app list', invoke: client => client.listResources('tenant-vertical-enrollment') },
+    { name: 'app selection', command: 'eai app select', invoke: client => client.listResources('tenant-vertical-enrollment') },
+    { name: 'app provisioning start', command: 'eai app provision', invoke: client => client.createAppProvisioningJob('owned-app') },
+    { name: 'app provisioning observation', command: 'eai app provision', invoke: client => client.getAppProvisioningJob('owned-app', 'owned-operation') },
+    { name: 'app deletion', command: 'eai app delete', invoke: client => client.deleteApp(tenant, 'owned-app', { confirmationAppKey: 'owned-app', ownershipManifestHash: 'a'.repeat(64), environments: [] }) },
+    { name: 'membership inventory', command: 'eai user list', invoke: client => client.listTenantMembers(tenant) },
+    { name: 'role definitions', command: 'eai user roles', invoke: client => client.listTenantRoleDefinitions(tenant) },
+    { name: 'member invitation', command: 'eai user invite', invoke: client => client.inviteTenantMember(tenant, { email: 'owned@example.invalid', role: 'tenant-viewer' }) },
+    { name: 'email role assignment', command: 'eai user role set', invoke: client => client.inviteTenantMember(tenant, { email: 'owned@example.invalid', role: 'tenant-viewer' }) },
+    { name: 'member role update', command: 'eai user role set', invoke: client => client.updateTenantMemberRole(tenant, 'owned-member', { role: 'tenant-viewer' }) },
+    { name: 'index planning', command: 'eai resources indexes-plan', invoke: client => client.planResourceIndexes(['owned-resource']) },
+    { name: 'object type verification', command: 'eai verify', invoke: client => client.getPublishedObjectTypes({ limit: 1 }) },
+    { name: 'schema verification', command: 'eai verify', invoke: client => client.getSchema() },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))(
+    'accepts actual $name at $gateway and refuses wrong methods', async ({ command, invoke, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await invoke(new PlatformAPIClient(gateway, tenant))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(observed.tenantId).toBe(tenant)
+      expect(primaryTransportMatches(command, observed)).toBe(true)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(true)
+      const invalidMethod = observed.method === 'GET' ? 'DELETE' : 'HEAD'
+      expect(primaryTransportMatches(command, { ...observed, method: invalidMethod })).toBe(false)
+      const alias = command.startsWith('eai workspace ') ? command.replace('eai workspace ', 'eai tenant ')
+        : command.startsWith('eai app ') ? command.replace('eai app ', 'eai vertical ') : undefined
+      if (alias) expect(primaryTransportMatches(alias, observed)).toBe(true)
+    })
+  test.each([
+    { command: 'eai workspace create', method: 'POST', path: `/v4/platform/tenants/${tenant}/children-malicious` },
+    { command: 'eai workspace create', method: 'POST', path: `/v4/platform/tenants/${tenant}/children/unexpected` },
+    { command: 'eai workspace bootstrap-admin', method: 'POST', path: `/v4/platform/tenants/${tenant}-foreign/children/child/bootstrap-admin` },
+    { command: 'eai workspace bootstrap-admin', method: 'POST', path: `/v4/platform/tenants/${tenant}/children/child/bootstrap-admin-malicious` },
+    { command: 'eai workspace delete', method: 'POST', path: `/v4/platform/tenants/${tenant}-foreign/delete` },
+    { command: 'eai workspace delete', method: 'DELETE', path: `/v4/platform/tenants/${tenant}-foreign` },
+    { command: 'eai workspace delete', method: 'DELETE', path: `/v4/platform/tenants/${tenant}/children/child/delete-malicious` },
+    { command: 'eai app create', method: 'POST', path: `/v4/platform/tenants/${tenant}/apps-malicious` },
+    { command: 'eai app list', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious` },
+    { command: 'eai app select', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious/id` },
+    { command: 'eai user list', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/users` },
+    { command: 'eai user roles', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/role-definitions` },
+    { command: 'eai user invite', method: 'POST', path: `/v4/platform/users/foreign/invite` },
+    { command: 'eai resources indexes-plan', method: 'POST', path: '/v4/data/resources/schema/indexes/plan-malicious' },
+    { command: 'eai verify', method: 'GET', path: '/v4/data/resources/object-types-malicious' },
+    { command: 'eai verify', method: 'POST', path: '/v4/data/resources/object-types' },
+  ])('does not qualify undeclared $command route $path', ({ command, method, path }) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
+      transportObservations: [observed] })).toBe(false)
+  })
+})
 
 describe('compiled managed deadline rejection handling', () => {
   test.each(['transport', 'body', 'deadline', 'late-rejection', 'success', 'already-aborted-input', 'already-aborted-body', 'expired-response-body'])

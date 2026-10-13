@@ -178,6 +178,55 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   const flag = (args: string[], name: string): string => args.includes(name) ? args[args.indexOf(name) + 1] || '' : '';
   const matches = (args: string[], prefix: string[]) => prefix.every((part, index) => args[index] === part);
 
+  test.each(['child', 'app', 'resource', 'batch', 'workflow', 'recreated-app'].flatMap(target =>
+    ['nonzero', 'signal', 'failed-json'].map(outcome => ({ target, outcome }))))(
+    'actual $outcome producer output cannot adopt $target IDs or schedule their cleanup', ({ target, outcome }) => {
+      let creates = 0, attempted = false;
+      const controlled = harness({ override(args, result) {
+        const selected = target === 'child' ? matches(args, ['tenant', 'create'])
+          : target === 'app' || target === 'recreated-app' ? matches(args, ['app', 'create'])
+          : target === 'resource' ? matches(args, ['resources', 'create'])
+          : target === 'batch' ? matches(args, ['resources', 'batch-create']) : matches(args, ['workflow', 'provision']);
+        if (!selected || attempted || (target === 'recreated-app' && ++creates !== 2)) return undefined;
+        attempted = true;
+        const payload = JSON.parse(result.stdout);
+        if (target === 'child') payload.tenant.id = 'unverified-child-id';
+        else if (target === 'app' || target === 'recreated-app') payload.response.app.id = 'unverified-enrollment-id';
+        else if (target === 'resource') payload.id = 'unverified-resource-id';
+        else if (target === 'batch') payload.results.forEach((row: { id: string }) => { row.id = 'unverified-resource-id'; });
+        else {
+          payload.workflow.id = 'unverified-workflow-id';
+          payload.app.id = 'unverified-workflow-app-id';
+        }
+        if (outcome === 'failed-json') payload.ok = false;
+        const producer = spawnSync(process.execPath, ['-e',
+          `require('node:fs').writeFileSync(1, ${JSON.stringify(JSON.stringify(payload))});`
+          + (outcome === 'signal' ? "process.kill(process.pid, 'SIGTERM');" : `process.exit(${outcome === 'nonzero' ? 1 : 0});`)],
+        { encoding: 'utf8', timeout: 5000, env: { EAI_NO_UPDATE_CHECK: '1' } });
+        expect(producer.error).toBeUndefined();
+        expect(JSON.parse(producer.stdout)).toEqual(payload);
+        if (outcome === 'signal') expect(producer.signal).toBe('SIGTERM');
+        return { ...result, status: producer.status as number, stdout: producer.stdout, stderr: producer.stderr };
+      } });
+      const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_WORKFLOW_PROVISION: '1',
+        EAI_E2E_RECREATE_AFTER_DELETE: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1' }).report;
+      expect(attempted).toBe(true);
+      expect(report.created.childTenantId).not.toBe('unverified-child-id');
+      expect(report.created.enrollmentId).not.toBe('unverified-enrollment-id');
+      expect(report.created.recreatedEnrollmentId).not.toBe('unverified-enrollment-id');
+      expect(report.created.resources.every(row => !row.id.startsWith('unverified-'))).toBe(true);
+      expect(report.created.workflowIds).not.toContain('unverified-workflow-id');
+      expect(controlled.calls.some(call => call.args.includes('unverified-child-id')
+        || call.args.includes('unverified-resource-id') || call.args.includes('unverified-workflow-id'))).toBe(false);
+      expect(report.leftovers.length).toBeGreaterThan(0);
+      if (target === 'child') {
+        expect(report.created.childTenantId).toBe('');
+        expect(controlled.calls.some(call => matches(call.args, ['tenant', 'bootstrap-admin']) || matches(call.args, ['app', 'create']))).toBe(false);
+      } else expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
+      if (target === 'app') expect(controlled.calls.some(call => matches(call.args, ['app', 'delete']) || matches(call.args, ['init']))).toBe(false);
+      if (target === 'recreated-app') expect(controlled.calls.filter(call => matches(call.args, ['app', 'delete']))).toHaveLength(1);
+    });
+
   test('every live semantic assertion requires an explicit recorded response or explicit global scope', () => {
     const source = readFileSync(new URL('../../scripts/eai-full-e2e-smoke.cjs', import.meta.url), 'utf8');
     const module = ts.createSourceFile('smoke.cjs', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
@@ -1201,19 +1250,20 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(deniedReport.status).toBe('blocked'); expect(deniedReport.leftovers).toEqual([]); expect(deniedReport.created.childTenantId).toBe('');
   });
 
-  test('captures resource IDs before a failed command exit, then deletes and proves absence', () => {
+  test('failed resource creation cannot supply new ownership or an ID cleanup target', () => {
     let failed = false;
     const controlled = harness({ override(args, result) {
       if (!failed && matches(args, ['resources', 'create'])) { failed = true; return { ...result, status: 1 }; }
       return undefined;
     } });
     const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
-    expect(report.created.resources).toHaveLength(1);
-    expect(report.cleanup.find(row => row.artifact.startsWith('resource:'))?.status).toBe('passed');
-    expect(controlled.resources.size).toBe(0);
+    expect(report.created.resources).toEqual([]);
+    expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete']) && call.args[3] === 'resource-1')).toBe(false);
+    expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+    expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
   });
 
-  test('partial batch result fails and retains returned IDs for cleanup instead of relying on zero exit code', () => {
+  test('partial batch output keeps new IDs unresolved while earlier successful resource receipts remain cleanup targets', () => {
     const controlled = harness({ override(args, result) {
       if (matches(args, ['resources', 'batch-create'])) {
         const body = JSON.parse(result.stdout) as { results: { id: string }[]; request: unknown };
@@ -1223,8 +1273,10 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     } });
     const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
     expect(report.status).toBe('failed');
-    expect(report.created.resources.filter(row => row.type.includes('-pg'))).toHaveLength(3);
+    expect(report.created.resources.filter(row => row.type.includes('-pg'))).toHaveLength(1);
     expect(report.cleanup.filter(row => row.artifact.startsWith('resource:')).every(row => row.status === 'passed')).toBe(true);
+    expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+    expect(report.cleanupVerified).toBe(false);
   });
 
   test('partial batch deletion verifies already removed IDs and continues exact per-row cleanup', () => {
@@ -1460,8 +1512,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     const report = failure(controlled, { EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }).report;
     expect(creates).toBe(2);
     expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
-    expect(controlled.calls.filter(call => matches(call.args, ['app', 'delete']))).toHaveLength(['nonzero', 'same-id'].includes(condition) ? 2 : 1);
-    if (['unknown', 'foreign'].includes(condition)) expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'recreated-app' }));
+    expect(controlled.calls.filter(call => matches(call.args, ['app', 'delete']))).toHaveLength(condition === 'same-id' ? 2 : 1);
+    if (['nonzero', 'unknown', 'foreign'].includes(condition)) expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'recreated-app' }));
     expect(report.cleanupVerified).toBe(false);
   });
 
@@ -1541,13 +1593,16 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(report.cleanupVerified).toBe(true);
   });
 
-  test('failed workflow command retains exact nested IDs for cleanup before checking its exit', () => {
+  test('failed workflow output cannot supply fresh cleanup IDs while earlier acknowledged app and child cleanup continues', () => {
     const controlled = harness({ override: (args, result) => matches(args, ['workflow', 'provision']) ? { ...result, status: 1 } : undefined });
     const report = failure(controlled, { EAI_E2E_WORKFLOW_PROVISION: '1' }).report;
-    expect(report.created.workflowIds).toEqual(['run-workflow']);
-    expect(report.created.resources).toHaveLength(2);
-    expect(report.cleanupVerified).toBe(true);
-    expect(controlled.resources.size).toBe(0);
+    expect(report.created.workflowIds).toEqual([]);
+    expect(report.created.resources).toEqual([]);
+    expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete', 'shared-workflow-config', 'run-workflow']))).toBe(false);
+    expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'app', status: 'passed' }));
+    expect(report.cleanup).toContainEqual(expect.objectContaining({ artifact: 'child-tenant', status: 'passed' }));
+    expect(report.leftovers).toContainEqual(expect.objectContaining({ artifact: 'unverified-mutation' }));
+    expect(report.cleanupVerified).toBe(false);
   });
 
   test('workflow owner readback scope drift blocks deletion of its unverified ID while independent cleanup continues', () => {

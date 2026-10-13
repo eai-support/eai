@@ -17,30 +17,59 @@ function primaryTransportMatches(command, observed) {
   const prefix = gateway.pathname.replace(/\/$/, '');
   if (!observed.path.startsWith(prefix + '/')) return false;
   const path = observed.path.slice(prefix.length), group = command.split(' ')[1], action = command.split(' ')[2];
+  const tenant = '/v4/platform/tenants/' + encodeURIComponent(observed.tenantId);
+  const resources = '/v4/data/resources/' + encodeURIComponent(observed.tenantId);
+  const below = base => path === base || path.startsWith(base + '/');
+  const segments = base => path.startsWith(base + '/') ? path.slice(base.length + 1).split('/') : [];
+  const children = segments(tenant);
   if (group === 'publicapi') return observed.method === action.toUpperCase() && path.startsWith('/v4/');
-  if (group === 'workspace') {
+  if (group === 'workspace' || group === 'tenant') {
     // These commands consume identity inventory/cache; a regional-routing
     // tenant-management lookup is auxiliary and cannot qualify their output.
     if (['list', 'info', 'select'].includes(action)) return path === '/v4/identity/tenants' && observed.method === 'GET';
-    const methods = { create: 'POST', 'bootstrap-admin': 'POST', delete: 'DELETE', info: 'GET' };
-    if (methods[action] && observed.method !== methods[action]) return false;
-    if (action === 'create') return path === '/v4/platform/tenants' || path.startsWith('/v4/platform/tenants/' + encodeURIComponent(observed.tenantId) + '/children');
-    return path.startsWith('/v4/platform/tenants/' + encodeURIComponent(observed.tenantId));
+    if (action === 'storage') {
+      const suffix = { list: '/storage', verify: '/storage/doctor' }[command.split(' ')[3]];
+      return suffix !== undefined && observed.method === 'GET' && path === resources + suffix;
+    }
+    if (observed.method !== 'POST') return false;
+    if (action === 'create') return path === '/v4/platform/tenants' || path === tenant + '/children';
+    if (action === 'bootstrap-admin') return children.length === 3 && children[0] === 'children'
+      && children[1] !== '' && children[2] === 'bootstrap-admin';
+    if (action === 'delete') return path === tenant + '/delete'
+      || (children.length === 3 && children[0] === 'children' && children[1] !== '' && children[2] === 'delete');
+    return false;
   }
   if (group === 'whoami') return path === '/v4/identity/tenants' && observed.method === 'GET';
   if (group === 'doctor') return path === '/health' || path === '/v4/identity/me';
-  if (group === 'app' || group === 'init' || group === 'create') {
-    const methods = { create: 'POST', delete: 'DELETE', provision: 'POST', list: 'GET' };
-    return (!methods[action] || observed.method === methods[action])
-      && (path.startsWith('/v4/platform/tenants/' + encodeURIComponent(observed.tenantId) + '/apps')
-        || path.startsWith('/v4/data/resources/' + encodeURIComponent(observed.tenantId) + '/tenant-vertical-enrollment'));
+  if (group === 'app' || group === 'vertical' || group === 'init' || group === 'create') {
+    const apps = tenant + '/apps', enrollment = resources + '/tenant-vertical-enrollment';
+    const appSegments = segments(apps);
+    if (action === 'create') return observed.method === 'POST' && path === apps;
+    if (action === 'delete') return observed.method === 'DELETE' && appSegments.length === 1 && appSegments[0] !== '';
+    if (action === 'provision') return appSegments[0] !== '' && appSegments[1] === 'provisioning-jobs'
+      && ((observed.method === 'POST' && appSegments.length === 2)
+        || (observed.method === 'GET' && appSegments.length === 3 && appSegments[2] !== ''));
+    if (action === 'list' || action === 'select') return observed.method === 'GET' && path === enrollment;
+    return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(observed.method) && (below(apps) || below(enrollment));
   }
-  if (group === 'user') return /^\/v4\/platform\/(?:users|tenants\/[^/]+\/(?:users|role-definitions))(?:\/|$)/.test(path);
+  if (group === 'user') {
+    const members = tenant + '/members';
+    const memberSegments = segments(members), userSegments = segments(tenant + '/users');
+    if (action === 'list') return observed.method === 'GET' && path === members;
+    if (action === 'roles') return observed.method === 'GET' && path === tenant + '/role-definitions';
+    if (action === 'invite' || (action === 'role' && command.split(' ')[3] === 'set'))
+      return (observed.method === 'POST' && path === members + '/invite')
+        || (action === 'role' && observed.method === 'PATCH' && memberSegments.length === 2
+          && memberSegments[0] !== '' && memberSegments[1] === 'roles');
+    if (action === 'provision-me') return observed.method === 'POST' && userSegments.length === 2
+      && userSegments[0] !== '' && userSegments[1] === 'provision';
+    return false;
+  }
   if (group === 'resources') {
     const methods = { create: ['POST'], 'batch-create': ['POST'], 'batch-import': ['POST'], delete: ['DELETE'],
       'batch-delete': ['POST', 'DELETE'], update: ['PATCH', 'PUT'], 'batch-update': ['PATCH', 'PUT', 'POST'], get: ['GET'], list: ['GET'] };
-    return (path.startsWith('/v4/data/resources/' + encodeURIComponent(observed.tenantId) + '/')
-      || (action === 'indexes-plan' && path.startsWith('/v4/data/resources/schema/indexes/plan')))
+    if (action === 'indexes-plan') return observed.method === 'POST' && path === tenant + '/resourceapi/index-plan';
+    return path.startsWith(resources + '/')
       && (!methods[action] || methods[action].includes(observed.method));
   }
   if (group === 'types') return /\/v4\/data\/resources\/(?:object-types|schema)(?:\/|$)/.test(path);
@@ -51,7 +80,9 @@ function primaryTransportMatches(command, observed) {
   if (group === 'chat') return path.startsWith('/v4/ai/');
   if (group === 'provision') return path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
   if (group === 'deploy') return path.startsWith('/v4/platform/') && !/\/tenants\/[^/]+\/?$/.test(path);
-  if (group === 'verify') return path === '/health' || path === '/v4/identity/me' || path.startsWith('/v4/data/resources/object-types');
+  if (group === 'verify') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me'
+    || path === '/v4/data/resources/health' || path === '/v4/data/resources/object-types'
+    || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId));
   return false;
 }
 function observationValid(value, executionId) {

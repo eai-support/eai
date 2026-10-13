@@ -1908,8 +1908,20 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           : 'Selected flags and profile state do not prove the actual protected response scope.';
       }
       evidence.bind(result, entry);
-      options.observe?.(result); // Adopt only after the supplied/required transport scope gate.
       entry.status = result.status === 0 ? 'passed' : 'failed'; checkpoint();
+      if (result.status !== 0 && options.observe) {
+        const body = parseJson(result.stdout, {});
+        const refusedCreation = body.ok === false && [400, 401, 403, 404, 409, 422].includes(body.status)
+          && ['eai workspace create', 'eai app create'].includes(entry.command);
+        // Explicit refusals carry diagnostics only; no ownership observer sees failed output.
+        if (refusedCreation && entry.command === 'eai workspace create') {
+          childAttempted = false;
+          if (body.status === 403) throw new SmokeBlocked('DEV denied child creation for the QA actor; no creation was acknowledged.');
+        } else if (refusedCreation) appAttempted = false;
+        else report.leftovers.push({ artifact: 'unverified-mutation', command: entry.command, executionId: entry.executionId,
+          reason: 'Exit success was not observed; returned IDs were not adopted.' });
+        checkpoint();
+      }
       if (result.status !== 0 && !options.allowFailure) {
         const body = parseJson(result.stdout, {});
         const code = body.error?.code || body.serverCode || body.code;
@@ -1927,12 +1939,17 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     try { payload = JSON.parse(result.stdout); } catch {
       assertion('valid-json-output', false, executedCommand(args) + ' did not return JSON.', false, result);
     }
-    assertion('successful-json-contract', payload && typeof payload === 'object'
+    const successful = result.status === 0 && payload && typeof payload === 'object'
       && payload.ok !== false && payload.success !== false && !['fail', 'failed'].includes(payload.status)
-      && !(Number(payload.failed) > 0) && !(Number(payload.summary?.fail) > 0) && !(Number(payload.summary?.failed) > 0),
+      && !(Number(payload.failed) > 0) && !(Number(payload.summary?.fail) > 0) && !(Number(payload.summary?.failed) > 0);
+    if (!successful && options.observe) report.leftovers.push({ artifact: 'unverified-mutation',
+      command: executedCommand(args), executionId: evidence.receipt(result).executionId,
+      reason: 'A successful JSON result was not observed; returned IDs were not adopted.' });
+    assertion('successful-json-contract', successful,
     executedCommand(args) + ' returned an unsuccessful result.', false, result);
     const entry = evidence.receipt(result);
     evidence.bind(payload, entry); evidence.bind(payload.body, entry);
+    options.observe?.(result); // Adopt only after scope, zero exit and successful JSON are verified.
     if (args.includes('--format') && args[args.indexOf('--format') + 1] === 'json')
       assertion('json-output-format', payload && typeof payload === 'object', 'JSON output format was not observed.', false, result, { option: '--format', contract: false });
     if (payload.summary && typeof payload.summary === 'object') {
@@ -2107,10 +2124,6 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       '--starter-template', 'eai-app-template',
       '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
         const payload = parseJson(result.stdout, {});
-        if (result.status !== 0 && payload.ok === false && [400, 401, 403, 404, 409, 422].includes(payload.status)) {
-          childAttempted = false;
-          if (payload.status === 403) throw new SmokeBlocked('DEV denied child creation for the QA actor; no creation was acknowledged.');
-        }
         const tenant = payload.tenant;
         if (tenant?.reused === true) childAttempted = false;
         const immediateParent = tenant?.parentTenantId ?? tenant?.parentTenant?.id ?? tenant?.parentTenant;
@@ -2136,7 +2149,6 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const app = json(['app', 'create', appName, '--key', appName, '--tenant-id', child(), '--format', 'json'], {
       cwd: controlRoot, observe(result) {
         const body = parseJson(result.stdout, {});
-        if (result.status !== 0 && body.ok === false && [400, 401, 403, 404, 409, 422].includes(body.status)) appAttempted = false;
         const response = body.response, enrollment = response?.app, created = response?.created;
         const childId = response?.childTenant?.id;
         const exactChildBinding = childId ? (typeof childId === 'string' && enrollment?.childTenantId === childId)
