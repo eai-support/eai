@@ -152,17 +152,39 @@ describe('CLI backend audit evidence', () => {
     const decisions = [{ command: 'eai workspace list', crud: 'read', coverage: 'live', notes: 'fixture' }];
     const executionId = id(90), aliasExecutionId = id(91);
     const scope = { environment: 'DEV', publicApiUrl, scopeTenantId: tenantIds.a };
+    const transport = (executionId: string) => [{ schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl,
+      tenantId: tenantIds.a, proofKind: 'transport-response', method: 'GET', path: '/public/v4/identity/tenants' }];
     const assertions: AuditAssertion[] = [
       { name: 'exact inventory', command: 'eai workspace list', executionId, status: 'passed', ...scope },
       ...['--format', '--workspace'].map(option => ({ name: 'verified ' + option, command: 'eai workspace list', executionId, option, status: 'passed', ...scope })),
     ];
     const evidence = { candidate, environment: 'DEV', expectedPublicApi: publicApiUrl, cleanupVerified: true, authorizationEvidence,
-      commands: [{ command: 'eai workspace list', executionId, exitCode: 0, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], ...scope }],
+      commands: [{ command: 'eai workspace list', executionId, exitCode: 0, status: 'passed', coverageComplete: true, assertions, options: ['--format', '--workspace'], transportObservations: transport(executionId), ...scope }],
       aliases: [{ alias: 'eai tenant list', command: 'eai workspace list', executionId: aliasExecutionId, exitCode: 0, status: 'passed', coverageComplete: true,
         assertions: [{ name: 'exact alias inventory', command: 'eai workspace list', alias: 'eai tenant list',
-          executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], ...scope }] };
+          executionId: aliasExecutionId, status: 'passed', ...scope } as AuditAssertion], transportObservations: transport(aliasExecutionId), ...scope }] };
     return { input: { schema, candidate, evidence, buildReceipt, deployments, now }, decisions };
   }
+
+  test('matching selected protected scope and passing summaries cannot certify an unobserved transport', () => {
+    const { input, decisions } = completeContractModel();
+    Object.assign(input.evidence.commands[0], { transportObservations: undefined });
+    const result = buildAudit(input, decisions);
+    expect(result.commands[0].status).toBe('incomplete');
+    expect(result.backendCertified).toBe(false); expect(result.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['uuid', 'gateway', 'tenant', 'kind', 'auxiliary', 'global'])(
+    'a protected %s transport mismatch stays incomplete independently of passing summaries', kind => {
+      const { input, decisions } = completeContractModel();
+      const observed = input.evidence.commands[0].transportObservations[0];
+      if (kind === 'uuid') observed.executionId = '00000000-0000-4000-8000-000000000999';
+      if (kind === 'gateway') observed.publicApiUrl = 'https://foreign.invalid/public';
+      if (kind === 'tenant') observed.tenantId = '00000000-0000-4000-8000-000000000999';
+      if (kind === 'kind') observed.proofKind = 'selected-context';
+      if (kind === 'auxiliary') observed.path = '/public/v4/data/resources/object-types';
+      if (kind === 'global') observed.tenantId = 'system';
+      expect(buildAudit(input, decisions).commands[0].status).toBe('incomplete');
+    });
 
   test.each(['oid', 'profile'])('case-folded duplicate actor %s cannot certify independent normal roles', field => {
     const { input, decisions } = completeContractModel(), authorization = input.evidence.authorizationEvidence;
@@ -294,6 +316,7 @@ describe('CLI backend audit evidence', () => {
       }
       for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
         receipt.scopeTenantId = cycle.tenantId;
+        for (const observed of receipt.transportObservations) observed.tenantId = cycle.tenantId;
         for (const assertion of receipt.assertions) assertion.scopeTenantId = cycle.tenantId;
       }
       const report = buildAudit(input, decisions);
@@ -308,6 +331,7 @@ describe('CLI backend audit evidence', () => {
     const { input, decisions } = completeContractModel(), cycles = addCompleteCycleModel(input), tenantId = cycles.cycles[0].tenantId;
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       receipt.scopeTenantId = tenantId; for (const assertion of receipt.assertions) assertion.scopeTenantId = tenantId;
+      for (const observed of receipt.transportObservations) observed.tenantId = tenantId;
     }
     expect(buildAudit(input, decisions).fullCapabilityQualified).toBe(true);
   });
@@ -347,6 +371,7 @@ describe('CLI backend audit evidence', () => {
     for (const cycle of cycles.cycles) Object.assign(cycle.ownershipEvidence, { environment, publicApiUrl });
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
+      for (const observed of receipt.transportObservations) observed.publicApiUrl = publicApiUrl;
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
     }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });
@@ -375,6 +400,7 @@ describe('CLI backend audit evidence', () => {
     }
     for (const receipt of [...input.evidence.commands, ...input.evidence.aliases]) {
       Object.assign(receipt, { environment, publicApiUrl });
+      for (const observed of receipt.transportObservations) observed.publicApiUrl = publicApiUrl;
       for (const assertion of receipt.assertions) Object.assign(assertion, { environment, publicApiUrl });
     }
     for (const row of input.deployments) Object.assign(row, { environment, publicApiUrl });

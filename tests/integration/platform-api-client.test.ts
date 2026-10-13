@@ -94,6 +94,61 @@ describe('compiled managed deadline rejection handling', () => {
     })
 })
 
+describe('compiled private QA transport pipe', () => {
+  test.each(['enabled', 'absent', 'invalid-uuid', 'regular-file', 'redirected'])(
+    'captures only exact response scope for %s without changing normal API output', async mode => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-qa-pipe-process-'))
+      const fs = await import('node:fs')
+      const file = join(home, 'reserved-regular-file')
+      fs.writeFileSync(file, 'untouched', { mode: 0o600 })
+      const descriptor = mode === 'regular-file' ? fs.openSync(file, 'r+') : undefined
+      try {
+        const script = `
+          import assert from 'node:assert/strict';
+          import { createServer } from 'node:http';
+          import { PlatformAPIClient } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
+          const received = [];
+          const server = createServer((request, response) => {
+            received.push({ path: new URL(request.url, 'http://local.invalid').pathname, tenant: request.headers['x-tenant-id'] });
+            if (${JSON.stringify(mode)} === 'redirected' && request.url.includes('/resources/')) {
+              response.writeHead(302, { location: '/redirected' }); response.end();
+            } else { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"id":"owned-row","secret":"private-body"}'); }
+          });
+          await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+          try {
+            const gateway = 'http://127.0.0.1:' + server.address().port;
+            const resource = await new PlatformAPIClient(gateway, '11111111-1111-4111-8111-111111111111').createResource('project', { secret: 'private-request-body' });
+            assert.equal(resource.ok, true); assert.equal((await resource.json()).id, 'owned-row');
+            await new PlatformAPIClient(gateway, 'system').requestPublicApi('/v4/identity/me?ticket=private-query', { method: 'GET' });
+            console.log(JSON.stringify({ normalOutputPreserved: true, received, gateway }));
+          } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+        `
+        const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+          encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe', descriptor ?? 'pipe'],
+          env: { ...process.env, HOME: home, USERPROFILE: home, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '<private-header-canary>',
+            EAI_CLI_QA_TRANSPORT_FD: mode === 'absent' ? '' : '3',
+            EAI_CLI_QA_EXECUTION_ID: mode === 'invalid-uuid' ? 'invalid' : '22222222-2222-4222-8222-222222222222' },
+        })
+        expect(result.status).toBe(0); expect(result.signal).toBeNull(); expect(result.stderr).toBe('')
+        const normal = JSON.parse(String(result.stdout)); expect(normal.normalOutputPreserved).toBe(true)
+        const pipe = String(result.output[3] || '')
+        for (const secret of ['private-header-canary', 'private-body', 'private-request-body', 'private-query']) expect(pipe).not.toContain(secret)
+        if (['absent', 'invalid-uuid', 'regular-file'].includes(mode)) expect(pipe).toBe('')
+        else {
+          const observations = pipe.trim().split('\n').map(value => JSON.parse(value))
+          expect(observations).toHaveLength(2)
+          expect(observations[1]).toEqual({ schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222',
+            publicApiUrl: normal.gateway, tenantId: null, proofKind: 'transport-response', method: 'GET', path: '/v4/identity/me' })
+          expect(observations[0]).toEqual(mode === 'redirected'
+            ? { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', proofKind: 'unverified-response' }
+            : { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', publicApiUrl: normal.gateway,
+              tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response', method: 'POST', path: '/v4/data/resources/11111111-1111-4111-8111-111111111111/project' })
+        }
+        expect(fs.readFileSync(file, 'utf8')).toBe('untouched')
+      } finally { if (descriptor !== undefined) fs.closeSync(descriptor); await rm(home, { recursive: true, force: true }) }
+    })
+})
+
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()

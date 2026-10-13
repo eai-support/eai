@@ -10,7 +10,7 @@ import { storeTokens } from '../../src/lib/auth.js';
 import { getActiveProfile, setActiveProfile, DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from '../../src/lib/profile.js';
 import { appCommand, buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
 
-interface CommandResult { status: number; stdout: string; stderr: string }
+interface CommandResult { status: number; stdout: string; stderr: string; transportOutput?: string }
 interface SmokeReport {
   environment: string;
   expectedPublicApi: string;
@@ -208,6 +208,68 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(app).toMatchObject({ scopeObservation: 'exact-owner-acknowledgment-required',
       scopeObservationLimitations: expect.stringContaining('No transport scope was emitted') });
   });
+  test('profile-bound execution scope comes from the same invocation transport receipt, not a selected tenant guess', () => {
+    const controlled = harness({ override(args, result, options) {
+      if (!matches(args, ['chat', 'send'])) return undefined;
+      return { ...result, transportOutput: JSON.stringify({ schemaVersion: 'eai.cli-qa-transport.v1',
+        executionId: options.env.EAI_CLI_QA_EXECUTION_ID, publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+        tenantId: 'run-child', proofKind: 'transport-response', method: 'POST', path: '/public/v4/ai/chat' }) + '\n' };
+    } });
+    const report = controlled.run({ EAI_E2E_WORKFLOW_PROVISION: '1', EAI_E2E_CHAT: '1',
+      EAI_E2E_AI_PROVIDER: 'controlled-provider', EAI_E2E_AI_MODEL: 'controlled-model' });
+    expect(report.executions.find(row => row.command === 'eai chat send')).toMatchObject({
+      scopeTenantId: 'run-child', scopeObservation: 'transport-response',
+    });
+  });
+  test.each(['missing', 'weak'])('protected semantic checks with %s response scope remain incomplete despite matching selected flags', kind => {
+    const controlled = harness({ override(args, result) {
+      if (kind === 'weak' && matches(args, ['app', 'provision'])) return { ...result, stdout: JSON.stringify({
+        ...JSON.parse(result.stdout), request: { publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'run-child' },
+      }) };
+      return undefined;
+    } });
+    const report = controlled.run();
+    const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
+    const read = saved.executions.find((row: { command: string }) => row.command === 'eai app provision');
+    expect(read.status).toBe('passed'); expect(read.scopeTenantId).toBe('run-child');
+    expect(read.coverageComplete).toBe(false);
+    expect(saved.coverage.find((row: { command: string }) => row.command === read.command).status).toBe('incomplete');
+  });
+  test('actual global profile namespace is retained and an unrelated owned request cannot certify it', () => {
+    const controlled = harness({ override(args, result, options) {
+      if (!matches(args, ['whoami'])) return undefined;
+      const common = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: options.env.EAI_CLI_QA_EXECUTION_ID,
+        publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', proofKind: 'transport-response', method: 'GET' };
+      return { ...result, transportOutput: [
+        { ...common, tenantId: 'unrelated-owned-workspace', path: '/public/v4/platform/tenants/unrelated-owned-workspace' },
+        { ...common, tenantId: null, path: '/public/v4/identity/tenants' },
+      ].map(value => JSON.stringify(value)).join('\n') + '\n' };
+    } });
+    const report = controlled.run();
+    const entry = report.executions.find(row => row.command === 'eai whoami') as Record<string, unknown>;
+    expect(entry.scopeTenantId).toBeNull(); expect(entry.observedPrimaryTenantId).toBeNull();
+    expect(entry.coverageComplete).toBe(false);
+    expect(entry.scopeObservationLimitations).toEqual(expect.stringContaining('separate identity/profile-scope audit contract'));
+  });
+  test.each(['uuid', 'gateway', 'tenant', 'malformed', 'unverified', 'auxiliary-owned'])(
+    'private transport %s cannot adopt resource IDs before full invocation validation', kind => {
+      const controlled = harness({ override(args, result, options) {
+        if (!matches(args, ['resources', 'create'])) return undefined;
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: options.env.EAI_CLI_QA_EXECUTION_ID,
+          publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'run-child', proofKind: 'transport-response',
+          method: 'POST', path: '/public/v4/data/resources/run-child/' + args[2] };
+        if (kind === 'uuid') observed.executionId = '00000000-0000-4000-8000-000000000999';
+        if (kind === 'gateway') observed.publicApiUrl = 'https://foreign.invalid/public';
+        if (kind === 'tenant') observed.tenantId = 'foreign-workspace';
+        if (kind === 'unverified') observed.proofKind = 'unverified-response';
+        const values = [observed];
+        if (kind === 'auxiliary-owned') values.push({ ...observed, tenantId: 'foreign-workspace', method: 'GET', path: '/public/v4/platform/tenants/foreign-workspace' });
+        return { ...result, transportOutput: kind === 'malformed' ? '{invalid' : values.map(value => JSON.stringify(value)).join('\n') + '\n' };
+      } });
+      const report = failure(controlled, { EAI_E2E_SYNC_SCHEMA_APPLY: '1' }).report;
+      expect(report.created.resources).toEqual([]);
+      expect(controlled.calls.some(call => matches(call.args, ['resources', 'delete']) && call.args[3] === 'resource-1')).toBe(false);
+    });
 
   test('general smoke alias receipts remain traceable and cannot substitute for canonical workspace ownership', () => {
     const report = harness().run();
@@ -631,7 +693,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(new Set(saved.executions.map((row: { executionId: string }) => row.executionId)).size).toBe(saved.executions.length);
     expect(saved.commands.every((row: { command: string; alias?: string }) => row.command.startsWith('eai ') && row.alias === undefined)).toBe(true);
     const created = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant create');
-    expect(created).toMatchObject({ command: 'eai workspace create', scopeTenantId: saved.parentTenantId, coverageComplete: true });
+    expect(created).toMatchObject({ command: 'eai workspace create', scopeTenantId: saved.parentTenantId, coverageComplete: false });
     expect(created.assertions).toContainEqual(expect.objectContaining({ command: created.command, alias: created.alias,
       executionId: created.executionId, scopeTenantId: saved.parentTenantId, name: 'created-child-ownership', status: 'passed' }));
     const bootstrap = saved.aliases.find((row: { alias: string }) => row.alias === 'eai tenant bootstrap-admin');
@@ -1599,6 +1661,8 @@ describe('producer execution receipt controls', () => {
     const report = { assertions: [] }, producer = producerEvidence(report, entries);
     const alias = producer.start(['tenant', 'list', '--format', 'json'], 'read', { environment: 'DEV', publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', scopeTenantId: '11111111-1111-4111-8111-111111111111' });
     Object.assign(alias, { status: 'passed', exitCode: 0 });
+    alias.transportObservations = [{ schemaVersion: 'eai.cli-qa-transport.v1', executionId: alias.executionId,
+      publicApiUrl: alias.publicApiUrl, tenantId: alias.scopeTenantId, proofKind: 'transport-response', method: 'GET', path: '/public/v4/identity/tenants' }];
     producer.assert(alias, 'actual-listed-workspace', 'passed', { contract: true });
     expect(report).toMatchObject({ commands: [], unsupported: [], aliases: [expect.objectContaining({ command: 'eai workspace list', alias: 'eai tenant list', invokedCommand: 'eai tenant list', coverageComplete: true })] });
     expect(alias.assertions[0]).toMatchObject({ executionId: alias.executionId, command: alias.command, alias: alias.alias,
@@ -1633,6 +1697,14 @@ describe('producer execution receipt controls', () => {
     expect(() => producer.start(['blocks', 'list'], 'local')).toThrow('fresh execution UUID');
     expect(() => producer.assert({}, 'fabricated', 'passed')).toThrow('actually recorded');
   });
+  test.each([{ name: '', status: 'passed' }, { name: ' padded', status: 'passed' }, { name: 'x'.repeat(201), status: 'passed' },
+    { name: null, status: 'passed' }, { name: 'bounded', status: 'success' }, { name: 'bounded', status: undefined }])(
+    'rejects invalid assertion name/status before appending either projection: %j', ({ name, status }) => {
+      const report = { assertions: [] }, producer = producerEvidence(report, entries);
+      const execution = producer.start(['blocks', 'list'], 'local');
+      expect(() => producer.assert(execution, name, status, { contract: true })).toThrow('Assertion name/status');
+      expect(report.assertions).toEqual([]); expect(execution.assertions).toEqual([]); expect(execution.coverageComplete).toBe(false);
+    });
 });
 
 describe('local CLI qualification', () => {

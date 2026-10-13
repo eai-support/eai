@@ -7,6 +7,7 @@
  */
 
 import { getAccessToken } from './auth.js';
+import { recordQaTransportResponse } from './cli-qa-transport.js';
 import {
   isManagedDeploymentIdentifier,
   isManagedScopeIdentifier,
@@ -1096,6 +1097,7 @@ export class PlatformAPIClient {
     const observed = safeGateway && !response.redirected && (!response.url || response.url === new URL(url).href)
       && !publicResponseRequests.has(response);
     publicResponseRequests.set(response, observed ? observation : null);
+    recordQaTransportResponse(observation, String(options.method || 'GET').toUpperCase(), dispatchedUrl.pathname, observed);
     return response;
   }
 
