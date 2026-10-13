@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-10-09T07:21:51.905Z"
-source_commit: "ebb746c17cd15883309ca20f0d0d3c7203e9da9b"
+generated_at: "2026-10-12T19:47:45.074Z"
+source_commit: "49c77181b5dc42cd3d3de2513d4566f481fad73f"
 ---
 # EAI CLI — API Reference
 
@@ -30,7 +30,7 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
+> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access. The local CLI selector `EAI_PROFILE` is excluded from cloud synchronization.
 
 ---
 
@@ -58,6 +58,7 @@ Scaffold a new application from the EAI app template.
 2. Installs Gofer AI assets (unless `--no-gofer`)
 3. Initializes git repository and installs npm dependencies
 4. Records the company/child workspace boundary and package profile in the project manifest
+5. Stores the local CLI profile selector in ignored `.env.local` for reopened workspaces
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
 can scaffold into the current folder when selected, and automation can use
@@ -190,17 +191,23 @@ Create a new workspace and bootstrap admin access.
 ---
 
 #### `eai workspace delete <id>`
-Soft-delete a tenant.
+Delete a workspace. A parent workspace admin can permanently remove one immediate
+leaf child with `--parent <parent-id> --force-hard-purge`; the backend rejects
+children that still have descendants. The JSON success receipt confirms the exact
+child ID, parent ID, and `hard_purged` status.
 
 **Arguments**:
 - `<id>` — Tenant ID
 
 **Options**:
 - `--force` — Skip confirmation
+- `--force-hard-purge` — Permanently purge the workspace (without `--parent`, uses the existing system-admin subtree purge contract)
+- `--parent <id>` — Authorize one leaf child hard purge through its immediate parent; requires `--force-hard-purge` and a parent different from the child
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{tenantId}/delete`
+- `POST /v4/platform/tenants/{parentId}/children/{childId}/delete` — parent-authorized leaf hard purge; sends the parent as `X-Tenant-Id`
 
 ---
 
@@ -428,7 +435,25 @@ Compare local definitions with remote state.
 ---
 
 #### `eai types pull`
-Download remote types to local TypeScript.
+Download remote types to local TypeScript. Stored identifiers and platform
+metadata are preserved through a serialized JSON data boundary. The generated
+file imports the project model relative to its output location. Failed or malformed
+responses preserve existing output. The model filename `object-types.ts` is
+reserved in every directory; choose a generated filename. Linked output paths
+are refused, and parent identities are checked before the read and throughout
+atomic publication. These checks detect observed namespace changes; they do not
+provide isolation against an arbitrary concurrent writer with the same filesystem
+permissions. An unverifiable publication exits with inspection guidance because
+the local generated file may already have been replaced. The command reads all
+pages in ID order with the
+same workspace filter and compares two complete scans before atomically replacing
+the generated file. Pagination drift, duplicate IDs, foreign workspace records,
+malformed present workspace markers, or an incomplete scan fail the command.
+Legacy documents may omit workspace metadata; present identifiers must match the
+selected workspace exactly. Export bounds are 1,000 pages per scan,
+64 MiB across both scans, and 120 seconds overall. This detects observed changes;
+the server does not provide a transactional snapshot token. Optional legacy arrays
+and unknown metadata are retained exactly; writable manifest rules remain separate.
 
 **Options**:
 - `--tenant-id <id>` — Platform tenant ID
@@ -436,6 +461,14 @@ Download remote types to local TypeScript.
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
+
+---
+
+#### `eai types define`
+Interactive definition is currently unsupported. The command exits nonzero before
+authentication or network access. `--format json` returns the stable
+`TYPES_DEFINE_UNSUPPORTED` error. Edit the project definitions, then use
+`eai types validate` and `eai types seed`.
 
 ---
 
@@ -636,6 +669,13 @@ Manage binary file properties on a resource.
 #### `eai resources storage status` · `storage doctor` · `doctor` · `sync-schema`
 Inspect and reconcile workspace storage.
 
+Schema sync refuses malformed result records before reporting success. Optional
+`actions` must be an array of strings when present; omitted or empty actions are
+supported in both JSON and text output.
+Supported producer states are `planned`, `provisioned`, `skipped`, `applied`, and
+`already_applied`. A `failed` result exits nonzero, and any unknown state is
+refused rather than reported as a successful schema sync.
+
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--backend <backend>` — (`sync-schema`) limit to `postgresql|documentdb|blob|search`
@@ -646,6 +686,25 @@ Inspect and reconcile workspace storage.
 - `GET /v4/data/resources/{tenantId}/storage` — storage routing/provisioning status (`storage status`)
 - `GET /v4/data/resources/{tenantId}/storage/doctor` — diagnostics (`storage doctor`, `doctor`)
 - `POST /v4/data/resources/{tenantId}/storage/sync-schema` — reconcile storage from Object Type metadata (`sync-schema`)
+
+---
+
+#### `eai resources indexes-plan`
+Preview validated storage/index changes for an explicit published Object Type selection.
+
+**Options**:
+- `--tenant-id <id>` — Target workspace (default: active workspace)
+- `--object-type <slug...>` — Required exact published Object Type slugs; 1 to 1,000 entries, each at most 255 characters. Model names and non-canonical slugs are rejected without normalization.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoint Used**:
+- `POST /v4/platform/tenants/{tenantId}/resourceapi/index-plan` — body `{ objectTypes: ["exact-published-slug"] }`. PublicAPI enforces a dry run; the client does not send `apply` or `dryRun`.
+
+`eai resources indexes-apply` is currently **unsupported**. PublicAPI does not
+expose an apply operation. The compatibility command accepts its existing options
+and exits nonzero before authentication or HTTP; `--format json` emits
+`RESOURCE_INDEX_APPLY_UNSUPPORTED`. Applying changes requires a supported platform
+operator workflow.
 
 ---
 
@@ -845,8 +904,17 @@ advanced V4-only access layer for authorized users and operators when a route
 family does not yet have a polished command.
 
 #### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
-Call an authorized PublicAPI V4 path using the current login and active workspace
-context.
+Call an authorized PublicAPI V4 path using the current login and workspace
+context. An explicit `--tenant-id` must be an exact workspace UUID. It sends
+that tenant as request context using the selected login and PublicAPI gateway;
+PublicAPI decides whether the user can perform the requested operation. This
+also supports tenant builders and viewers without a local tenant-admin
+membership check. It does not change the saved active workspace.
+
+When `--tenant-id` is omitted, the existing interactive active-workspace
+resolver applies. For tenant-scoped routes, use the same tenant UUID in the
+path and `--tenant-id`. Authentication and authorization failures retain their
+actual HTTP status in JSON output and exit unsuccessfully.
 
 **Arguments**:
 - `<path>` — PublicAPI path. It must start with `/v4/`.
@@ -1021,6 +1089,12 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 
 #### `eai app provision <key>`
 Run the parent-owned app provisioning job and write local storage bindings only after that exact job is ready. For an app with a separate runtime child tenant, specify both tenant IDs. A failed or incomplete job does not write local bindings.
+
+With `--app-tenant-id`, the parent owns the enrollment and `--tenant-id` pins the
+runtime child. Without an explicit parent, the selected workspace owns the
+enrollment and its exact `childTenantId`, when present, selects the runtime.
+Conflicting child bindings fail before storage or local writes. A dry run
+preserves local configuration, including when `--select` is supplied.
 
 **Arguments**: `<key>`
 
@@ -1364,7 +1438,7 @@ draft id and one-time token in its fragment. The page submits the final report.
 
 | Option | Behavior |
 | --- | --- |
-| `--format text\|json` | Text shows the report and prompts in a terminal. JSON previews until `--yes`. |
+| `--format text\|json` | Text shows the report, its digest and prompts in a terminal. JSON previews until `--yes --approved-digest`. |
 | `--source eai-cli\|harness` | Entry source. Defaults to `harness` when `--tool` is supplied, otherwise `eai-cli`. |
 | `--tool <name>` | Harness name. |
 | `--tool-version <version>` | Harness version when known. |
@@ -1372,15 +1446,45 @@ draft id and one-time token in its fragment. The page submits the final report.
 | `--exit-code <code>` | Signed 32-bit exit code override. |
 | `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
 | `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--decline` | Decline a preview locally and remove only its CLI-owned `--context-file`; no authentication or network request. Cannot be combined with `--yes` or `--create-context-file`. |
+| `--create-context-file` | Allocate an empty private CLI-owned file and return `contextFile`; no authentication or network request. Write the JSON summary into that file without replacing it. |
+| `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file allocated with `--create-context-file` under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Marked files older than 24 hours in that directory are removed on the next support invocation; untracked files and files elsewhere are never deleted. |
+| `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in every mode; a mismatch answers `consent_stale`. |
+| `--organisation-location <location>` | `apac`, `emea` or `americas`; sent as `organisationLocation` when the saved session has no active workspace. |
+| `--no-last-error` | Leave the saved context of the last failing command out of the report. |
 | `--yes` | Send only after the person has explicitly consented to the displayed report. |
 | `--no-open` | Print the link without opening a browser. JSON always prints without opening. |
 
-JSON results carry `status` (`consent_required`, `declined`, `signed_out`,
-`created`, or `failed`) and the redacted `bundle` on successful preparation.
-Created drafts add `url` and `expiresAt`; signed-out results include the plain
-Support URL. Missing/expired sessions and website 401 responses create no draft.
-Website errors return safe messages and exit 1. Draft requests have a 10-second
+The `harness` block is strict: `requestedByPerson: true`, `request` (500),
+`goal` (1000), `summary` (4000), `steps` (50 × 500), `commands` (50 ×
+`{ command, exitCode, errorCode?, reasonCode?, at? }`), `errors` (50 ×
+`{ code?, message, at? }`), `attemptedFixes` (20 × 500), `filesTouched` (100 ×
+260, project-relative, absolute paths refused) and `truncated`. Missing lists
+default to empty. Every text field is redacted with the shared rules plus the home
+directory shown as `~` and the project root as `.`. Validation failures answer
+`context_invalid` and name fields only; unreadable or oversized input answers
+`context_unreadable` or `context_too_large`.
+
+JSON results carry `status` (`consent_required`, `consent_stale`, `declined`,
+`signed_out`, `region_required`, `created`, or `failed`) and the redacted `bundle`
+on successful preparation. `consent_required` and `signed_out` add `previewText`
+(the whole redacted bundle as plain text, ending with its digest) and
+`bundleDigest` (sha256 of the canonical redacted bundle with sorted keys).
+When the saved session has no active workspace and no `--organisation-location`
+was given, `consent_required` also carries `questions: ["organisationLocation"]`
+and nothing is sent, even with `--yes`. `ignoredLastError` names the saved
+failure left out because it is older than 24 hours. Created drafts add `url` and
+`expiresAt`. Every no-draft result (`signed_out`, `region_required`, `failed`)
+includes the chat link `<website>/support?chat=open`. Missing/expired sessions
+and website 401 responses create no draft; a website
+`400 {"error":"region_required"}` is reported as `region_required`. Other
+website errors return safe messages and exit 1. Draft requests have a 10-second
 timeout and never retry automatically.
+
+Every nonzero exit prints "Need help? Run eai support, or ask your AI assistant
+to get help. Nothing is sent without your approval." to stderr in text mode,
+including failing `eai support` and `eai errors` commands. JSON error keys remain
+unchanged; `error.suggestion` holds only the catalog suggestion.
 
 Previous failure context stores only command, exit code, recognized catalog code
 and reason, and timestamp. Raw diagnostic text is excluded, including from older

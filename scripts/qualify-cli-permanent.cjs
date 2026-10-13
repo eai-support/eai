@@ -1,0 +1,221 @@
+#!/usr/bin/env node
+// Executes ten fresh owned lifecycles. This is an opt-in DEV/TEST qualification.
+const { resolve, join, dirname } = require('node:path');
+const { randomUUID } = require('node:crypto');
+const { existsSync, mkdtempSync, readdirSync, lstatSync, rmSync, rmdirSync } = require('node:fs');
+const qa = require('./cli-qa-foundation.cjs');
+const smoke = require('./eai-full-e2e-smoke.cjs');
+const { sourceBuildVerified } = require('./cli-qa-build-receipt.cjs');
+const { cycleStepEvidence, cycleStepsVerified, cycleOwnershipEvidence, cycleOwnershipVerified } = require('./cli-qa-cycle-steps.cjs');
+function requireCondition(condition, message) { if (!condition) throw new Error(message); }
+function candidateValid(candidate) {
+  return /^[a-f0-9]{40}$/.test(candidate.gitSha || '') && /^[a-f0-9]{64}$/.test(candidate.binarySha256 || '')
+    && /^[a-f0-9]{64}$/.test(candidate.runtimeSha256 || '') && candidate.dirty === false;
+}
+function cycleReceipt(report) {
+  const context = { environment: report.environment, publicApiUrl: report.expectedPublicApi };
+  const rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
+  const registration = report.cleanup?.find(row => row.artifact === 'entra-registration');
+  const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
+  const builds = (report.commands || []).filter(row => row.command === 'npm run build');
+  const stepEvidence = cycleStepEvidence(report);
+  const ownershipEvidence = cycleOwnershipEvidence(report);
+  const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,
+    clientId: rotation.clientId, enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId, ...context });
+  const ownershipVerified = cycleOwnershipVerified(ownershipEvidence, { tenantId: rotation.tenantId,
+    appKey: report.created?.appKey, stepEvidence, ...context });
+  return { appKey: report.created?.appKey, tenantId: rotation.tenantId, clientId: rotation.clientId, stepEvidence, ownershipEvidence, ...context,
+    enrollmentId: deletion.enrollmentId, recreatedEnrollmentId: deletion.recreatedEnrollmentId,
+    status: report.status === 'passed' && (!stepsVerified || !ownershipVerified) ? 'incomplete' : report.status,
+    rotationDispatches: stepsVerified && rotations.length === 1 && rotations[0].status === 'passed' ? rotation.commandDispatches : 0,
+    credentialChanged: rotation.credentialChanged === true, firstInventoryEmpty: deletion.firstInventoryEmpty === true,
+    recreatedSameKey: deletion.recreatedSameKey === true, deletionVerified: deletion.deletionVerified === true,
+    appBuildVerified: builds.length === 1 && builds[0].status === 'passed' && builds[0].exitCode === 0
+      && builds[0].scopeTenantId === report.created?.runtimeTenantId,
+    registrationAbsent: registration?.status === 'passed' && registration.evidence?.registrationAbsenceVerified === true,
+    cleanupVerified: report.cleanupVerified === true, localProjectCleanupVerified: report.localProjectCleanupVerified === true,
+    summaryPath: report.summaryPath };
+}
+/** Remove only app folders inside this controller's fresh private output root. */
+function removeGeneratedProjects(root, parents) {
+  qa.assertPrivateDirectory(parents);
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    requireCondition(/^eai-full-e2e-[A-Za-z0-9-]+$/.test(entry.name) && entry.isDirectory() && !entry.isSymbolicLink(),
+      'Unexpected private cycle output requires manual reconciliation.');
+    const runRoot = join(root, entry.name), runParents = qa.privateDirectory(runRoot);
+    qa.assertPrivateDirectory(parents); qa.assertPrivateDirectory(runParents);
+    const project = join(runRoot, 'app');
+    // rm removes a leaf symlink itself; it never follows it into another project.
+    try { lstatSync(project); rmSync(project, { recursive: true, force: true }); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    qa.assertPrivateDirectory(parents); qa.assertPrivateDirectory(runParents);
+    let absent = false;
+    try { lstatSync(project); } catch (error) { if (error.code === 'ENOENT') absent = true; else throw error; }
+    requireCondition(absent, 'Generated local project cleanup could not be verified.');
+  }
+  if (!readdirSync(root).length) rmdirSync(root);
+}
+function cleanupPreflightVerified(preflight, foundation, deployments, now) {
+  const age = now - Date.parse(preflight?.observedAt);
+  return preflight?.schemaVersion === 'eai.cli-child-cleanup-preflight.v1'
+    && preflight.publicApiUrl === foundation.publicApiUrl && preflight.parentTenantId === foundation.workspaces.a.id
+    && preflight.actorId === foundation.actors.adminA.oid
+    && preflight.childDeleteRoute === '/v4/platform/tenants/{parent}/children/{child}/delete'
+    && preflight.childDeleteVerified === true && Number.isFinite(age) && age >= -60000 && age <= 3600000
+    && preflight.publicApiGitSha === deployments.find(row => row.service === 'PublicAPI')?.observedSha
+    && preflight.adminApiGitSha === deployments.find(row => row.service === 'AdminAPI')?.observedSha;
+}
+function ownedReportValid(report, foundation, candidate, preflight) {
+  const created = report.created || {}, rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
+  const leaf = report.cleanup?.find(row => row.artifact === 'child-tenant');
+  return report.fixtureId === foundation.fixtureId
+    && report.foundationParentTenantId === foundation.parentTenantId
+    && report.tenantIds?.a === foundation.workspaces.a.id && report.tenantIds?.b === foundation.workspaces.b.id
+    && Object.keys(qa.SLOTS).every(slot => report.actors?.[slot]?.oid === foundation.actors[slot].oid
+      && report.actors[slot].profile === foundation.actors[slot].profile)
+    && report.candidate?.gitSha === candidate.gitSha && report.candidate?.binarySha256 === candidate.binarySha256
+    && report.candidate?.runtimeSha256 === candidate.runtimeSha256 && report.candidate.dirty === false
+    && report.candidate.version === candidate.version && report.candidate.runtimeFileCount === candidate.runtimeFileCount
+    && report.profile === foundation.actors.adminA.profile
+    && report.environment === foundation.environment && report.expectedPublicApi === foundation.publicApiUrl
+    && report.preflight?.publicApiGitSha === preflight.publicApiGitSha && report.preflight?.adminApiGitSha === preflight.adminApiGitSha
+    && report.preflight?.observedAt === preflight.observedAt && report.preflight?.childDeleteRoute === preflight.childDeleteRoute
+    && ['schemaVersion', 'publicApiUrl', 'parentTenantId', 'actorId', 'childDeleteVerified'].every(key => report.preflight?.[key] === preflight[key])
+    && report.preflight.publicApiUrl === foundation.publicApiUrl && report.preflight.parentTenantId === foundation.workspaces.a.id
+    && report.preflight.actorId === foundation.actors.adminA.oid && report.preflight.childDeleteVerified === true
+    && report.parentTenantId === foundation.workspaces.a.id
+    && typeof created.childTenantId === 'string'
+    && ![foundation.parentTenantId, foundation.workspaces.a.id, foundation.workspaces.b.id]
+      .some(id => id.toLowerCase() === created.childTenantId.toLowerCase())
+    && created.runtimeTenantId === created.childTenantId && created.entraClientId === rotation.clientId
+    && rotation.tenantId === created.childTenantId && deletion.tenantId === created.childTenantId
+    && rotation.appKey === created.appKey && deletion.appKey === created.appKey
+    && deletion.enrollmentId === created.enrollmentId && deletion.recreatedEnrollmentId === created.recreatedEnrollmentId
+    && Array.isArray(report.leftovers) && report.leftovers.length === 0 && leaf?.status === 'passed'
+    && leaf.evidence?.tenantId === created.childTenantId && leaf.evidence.parentTenantId === foundation.workspaces.a.id
+    && leaf.evidence.hardPurged === true && leaf.evidence.absenceVerified === true
+    && cycleOwnershipVerified(cycleOwnershipEvidence(report), cycleReceipt(report), {
+      fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl,
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id }, actors: foundation.actors });
+}
+
+/** Stop at the first unqualified lifecycle; each runner still performs its finally cleanup. */
+function runQualification(options, dependencies = {}) {
+  const now = dependencies.now || Date.now, candidateEvidence = dependencies.candidateEvidence || smoke.candidateEvidence;
+  const runLive = dependencies.runLive || smoke.runLiveSmoke;
+  return qa.withLease(options.foundationPath, () => {
+    const foundation = qa.validateFoundation(qa.readPrivate(options.foundationPath));
+    let deployments, candidate;
+    const output = resolve(options.output || join(require('node:os').tmpdir(), 'eai-cli-cycles-' + randomUUID(), 'summary.json'));
+    requireCondition([options.foundationPath, options.deploymentsPath, options.cleanupPreflight, options.buildReceiptPath, options.cliPath]
+      .filter(Boolean).every(path => resolve(path) !== output) && !existsSync(output),
+    'Use a new private cycle output separate from every fixture, proof and CLI input.');
+    const cycleEnv = qa.operationalEnvironment(dependencies.env || process.env);
+    const report = { schemaVersion: 'eai.cli-permanent-cycles.v1', fixtureId: foundation.fixtureId,
+      foundationParentTenantId: foundation.parentTenantId,
+      environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, candidate: null,
+      actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])),
+      tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
+      qualification: Object.keys(dependencies).some(key => !['env', 'log'].includes(key)) ? 'controlled-fixtures' : 'normal-cli-profiles',
+      startedAt: new Date(now()).toISOString(), status: 'running', qualified: false, cycles: [] };
+    const save = () => qa.writePrivate(output, report);
+    let stage = 'preflight'; save();
+    try {
+      deployments = qa.readPrivate(options.deploymentsPath);
+      candidate = candidateEvidence(options.cliPath); report.candidate = candidate; save();
+      requireCondition(foundation.state === 'verified', 'Retained foundation has not been freshly prepared.');
+      requireCondition(candidateValid(candidate), 'Use a clean, source-bound built CLI candidate.');
+      requireCondition(options.buildReceiptPath && sourceBuildVerified(qa.readPrivate(options.buildReceiptPath), candidate, { now: now() }),
+        'A fresh successful canonical source build receipt for this candidate is required.');
+      requireCondition(qa.deploymentParity(deployments, { environment: foundation.environment,
+        publicApiUrl: foundation.publicApiUrl, now: now() }), 'Complete fresh backend deployment parity is required.');
+      const call = qa.cliCaller(options.cliPath, foundation, options.foundationPath + '.contexts', dependencies);
+      qa.verifyIdentity(call, foundation.owner, foundation); qa.verifyWorkspaces(call, foundation); qa.verifyActors(call, foundation);
+      requireCondition(options.cleanupPreflight, 'A fresh parent-authorized child cleanup observation is required.');
+      const preflight = qa.readPrivate(options.cleanupPreflight);
+      requireCondition(cleanupPreflightVerified(preflight, foundation, deployments, now()),
+        'Cleanup observation is stale or differs from this actor, parent or selected deployed revisions.');
+      for (let index = 0; index < 10; index++) {
+        stage = 'cycle-' + (index + 1);
+        requireCondition(qa.deploymentParity(deployments, { environment: foundation.environment,
+          publicApiUrl: foundation.publicApiUrl, now: now() }), 'Deployment observations expired before this cycle.');
+        const currentPreflight = qa.readPrivate(options.cleanupPreflight);
+        requireCondition(cleanupPreflightVerified(currentPreflight, foundation, deployments, now()), 'Cleanup observation changed or expired before this cycle.');
+        requireCondition(currentPreflight.observedAt === preflight.observedAt, 'Cleanup observation changed during qualification.');
+        const current = candidateEvidence(options.cliPath);
+        requireCondition(candidateValid(current) && current.gitSha === candidate.gitSha && current.runtimeSha256 === candidate.runtimeSha256
+          && current.binarySha256 === candidate.binarySha256, 'CLI candidate changed during qualification.');
+        requireCondition(sourceBuildVerified(qa.readPrivate(options.buildReceiptPath), current, { now: now() }), 'Source build receipt expired or changed before this cycle.');
+        const workspaceRoot = mkdtempSync(join(dirname(output), '.cycle-' + (index + 1) + '-'));
+        const workspaceParents = qa.privateDirectory(workspaceRoot);
+        let result, receipt;
+        try {
+          result = runLive(options.cliPath, { ...dependencies, expectedFixture: {
+            fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
+            tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
+            actors: Object.fromEntries(Object.entries(foundation.actors).map(([slot, actor]) => [slot, { oid: actor.oid, profile: actor.profile }])) },
+          env: { ...cycleEnv,
+            EAI_E2E_OUTPUT_ROOT: workspaceRoot,
+            EAI_E2E_TEST_PROFILE: foundation.actors.adminA.profile, EAI_E2E_TEST_USERNAME: foundation.actors.adminA.email,
+            EAI_E2E_TEST_USER_OID: foundation.actors.adminA.oid, EAI_E2E_PARENT_TENANT_ID: foundation.workspaces.a.id,
+            EAI_E2E_EXPECTED_PUBLIC_API: foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: options.cleanupPreflight,
+            EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
+            EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
+          requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight),
+            'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
+        } catch (error) {
+          const failedReport = error?.report || result;
+          if (failedReport) {
+            const bindingVerified = ownedReportValid(failedReport, foundation, candidate, currentPreflight);
+            receipt = { ...cycleReceipt({ ...failedReport, summaryPath: error.summaryPath }), cycleNumber: index + 1,
+              status: failedReport.status === 'blocked' ? 'blocked' : 'failed', runnerReportAvailable: true,
+              runnerBindingVerified: bindingVerified };
+            if (!bindingVerified) receipt.cleanupVerified = false;
+          } else {
+            receipt = { cycleNumber: index + 1, status: 'failed', runnerReportAvailable: false, cleanupVerified: false,
+              localProjectCleanupVerified: false, reason: 'Owned lifecycle failed without a structured runner receipt; remote outcome is unknown.' };
+          }
+          report.cycles.push(receipt);
+          throw error;
+        } finally {
+          if (result && !receipt) { receipt = cycleReceipt(result); report.cycles.push(receipt); }
+          if (receipt) receipt.localProjectCleanupVerified = false;
+          removeGeneratedProjects(workspaceRoot, workspaceParents);
+          if (receipt) receipt.localProjectCleanupVerified = true;
+        }
+        save();
+        requireCondition(qa.cycleReceiptVerified(receipt, report), 'Lifecycle lacks rotation, first-read, recreation or owned child cleanup proof.');
+        const after = candidateEvidence(options.cliPath);
+        requireCondition(candidateValid(after) && after.gitSha === candidate.gitSha && after.runtimeSha256 === candidate.runtimeSha256
+          && after.binarySha256 === candidate.binarySha256, 'CLI candidate changed during the lifecycle.');
+        requireCondition(sourceBuildVerified(qa.readPrivate(options.buildReceiptPath), after, { now: now() })
+          && qa.deploymentParity(deployments, { environment: foundation.environment, publicApiUrl: foundation.publicApiUrl, now: now() }),
+        'Build or deployment observations expired during the lifecycle.');
+        const afterPreflight = qa.readPrivate(options.cleanupPreflight);
+        requireCondition(cleanupPreflightVerified(afterPreflight, foundation, deployments, now())
+          && afterPreflight.observedAt === preflight.observedAt, 'Cleanup observation changed or expired during the lifecycle.');
+      }
+      const structurallyVerified = report.cycles.every(row => qa.cycleReceiptVerified(row, report)) && qa.cycleIdentitiesFresh(report.cycles);
+      requireCondition(structurallyVerified, 'Cycles reused a registration/app or lack exact fresh identity proof.');
+      report.contractsVerified = true; report.qualified = report.qualification === 'normal-cli-profiles';
+      report.status = 'passed';
+    } catch (error) {
+      report.qualified = false; report.status = stage === 'preflight' ? 'blocked' : 'failed'; report.stoppedAt = stage;
+      report.reason = stage === 'preflight' ? 'Required source, fixture, identity or deployment proof is unavailable.'
+        : 'An owned lifecycle did not qualify; inspect its private command and cleanup receipts.';
+      save(); const failure = new Error('CLI qualification stopped. Private summary: ' + output); failure.report = report; throw failure;
+    } finally { report.completedAt = new Date(now()).toISOString(); save(); }
+    return { ...report, summaryPath: output };
+  });
+}
+function main() {
+  const args = process.argv.slice(2), argument = name => args.includes(name) ? args[args.indexOf(name) + 1] : undefined;
+  for (const flag of ['--foundation', '--deployments', '--cleanup-preflight', '--build-receipt', '--cli']) requireCondition(argument(flag), 'Qualification requires ' + flag + '.');
+  const report = runQualification({ foundationPath: resolve(argument('--foundation')), deploymentsPath: resolve(argument('--deployments')),
+    cleanupPreflight: resolve(argument('--cleanup-preflight')), buildReceiptPath: resolve(argument('--build-receipt')),
+    cliPath: resolve(argument('--cli')), output: argument('--output') });
+  console.log(JSON.stringify({ status: report.status, qualified: report.qualified, cycles: report.cycles.length, summaryPath: report.summaryPath }));
+}
+if (require.main === module) { try { main(); } catch (error) { console.error(error.message); process.exitCode = 1; } }
+module.exports = { runQualification, cycleReceipt, candidateValid, ownedReportValid, cleanupPreflightVerified };

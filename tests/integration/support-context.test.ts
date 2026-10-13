@@ -11,6 +11,7 @@ const contextModule = new URL('../../dist/lib/support-context.js', import.meta.u
 const errorModule = new URL('../../dist/lib/error-codes.js', import.meta.url).href;
 const outputModule = new URL('../../dist/lib/output.js', import.meta.url).href;
 const apiModule = new URL('../../dist/lib/api.js', import.meta.url).href;
+const SUPPORT_HELP = 'Need help? Run eai support, or ask your AI assistant to get help. Nothing is sent without your approval.';
 
 describe('support context from failing commands', () => {
   let environment: TestEnvironment;
@@ -44,11 +45,11 @@ describe('support context from failing commands', () => {
     return JSON.parse(await readFile(contextPath(profile), 'utf8')) as Record<string, unknown>;
   }
 
-  test('a direct process.exit error offers support and stores only command names', async () => {
+  test('a direct process.exit error offers help to the person and stores only command names', async () => {
     const result = run([cliEntry, 'whoami']);
 
     expect(result.status).toBe(1);
-    expect(String(result.stderr)).toContain('Run eai support to prepare a report for your approval.');
+    expect(String(result.stderr)).toContain(SUPPORT_HELP);
     expect(await readContext()).toMatchObject({
       command: 'eai whoami', exitCode: 1, errorCode: 'E101', reasonCode: 'not_logged_in',
     });
@@ -175,7 +176,7 @@ describe('support context from failing commands', () => {
     expect(Object.keys(context).sort()).toEqual(['command', 'exitCode', 'recordedAt']);
   });
 
-  test('fragmented structured stderr errors keep one parseable document with the support offer', async () => {
+  test('fragmented structured stderr errors keep one parseable document without changing the JSON error envelope', async () => {
     const script = `
       import { installSupportErrorTracking, setSupportCommand } from ${JSON.stringify(contextModule)};
       import { formatErrorJSON, ErrorCode } from ${JSON.stringify(errorModule)};
@@ -190,9 +191,11 @@ describe('support context from failing commands', () => {
     expect(result.status).toBe(1);
     const payload = JSON.parse(String(result.stderr));
     expect(payload.error).toMatchObject({ code: 'E305', exitCode: 1 });
-    expect(payload.error.suggestion).toContain('Run eai support');
+    expect(Object.keys(payload.error).sort()).toEqual(['code', 'exitCode', 'message', 'suggestion']);
+    expect(payload.error.suggestion).not.toContain('eai support');
     expect(Object.keys(payload)).toEqual(['error']);
     expect(Object.keys(payload.error).sort()).toEqual(['code', 'exitCode', 'message', 'suggestion']);
+    expect(String(result.stderr).trim().endsWith('}')).toBe(true);
   });
 
   test.each([
@@ -218,7 +221,7 @@ describe('support context from failing commands', () => {
     const payload = JSON.parse(String(result.stdout));
     expect(payload).toMatchObject({ ok: false, status, error: { status, code, field } });
     expect(Object.keys(payload).sort()).toEqual(['error', 'ok', 'status']);
-    expect(String(result.stderr)).toContain('Run eai support');
+    expect(String(result.stderr)).toContain(SUPPORT_HELP);
     expect(await readContext()).toMatchObject({ command: 'eai workspace create', exitCode: 1 });
     expect(`${result.stdout}${result.stderr}${JSON.stringify(await readContext())}`).not.toContain('fixture-response-secret');
   });
@@ -267,7 +270,7 @@ describe('support context from failing commands', () => {
     const result = run([cliEntry, 'whoami', '--password=fixture-not-for-report']);
 
     expect(result.status).toBe(1);
-    expect(String(result.stderr)).toContain('Run eai support');
+    expect(String(result.stderr)).toContain(SUPPORT_HELP);
     expect(JSON.stringify(await readContext())).not.toContain('fixture-not-for-report');
   });
 
@@ -299,5 +302,44 @@ describe('support context from failing commands', () => {
     expect(JSON.parse(String(result.stdout))).not.toHaveProperty('message');
     expect(String(result.stdout)).not.toContain('fixture-not-in-context');
     expect(String(result.stdout)).not.toContain('fixture-stored-bearer');
+  });
+  test('the help offer is written for the person and never appears in an agent-facing suggestion', async () => {
+    const result = run(['--input-type=module', '-e', `
+      import { formatErrorJSON, ErrorCode } from ${JSON.stringify(errorModule)};
+      const envelopes = Object.values(ErrorCode).map(code => formatErrorJSON(code, { var: 'X', file: 'f', resource: 'r', field: 'f', validFormats: 'json', details: 'd', url: 'u' }));
+      console.log(JSON.stringify(envelopes));
+    `]);
+    expect(result.status).toBe(0);
+    const envelopes = JSON.parse(String(result.stdout)) as Array<{ error: { suggestion: string; guidance?: unknown } }>;
+    expect(envelopes.length).toBeGreaterThan(10);
+    for (const { error } of envelopes) {
+      expect(error.suggestion).not.toContain('eai support');
+      expect(error.suggestion).not.toContain('Need help?');
+      expect(error).not.toHaveProperty('help');
+      expect(Object.keys(error).sort()).toEqual(['code', 'exitCode', ...(error.guidance ? ['guidance'] : []), 'message', 'suggestion'].sort());
+    }
+  });
+
+  test('a failing eai support or eai errors command keeps the person-facing hint on every nonzero exit', async () => {
+    const explanation = run([cliEntry, 'errors', 'explain', 'unknown-entry', '--format', 'json']);
+    expect(explanation.status).toBe(1);
+    expect(String(explanation.stderr)).toContain(SUPPORT_HELP);
+
+
+    const explanationText = run([cliEntry, 'errors', 'explain', 'unknown-entry']);
+    expect(explanationText.status).toBe(1);
+    expect(String(explanationText.stderr)).toContain('Need help?');
+
+    const supportParseFailure = run([cliEntry, 'support', '--unknown-option']);
+    expect(supportParseFailure.status).toBe(1);
+    expect(String(supportParseFailure.stderr)).toContain('Need help?');
+
+    const supportFailure = run([cliEntry, 'support', '--format', 'json', '--no-open', '--source', 'dashboard'], { EAI_WEBSITE_URL: 'http://127.0.0.1:9' });
+    expect(supportFailure.status).toBe(1);
+    expect(String(supportFailure.stderr)).toContain('Need help?');
+
+    const otherFailure = run([cliEntry, 'whoami']);
+    expect(otherFailure.status).toBe(1);
+    expect(String(otherFailure.stderr)).toContain(SUPPORT_HELP);
   });
 });

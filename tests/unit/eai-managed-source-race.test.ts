@@ -154,8 +154,8 @@ afterEach(async () => {
 });
 
 async function put(root: string, path: string, content: string): Promise<void> {
-  await mkdir(dirname(join(root, path)), { recursive: true });
-  await writeFile(join(root, path), content);
+  await mkdir(dirname(join(root, path)), { recursive: true, mode: 0o700 });
+  await writeFile(join(root, path), content, { mode: 0o644 });
 }
 
 function retryState(): ManagedDeployState {
@@ -257,8 +257,8 @@ test("rejects a managed source root replaced during canonical resolution", async
   const root = join(work, "app");
   race.replacement = join(work, "replacement");
   race.displaced = join(work, "app-original");
-  await mkdir(root);
-  await mkdir(race.replacement);
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(race.replacement, { mode: 0o700 });
   race.target = root;
   race.realpathTrigger = root;
 
@@ -274,8 +274,8 @@ test("rejects a configuration root replaced during canonical resolution", async 
   const root = join(work, "app");
   race.replacement = join(work, "replacement");
   race.displaced = join(work, "app-original");
-  await mkdir(root);
-  await mkdir(race.replacement);
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(race.replacement, { mode: 0o700 });
   await put(root, "eai.runtime.json", '{"schemaVersion":1}\n');
   await put(race.replacement, "eai.runtime.json", '{"schemaVersion":2}\n');
   race.target = root;
@@ -433,8 +433,8 @@ test("does not create doctor evidence directories after the bound project root i
   const root = join(work, "app");
   const displaced = join(work, "app-original");
   const replacement = join(work, "replacement");
-  await mkdir(root);
-  await mkdir(replacement);
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(replacement, { mode: 0o700 });
   const binding = await bindManagedProjectRoot(root);
   await rename(root, displaced);
   await rename(replacement, root);
@@ -478,8 +478,8 @@ test("does not write a local source receipt through a replaced project root", as
   const root = join(work, "app");
   race.replacement = join(work, "replacement");
   race.displaced = join(work, "app-original");
-  await mkdir(root);
-  await mkdir(race.replacement);
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(race.replacement, { mode: 0o700 });
   race.target = root;
   race.realpathTrigger = root;
   const bundle: CliManagedSourceBundle = {
@@ -502,8 +502,8 @@ test("does not write canonical file bytes through a replaced parent", async () =
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-race-")));
   const outside = await realpath(await mkdtemp(join(tmpdir(), "managed-install-parent-replacement-")));
   cleanup.push(root, outside);
-  await mkdir(join(root, ".github/workflows"), { recursive: true });
-  await mkdir(join(outside, "workflows"));
+  await mkdir(join(root, ".github/workflows"), { recursive: true, mode: 0o700 });
+  await mkdir(join(outside, "workflows"), { mode: 0o700 });
   const workflow = join(root, ".github/workflows/eai-app.yml");
   race.trigger = workflow;
   race.target = join(root, ".github/workflows");
@@ -523,8 +523,8 @@ test("does not install canonical files through a replaced project root", async (
   const root = join(work, "app");
   race.replacement = join(work, "replacement");
   race.displaced = join(work, "app-original");
-  await mkdir(root);
-  await mkdir(race.replacement);
+  await mkdir(root, { mode: 0o700 });
+  await mkdir(race.replacement, { mode: 0o700 });
   race.target = root;
   race.realpathTrigger = root;
 
@@ -539,7 +539,7 @@ test("does not install canonical files through a replaced project root", async (
 test("does not clobber a canonical target that appears before exclusive creation", async () => {
   const root = await realpath(await mkdtemp(join(tmpdir(), "managed-install-create-race-")));
   cleanup.push(root);
-  await mkdir(join(root, ".github/workflows"), { recursive: true });
+  await mkdir(join(root, ".github/workflows"), { recursive: true, mode: 0o700 });
   const workflow = join(root, ".github/workflows/eai-app.yml");
   race.addTrigger = workflow;
   race.addPath = workflow;
@@ -592,8 +592,8 @@ test.each(["state", "dispatch"])(
     const outside = await realpath(await mkdtemp(join(tmpdir(), `managed-${kind}-parent-replacement-`)));
     cleanup.push(root, outside);
     const directory = join(root, "managed-deployments");
-    await mkdir(directory);
-    await mkdir(join(outside, "managed-deployments"));
+    await mkdir(directory, { mode: 0o700 });
+    await mkdir(join(outside, "managed-deployments"), { mode: 0o700 });
     const state = retryState();
     const statePath = join(directory, `${state.operationId}.json`);
     const originalState = `${JSON.stringify(state)}\n`;

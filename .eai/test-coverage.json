@@ -116,8 +116,13 @@
             "tests/integration/vertical.test.ts",
             "tests/integration/platform-api-client.test.ts"
           ],
-          "required_ci_checks": ["ci/eai-cli-tests"],
-          "required_cross_service_surfaces": ["eai-cli", "backend"],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
           "required_deployed_contracts": [
             {
               "repository": "eai-testing-dev",
@@ -127,7 +132,7 @@
         },
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and deployed read-only CLI smoke. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged. Exact scoped local setup preserves existing credentials; optional create-local-secret requires enrolled-app/runtime access and exact issuer app/client/tenant proof. Private cooperative lock and pending/issued journal refuse uncertain automatic reissue, recover saved issuance, and require explicit reissue-local-secret consent. Existing deployed command schema and anonymous provisioning denial canaries cover the additive contract. Inline init and standalone provision entra share defensive scope validation and quoted persistence for both new and existing registrations; empty legacy metadata preserves the scaffold scopes. Controlled init integration covers the same app/client/secret and Auth URL invariants without provider permission changes. Returned scopes use a bounded OAuth token subset that refuses dollar signs because Next expands dotenv variables. Actual Next and plain dotenv loaders verify identical accepted scopes, including literal hash characters; malformed metadata cannot patch credentials, hydrate secrets or inject environment keys. The actual provisioning response adapter rejects every malformed present scope field or array member without filtering; absent scope metadata retains legacy empty-array behavior, with real-client init and provision coverage before credential writes, cloud secret hydration or local credential issuance. Provision loader controls compare actual Next, dotenv and CLI readers, preserving literal hash characters and empty legacy scopes.",
+          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and deployed read-only CLI smoke. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged. Exact scoped local setup preserves existing credentials; optional create-local-secret requires enrolled-app/runtime access and exact issuer app/client/tenant proof. Private cooperative lock and pending/issued journal refuse uncertain automatic reissue, recover saved issuance, and require explicit reissue-local-secret consent. Existing deployed command schema and anonymous provisioning denial canaries cover the additive contract. Complete Object Type exports validate every page and compare two scans before atomic output replacement; legacy read DTOs remain lossless. Entra rotation binds the exact app and surfaces safe classified outcomes without repeating mutations. App inventory rejects malformed success payloads. Explicitly unsupported capabilities fail before authentication or network access. Explicit PublicAPI tenant UUIDs use the selected profile and gateway without local tenant-admin discovery or saved selection writes; backend authorization and exact HTTP failure status remain authoritative. Implicit workspace selection retains its existing resolver. Inline init and standalone provision entra share defensive scope validation and quoted persistence for both new and existing registrations; empty legacy metadata preserves the scaffold scopes. Controlled init integration covers the same app/client/secret and Auth URL invariants without provider permission changes. Returned scopes use a bounded OAuth token subset that refuses dollar signs because Next expands dotenv variables. Actual Next and plain dotenv loaders verify identical accepted scopes, including literal hash characters; malformed metadata cannot patch credentials, hydrate secrets or inject environment keys. The actual provisioning response adapter rejects every malformed present scope field or array member without filtering; absent scope metadata retains legacy empty-array behavior, with real-client init and provision coverage before credential writes, cloud secret hydration or local credential issuance. Provision loader controls compare actual Next, dotenv and CLI readers, preserving literal hash characters and empty legacy scopes.",
           "config_keys": [
             "BASE_URL_PUBLIC_API",
             "ROUTING_BOOTSTRAP_PUBLIC_API_URL"
@@ -137,10 +142,12 @@
             "tests/**",
             ".tech-docs/full-e2e-smoke-traceability.md",
             ".tech-docs/eai-cli.md",
+            ".tech-docs/api-reference.md",
             "scripts/eai-full-e2e-smoke.cjs",
             "scripts/smoke-gofer-refresh-cache.cjs",
             "scripts/release-preflight.sh",
             "scripts/clean-build-output.cjs",
+            "scripts/run-eai-cli-tests.cjs",
             "docs-site/static/registry/**",
             "scripts/sync-linked-sources.js",
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
@@ -169,7 +176,7 @@
             "tests/integration/types.test.ts",
             "tests/integration/user.test.ts",
             "tests/integration/publicapi.test.ts",
-            "tests/integration/no-v3-runtime.test.ts",
+            "tests/integration/publicapi-v4-only.test.ts",
             "tests/integration/docs-classify.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/runtime-contract.test.ts",
@@ -177,7 +184,18 @@
             "tests/integration/verify-calls.test.ts",
             "tests/integration/dedicated-tenant-lifecycle.test.ts",
             "tests/integration/full-e2e-smoke.test.ts",
-            "tests/unit/local-app-credential.test.ts"
+            "tests/unit/local-app-credential.test.ts",
+            "tests/integration/verify-exit-status.test.ts",
+            "tests/unit/cloud-env.test.ts",
+            "tests/unit/env-command.test.ts",
+            "tests/unit/profile-context.test.ts",
+            "tests/unit/schema-builder.test.ts",
+            "tests/unit/test-token-isolation.test.ts",
+            "tests/unit/object-type-export.test.ts",
+            "tests/unit/platform-diagnostics.test.ts",
+            "tests/unit/cli-test-coverage.test.ts",
+            "tests/integration/chat-command.test.ts",
+            "tests/integration/unsupported-command.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
@@ -343,10 +361,11 @@
         },
         {
           "id": "eai-cli-support-report",
-          "description": "Locally redacted consent-gated draft handoff from signed-in CLI and AI harness sessions, with plain Support link fallback.",
+          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback. Exact-tag bundled producers and real fresh bootstrap preserve one canonical support-on-request contract and bounded original-error guidance without retired section duplication.",
           "owned_paths": [
             "src/commands/support.ts",
             "src/lib/support-report.ts",
+            "src/lib/support-harness.ts",
             "src/lib/support-context.ts",
             "src/lib/support-redaction.ts",
             "src/lib/profile.ts",
@@ -356,7 +375,22 @@
             "src/commands/init.ts",
             "src/lib/agent-guide.ts",
             "resources/gofer/references/platform/eai-support.md",
-            "resources/gofer/instruction-templates/**"
+            "resources/gofer/instruction-templates/**",
+            "resources/gofer/node-scripts/generate-commands.mjs",
+            "resources/gofer/node-scripts/package-agent-plugin.mjs",
+            "resources/gofer/node-scripts/workspace-bootstrap-lib.mjs",
+            "resources/gofer/commands/5_gofer_implement.md",
+            "resources/gofer/specify-commands/5_gofer_implement.md",
+            ".gemini/commands/gofer/eai.md",
+            ".github/prompts/eai.prompt.md",
+            ".agents/skills/eai/SKILL.md",
+            ".github/skills/eai/SKILL.md",
+            ".grok/skills/eai/SKILL.md",
+            ".system/skills/eai/SKILL.md",
+            "resources/gofer/commands/0_gofer_start.md",
+            "resources/gofer/commands/gofer_eai_first_run.md",
+            "scripts/verify-error-guidance.cjs",
+            "tests/helpers/support-fixture.ts"
           ],
           "required_repo_tests": [
             "tests/integration/support.test.ts",
@@ -374,6 +408,61 @@
             "eai-cli"
           ],
           "required_deployed_contracts": []
+        },
+        {
+          "id": "eai-cli-owned-qualification",
+          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending.",
+          "owned_paths": [
+            ".github/workflows/ci.yml",
+            "tests/unit/cli-test-coverage.test.ts",
+            "scripts/cli-qa-foundation.cjs",
+            "scripts/cli-qa-operational-env.cjs",
+            "scripts/cli-qa-npm-execution.cjs",
+            "scripts/qualify-cli-permanent.cjs",
+            "scripts/audit-cli-backend.cjs",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "scripts/test-local-dedicated-tenant-lifecycle.sh",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/cli-qa-foundation.test.ts",
+            "tests/integration/cli-permanent-cycles.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            ".tech-docs/cli-backend-lifecycle-smoke.md",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            ".tech-docs/cli-permanent-qualification.md",
+            "package.json",
+            "scripts/cli-qa-authorization.cjs",
+            "tests/integration/cli-qa-authorization.test.ts",
+            "scripts/cli-qa-build-receipt.cjs",
+            "tests/integration/cli-qa-build-receipt.test.ts",
+            "scripts/cli-local-child-ownership.cjs",
+            "scripts/cli-qa-cycle-steps.cjs",
+            "tests/helpers/cli-qa-cycle-model.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/cli-test-coverage.test.ts",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/cli-qa-foundation.test.ts",
+            "tests/integration/cli-permanent-cycles.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/cli-qa-authorization.test.ts",
+            "tests/integration/cli-qa-build-receipt.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
+            },
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
+            }
+          ]
         }
       ]
     }

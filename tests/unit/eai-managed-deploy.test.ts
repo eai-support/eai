@@ -320,8 +320,8 @@ describe('EAI managed deployment helpers', () => {
     const outside = join(await temporaryDirectory('eai-managed-outside-'), 'victim');
     await writeFile(outside, 'unchanged');
     const workflow = join(project, EAI_MANAGED_WORKFLOW_PATH);
-    await mkdir(join(project, '.github/workflows'), { recursive: true });
-    if (kind === 'candidate') await writeFile(workflow, 'custom workflow');
+    await mkdir(join(project, '.github/workflows'), { recursive: true, mode: 0o700 });
+    if (kind === 'candidate') await writeFile(workflow, 'custom workflow', { mode: 0o644 });
     await symlink(outside, kind === 'workflow' ? workflow : `${workflow}.eai-update`);
     await expect(installCanonicalManagedDeployFiles(project)).rejects.toThrow('untrusted file');
     expect(await readFile(outside, 'utf8')).toBe('unchanged');
@@ -336,7 +336,7 @@ describe('EAI managed deployment helpers', () => {
     await expect(saveManagedDeployState(state, directory)).rejects.toThrow('untrusted directory');
     expect(await readdir(outside)).toEqual([]);
     await rm(directory);
-    await mkdir(directory);
+    await mkdir(directory, { mode: 0o700 });
     const victim = join(outside, 'victim');
     await writeFile(victim, 'unchanged', { mode: 0o600 });
     await symlink(victim, join(directory, `${state.operationId}.json`));
@@ -745,22 +745,22 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb' },
+      candidate: { commit: '623c4430ba017b8da5b36e84e2fcafd819f79169' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
+        templateCommitSha: '623c4430ba017b8da5b36e84e2fcafd819f79169',
         workflowSha256: 'sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed',
       },
       releaseGate: {
         status: 'released',
-        tag: 'v1.0.12',
-        commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
+        tag: 'v1.0.13',
+        commit: '623c4430ba017b8da5b36e84e2fcafd819f79169',
       },
     });
     const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
     expect(linkedSources.appTemplate).toMatchObject({
-      version: 'v1.0.12',
-      commit: 'd777e97d188c1a5a611d1bc14fbb16a3ea1d9acb',
+      version: 'v1.0.13',
+      commit: '623c4430ba017b8da5b36e84e2fcafd819f79169',
       packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
     });
     expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
@@ -862,7 +862,7 @@ describe('EAI managed deployment helpers', () => {
     const commit = (await promisify(execFile)('git', ['rev-parse', 'HEAD'], { cwd: project })).stdout.trim();
     const configHash = await buildManagedDeployConfigHash(project);
     await installCanonicalManagedDeployFiles(project);
-    await mkdir(join(project, '.eai'), { recursive: true });
+    await mkdir(join(project, '.eai'), { recursive: true, mode: 0o700 });
     const operationId = `cli-managed-${'a'.repeat(32)}`;
     const bindingPath = join(project, '.eai/cli-managed-source-operation.json');
     const binding = {
@@ -879,12 +879,12 @@ describe('EAI managed deployment helpers', () => {
       '--local-e2e-tunnel', 'true', '--local-e2e-expires-at', expiresAt,
       '--repository-id', '123', '--github-event-name', 'workflow_dispatch'];
     for (const environment of ['preview', 'dev']) {
-      await writeFile(bindingPath, JSON.stringify({ ...binding, environment }));
+      await writeFile(bindingPath, JSON.stringify({ ...binding, environment }), { mode: 0o600 });
       await writeFile(output, '');
       await promisify(execFile)(process.execPath, [...args, '--environment', environment]);
       expect(await readFile(output, 'utf8')).toBe(`deployment_environment=${environment}\ngithub_environment=eai-generated-${environment}\n`);
     }
-    await writeFile(bindingPath, JSON.stringify(binding));
+    await writeFile(bindingPath, JSON.stringify(binding), { mode: 0o600 });
     for (const invalid of [
       ['--environment', 'test'], ['--environment', 'prod'],
       ['--environment', 'preview', '--source-mode', 'source-unknown'],
@@ -900,7 +900,7 @@ describe('EAI managed deployment helpers', () => {
       await expect(promisify(execFile)(process.execPath, [...args, ...invalid])).rejects.toMatchObject({ code: 1 });
       expect(await readFile(output, 'utf8')).toBe('');
     }
-    await writeFile(bindingPath, JSON.stringify({ ...binding, operationId: `cli-managed-${'f'.repeat(32)}` }));
+    await writeFile(bindingPath, JSON.stringify({ ...binding, operationId: `cli-managed-${'f'.repeat(32)}` }), { mode: 0o600 });
     await writeFile(output, '');
     await expect(promisify(execFile)(process.execPath, [...args, '--environment', 'preview'])).rejects.toMatchObject({ code: 1 });
     expect(await readFile(output, 'utf8')).toBe('');
@@ -1039,8 +1039,8 @@ describe('EAI managed deployment helpers', () => {
   test('preserves a customized workflow and stages the canonical update beside it', async () => {
     const project = await temporaryDirectory('eai-managed-update-');
     const workflowPath = join(project, EAI_MANAGED_WORKFLOW_PATH);
-    await mkdir(join(project, '.github', 'workflows'), { recursive: true });
-    await writeFile(workflowPath, 'name: Local workflow\n');
+    await mkdir(join(project, '.github', 'workflows'), { recursive: true, mode: 0o700 });
+    await writeFile(workflowPath, 'name: Local workflow\n', { mode: 0o644 });
 
     const result = await installCanonicalManagedDeployFiles(project);
 
@@ -1053,7 +1053,7 @@ describe('EAI managed deployment helpers', () => {
     const parent = await temporaryDirectory('eai-managed-containment-');
     const project = join(parent, 'repo');
     const siblingTarget = join(parent, 'repo-evil', 'workflow.yml');
-    await mkdir(project);
+    await mkdir(project, { mode: 0o700 });
 
     await expect(
       installCanonicalManagedDeployFiles(project, '../repo-evil/workflow.yml'),

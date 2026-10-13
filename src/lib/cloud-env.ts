@@ -43,6 +43,7 @@ async function execAzureCli(args: string[]): Promise<{ stdout: string; stderr: s
   return exec(invocation.file, invocation.args);
 }
 
+/** Pull application values; the workstation-only profile selector is excluded before parsing or resolving references. */
 export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<CloudEnvPullResult> {
   const store = resolveAppConfigStore(options.environment);
   const includeSecrets = options.includeSecrets ?? false;
@@ -59,25 +60,35 @@ export async function pullCloudEnvValues(options: CloudEnvPullOptions): Promise<
   const secretRefs: Array<{ key: string; vaultUri: string }> = [];
 
   for (const kv of kvPairs) {
+    // A local CLI selector cannot authorize even an otherwise valid cloud secret lookup.
+    if (kv.key === 'EAI_PROFILE') continue;
     if (kv.contentType === 'application/vnd.microsoft.appconfig.keyvaultref+json;charset=utf-8') {
+      let ref: { uri?: unknown };
       try {
-        const ref = JSON.parse(kv.value) as { uri?: string };
-        if (typeof ref.uri === 'string' && ref.uri) {
-          secretRefs.push({ key: kv.key, vaultUri: ref.uri });
-          if (includeSecrets) {
-            const { stdout: secretValue } = await execAzureCli([
-              'keyvault', 'secret', 'show',
-              '--id', ref.uri,
-              '--query', 'value',
-              '--output', 'tsv',
-            ]);
-            patches[kv.key] = secretValue.trim();
-          }
-          continue;
-        }
+        ref = JSON.parse(kv.value) as { uri?: unknown };
       } catch {
-        // Fall through and treat invalid Key Vault refs as plain values.
+        throw new Error(`Invalid Key Vault reference for ${kv.key}.`);
       }
+      if (!ref || typeof ref.uri !== 'string' || !ref.uri.trim()) {
+        throw new Error(`Invalid Key Vault reference for ${kv.key}.`);
+      }
+      const vaultUri = ref.uri.trim();
+      secretRefs.push({ key: kv.key, vaultUri });
+      if (includeSecrets) {
+        try {
+          const { stdout: secretValue } = await execAzureCli([
+            'keyvault', 'secret', 'show',
+            '--id', vaultUri,
+            '--query', 'value',
+            '--output', 'tsv',
+          ]);
+          patches[kv.key] = secretValue.trim();
+        } catch {
+          // Azure errors may contain command arguments, reference URIs or secret values.
+          throw new Error(`Could not resolve requested secret for ${kv.key}.`);
+        }
+      }
+      continue;
     }
 
     patches[kv.key] = kv.value;

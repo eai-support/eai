@@ -5,7 +5,7 @@
  */
 
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
@@ -45,8 +45,11 @@ async function writeEncryptedTokenFile(
   let encrypted = cipher.update(JSON.stringify(tokens), 'utf-8', 'hex');
   encrypted += cipher.final('hex');
   const target = join(homeDir, relativePath);
-  await mkdir(dirname(target), { recursive: true });
+  await mkdir(dirname(target), { recursive: true, mode: 0o700 });
+  await chmod(join(homeDir, '.eai'), 0o700);
+  await chmod(dirname(target), 0o700);
   await writeFile(target, `${iv.toString('hex')}:${encrypted}`, { encoding: 'utf-8', mode: 0o600 });
+  await chmod(target, 0o600);
 }
 
 async function writeStoredTokens(
@@ -73,12 +76,17 @@ describe('eai whoami', () => {
   let originalHome: string | undefined;
   let originalUserProfile: string | undefined;
   let originalAccessToken: string | undefined;
+  let originalProfile: string | undefined;
 
   beforeEach(async () => {
     originalHome = process.env.HOME;
     originalUserProfile = process.env.USERPROFILE;
     originalAccessToken = process.env.EAI_ACCESS_TOKEN;
+    originalProfile = process.env.EAI_PROFILE;
     env = await createTestEnvironment();
+    process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
+    delete process.env.EAI_PROFILE;
     mockServer = createMockServer();
     mockServer.start();
 
@@ -110,6 +118,8 @@ describe('eai whoami', () => {
     } else {
       process.env.EAI_ACCESS_TOKEN = originalAccessToken;
     }
+    if (originalProfile === undefined) delete process.env.EAI_PROFILE;
+    else process.env.EAI_PROFILE = originalProfile;
     await env.cleanup();
   });
 
@@ -189,12 +199,13 @@ describe('eai whoami', () => {
     expect(membershipRequestHeaders?.authorization).toBe('Bearer <fixture-access-token>');
   });
 
-  test('plain commands ignore persisted activeProfile and profiles require explicit opt-in', { timeout: 15000 }, async () => {
+  test('plain commands outside an app ignore persisted activeProfile and profiles require a selector', { timeout: 15000 }, async () => {
     workingDirectoryIs(ctx, env.dir);
     ctx.env.HOME = env.dir;
     ctx.env.USERPROFILE = env.dir;
 
-    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await mkdir(join(env.dir, '.eai'), { recursive: true, mode: 0o700 });
+    await chmod(join(env.dir, '.eai'), 0o700);
     await writeFile(
       join(env.dir, '.eai', 'config.json'),
       JSON.stringify({
@@ -209,7 +220,9 @@ describe('eai whoami', () => {
           },
         },
       }, null, 2),
+      { mode: 0o600 },
     );
+    await chmod(join(env.dir, '.eai', 'config.json'), 0o600);
     await writeStoredTokens(env.dir, '.eai/tokens.json', 'default-prod@example.com');
     await writeStoredTokens(env.dir, '.eai/tokens/test.json', 'profile-test@example.com');
 
@@ -231,7 +244,8 @@ describe('eai whoami', () => {
     ctx.env.HOME = env.dir;
     ctx.env.USERPROFILE = env.dir;
 
-    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await mkdir(join(env.dir, '.eai'), { recursive: true, mode: 0o700 });
+    await chmod(join(env.dir, '.eai'), 0o700);
     await writeFile(
       join(env.dir, '.eai', 'config.json'),
       JSON.stringify({
@@ -244,7 +258,9 @@ describe('eai whoami', () => {
           },
         },
       }),
+      { mode: 0o600 },
     );
+    await chmod(join(env.dir, '.eai', 'config.json'), 0o600);
     await writeStoredTokens(env.dir, '.eai/tokens/test.json', 'profile-test@example.com');
 
     const result = await runCommand(ctx, 'eai --profile test classifier list --format json');

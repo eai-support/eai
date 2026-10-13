@@ -633,7 +633,9 @@ async function ensureFile(path: string, content: string): Promise<void> {
 
 async function ensureClaudeMd(workspacePath: string, resourcesPath: string): Promise<void> {
   const claudePath = join(workspacePath, 'CLAUDE.md');
-  const goferSection = await readTemplate(resourcesPath, 'gofer', 'gofer-claude.md');
+  const goferTemplate = await readTemplate(resourcesPath, 'gofer', 'gofer-claude.md');
+  const supportPointer = 'Support starts only when the person asks "get help". Follow the full support contract in AGENTS.md. In the welcome reply, say: If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.';
+  const goferSection = goferTemplate.includes(supportPointer) ? goferTemplate : `${goferTemplate.trimEnd()}\n${supportPointer}\n`;
   const section = `\n## Gofer Pipeline\n\n${goferSection.trim()}\n`;
 
   if (!(await fileExists(claudePath))) {

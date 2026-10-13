@@ -5,9 +5,29 @@
  * managing temp directories, and cleaning up after tests.
  */
 
-import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
+
+const activeTestRoots = new Map<string, string>();
+
+function isWithin(root: string, path: string): boolean {
+  const suffix = relative(root, path);
+  return suffix === '' || (!isAbsolute(suffix) && suffix !== '..' && !suffix.startsWith(`..${process.platform === 'win32' ? '\\' : '/'}`));
+}
+
+/** Fail closed before token helpers can act on an ambient or linked user home. */
+export async function resolveIsolatedTestHome(path: string): Promise<string> {
+  if (!isAbsolute(path)) throw new Error('Auth fixtures require an absolute disposable test home.');
+  const candidate = resolve(path);
+  const roots = [...activeTestRoots].filter(([root, canonical]) => isWithin(root, candidate) || isWithin(canonical, candidate));
+  if (roots.length === 0) throw new Error('Auth fixtures require a home inside an active disposable test environment.');
+  const canonical = await realpath(candidate);
+  if (!roots.some(([, root]) => isWithin(root, canonical))) {
+    throw new Error('Auth fixture home must not link outside its disposable test environment.');
+  }
+  return path;
+}
 
 export interface TestEnvironment {
   dir: string;
@@ -19,6 +39,7 @@ export interface TestEnvironment {
  */
 export async function createTestEnvironment(): Promise<TestEnvironment> {
   const dir = await mkdtemp(join(tmpdir(), 'eai-test-'));
+  activeTestRoots.set(resolve(dir), await realpath(dir));
 
   return {
     dir,
@@ -27,6 +48,8 @@ export async function createTestEnvironment(): Promise<TestEnvironment> {
         await rm(dir, { recursive: true, force: true });
       } catch (error) {
         console.error(`Failed to cleanup test directory ${dir}:`, error);
+      } finally {
+        activeTestRoots.delete(resolve(dir));
       }
     },
   };

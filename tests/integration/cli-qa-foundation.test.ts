@@ -1,0 +1,376 @@
+import { createRequire } from 'node:module';
+import { spawnSync } from 'node:child_process';
+import { chmodSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { afterEach, describe, expect, test } from 'vitest';
+
+const require = createRequire(import.meta.url);
+const qa = require('../../scripts/cli-qa-foundation.cjs');
+const uuid = (number: number): string => `00000000-0000-4000-8000-${String(number).padStart(12, '0')}`;
+const directories: string[] = [];
+function fixtureSpec() {
+  const actor = (number: number) => ({ oid: uuid(number), email: `qa-${number}@example.invalid`, profile: `qa-${number}` });
+  return { environment: 'DEV', region: 'au', parentTenantId: uuid(1), owner: actor(2),
+    actors: Object.fromEntries(Object.keys(qa.SLOTS).map((slot, index) => [slot, actor(index + 3)])),
+    workspaces: { a: { name: 'CLI QA A', slug: 'eai-cli-qa-a' }, b: { name: 'CLI QA B', slug: 'eai-cli-qa-b' } }, bindings: {} };
+}
+function privateFixture() {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'eai-qa-foundation-'))); directories.push(root);
+  const path = join(root, 'foundation.json'); const foundation = qa.initialize(fixtureSpec(), () => uuid(20));
+  qa.writePrivate(path, foundation); return { root, path, foundation };
+}
+afterEach(() => { for (const directory of directories.splice(0)) rmSync(directory, { recursive: true, force: true }); });
+
+describe('retained CLI QA foundation authority', () => {
+  test('initialization is a plan with distinct actors and no adopted tenant', () => {
+    const value = qa.initialize(fixtureSpec(), () => uuid(20));
+    expect(value.state).toBe('unprepared'); expect(value.workspaces.a.id).toBeNull();
+    expect(Object.keys(value.actors)).toEqual(['adminA', 'builderA', 'viewerA', 'adminB', 'builderB']);
+    for (const [slot, [workspaceSlot, role]] of Object.entries(qa.SLOTS) as Array<[string, [string, string]]>) {
+      expect(value.journal[slot]).toEqual({ phase: 'never-invited', workspaceSlot, role, oid: value.actors[slot].oid });
+    }
+    expect(qa.publicApi('TEST', 'eu')).toBe('https://test-api.eu.myenterprise.ai/public');
+  });
+  test.each(['PROD', 'production', 'local'])('rejects environment %s', environment => {
+    expect(() => qa.initialize({ ...fixtureSpec(), environment })).toThrow('DEV or TEST');
+  });
+  test('rejects DEV in another region and environment/gateway disagreement', () => {
+    expect(() => qa.initialize({ ...fixtureSpec(), region: 'eu' })).toThrow('AU only');
+    expect(() => qa.validateFoundation({ ...qa.initialize(fixtureSpec()), publicApiUrl: 'https://api.au.myenterprise.ai/public' })).toThrow('gateway');
+  });
+  test.each(['oid', 'profile', 'email'])('rejects repeated %s and operator impersonation', field => {
+    const spec = fixtureSpec(); spec.actors.viewerA[field] = spec.owner[field];
+    expect(() => qa.initialize(spec)).toThrow('distinct');
+  });
+  test('rejects foreign tenant binding and credential values', () => {
+    const foundation = qa.initialize(fixtureSpec());
+    expect(() => qa.validateFoundation({ ...foundation, bindings: { provider: { workspaceSlot: 'a', tenantId: uuid(90) } } })).toThrow('tenant');
+    expect(() => qa.validateFoundation({ ...foundation, bindings: { provider: { workspaceSlot: 'a', token: 'fixture-token' } } })).toThrow('never credentials');
+  });
+  test('never adopts pre-existing children during initialization', () => {
+    const spec = fixtureSpec(); (spec.workspaces.a as Record<string, unknown>).id = uuid(99);
+    expect(() => qa.initialize(spec)).toThrow('cannot adopt');
+  });
+});
+
+describe('private foundation and exclusive lease', () => {
+  test('journal-only helper processes avoid initializing the lifecycle compiler', () => {
+    const result = spawnSync(process.execPath, ['-e', `require(${JSON.stringify(resolve('scripts/cli-local-child-ownership.cjs'))});
+      process.stdout.write(JSON.stringify({typescriptLoaded:Object.keys(require.cache).some(path=>path.includes('/typescript/'))}));`],
+    { encoding: 'utf8', env: qa.operationalEnvironment(process.env) });
+    expect(result.status).toBe(0); expect(JSON.parse(result.stdout).typescriptLoaded).toBe(false);
+  });
+  test.each([0o777, 0o770])('private file operations refuse non-sticky writable ancestor mode %s', mode => {
+    const { root, foundation } = privateFixture(), ancestor = join(root, 'shared'), leaf = join(ancestor, 'private');
+    mkdirSync(ancestor, { mode: 0o700 }); mkdirSync(leaf, { mode: 0o700 });
+    const path = join(leaf, 'state.json'); qa.writePrivate(path, foundation); const before = readFileSync(path);
+    chmodSync(ancestor, mode); let entered = false;
+    expect(() => qa.readPrivate(path)).toThrow('ancestor');
+    expect(() => qa.writePrivate(path, {})).toThrow('ancestor');
+    expect(() => qa.withLease(path, () => { entered = true; })).toThrow('ancestor');
+    expect(entered).toBe(false); expect(readFileSync(path)).toEqual(before); expect(existsSync(path + '.lease')).toBe(false);
+  });
+  test('changing a previously bound ancestor to unsafe writable mode invalidates its identity', () => {
+    const { root } = privateFixture(), leaf = join(root, 'private');
+    mkdirSync(leaf, { mode: 0o700 }); const parents = qa.privateDirectory(leaf);
+    chmodSync(root, 0o777); expect(() => qa.assertPrivateDirectory(parents)).toThrow('ancestor');
+  });
+  test('trusted sticky temporary ancestors retain supported private operations', () => {
+    const { root, foundation } = privateFixture(), ancestor = join(root, 'sticky'), leaf = join(ancestor, 'private');
+    mkdirSync(ancestor, { mode: 0o700 }); chmodSync(ancestor, 0o1777); mkdirSync(leaf, { mode: 0o700 });
+    const path = join(leaf, 'state.json'); qa.writePrivate(path, foundation);
+    expect(qa.readPrivate(path).fixtureId).toBe(foundation.fixtureId); expect(qa.withLease(path, () => 'owned')).toBe('owned');
+  });
+  test('normal-profile calls allow operational settings and exclude every ambient credential family', () => {
+    const { root, foundation } = privateFixture(); let checked = false;
+    const forbidden = { GH_TOKEN: 'synthetic-gh', GITHUB_TOKEN: 'synthetic-github', AZURE_CLIENT_SECRET: 'synthetic-azure',
+      NPM_TOKEN: 'synthetic-npm', npm_config_token: 'synthetic-npm-config', NODE_OPTIONS: '--require=foreign.cjs',
+      NODE_TLS_REJECT_UNAUTHORIZED: '0', UNAPPROVED_SETTING: 'ambient', EAI_ACCESS_TOKEN: 'synthetic-eai' };
+    const operational = { HOME: '/normal-profile-home', PATH: '/normal-bin', TMPDIR: '/system-temp',
+      NODE_EXTRA_CA_CERTS: '/trusted-ca.pem', HTTPS_PROXY: 'http://proxy.example.invalid:8080' };
+    const call = qa.cliCaller('dist/index.js', foundation, join(root, 'contexts'), { env: { ...operational, ...forbidden },
+      execute: (_cli: string, _args: string[], options: { env: Record<string, string> }) => {
+        for (const [key, value] of Object.entries(operational)) expect(options.env[key]).toBe(value);
+        for (const key of Object.keys(forbidden)) expect(options.env[key]).toBeUndefined();
+        expect(options.env.EAI_PROFILE).toBe(foundation.owner.profile); checked = true;
+        return { status: 0, stdout: '{}', stderr: '' };
+      } });
+    call(foundation.owner, ['whoami'], foundation.parentTenantId); expect(checked).toBe(true);
+  });
+  test('private operations accept the operating system temporary-directory path, including fixed macOS aliases', () => {
+    const root = mkdtempSync(join(tmpdir(), 'eai-qa-system-temp-')); directories.push(realpathSync(root));
+    const path = join(root, 'state.json'), value = qa.initialize(fixtureSpec());
+    qa.writePrivate(path, value); expect(qa.readPrivate(path).fixtureId).toBe(value.fixtureId);
+    expect(qa.withLease(path, () => 'owned')).toBe('owned'); expect(existsSync(path + '.lease')).toBe(false);
+  });
+  test.each(['read', 'write', 'lease'])('%s refuses a linked ancestor without entering its outside target', operation => {
+    const { root, foundation } = privateFixture();
+    const outside = realpathSync(mkdtempSync(join(tmpdir(), 'eai-qa-outside-'))); directories.push(outside);
+    mkdirSync(join(outside, 'private'), { mode: 0o700 });
+    const sentinel = join(outside, 'private', 'state.json'); qa.writePrivate(sentinel, foundation);
+    const linked = join(root, 'linked'); symlinkSync(outside, linked, 'dir');
+    const path = join(linked, 'private', 'state.json'); const before = readFileSync(sentinel); let entered = false;
+    expect(() => operation === 'read' ? qa.readPrivate(path) : operation === 'write' ? qa.writePrivate(path, {})
+      : qa.withLease(path, () => { entered = true; })).toThrow('ancestor');
+    expect(readFileSync(sentinel)).toEqual(before); expect(entered).toBe(false);
+    expect(existsSync(sentinel + '.lease')).toBe(false);
+  });
+  test('atomic updates preserve private permissions and release the lease on failure', () => {
+    const { path, foundation } = privateFixture();
+    expect(() => qa.withLease(path, () => { throw new Error('fixture failure'); })).toThrow('fixture failure');
+    expect(existsSync(path + '.lease')).toBe(false);
+    qa.writePrivate(path, { ...foundation, state: 'partial' });
+    expect(qa.readPrivate(path).state).toBe('partial');
+  });
+  test('a second lease cannot dispatch mutations or remove the first lease', () => {
+    const { path } = privateFixture(); writeFileSync(path + '.lease', 'owned fixture', { mode: 0o600 });
+    let ran = false;
+    expect(() => qa.withLease(path, () => { ran = true; })).toThrow('leased');
+    expect(ran).toBe(false); expect(readFileSync(path + '.lease', 'utf8')).toBe('owned fixture');
+  });
+  test('rejects public-readable, linked and hard-linked fixture state', () => {
+    const { root, path } = privateFixture();
+    chmodSync(path, 0o644); expect(() => qa.readPrivate(path)).toThrow('0600'); chmodSync(path, 0o600);
+    const alias = join(root, 'alias.json'); symlinkSync(path, alias); expect(() => qa.readPrivate(alias)).toThrow('0600');
+    const hard = join(root, 'hard.json'); linkSync(path, hard); expect(() => qa.writePrivate(path, {})).toThrow('0600');
+  });
+  test('private markdown updates reject public or linked existing output and preserve its target', () => {
+    const { root } = privateFixture(), path = join(root, 'capabilities.md');
+    qa.writePrivateText(path, 'owned evidence\n'); expect(readFileSync(path, 'utf8')).toBe('owned evidence\n');
+    chmodSync(path, 0o644); expect(() => qa.writePrivateText(path, 'replacement')).toThrow('0600');
+    chmodSync(path, 0o600); const link = join(root, 'linked.md'); symlinkSync(path, link);
+    expect(() => qa.writePrivateText(link, 'replacement')).toThrow('0600');
+    expect(readFileSync(path, 'utf8')).toBe('owned evidence\n');
+  });
+  test.each(['.env.local', 'eai.config.ts'])('retained context %s cannot overwrite an outside linked file', filename => {
+    const { root, foundation } = privateFixture(); let dispatches = 0;
+    const contextRoot = join(root, 'contexts'), call = qa.cliCaller('dist/index.js', foundation, contextRoot,
+      { env: {}, execute: () => { dispatches++; return { status: 0, stdout: '{}', stderr: '' }; } });
+    call(foundation.owner, ['whoami'], foundation.parentTenantId);
+    const target = join(root, 'outside.txt'); writeFileSync(target, 'outside sentinel', { mode: 0o600 });
+    const path = join(contextRoot, 'context-' + foundation.parentTenantId, filename);
+    unlinkSync(path); symlinkSync(target, path);
+    expect(() => call(foundation.owner, ['whoami'], foundation.parentTenantId)).toThrow('0600');
+    expect(readFileSync(target, 'utf8')).toBe('outside sentinel'); expect(dispatches).toBe(1);
+  });
+  test('named-profile callers cannot inherit a headless token or foreign app authority', () => {
+    const { root, foundation } = privateFixture(); let checked = false;
+    const call = qa.cliCaller('dist/index.js', foundation, join(root, 'contexts'), { env: { HOME: '/normal-profile-home',
+      EAI_ACCESS_TOKEN: 'foreign-token', EAI_AUTH_TENANT_ID: uuid(99), ENTRA_CLIENT_SECRET: 'foreign-secret', NEXT_PUBLIC_EAI_TENANT_ID: uuid(99) },
+      execute: (_cli: string, args: string[], options: { env: Record<string, string> }) => {
+        expect(args.slice(0, 2)).toEqual(['--profile', foundation.owner.profile]);
+        expect(options.env.HOME).toBe('/normal-profile-home'); expect(options.env.EAI_TENANT_ID).toBe(foundation.parentTenantId);
+        for (const key of ['EAI_ACCESS_TOKEN', 'EAI_AUTH_TENANT_ID', 'ENTRA_CLIENT_SECRET', 'NEXT_PUBLIC_EAI_TENANT_ID']) expect(options.env[key]).toBeUndefined();
+        checked = true; return { status: 0, stdout: '{}', stderr: '' };
+      } });
+    call(foundation.owner, ['whoami'], foundation.parentTenantId); expect(checked).toBe(true);
+  });
+});
+
+describe('normal CLI retained fixture preparation', () => {
+  function controlled(mode = 'ok') {
+    const { path, foundation } = privateFixture(); const calls: string[][] = [];
+    const memberships = new Map<string, string>();
+    let invitations = 0;
+    const execute = (_cli: string, args: string[]) => {
+      calls.push(args); const profile = args[1], command = args.slice(2);
+      const actor = [foundation.owner, ...Object.values(foundation.actors) as Array<{ profile: string; oid: string; email: string }>].find(item => item.profile === profile)!;
+      const output = (body: unknown, status = 0) => ({ status, stdout: JSON.stringify(body), stderr: '' });
+      const body = (value: unknown) => output({ ok: true, status: 200, body: value });
+      const selected = (flag: string) => command[command.indexOf(flag) + 1];
+      if (command[0] === 'whoami') return { status: 0, stdout: 'PublicAPI: ' + foundation.publicApiUrl, stderr: '' };
+      if (command[0] === 'publicapi' && command[1] === 'get') {
+        const route = command[2];
+        if (route === '/v4/identity/me') return body({ oid: actor.oid, email: actor.email });
+        if (route.includes('/management')) {
+          const tenantId = route.split('/')[4]; const slot = tenantId === uuid(30) ? 'a' : 'b';
+          return body({ id: tenantId, slug: foundation.workspaces[slot].slug, parentTenantId: foundation.parentTenantId });
+        }
+        if (route === '/v4/identity/tenants') {
+          const tenantId = selected('--tenant-id');
+          return body({ tenants: [{ id: tenantId }], totalCount: 1, superAdmin: mode === 'global-actor' });
+        }
+        if (route.includes('/memberships?')) {
+          const tenantId = selected('--tenant-id');
+          const memberOid = route.split('/')[4];
+          if (memberOid !== actor.oid) return output({ ok: false, status: 403, body: { error: 'FORBIDDEN' } }, 1);
+          const member = { id: tenantId, isActive: mode !== 'inactive-member',
+            roles: [tenantId === foundation.parentTenantId ? 'tenant-admin' : memberships.get(memberOid),
+              ...(mode === 'extra-role' && tenantId !== foundation.parentTenantId ? ['system-admin'] : [])] };
+          return body({ tenants: mode === 'duplicate-member' && tenantId !== foundation.parentTenantId ? [member, member] : [member] });
+        }
+      }
+      if (command[0] === 'publicapi' && command[1] === 'post') return body({ outcome: mode === 'no-entitlement' ? 'deny' : 'allow' });
+      if (command[0] === 'workspace' && command[1] === 'create') {
+        if (mode === 'unknown-create') return { status: 1, stdout: '', stderr: 'fixture timeout' };
+        const slot = selected('--slug').endsWith('-a') ? 'a' : 'b';
+        return output({ tenant: { id: slot === 'a' ? uuid(30) : uuid(31), slug: foundation.workspaces[slot].slug,
+          parentTenantId: mode === 'foreign-create' ? uuid(99) : foundation.parentTenantId, reused: false } }, mode === 'ack-before-failure' ? 1 : 0);
+      }
+      if (command[0] === 'workspace' && command[1] === 'bootstrap-admin') {
+        if (selected('--user-oid') !== foundation.owner.oid) return output({ error: 'CHILD_ALREADY_HAS_ADMIN' }, 1);
+        return output({ parentTenantId: selected('--parent'), childTenantId: selected('--child'), userOid: selected('--user-oid'),
+          usable: true, membershipCreated: false, adminAssigned: false, status: 'already-usable' });
+      }
+      if (command[0] === 'user' && command[1] === 'invite') {
+        invitations++;
+        const invited = Object.values(foundation.actors).find((item: any) => item.email === selected('--email')) as { oid: string };
+        if (mode !== 'unknown-invite') memberships.set(invited.oid, selected('--role'));
+        if (mode === 'unknown-invite' || (mode === 'lost-invite-ack' && invitations === 1)) return { status: 1, stdout: '', stderr: 'fixture timeout' };
+        return output({ status: 'invited', email: selected('--email'), role: selected('--role'),
+          userId: mode === 'unexpected-user' ? uuid(99) : invited.oid, inviteMode: 'existing_user_reused' });
+      }
+      throw new Error('Unexpected controlled CLI dispatch: ' + command.slice(0, 3).join(' '));
+    };
+    return { path, calls, execute };
+  }
+  test('prepares exactly two owned siblings and five existing actors, retaining the baseline', () => {
+    const fixture = controlled();
+    const report = qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    expect(report.state).toBe('verified'); expect(report.authorizationVerified).toBe(false);
+    expect(fixture.calls.filter(args => args.includes('create'))).toHaveLength(2);
+    expect(fixture.calls.filter(args => args.includes('bootstrap-admin')).every(args => args[args.indexOf('--user-oid') + 1] === uuid(2))).toBe(true);
+    expect(fixture.calls.filter(args => args.includes('invite'))).toHaveLength(5);
+    expect(fixture.calls.some(args => args.includes('delete'))).toBe(false);
+    expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
+    qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    expect(fixture.calls.filter(args => args.includes('create'))).toHaveLength(2);
+    expect(fixture.calls.filter(args => args.includes('invite'))).toHaveLength(5);
+    expect(fixture.calls.filter(args => args.some(arg => arg.includes('/memberships?')))
+      .every(args => args[4].includes(`/users/${uuid(Number(args[1].split('-')[1]))}/memberships?`))).toBe(true);
+  });
+  test('entitlement denial blocks before the first workspace write', () => {
+    const fixture = controlled('no-entitlement');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('entitlement');
+    expect(fixture.calls.some(args => args.includes('create'))).toBe(false);
+  });
+  test('unknown creation stays journaled and is never automatically retried', () => {
+    const fixture = controlled('unknown-create');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('unresolved');
+    expect(fixture.calls.filter(args => args.includes('create'))).toHaveLength(1);
+    expect(qa.readPrivate(fixture.path).journal.a.phase).toBe('creating');
+  });
+  test('acknowledged child ID is saved before a nonzero exit', () => {
+    const fixture = controlled('ack-before-failure');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
+    expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
+  });
+  test.each([null, 'false', 'true', 0, 1, {}, []].map(reused => ({ reused })))('a malformed present reused marker $reused cannot acknowledge a new child', ({ reused }) => {
+    const fixture = controlled();
+    const execute = (cli: string, args: string[]) => {
+      const result = fixture.execute(cli, args);
+      if (args[2] === 'workspace' && args[3] === 'create') {
+        const body = JSON.parse(result.stdout); body.tenant.reused = reused; result.stdout = JSON.stringify(body);
+      }
+      return result;
+    };
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute })).toThrow('creation');
+    const retained = qa.readPrivate(fixture.path);
+    expect(retained.workspaces.a.id).toBeNull(); expect(retained.journal.a.phase).toBe('creating');
+    expect(fixture.calls.some(args => args.includes('bootstrap-admin') || args.includes('invite'))).toBe(false);
+  });
+  test('the actual flat201 producer shape without a reused marker remains a supported new-child acknowledgment', () => {
+    const fixture = controlled();
+    const execute = (cli: string, args: string[]) => {
+      const result = fixture.execute(cli, args);
+      if (args[2] === 'workspace' && args[3] === 'create') {
+        const body = JSON.parse(result.stdout); delete body.tenant.reused; result.stdout = JSON.stringify(body);
+      }
+      return result;
+    };
+    expect(qa.prepareFoundation(fixture.path, 'dist/index.js', { execute }).state).toBe('verified');
+  });
+  test('saved child IDs without exact creation ownership cannot reach any CLI dispatch', () => {
+    const fixture = controlled(), retained = qa.readPrivate(fixture.path);
+    retained.workspaces.a.id = uuid(30); retained.workspaces.b.id = uuid(31);
+    qa.writePrivate(fixture.path, retained);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(0);
+  });
+  test.each(['fixtureId', 'actorId', 'tenantId', 'slug', 'parentTenantId', 'exitCode', 'newChild'])('saved child ownership refuses a mismatched %s before dispatch', field => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const retained = qa.readPrivate(fixture.path), calls = fixture.calls.length;
+    retained.journal.a.acknowledgment[field] = field === 'exitCode' ? 1 : field === 'newChild' ? false : 'foreign';
+    qa.writePrivate(fixture.path, retained);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(calls);
+  });
+  test('a nonzero creation acknowledgment retains the ID but cannot automatically resume child mutations', () => {
+    const fixture = controlled('ack-before-failure');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation');
+    const calls = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('creation acknowledgment');
+    expect(fixture.calls).toHaveLength(calls); expect(qa.readPrivate(fixture.path).workspaces.a.id).toBe(uuid(30));
+  });
+  test('lost invitation acknowledgment reconciles through the exact actor self-read without replay', () => {
+    const fixture = controlled('lost-invite-ack');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('Membership setup');
+    expect(qa.readPrivate(fixture.path).journal.adminA.phase).toBe('inviting');
+    expect(qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute }).state).toBe('verified');
+    expect(fixture.calls.filter(args => args.includes('invite'))).toHaveLength(5);
+    expect(qa.readPrivate(fixture.path).journal.adminA.reconciledFromFreshMembership).toBe(true);
+  });
+  test('unknown membership cannot replay invitations or infer ownership from a journal', () => {
+    const fixture = controlled('unknown-invite');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('Membership setup');
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow('manual reconciliation');
+    expect(fixture.calls.filter(args => args.includes('invite'))).toHaveLength(1);
+  });
+  test.each(['verified', 'partial'])('missing %s actor invitation history cannot replay a membership write', state => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const foundation = qa.readPrivate(fixture.path); delete foundation.journal.builderA; foundation.state = state;
+    qa.writePrivate(fixture.path, foundation); const before = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(fixture.calls.slice(before).some(args => args.includes('invite') || args.includes('bootstrap-admin'))).toBe(false);
+  });
+  test('a verified foundation cannot reset an actor to never-invited', () => {
+    const fixture = controlled(); qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute });
+    const foundation = qa.readPrivate(fixture.path);
+    foundation.journal.builderA = { phase: 'never-invited', oid: foundation.actors.builderA.oid, role: 'tenant-builder', workspaceSlot: 'a' };
+    qa.writePrivate(fixture.path, foundation); const before = fixture.calls.length;
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(fixture.calls.slice(before).some(args => args.includes('invite') || args.includes('bootstrap-admin'))).toBe(false);
+  });
+  test.each(['extra-role', 'duplicate-member', 'inactive-member'])('rejects %s as an independent fixture authority', mode => {
+    const fixture = controlled(mode);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(qa.readPrivate(fixture.path).state).not.toBe('verified');
+  });
+  test.each(['foreign-create', 'unexpected-user', 'global-actor'])('rejects %s without claiming qualification', mode => {
+    const fixture = controlled(mode);
+    expect(() => qa.prepareFoundation(fixture.path, 'dist/index.js', { execute: fixture.execute })).toThrow();
+    expect(qa.readPrivate(fixture.path).state).not.toBe('verified');
+  });
+});
+
+describe('deployment and authorization evidence integrity', () => {
+  const now = Date.parse('2026-10-09T06:00:00Z');
+  const context = { environment: 'DEV', publicApiUrl: qa.publicApi('DEV', 'au'), now };
+  const deployments = qa.SERVICES.map((service: string) => service === 'CIAM' ? { service, ...context,
+    observedAt: new Date(now).toISOString(), source: 'oidc-discovery',
+    sourceReference: `https://qa.ciamlogin.com/${uuid(50)}/v2.0/.well-known/openid-configuration`,
+    identity: { tenantId: uuid(50), clientId: uuid(51), issuer: `https://qa.ciamlogin.com/${uuid(50)}/v2.0`,
+      discoveryUrl: `https://qa.ciamlogin.com/${uuid(50)}/v2.0/.well-known/openid-configuration`, verified: true } }
+    : { service, ...context, parity: 'main', mainSha: 'a'.repeat(40), observedSha: 'a'.repeat(40), mainObservedAt: new Date(now).toISOString(),
+      observedAt: new Date(now).toISOString(), source: 'revision-endpoint', sourceReference: 'https://example.invalid/revisions/' + service,
+      runtime: { sourceSha: 'a'.repeat(40), active: true, ready: true, revision: 'owned-revision', artifactDigest: 'sha256:' + 'b'.repeat(64) },
+      selectedRelease: { sourceSha: 'a'.repeat(40), configured: true, status: 'succeeded', kind: 'container', deploymentId: 'owned-deployment', artifactDigest: 'sha256:' + 'b'.repeat(64) } });
+  test('requires every service exactly once, the same environment and fresh actual SHA observations', () => {
+    expect(qa.deploymentParity(deployments, context)).toBe(true);
+    expect(qa.deploymentParity(deployments.slice(1), context)).toBe(false);
+    expect(qa.deploymentParity([...deployments, deployments[0]], context)).toBe(false);
+    for (const patch of [{ environment: 'TEST' }, { observedSha: 'b'.repeat(40) }, { mainSha: 'synthetic', observedSha: 'synthetic' },
+      { observedAt: '2020-01-01' }, { source: 'health-only' }, { sourceReference: '' }]) {
+      expect(qa.deploymentParity([{ ...deployments[0], ...patch }, ...deployments.slice(1)], context)).toBe(false);
+    }
+    expect(qa.deploymentParity([{ ...deployments[0], runtime: { ...deployments[0].runtime, ready: false } }, ...deployments.slice(1)], context)).toBe(false);
+    expect(qa.deploymentParity([{ ...deployments[0], selectedRelease: { ...deployments[0].selectedRelease, sourceSha: 'c'.repeat(40) } }, ...deployments.slice(1)], context)).toBe(false);
+  });
+  test('bare pass flags cannot certify role, isolation or ten-cycle qualification', () => {
+    const candidate = { gitSha: 'a'.repeat(40), runtimeSha256: 'b'.repeat(64) };
+    expect(qa.authorizationVerified({ authorizationEvidence: { roleMatrix: 'passed', tenantIsolation: 'passed' } }, candidate, context)).toBe(false);
+    expect(qa.cyclesVerified({ cycleEvidence: { qualified: true } }, candidate, context)).toBe(false);
+  });
+});

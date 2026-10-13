@@ -4,14 +4,14 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig } from '../lib/auth.js';
+import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig, getActiveAuthConfigMismatch } from '../lib/auth.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
   buildPublicApiEnvSyncNotice,
   resolveActiveTenantContext,
   resolvePublicApiUrl,
 } from '../lib/tenant-context.js';
-import { getActiveProfile } from '../lib/profile.js';
+import { assertActiveProfileApiCoherence, getActiveProfile } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 function parseCallbackPort(value: string | undefined): number | undefined {
@@ -97,6 +97,9 @@ What happens next:
 
       try {
         const projectRoot = await findProjectRoot();
+        await assertActiveProfileApiCoherence(projectRoot || undefined);
+        const mismatch = await getActiveAuthConfigMismatch(tokens, projectRoot || undefined);
+        if (mismatch) throw new Error(mismatch);
         const publicApiUrl = await resolvePublicApiUrl(projectRoot || undefined);
         const context = await resolveActiveTenantContext({
           projectRoot: projectRoot || undefined,

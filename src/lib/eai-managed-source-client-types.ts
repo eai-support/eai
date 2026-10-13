@@ -43,6 +43,9 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
     private?: boolean;
   };
   review?: {
+    /** The source-operation API uses the immutable merged commit field. */
+    mergedCommitSha?: string;
+    /** Publication summaries use a separate merged-SHA field. */
     mergedSha?: string;
     pullRequestUrl?: string;
     [key: string]: unknown;

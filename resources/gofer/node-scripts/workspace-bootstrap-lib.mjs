@@ -6,6 +6,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { SUPPORTED_HOSTS } from './gofer-surface-update.mjs';
 import { parseStageCommand } from './parse-stage-command.mjs';
+import { buildSupportReportContract } from './generate-commands.mjs';
 
 export const GOFER_VERSION_FILE = path.join('.specify', '.gofer-version');
 export const CORE_SENTINELS = [
@@ -950,7 +951,7 @@ function buildEaiRepoContractSection(projectInfo) {
 - If CLI, login, workspace, template, or Gofer readiness is missing or stale during app delivery, use the public \`eai\` entrypoint and the internal first-run setup contract before building.
 - Use \`eai update --check\`, \`eai --describe\`, \`eai agent guide --format json\`, \`eai template check --format json\`, \`eai gofer refresh --check --format json\`, and \`eai workflow readiness --format json\` when the CLI advertises them before assuming the repo is current.
 - Do not invent, guess, or complete EAI CLI commands from memory. Verify exact \`eai ...\` syntax and flags with \`eai --describe\` and command-specific \`--help\` before suggesting or running them. If the installed CLI does not list a command, do not run it.
-- After any \`eai\` command error, use \`eai errors explain <code-or-reason> --format json\` before guessing remediation.
+- Follow the recovery rule in Support only when the person asks below; do not query guidance twice for the same original failure.
 - If \`eai errors explain\` is unavailable, match \`.specify/references/platform/eai-error-catalog.yaml\`, run read-only diagnostics before mutating fixes, and stop at the retry or escalation condition.
 - For \`eai user invite\` 5xx or \`EXTERNAL_SERVICE_ERROR\`, check existing members with \`eai user list --workspace <workspace-id> --search <email> --format json\`; use \`eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json\` only after verification and user approval. The platform role ID \`tenant-admin\` means workspace admin access. Then tell the app user to sign out and sign back in.
 - For \`MISSING_TENANT\`, \`app_token_tenant_context_required\`, or "Tenant context required for app tokens" on platform user lookup or membership prerequisites, run \`eai errors explain app_token_tenant_context_required --format json\`, confirm workspace context, and retry \`/v4/platform/tenants/<tenant-id>/...\` routes before changing workspace members, Entra, role definitions, databases, or cloud portals.
@@ -1081,6 +1082,8 @@ blocking findings.
 
 ${buildEaiRepoContractSection(projectInfo)}
 
+${buildSupportReportContract()}
+
 ## Core Principles
 
 - **Simplicity First**: Make every change as simple as possible. Impact minimal code.
@@ -1090,7 +1093,6 @@ ${buildEaiRepoContractSection(projectInfo)}
 }
 
 export function buildClaudeMd(projectInfo) {
-  const eaiSection = buildEaiRepoContractSection(projectInfo);
 
   return `# CLAUDE.md
 
@@ -1137,7 +1139,7 @@ check-repair iterations, and validation must run
 \`node .specify/scripts/node/gofer-loop-audit.mjs --feature-dir .specify/specs/{feature} --stage 6_validate --strict\`
 before declaring the work complete.
 
-${eaiSection}
+Support starts only when the person explicitly requests support. Follow the full support contract in AGENTS.md.
 `;
 }
 
@@ -1159,6 +1161,8 @@ This project uses Gofer for spec-driven development. Run \`/eai\` to start or co
 Gofer routes internally through \`.specify/commands/*.md\` contracts; validation is the terminal quality gate and includes the final engineering review loop. Before EAI readiness, classify the request: app delivery continues directly, while clear non-app work asks once before skipping EAI workspace/app setup. Artifacts in \`.specify/specs/{feature}/\`.
 
 ${eaiSection}
+
+${buildSupportReportContract()}
 
 ## Code Quality
 

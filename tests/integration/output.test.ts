@@ -40,4 +40,32 @@ describe('output redaction', () => {
     expect(printed).toContain('"accessToken": "[redacted]"');
     expect(printed).toContain('"clientSecret": "[redacted]"');
   });
+
+  test.each(['tenant_deauthorization', 'tenantDeauthorization'])('preserves only safe %s booleans while retaining secret masking', key => {
+    const summary = { removed: false, already_absent: true, clientSecret: '<fixture-hidden-summary-secret>', warning: 'Bearer fixture-private-token' };
+    const input = { body: { [key]: summary, Authorization: 'Bearer fixture-private-token', tenant_authorization: { secret: '<fixture-hidden-summary-secret>' } } };
+    const expected = { body: { [key]: { removed: false, already_absent: true }, Authorization: '[redacted]', tenant_authorization: '[redacted]' } };
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(expected);
+    expect(out.redactSensitiveDeep(input)).toEqual(expected);
+  });
+
+  test('preserves camel case receipt booleans without preserving extra upstream fields', () => {
+    expect(out.redactSensitiveDeep({ tenantDeauthorization: { removed: true, alreadyAbsent: false, debug: '<fixture-private-content>' } }))
+      .toEqual({ tenantDeauthorization: { removed: true, alreadyAbsent: false } });
+  });
+
+  test.each([
+    '[redacted]', '{"removed":true,"already_absent":false}', null, [],
+    { removed: '<fixture-hidden-summary-secret>', already_absent: false },
+    { removed: true }, { removed: true, already_absent: true }, { removed: false, already_absent: false },
+    { removed: false, already_absent: true, alreadyAbsent: false },
+  ])('masks invalid authorization summaries instead of exposing arbitrary data: %j', summary => {
+    const input = { tenant_deauthorization: summary };
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual({ tenant_deauthorization: '[redacted]' });
+    expect(out.redactSensitiveDeep(input)).toEqual({ tenant_deauthorization: '[redacted]' });
+  });
 });
