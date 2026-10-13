@@ -43,6 +43,15 @@ export class TenantLoginRequiredError extends Error {
   }
 }
 
+export class TenantAuthConfigMismatchError extends Error {
+  readonly safeMessage = "Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.";
+
+  constructor(diagnostic: string) {
+    super(diagnostic);
+    this.name = "TenantAuthConfigMismatchError";
+  }
+}
+
 export class TenantMembershipAuthError extends Error {
   readonly status?: number;
 
@@ -732,7 +741,7 @@ export async function fetchTenantAdminMemberships(
   }
   const authMismatch = await getActiveAuthConfigMismatch(tokens);
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
   const resolvedPublicApiUrl = publicApiUrl
@@ -879,7 +888,7 @@ export async function resolveActiveTenantContext(options?: {
     options?.projectRoot,
   );
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
   // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call

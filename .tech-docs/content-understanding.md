@@ -100,6 +100,11 @@ when authentication, saved-plan, gateway or capability preflight fails. This
 retention does not confirm existence or ownership; the backend must still
 authorize the original operation before it can be read or resumed.
 
+Missing login returns `E101`; an expired or rejected session returns `E102`.
+A saved login that differs from the selected authentication configuration returns
+`E104` with a safe re-login instruction, without exposing stored authority or
+client values. These errors retain only a valid caller-supplied operation ID.
+
 ```bash
 eai content-understanding status --operation-id <operation-id> --tenant-id <workspace-id> --wait --format json
 eai content-understanding apply --file cu.json --plan cu-plan.json --operation-id <operation-id> --tenant-id <workspace-id> --wait --format json

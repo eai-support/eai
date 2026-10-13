@@ -247,6 +247,59 @@ describe('CLI backend audit evidence', () => {
     expect(report.commands[0].status).toBe('passed'); expect(report.aliasEvidence[0].status).toBe('passed');
     expect(report.optionCoverageComplete).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
   });
+  test.each(([
+    ['commands', 'commands'], ['commands', 'aliases'], ['commands', 'unsupported'],
+    ['aliases', 'aliases'], ['aliases', 'unsupported'], ['unsupported', 'unsupported'],
+  ] as const).flatMap(([source, target]) => [false, true].map(caseFolded => ({ source, target, caseFolded }))))
+    ('imported $source to $target receipt reuse cannot qualify several capabilities (caseFolded=$caseFolded)', ({ source, target, caseFolded }) => {
+      const { input, decisions } = completeContractModel(), unsupported = unsupportedModel();
+      Object.assign(input.schema, { subcommands: [...input.schema.subcommands, ...unsupported.schema.subcommands] });
+      decisions.push(...unsupported.decisions);
+      const collections = { commands: input.evidence.commands, aliases: input.evidence.aliases, unsupported: unsupported.evidence.unsupported };
+      Object.assign(input.evidence, { unsupported: collections.unsupported });
+      const executionId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa90';
+      const original = collections[source][0], duplicate = JSON.parse(JSON.stringify(collections[target][0]));
+      if (source === 'commands' && target === 'commands') {
+        input.schema.subcommands[0].subcommands.push({ command: 'info', options: input.schema.subcommands[0].subcommands[0].options });
+        duplicate.command = 'eai workspace info'; duplicate.invokedCommand = duplicate.command;
+        for (const assertion of duplicate.assertions) assertion.command = duplicate.command;
+        decisions.push({ ...decisions[0], command: duplicate.command });
+      }
+      const bind = (row: { executionId: string; assertions: AuditAssertion[]; transportObservations?: { executionId: string }[] }, id: string): void => {
+        row.executionId = id;
+        for (const assertion of row.assertions) assertion.executionId = id;
+        for (const observed of row.transportObservations || []) observed.executionId = id;
+      };
+      bind(original, executionId); bind(duplicate, caseFolded ? executionId.toUpperCase() : executionId);
+      Object.assign(input.evidence, { [target]: [...collections[target], duplicate] });
+      const report = buildAudit(input, decisions);
+      expect(report.evidenceValidation.valid, `${source}/${target}; caseFolded=${caseFolded}`).toBe(false);
+      expect(report.evidenceValidation.malformedAttempts).toContainEqual(expect.objectContaining({
+        collection: target, reason: 'duplicate-execution-id', command: duplicate.command,
+      }));
+      expect(report.commands.every((row: { actualExecutionStatus: string }) => row.actualExecutionStatus !== 'passed')).toBe(true);
+      expect(report.aliasCoverageComplete).toBe(false); expect(report.optionCoverageComplete).toBe(false);
+      expect(report.unsupportedVerified).toBe(false); expect(report.backendCertified).toBe(false); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test('distinct invocations across all collections preserve options and multiple assertions on one invocation', () => {
+    const { input, decisions } = completeContractModel(), unsupported = unsupportedModel();
+    Object.assign(input.schema, { subcommands: [...input.schema.subcommands, ...unsupported.schema.subcommands] });
+    decisions.push(...unsupported.decisions); Object.assign(input.evidence, { unsupported: unsupported.evidence.unsupported });
+    const report = buildAudit(input, decisions);
+    expect(report.evidenceValidation.valid).toBe(true);
+    expect(report.commands.find((row: { command: string }) => row.command === 'eai workspace list').status).toBe('passed');
+    expect(report.aliasCoverageComplete).toBe(true); expect(report.optionCoverageComplete).toBe(true);
+    expect(report.unsupportedVerified).toBe(true); expect(report.fullCapabilityQualified).toBe(false);
+  });
+  test.each(['failed', 'blocked'])('duplicate receipts retain observed %s command and option precedence', status => {
+    const { input, decisions } = completeContractModel(), original = input.evidence.commands[0];
+    input.evidence.commands.push(JSON.parse(JSON.stringify(original)));
+    Object.assign(original, { status, exitCode: 1 });
+    const report = buildAudit(input, decisions);
+    expect(report.commands[0].status).toBe(status);
+    expect(report.optionEvidence.every((row: { status: string }) => row.status === status)).toBe(true);
+    expect(report.evidenceValidation.valid).toBe(false); expect(report.backendCertified).toBe(false);
+  });
   test.each([undefined, null, 1, 2, '0'])('supported command and alias exit %j never qualifies passing assertions', exitCode => {
     const { input, decisions } = completeContractModel();
     for (const row of [...input.evidence.commands, ...input.evidence.aliases]) Object.assign(row, { exitCode });
@@ -730,14 +783,21 @@ describe('CLI backend audit evidence', () => {
   });
   test.each(['failed', 'blocked', 'running'])('later successful alias receipts preserve an earlier %s observation', status => {
     const { input, decisions } = completeContractModel();
-    input.evidence.aliases.unshift({ ...input.evidence.aliases[0], status });
+    const original = input.evidence.aliases[0], executionId = '00000000-0000-4000-8000-000000000992';
+    input.evidence.aliases.unshift({ ...original, status, executionId,
+      assertions: original.assertions.map(assertion => ({ ...assertion, executionId })),
+      transportObservations: original.transportObservations.map(observed => ({ ...observed, executionId })) });
     const report = buildAudit(input, decisions);
     expect(report.aliasCoverageComplete).toBe(false);
     expect(report.aliasEvidence[0].status).toBe(status === 'running' ? 'incomplete' : status);
   });
   test.each(['failed', 'blocked', 'running', 'incomplete'])('option success cannot mask a retained %s attempt for that option', status => {
     const { input, decisions } = completeContractModel();
-    input.evidence.commands.push({ ...input.evidence.commands[0], status, options: ['--format'] });
+    const original = input.evidence.commands[0], executionId = '00000000-0000-4000-8000-000000000993';
+    input.evidence.commands.push({ ...original, status, executionId, options: ['--format'],
+      assertions: original.assertions.filter(assertion => assertion.option === undefined || assertion.option === '--format')
+        .map(assertion => ({ ...assertion, executionId })),
+      transportObservations: original.transportObservations.map(observed => ({ ...observed, executionId })) });
     const report = buildAudit(input, decisions);
     expect(report.optionEvidence.find((row: { option: string }) => row.option === '--format').status)
       .toBe(['running', 'incomplete'].includes(status) ? 'incomplete' : status);

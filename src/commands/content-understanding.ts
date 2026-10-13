@@ -47,7 +47,7 @@ function tenantId(options: CuOptions, manifest?: ContentUnderstandingManifest): 
 async function contextFor(id: string): Promise<CommandContext> {
   const context = await resolveCommandContext({ tenantId: id, interactive: false, forceRefresh: true,
     validatePublicApiUrl: requireManagedPublicApiUrl, pinPublicApiUrl: true,
-    onError: code => { throw new ContentUnderstandingError(code, errorCatalog[code].message); } });
+    onError: (code, message) => { throw new ContentUnderstandingError(code, message ?? errorCatalog[code].message); } });
   if (context.tenantId !== id) throw new ContentUnderstandingError('CU_TENANT_MISMATCH', 'Resolved workspace differs from the requested workspace.');
   return context;
 }

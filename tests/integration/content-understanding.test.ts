@@ -463,6 +463,47 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       expect(dispatched).toEqual(stage === 'membership' ? ['/public/v4/identity/tenants'] : []);
       expect(output).not.toContain('owned-preflight-token');
     });
+  test.each(['apply', 'status'])('compiled %s maps stored-login/profile mismatch to safe typed authentication failure', async command => {
+    const actualGateway = 'https://api.au.myenterprise.ai/public';
+    const profile = 'owned-auth-mismatch';
+    const observer = join(directory, 'observe-auth-mismatch.mjs'), networkLog = join(directory, 'auth-mismatch-network.log');
+    await mkdir(join(directory, 'src', 'eai.config'), { recursive: true });
+    await writeFile(join(directory, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n');
+    await writeFile(join(directory, '.env.local'), `BASE_URL_PUBLIC_API=${actualGateway}\n`);
+    await writeFile(observer, `import {appendFileSync} from 'node:fs';globalThis.fetch=async()=>{appendFileSync(${JSON.stringify(networkLog)},'attempt\\n');throw new Error('Unexpected auth-mismatch request');};`, { mode: 0o600 });
+    const childEnv = { ...process.env, HOME: directory, USERPROFILE: directory, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '',
+      BASE_URL_PUBLIC_API: actualGateway, EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` };
+    const setup = spawnSync(process.execPath, ['--input-type=module', '-e', `
+      import {mkdir,writeFile} from 'node:fs/promises';
+      import {join} from 'node:path';
+      import {storeTokens} from ${JSON.stringify(new URL('../../dist/lib/auth.js', import.meta.url).href)};
+      import {setActiveProfile,DEFAULT_PROD_AUTH_TENANT_ID,DEFAULT_PROD_AUTH_TENANT_NAME,DEFAULT_PROD_AUTH_CLIENT_ID} from ${JSON.stringify(new URL('../../dist/lib/profile.js', import.meta.url).href)};
+      await mkdir(join(process.env.HOME,'.eai'),{mode:0o700});
+      await writeFile(join(process.env.HOME,'.eai','config.json'),JSON.stringify({profiles:{${JSON.stringify(profile)}:{publicApiUrl:${JSON.stringify(actualGateway)},
+        authTenantId:DEFAULT_PROD_AUTH_TENANT_ID,authTenantName:DEFAULT_PROD_AUTH_TENANT_NAME,authClientId:DEFAULT_PROD_AUTH_CLIENT_ID}}}),{mode:0o600});
+      setActiveProfile(${JSON.stringify(profile)});
+      await storeTokens({accessToken:'<owned-auth-mismatch-token>',expiresAt:Date.now()+3600000,
+        tenantId:'private-stored-authority',tenantName:'private-stored-authority-name',clientId:'private-stored-client',
+        oid:'owned-auth-mismatch-actor',activeTenantId:${JSON.stringify(tenantId)},publicApiUrl:${JSON.stringify(actualGateway)}});`],
+    { encoding: 'utf8', timeout: 5000, env: childEnv });
+    expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
+    for (const operationId of ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', jwtShapedIdentifier]) {
+      const args = command === 'apply' ? applyArgs(['--operation-id', operationId]) : ['status', '--operation-id', operationId, ...scoped];
+      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', profile,
+        'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
+      const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
+      expect(result.status).toBe(1); expect(result.signal).toBeNull(); expect(payload).not.toHaveProperty('body');
+      if (operationId === jwtShapedIdentifier) {
+        expect(payload).toMatchObject({ error: { code: 'CU_OPERATION_INVALID' } });
+        expect(payload.error).not.toHaveProperty('operationId'); expect(output).not.toContain(operationId);
+      } else {
+        expect(payload).toMatchObject({ ok: false, error: { code: 'E104', operationId,
+          message: 'Authentication failed: Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.' } });
+      }
+      for (const privateValue of ['private-stored-authority', 'private-stored-client', 'owned-auth-mismatch-token']) expect(output).not.toContain(privateValue);
+      expect(existsSync(networkLog)).toBe(false);
+    }
+  });
   test.each(['apply', 'status'])('compiled %s rejects an invalid ID before a missing profile can resolve auth or expose it', async command => {
     const args = command === 'apply' ? applyArgs(['--operation-id', '../foreign-operation']) : ['status', '--operation-id', '../foreign-operation', ...scoped];
     const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', 'missing-owned-profile',

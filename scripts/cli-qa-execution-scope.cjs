@@ -40,7 +40,7 @@ function primaryTransportMatches(command, observed) {
     return false;
   }
   if (group === 'whoami') return path === '/v4/identity/tenants' && observed.method === 'GET';
-  if (group === 'doctor') return path === '/health' || path === '/v4/identity/me';
+  if (group === 'doctor') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me');
   if (group === 'app' || group === 'vertical' || group === 'init' || group === 'create') {
     const apps = tenant + '/apps', enrollment = resources + '/tenant-vertical-enrollment';
     const appSegments = segments(apps);
@@ -93,12 +93,23 @@ function primaryTransportMatches(command, observed) {
       && observed.method === { upload: 'POST', get: 'GET', delete: 'DELETE' }[command.split(' ')[3]];
     return false;
   }
-  if (group === 'types') return /\/v4\/data\/resources\/(?:object-types|schema)(?:\/|$)/.test(path);
+  if (group === 'types') {
+    const definitions = '/v4/data/resources/object-types', definitionSegments = segments(definitions);
+    if (['seed', 'diff', 'pull'].includes(action) && observed.method === 'GET')
+      return path === definitions || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId);
+    return action === 'seed' && ((observed.method === 'POST' && path === definitions)
+      || (observed.method === 'PATCH' && definitionSegments.length === 1 && definitionSegments[0] !== ''));
+  }
   if (group === 'classifier') return /\/v4\/data\/resources\/.*classifier/.test(path);
   if (group === 'docs' || group === 'content-understanding') return path.startsWith('/v4/data/documents/');
   if (group === 'workflow') return /^\/v4\/(?:workflows|integrations)(?:\/|$)/.test(path)
     || /\/(?:shared-workflow-config|vertical-product-config|shared-ai-profile|shared-chatbot-config)(?:\/|$)/.test(path);
-  if (group === 'chat') return path.startsWith('/v4/ai/');
+  if (group === 'chat') {
+    if (observed.method !== 'POST' || !['send', 'stream'].includes(action)) return false;
+    const chatSegments = segments('/v4/ai/chat' + (action === 'stream' ? '/stream' : ''));
+    return chatSegments.length === 3 && chatSegments[0] === encodeURIComponent(observed.tenantId)
+      && chatSegments[1] !== '' && chatSegments[2] !== '';
+  }
   if (group === 'provision') return path.startsWith('/v4/platform/provisioning/') || path.startsWith('/v4/data/resources/schema/');
   if (group === 'deploy') return path.startsWith('/v4/platform/') && !/\/tenants\/[^/]+\/?$/.test(path);
   if (group === 'verify') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me'
