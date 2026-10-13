@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { createRequire } from 'node:module'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -79,6 +79,106 @@ describe('QA primary scope follows declared client routes', () => {
   ])('does not qualify undeclared $command route $path', ({ command, method, path }) => {
     const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
       tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
+      transportObservations: [observed] })).toBe(false)
+  })
+})
+
+describe('QA resource operations require their actual route shape', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { command: string; invoke: (client: PlatformAPIClient, type: string, file: string) => Promise<Response>;
+    equivalent?: string[] }[] = [
+    { command: 'eai resources list', invoke: (client, type) => client.listResources(type) },
+    { command: 'eai resources get', invoke: (client, type) => client.getResource(type, 'owned-id') },
+    { command: 'eai resources create', invoke: (client, type) => client.createResource(type, { value: 0 }) },
+    { command: 'eai resources update', invoke: (client, type) => client.updateResource(type, 'owned-id', { value: 0 }, 1) },
+    { command: 'eai resources delete', invoke: (client, type) => client.deleteResource(type, 'owned-id') },
+    { command: 'eai resources batch-create', invoke: (client, type) => client.batchCreateResources(type, [{ data: { value: 0 } }]) },
+    { command: 'eai resources batch-import', invoke: (client, type) => client.batchImportResources(type, [{ data: { value: 0 } }], { projectionMode: 'deferred' }) },
+    { command: 'eai resources batch-update', invoke: (client, type) => client.batchUpdateResources(type, [{ id: 'owned-id', data: { value: 0 }, version: 1 }]) },
+    { command: 'eai resources batch-delete', invoke: (client, type) => client.batchDeleteResources(type, ['owned-id']) },
+    { command: 'eai resources aggregate', invoke: (client, type) => client.aggregateResources(type, { groupBy: ['value'], metrics: { count: { operation: 'count' } } }) },
+    { command: 'eai resources query', invoke: (client, type) => client.queryResources({ object_types: [type], limit: 1 }) },
+    { command: 'eai resources search', invoke: (client, type) => client.searchResources({ query: 'owned', objectTypes: [type] }) },
+    { command: 'eai resources storage status', invoke: client => client.getResourceStorageStatus() },
+    { command: 'eai resources storage doctor', invoke: client => client.getResourceStorageDoctor(), equivalent: ['eai resources doctor'] },
+    { command: 'eai resources doctor', invoke: client => client.getStorageDoctor(), equivalent: ['eai resources storage doctor'] },
+    { command: 'eai resources performance-status', invoke: client => client.getResourceStorageSchemaStatus() },
+    { command: 'eai resources sync-schema', invoke: client => client.syncStorageSchema({ objectTypes: ['owned-resource'] }) },
+    { command: 'eai resources schema', invoke: client => client.getSchema() },
+    { command: 'eai resources indexes-plan', invoke: client => client.planResourceIndexes(['owned-resource']) },
+    { command: 'eai resources cache-refresh', invoke: client => client.refreshResourceCache(['owned-resource'], 'Controlled scope') },
+    { command: 'eai resources file upload', invoke: (client, type, file) => client.uploadResourceFile(type, 'owned-id', 'document', file) },
+    { command: 'eai resources file get', invoke: (client, type) => client.downloadResourceFile(type, 'owned-id', 'document') },
+    { command: 'eai resources file delete', invoke: (client, type) => client.deleteResourceFile(type, 'owned-id', 'document') },
+  ]
+  const candidates = [...routes.map(route => route.command), 'eai resources indexes-apply', 'eai resources unsupported-action']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].flatMap(gateway =>
+    ['owned-resource', 'OwnedResource'].map(type => ({ ...route, gateway, type })))))
+    ('$command uses its declared operation with $type at $gateway', async ({ command, invoke, equivalent, gateway, type }) => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-resource-route-contract-'))
+      try {
+        const file = join(home, 'owned.txt'); await writeFile(file, 'controlled')
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+        await invoke(new PlatformAPIClient(gateway, tenant), type, file)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [url, request] = fetchMock.mock.calls[0]
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+          tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+          method: request?.method || 'GET', path: new URL(String(url)).pathname }
+        expect(observed.tenantId).toBe(tenant)
+        for (const candidate of candidates) {
+          const expected = candidate === command || equivalent?.includes(candidate) === true
+          expect(primaryTransportMatches(candidate, observed), `${candidate} cannot borrow ${command} evidence`).toBe(expected)
+          expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway,
+            transportObservations: [observed] })).toBe(expected)
+        }
+        if (command === 'eai resources batch-import') {
+          expect(observed.path.endsWith('/owned-resource/batch/import')).toBe(true)
+          expect(JSON.parse(String(request?.body))).toEqual({ items: [{ data: { value: 0 } }], projectionMode: 'deferred' })
+        }
+        const wrongMethod = observed.method === 'GET' ? 'PATCH' : 'HEAD'
+        expect(primaryTransportMatches(command, { ...observed, method: wrongMethod })).toBe(false)
+      } finally { await rm(home, { recursive: true, force: true }) }
+    })
+  test('actual SDK stream output cannot qualify the CLI single-resource get or list command', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await new PlatformAPIClient('https://example.test/public', tenant).streamResources('owned-resource')
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { publicApiUrl: 'https://example.test/public', tenantId: tenant, method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(primaryTransportMatches('eai resources get', observed)).toBe(false)
+    expect(primaryTransportMatches('eai resources list', observed)).toBe(false)
+  })
+  test.each([
+    ['create', 'POST', '/owned-resource/batch/delete'],
+    ['create', 'POST', '/query'], ['create', 'POST', '/search'],
+    ['create', 'POST', '/storage/provision'], ['create', 'POST', '/operations/repair'],
+    ['create', 'POST', '/metering'], ['create', 'POST', '/%71uery'],
+    ['list', 'GET', '/storage'], ['list', 'GET', '/metering'],
+    ['get', 'GET', '/owned-resource/owned-id/files/document'],
+    ['get', 'GET', '/owned-resource/%73tream'],
+    ['update', 'PATCH', '/owned-resource/owned-id'],
+    ['delete', 'DELETE', '/owned-resource/batch/delete'],
+    ['batch-delete', 'DELETE', '/owned-resource/batch/delete'],
+    ['batch-import', 'POST', '/owned-resource/batch/create'],
+    ['batch-update', 'PUT', '/owned-resource/batch/update'],
+    ['aggregate', 'POST', '/owned-resource/owned-id/actions/aggregate'],
+    ['query', 'POST', '/owned-resource'], ['search', 'GET', '/search'],
+    ['storage status', 'GET', '/storage/doctor'],
+    ['file get', 'GET', '/owned-resource/owned-id/files/document/sas'],
+    ['file delete', 'DELETE', '/owned-resource/owned-id'],
+    ['create', 'POST', '/owned-resource/'], ['create', 'POST', '//owned-resource'],
+    ['get', 'GET', '/owned-resource/'], ['get', 'GET', '/owned-resource/owned%2fid'],
+    ['get', 'GET', '/owned-resource/owned%5cid'],
+    ['get', 'GET', '/owned-resource/%'],
+  ])('refuses mismatched resources %s %s route %s', (action, method, suffix) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: `/public/v4/data/resources/${tenant}${suffix}` }
+    const command = 'eai resources ' + action
     expect(primaryTransportMatches(command, observed)).toBe(false)
     expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
       transportObservations: [observed] })).toBe(false)
