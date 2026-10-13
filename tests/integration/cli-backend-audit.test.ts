@@ -229,6 +229,18 @@ describe('CLI backend audit evidence', () => {
       expect(report.fullCapabilityQualified).toBe(false);
     });
 
+  test.each([{ options: [] }, { options: ['--apply'] }, { options: ['--schema'] }, { options: ['--schema', '--apply'] }])(
+    'bundle flags $options cannot certify a backend from local-style summaries', ({ options }) => {
+      const { input } = completeContractModel(), row = input.evidence.commands[0], command = 'eai provision resourceapi-bundle';
+      input.schema = { command: 'eai', subcommands: [{ command: 'provision', aliases: [], subcommands: [{ command: 'resourceapi-bundle', options: [] }] }] };
+      input.evidence.aliases = []; row.command = command; row.invokedCommand = command; row.options = options;
+      row.assertions = [{ ...row.assertions[0], command }]; Object.assign(row, { transportObservations: undefined });
+      const result = buildAudit(input, [{ command, crud: 'create-local', coverage: 'live', notes: 'modeled consumer DTO only' }]);
+      expect(result.commands[0].requiresProtectedBackend).toBe(true);
+      expect(result.commands[0].routeFamilies).toContain('/v4/platform');
+      expect(result.commands[0].status).toBe('incomplete'); expect(result.backendCertified).toBe(false); expect(result.fullCapabilityQualified).toBe(false);
+    });
+
   test.each(['uuid', 'gateway', 'tenant', 'kind', 'auxiliary', 'global'])(
     'a protected %s transport mismatch stays incomplete independently of passing summaries', kind => {
       const { input, decisions } = completeContractModel();

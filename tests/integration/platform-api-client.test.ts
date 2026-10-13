@@ -50,6 +50,7 @@ describe('QA primary scope follows declared client routes', () => {
     { name: 'Object Type seed update', command: 'eai types seed', invoke: client => client.updateObjectType('owned-definition', { slug: 'owned-resource' }), refuse: ['eai types diff', 'eai types pull'] },
     { name: 'chat send', command: 'eai chat send', invoke: client => client.sendChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat stream'] },
     { name: 'chat stream', command: 'eai chat stream', invoke: client => client.streamChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat send'] },
+    { name: 'PublicAPI passive bundle request', command: 'eai provision resourceapi-bundle', invoke: client => client.requestPublicApi(`/v4/platform/tenants/${tenant}/resourceapi/passive-bundle`, { method: 'POST', body: { installId: 'owned-install', apply: true } }) },
   ]
   afterEach(() => vi.restoreAllMocks())
   test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))(
@@ -109,6 +110,49 @@ describe('QA primary scope follows declared client routes', () => {
       expect(primaryTransportMatches('eai doctor', observed)).toBe(false)
       expect(observedScopeVerified({ command: 'eai doctor', executionId, scopeTenantId: tenant,
         publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+    })
+})
+
+describe('QA app source actions require their declared primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { action: string; invoke: (client: PlatformAPIClient) => Promise<Response>; equivalent?: string[] }[] = [
+    { action: 'connect-existing', invoke: client => client.registerSourceUnknownApp(tenant, 'owned-app', { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'connect-existing' }), equivalent: ['adopt-observed'] },
+    { action: 'adopt-observed', invoke: client => client.registerSourceUnknownApp(tenant, 'owned-app', { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'adopted-observed' }), equivalent: ['connect-existing'] },
+    { action: 'workflow-setup', invoke: client => client.setupSourceUnknownWorkflow(tenant, 'owned-app', { environment: 'dev' }) },
+    { action: 'workflow-evidence', invoke: client => client.submitSourceUnknownWorkflowEvidence(tenant, 'owned-app', {
+      operationId: 'source-unknown-owned', nonce: 'controlled-nonce', workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'a'.repeat(40),
+      collectorDigest: 'sha256:' + 'b'.repeat(64), ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: 'b'.repeat(64),
+      artifactDigest: 'sha256:' + 'b'.repeat(64), imageArtifact: { id: 1, name: 'eai-generated-app-image', archiveDigest: 'sha256:' + 'b'.repeat(64) },
+      imageDigest: 'sha256:' + 'b'.repeat(64), schemaProvenance: { templateVersion: 'controlled', baseTemplateSha: 'a'.repeat(40), schemaDigest: 'sha256:' + 'b'.repeat(64), validatorDigest: 'sha256:' + 'b'.repeat(64) },
+      workflowRun: { id: 1, attempt: 1 }, validationSummary: { status: 'passed' },
+    }, 'controlled-oidc-token') },
+    { action: 'deploy-source-unknown', invoke: client => client.requestSourceUnknownDeployment(tenant, 'owned-app', { operationId: 'source-unknown-owned' }) },
+    { action: 'deploy-source-unknown-status', invoke: client => client.getLatestSourceUnknownDeployment(tenant, 'owned-app') },
+  ]
+  const candidates = [...routes.map(row => row.action), 'create', 'delete', 'provision', 'auth status', 'unknown-action']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://dev-api.au.myenterprise.ai/public', 'https://test-api.au.myenterprise.ai/public'].map(gateway => ({ ...route, gateway }))))(
+    '$action uses its actual SDK primary route at $gateway', async ({ action, invoke, equivalent, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      const client = new PlatformAPIClient(gateway, tenant)
+      await invoke(client)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      for (const candidate of candidates) for (const group of ['app', 'vertical']) {
+        const expected = candidate === action || equivalent?.includes(candidate) === true, command = `eai ${group} ${candidate}`
+        expect(primaryTransportMatches(command, observed), `${command} cannot borrow ${action}`).toBe(expected)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(expected)
+      }
+      const command = 'eai app ' + action
+      expect(primaryTransportMatches(command, { ...observed, method: observed.method === 'GET' ? 'POST' : 'GET' })).toBe(false)
+      fetchMock.mockClear(); await client.listResources('tenant-vertical-enrollment')
+      const [readUrl, readRequest] = fetchMock.mock.calls[0]
+      const auxiliary = { ...observed, method: readRequest?.method || 'GET', path: new URL(String(readUrl)).pathname }
+      expect(primaryTransportMatches(command, auxiliary)).toBe(false)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [auxiliary] })).toBe(false)
     })
 })
 

@@ -32,7 +32,7 @@ const CONTRACTS = {
   support: { routes: ['/api/support/drafts'], services: ['EnterpriseAIGroup-Website'] },
 };
 const LOCAL_GROUPS = new Set(['start', 'dev', 'logout', 'runtime', 'update', 'gofer', 'template', 'blocks', 'errors', 'agent']);
-const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env', 'eai provision resourceapi-bundle']);
+const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env']);
 const UNSUPPORTED = new Map([
   ['eai types define', 'Interactive definition is explicitly unavailable before authentication or network access.'],
   ['eai resources indexes-apply', 'PublicAPI exposes only dry-run index planning; no public index-apply contract exists.'],
