@@ -1537,7 +1537,7 @@ function executedCommand(args) {
 
 function coverageEvidence(commands) {
   return TRACEABILITY.map(row => {
-    const executions = commands.filter(entry => entry.command === row.command);
+    const executions = commands.filter(entry => entry.command === row.command && entry.alias === undefined);
     return { command: row.command, plannedCoverage: row.coverage, executions: executions.length,
       status: row.coverage === 'unsupported' ? 'unsupported'
         : !executions.length ? 'not-run' : executions.some(entry => entry.status === 'failed') ? 'failed'

@@ -473,6 +473,15 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(audit.aliasEvidence.find((row: { alias: string }) => row.alias === created.alias).status).toBe('incomplete');
     expect(audit.backendCertified).toBe(false); expect(audit.fullCapabilityQualified).toBe(false);
   });
+  test('actual alias-only canonical coverage remains not-run in the producer summary', () => {
+    const controlled = harness(), report = controlled.run();
+    const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
+    for (const command of ['eai workspace create', 'eai workspace bootstrap-admin', 'eai workspace delete']) {
+      expect(saved.aliases.some((row: { command: string }) => row.command === command)).toBe(true);
+      expect(saved.commands.some((row: { command: string }) => row.command === command)).toBe(false);
+      expect(saved.coverage.find((row: { command: string }) => row.command === command)).toMatchObject({ status: 'not-run', executions: 0 });
+    }
+  });
   test.each(['gateway', 'tenant'])('actual observed %s forwarding cannot be replaced with selected fixture scope', kind => {
     const controlled = harness({ override(args, result) {
       if (!matches(args, ['publicapi', 'get'])) return undefined;
@@ -937,6 +946,8 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     for (const command of [ownership.creation.command, ownership.cleanup.command]) {
       expect(command.executionSequence).toBe(command.sequence);
       expect(command.assertion.executionSequence).toBe(command.executionSequence);
+      expect(command.executionId).toMatch(/^[a-f0-9-]{36}$/);
+      expect(command.assertion).toMatchObject({ command: command.command, executionId: command.executionId });
     }
     expect(controlled.resources.size).toBe(0);
     expect(controlled.calls.filter(call => matches(call.args, ['resources', 'delete']))).toHaveLength(4);
@@ -1039,8 +1050,9 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(projected).not.toBeNull();
     for (const row of projected.commands) {
       expect(row.environment).toBe(report.environment); expect(row.publicApiUrl).toBe(report.expectedPublicApi);
+      expect(row.executionId).toMatch(/^[a-f0-9-]{36}$/);
       for (const assertion of row.assertions) expect(assertion).toMatchObject({ environment: report.environment,
-        publicApiUrl: report.expectedPublicApi, scopeTenantId: row.scopeTenantId });
+        publicApiUrl: report.expectedPublicApi, scopeTenantId: row.scopeTenantId, command: row.command, executionId: row.executionId });
     }
     // The actual callback-driven runner records controlled npm execution; it cannot certify a normal app build.
     expect(projected.commands.find((row: { command: string }) => row.command === 'npm run build').npmExecution.qualification).toBe('controlled-fixtures');
@@ -1263,6 +1275,13 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
   test('coverage keeps index apply unsupported regardless of mocked success evidence', () => {
     const rows = coverageEvidence([{ command: 'eai resources indexes-apply', status: 'passed' }]) as SmokeReport['coverage'];
     expect(rows.find(row => row.command === 'eai resources indexes-apply')?.status).toBe('unsupported');
+  });
+  test('alias-only canonical coverage ignores aliased success and failure receipts', () => {
+    const command = 'eai workspace list', alias = 'eai tenant list';
+    expect(coverageEvidence([{ command, alias, status: 'passed', coverageComplete: true }])
+      .find((row: { command: string }) => row.command === command)).toMatchObject({ status: 'not-run', executions: 0 });
+    expect(coverageEvidence([{ command, status: 'passed', coverageComplete: true }, { command, alias, status: 'failed' }])
+      .find((row: { command: string }) => row.command === command)).toMatchObject({ status: 'passed', executions: 1 });
   });
 
   test('schema inventory includes action-bearing parents and aliases, excluding the root menu', () => {

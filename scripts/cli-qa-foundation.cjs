@@ -478,9 +478,13 @@ function cycleReceiptVerified(row, foundation) {
     && require('./cli-qa-cycle-steps.cjs').cycleOwnershipVerified(row.ownershipEvidence, row, foundation);
 }
 function cycleIdentitiesFresh(rows) {
+  const executionIds = rows.flatMap(row => [...(row.stepEvidence?.commands || []),
+    row.ownershipEvidence?.creation?.command, row.ownershipEvidence?.cleanup?.command].map(command => command?.executionId));
   return rows.length === 10 && new Set(rows.map(row => row.clientId.toLowerCase())).size === 10
     && new Set(rows.map(row => row.tenantId.toLowerCase())).size === 10 && new Set(rows.map(row => row.appKey)).size === 10
-    && new Set(rows.flatMap(row => [row.enrollmentId.toLowerCase(), row.recreatedEnrollmentId.toLowerCase()])).size === 20;
+    && new Set(rows.flatMap(row => [row.enrollmentId.toLowerCase(), row.recreatedEnrollmentId.toLowerCase()])).size === 20
+    && executionIds.length === 110 && executionIds.every(value => typeof value === 'string' && UUID.test(value))
+    && new Set(executionIds.map(value => value.toLowerCase())).size === 110;
 }
 function cyclesVerified(evidence, candidate, context) {
   if (!qualificationScopeVerified(context)) return false;
