@@ -1250,7 +1250,14 @@ async function normalizeSupportAgents(supportAgentsPath) {
   try {
     handle = await fs.open(supportAgentsPath, flags);
   } catch (error) {
-    if (error?.code === 'ENOENT') return;
+    if (error?.code === 'ENOENT') {
+      try {
+        await fs.lstat(supportAgentsPath);
+      } catch (entryError) {
+        if (entryError?.code === 'ENOENT') return;
+        throw entryError;
+      }
+    }
     if (error?.code === 'ELOOP' || error?.code === 'EISDIR') {
       throw new Error('AGENTS.md must be a regular file, not a symlink.');
     }
