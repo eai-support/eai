@@ -160,7 +160,7 @@ function runQualification(options, dependencies = {}) {
             EAI_E2E_TEST_PROFILE: foundation.actors.adminA.profile, EAI_E2E_TEST_USERNAME: foundation.actors.adminA.email,
             EAI_E2E_TEST_USER_OID: foundation.actors.adminA.oid, EAI_E2E_PARENT_TENANT_ID: foundation.workspaces.a.id,
             EAI_E2E_EXPECTED_PUBLIC_API: foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: options.cleanupPreflight,
-            EAI_E2E_CHILD_HOME_REGION: foundation.region, EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
+            EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
             EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
           requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight),
             'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
