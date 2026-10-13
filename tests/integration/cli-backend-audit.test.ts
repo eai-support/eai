@@ -206,6 +206,29 @@ describe('CLI backend audit evidence', () => {
     expect(result.commands[0].status).toBe('incomplete');
     expect(result.backendCertified).toBe(false); expect(result.fullCapabilityQualified).toBe(false);
   });
+  test.each(['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].flatMap(operation =>
+    ['missing', 'wrong-route', 'correct'].map(route => ({ operation, route }))))(
+    'resource JSON scope cannot certify $operation with a $route primary route independently of passing summaries', ({ operation, route }) => {
+      const { input } = completeContractModel(), row = input.evidence.commands[0];
+      const command = 'eai resources ' + operation;
+      input.schema = { command: 'eai', subcommands: [{ command: 'resources', aliases: [], subcommands: [{ command: operation, options: [] }] }] };
+      input.evidence.aliases = [];
+      row.command = command; row.invokedCommand = command; row.options = [];
+      row.assertions = [{ ...row.assertions[0], command }];
+      const collection = '/public/v4/data/resources/' + row.scopeTenantId + '/project';
+      const primary = { ...row.transportObservations[0], method: route === 'wrong-route' ? 'GET' : operation === 'delete' ? 'DELETE' : 'POST',
+        path: route === 'wrong-route' ? collection : operation === 'delete' ? collection + '/owned-id'
+          : operation.startsWith('batch-') ? collection + '/batch/' + operation.slice(6) : collection };
+      const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: row.executionId,
+        publicApiUrl: row.publicApiUrl, tenantId: row.scopeTenantId, proofKind: 'transport-response', source: 'resource-json' };
+      Object.assign(row, { transportObservations: route === 'missing' ? [responseScope] : [primary, responseScope] });
+      const report = buildAudit(input, [{ command, crud: operation.includes('delete') ? 'delete' : 'create', coverage: 'live', notes: 'modeled consumer DTO only' }]);
+      expect(report.evidenceValidation).toEqual({ valid: true, malformedAttempts: [] });
+      expect(report.commands[0].status).toBe(route === 'correct' ? 'passed' : 'incomplete');
+      expect(report.backendCertified).toBe(route === 'correct');
+      expect(report.fullCapabilityQualified).toBe(false);
+    });
+
   test.each(['uuid', 'gateway', 'tenant', 'kind', 'auxiliary', 'global'])(
     'a protected %s transport mismatch stays incomplete independently of passing summaries', kind => {
       const { input, decisions } = completeContractModel();

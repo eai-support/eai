@@ -113,7 +113,7 @@ describe('QA primary scope follows declared client routes', () => {
 })
 
 describe('QA resource operations require their actual route shape', () => {
-  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const { primaryTransportMatches, observedScopeVerified, observationValid } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
   const tenant = '11111111-1111-4111-8111-111111111111'
   const executionId = '22222222-2222-4222-8222-222222222222'
   const routes: { command: string; invoke: (client: PlatformAPIClient, type: string, file: string) => Promise<Response>;
@@ -151,7 +151,7 @@ describe('QA resource operations require their actual route shape', () => {
       try {
         const file = join(home, 'owned.txt'); await writeFile(file, 'controlled')
         const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
-        await invoke(new PlatformAPIClient(gateway, tenant), type, file)
+        const response = await invoke(new PlatformAPIClient(gateway, tenant), type, file)
         expect(fetchMock).toHaveBeenCalledTimes(1)
         const [url, request] = fetchMock.mock.calls[0]
         const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
@@ -170,6 +170,22 @@ describe('QA resource operations require their actual route shape', () => {
         }
         const wrongMethod = observed.method === 'GET' ? 'PATCH' : 'HEAD'
         expect(primaryTransportMatches(command, { ...observed, method: wrongMethod })).toBe(false)
+        if (['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].includes(command.split(' ')[2])) {
+          const metadata = withPublicRequestObservation({}, response).request as Record<string, unknown>
+          const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, ...metadata, source: 'resource-json' }
+          expect(metadata).toEqual({ publicApiUrl: gateway, tenantId: tenant, proofKind: 'transport-response' })
+          expect(observationValid(responseScope, executionId)).toBe(true)
+          // Exact response scope is supplementary; it cannot replace this request's route receipt.
+          expect(primaryTransportMatches(command, responseScope)).toBe(false)
+          const entry = { command, executionId, scopeTenantId: tenant, publicApiUrl: gateway }
+          expect(observedScopeVerified({ ...entry, transportObservations: [responseScope] })).toBe(false)
+          expect(observedScopeVerified({ ...entry, transportObservations: [observed, responseScope] })).toBe(true)
+          for (const refused of [
+            { ...observed, method: wrongMethod },
+            { ...observed, method: 'GET', path: new URL(gateway).pathname.replace(/\/$/, '') + `/v4/data/resources/${tenant}/project` },
+            { ...observed, executionId: '33333333-3333-4333-8333-333333333333' },
+          ]) expect(observedScopeVerified({ ...entry, transportObservations: [refused, responseScope] })).toBe(false)
+        }
       } finally { await rm(home, { recursive: true, force: true }) }
     })
   test('actual SDK stream output cannot qualify the CLI single-resource get or list command', async () => {
@@ -421,7 +437,7 @@ describe('compiled private QA transport pipe', () => {
         const script = `
           import assert from 'node:assert/strict';
           import { createServer } from 'node:http';
-          import { PlatformAPIClient } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
+          import { PlatformAPIClient, withPublicRequestObservation } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
           const received = [];
           const server = createServer((request, response) => {
             received.push({ path: new URL(request.url, 'http://local.invalid').pathname, tenant: request.headers['x-tenant-id'] });
@@ -435,7 +451,8 @@ describe('compiled private QA transport pipe', () => {
             const resource = await new PlatformAPIClient(gateway, '11111111-1111-4111-8111-111111111111').createResource('project', { secret: 'private-request-body' });
             assert.equal(resource.ok, true); assert.equal((await resource.json()).id, 'owned-row');
             await new PlatformAPIClient(gateway, 'system').requestPublicApi('/v4/identity/me?ticket=private-query', { method: 'GET' });
-            console.log(JSON.stringify({ normalOutputPreserved: true, received, gateway }));
+            console.log(JSON.stringify({ normalOutputPreserved: true, received, gateway,
+              request: ${JSON.stringify(mode)} === 'enabled' ? withPublicRequestObservation({}, resource).request : undefined }));
           } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
         `
         const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -458,6 +475,15 @@ describe('compiled private QA transport pipe', () => {
             ? { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', proofKind: 'unverified-response' }
             : { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', publicApiUrl: normal.gateway,
               tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response', method: 'POST', path: '/v4/data/resources/11111111-1111-4111-8111-111111111111/project' })
+          if (mode === 'enabled') {
+            const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+            const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: observations[0].executionId,
+              ...normal.request, source: 'resource-json' }
+            expect(primaryTransportMatches('eai resources create', responseScope)).toBe(false)
+            expect(observedScopeVerified({ command: 'eai resources create', executionId: observations[0].executionId,
+              scopeTenantId: observations[0].tenantId, publicApiUrl: normal.gateway,
+              transportObservations: [...observations, responseScope] })).toBe(true)
+          }
         }
         expect(fs.readFileSync(file, 'utf8')).toBe('untouched')
       } finally { if (descriptor !== undefined) fs.closeSync(descriptor); await rm(home, { recursive: true, force: true }) }

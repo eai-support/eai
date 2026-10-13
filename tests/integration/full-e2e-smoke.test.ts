@@ -9,6 +9,7 @@ import { findProjectRoot, loadEnvFile, validateObjectTypeDefinitions } from '../
 import { storeTokens } from '../../src/lib/auth.js';
 import { getActiveProfile, setActiveProfile, DEFAULT_PROD_AUTH_TENANT_ID, DEFAULT_PROD_AUTH_TENANT_NAME, DEFAULT_PROD_AUTH_CLIENT_ID } from '../../src/lib/profile.js';
 import { appCommand, buildVerticalEnrollmentData } from '../../src/commands/vertical.js';
+import { toObjectTypeSlug } from '../../src/lib/utils.js';
 
 interface CommandResult { status: number; stdout: string; stderr: string; transportOutput?: string }
 interface SmokeReport {
@@ -783,6 +784,40 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(observed?.status).toBe('failed');
     expect(observed?.scopeTenantId).toBe(kind === 'tenant' ? 'foreign-workspace' : 'qa-parent');
   });
+  test.each(['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].flatMap(operation =>
+    ['missing', 'wrong-route', 'correct'].map(route => ({ operation, route }))))(
+    'resource JSON scope for $operation requires its separate $route request route', ({ operation, route }) => {
+      let attempts = 0;
+      const controlled = harness({ override(args, result, options) {
+        if (!matches(args, ['resources', operation])) return undefined;
+        attempts++;
+        if (route === 'missing') return result;
+        const tenantId = flag(args, '--tenant-id'), collection = `/public/v4/data/resources/${tenantId}/${toObjectTypeSlug(args[2])}`;
+        const path = route === 'wrong-route' ? collection : operation === 'delete' ? collection + '/' + args[3]
+          : operation.startsWith('batch-') ? collection + '/batch/' + operation.slice(6) : collection;
+        return { ...result, transportOutput: JSON.stringify({ schemaVersion: 'eai.cli-qa-transport.v1',
+          executionId: options.env.EAI_CLI_QA_EXECUTION_ID, publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+          tenantId, proofKind: 'transport-response', method: route === 'wrong-route' ? 'GET' : operation === 'delete' ? 'DELETE' : 'POST', path }) + '\n' };
+      } });
+      const report = controlled.run({ EAI_E2E_SYNC_SCHEMA_APPLY: '1' });
+      expect(attempts).toBeGreaterThan(0);
+      const saved = JSON.parse(readFileSync(report.summaryPath, 'utf8'));
+      const executions = saved.executions.filter((row: { command: string }) => row.command === 'eai resources ' + operation);
+      const { observedScopeVerified } = require('../../scripts/cli-qa-execution-scope.cjs');
+      expect(executions).toHaveLength(attempts);
+      for (const row of executions) {
+        expect(row.status).toBe('passed');
+        expect(row.assertions.length).toBeGreaterThan(0);
+        expect(row.transportObservations).toContainEqual({ schemaVersion: 'eai.cli-qa-transport.v1', executionId: row.executionId,
+          publicApiUrl: row.publicApiUrl, tenantId: row.scopeTenantId, proofKind: 'transport-response', source: 'resource-json' });
+        expect(observedScopeVerified(row)).toBe(route === 'correct');
+        if (route !== 'correct') expect(row.coverageComplete).toBe(false);
+      }
+      if (route !== 'correct') expect(report.coverage.find(row => row.command === 'eai resources ' + operation)?.status).toBe('incomplete');
+      expect(report.cleanupVerified).toBe(true);
+      expect(controlled.resources.size).toBe(0);
+    });
+
   test.each(['create', 'batch-create', 'batch-import'].flatMap(operation => ['gateway', 'tenant', 'missing'].map(failure => ({ operation, failure }))))(
     'observed $operation scope $failure cannot adopt foreign resource IDs or schedule their cleanup', ({ operation, failure: kind }) => {
       let rejectedIds: string[] = [];
