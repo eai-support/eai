@@ -421,8 +421,10 @@ with an unrelated non-EAI stack.
      data may be cached.
    - If platform user lookup or membership prerequisite calls fail with
      `MISSING_TENANT`, `app_token_tenant_context_required`, or "Tenant context
-     required for app tokens", run `eai errors explain
-     app_token_tenant_context_required --format json` when advertised. Do not
+     required for app tokens", reuse the original-failure guidance for
+     `app_token_tenant_context_required`; only if it has not been queried, run
+     `eai errors explain app_token_tenant_context_required --format json` at most
+     once when advertised. Do not
      start by changing workspace members, role definitions, Entra configuration,
      databases, or cloud portals. Confirm `eai whoami` and `eai workspace list
      --format json`, then retry through workspace-scoped V4 platform routes:
