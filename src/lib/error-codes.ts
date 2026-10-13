@@ -10,7 +10,7 @@
 
 import { findGuidanceByCode } from './error-guidance/catalog.js';
 import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
-import { recordSupportError, SUPPORT_SUGGESTION } from './support-context.js';
+import { recordSupportError } from './support-context.js';
 import { redactSupportBundle, redactSupportText } from './support-redaction.js';
 
 /** Stable public codes used by CLI output, automation, and support guidance. */
@@ -217,11 +217,12 @@ export function formatErrorJSON(
   const suggestion = interpolate(def.suggestion, context);
   const guidance = findGuidanceByCode(code);
 
+  // The deployed JSON contract pins these keys; the person-facing support hint belongs on text stderr.
   return {
     error: {
       code,
       message,
-      suggestion: `${suggestion}\n\n${SUPPORT_SUGGESTION}`,
+      suggestion,
       ...(guidance ? { guidance: guidanceToJSON(guidance, context) } : {}),
       exitCode: 1,
     },

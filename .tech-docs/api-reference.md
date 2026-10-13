@@ -1438,7 +1438,7 @@ draft id and one-time token in its fragment. The page submits the final report.
 
 | Option | Behavior |
 | --- | --- |
-| `--format text\|json` | Text shows the report and prompts in a terminal. JSON previews until `--yes`. |
+| `--format text\|json` | Text shows the report, its digest and prompts in a terminal. JSON previews until `--yes --approved-digest`. |
 | `--source eai-cli\|harness` | Entry source. Defaults to `harness` when `--tool` is supplied, otherwise `eai-cli`. |
 | `--tool <name>` | Harness name. |
 | `--tool-version <version>` | Harness version when known. |
@@ -1446,15 +1446,45 @@ draft id and one-time token in its fragment. The page submits the final report.
 | `--exit-code <code>` | Signed 32-bit exit code override. |
 | `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
 | `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--decline` | Decline a preview locally and remove only its CLI-owned `--context-file`; no authentication or network request. Cannot be combined with `--yes` or `--create-context-file`. |
+| `--create-context-file` | Allocate an empty private CLI-owned file and return `contextFile`; no authentication or network request. Write the JSON summary into that file without replacing it. |
+| `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file allocated with `--create-context-file` under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Marked files older than 24 hours in that directory are removed on the next support invocation; untracked files and files elsewhere are never deleted. |
+| `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in every mode; a mismatch answers `consent_stale`. |
+| `--organisation-location <location>` | `apac`, `emea` or `americas`; sent as `organisationLocation` when the saved session has no active workspace. |
+| `--no-last-error` | Leave the saved context of the last failing command out of the report. |
 | `--yes` | Send only after the person has explicitly consented to the displayed report. |
 | `--no-open` | Print the link without opening a browser. JSON always prints without opening. |
 
-JSON results carry `status` (`consent_required`, `declined`, `signed_out`,
-`created`, or `failed`) and the redacted `bundle` on successful preparation.
-Created drafts add `url` and `expiresAt`; signed-out results include the plain
-Support URL. Missing/expired sessions and website 401 responses create no draft.
-Website errors return safe messages and exit 1. Draft requests have a 10-second
+The `harness` block is strict: `requestedByPerson: true`, `request` (500),
+`goal` (1000), `summary` (4000), `steps` (50 × 500), `commands` (50 ×
+`{ command, exitCode, errorCode?, reasonCode?, at? }`), `errors` (50 ×
+`{ code?, message, at? }`), `attemptedFixes` (20 × 500), `filesTouched` (100 ×
+260, project-relative, absolute paths refused) and `truncated`. Missing lists
+default to empty. Every text field is redacted with the shared rules plus the home
+directory shown as `~` and the project root as `.`. Validation failures answer
+`context_invalid` and name fields only; unreadable or oversized input answers
+`context_unreadable` or `context_too_large`.
+
+JSON results carry `status` (`consent_required`, `consent_stale`, `declined`,
+`signed_out`, `region_required`, `created`, or `failed`) and the redacted `bundle`
+on successful preparation. `consent_required` and `signed_out` add `previewText`
+(the whole redacted bundle as plain text, ending with its digest) and
+`bundleDigest` (sha256 of the canonical redacted bundle with sorted keys).
+When the saved session has no active workspace and no `--organisation-location`
+was given, `consent_required` also carries `questions: ["organisationLocation"]`
+and nothing is sent, even with `--yes`. `ignoredLastError` names the saved
+failure left out because it is older than 24 hours. Created drafts add `url` and
+`expiresAt`. Every no-draft result (`signed_out`, `region_required`, `failed`)
+includes the chat link `<website>/support?chat=open`. Missing/expired sessions
+and website 401 responses create no draft; a website
+`400 {"error":"region_required"}` is reported as `region_required`. Other
+website errors return safe messages and exit 1. Draft requests have a 10-second
 timeout and never retry automatically.
+
+Every nonzero exit prints "Need help? Run eai support, or ask your AI assistant
+to get help. Nothing is sent without your approval." to stderr in text mode,
+including failing `eai support` and `eai errors` commands. JSON error keys remain
+unchanged; `error.suggestion` holds only the catalog suggestion.
 
 Previous failure context stores only command, exit code, recognized catalog code
 and reason, and timestamp. Raw diagnostic text is excluded, including from older

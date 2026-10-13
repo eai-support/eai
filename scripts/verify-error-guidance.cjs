@@ -1,5 +1,11 @@
 #!/usr/bin/env node
 
+const { execFileSync } = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
+
+const ROOT = path.join(__dirname, '..');
+
 const FORBIDDEN_PUBLIC_TERMS = [
   ['Config', 'urator'].join(''),
   ['Payload', 'CMS'].join(''),
@@ -60,6 +66,39 @@ function validate(entries) {
   return issues;
 }
 
+// Harness instructions were rewritten so an AI acts only when the person asks for help.
+// These retired phrases, assembled here so this file never matches itself, must not return in any tracked file.
+const RETIRED_SUPPORT_PHRASES = [
+  ['Support after', 'an unresolved EAI error'],
+  ['If the command still fails,', 'prepare a report with'],
+  ['If anything fails,', 'say'],
+  ['For unresolved', 'EAI errors'],
+  ['If the failure remains', 'unresolved'],
+  ['offer the', 'support preview'],
+].map((parts) => parts.join(' '));
+
+const RETIRED_PHRASE_SKIP = [/\.(?:png|jpg|jpeg|gif|ico|woff2?|tgz|zip|pdf)$/i];
+
+function listTrackedFiles(root) {
+  return execFileSync('git', ['-C', root, 'ls-files', '-z'], { encoding: 'utf8' })
+    .split('\0')
+    .filter(Boolean);
+}
+
+function findRetiredSupportPhrases(root, files = listTrackedFiles(root)) {
+  const findings = [];
+  for (const relativePath of files) {
+    if (RETIRED_PHRASE_SKIP.some((pattern) => pattern.test(relativePath))) continue;
+    const absolutePath = path.join(root, relativePath);
+    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) continue;
+    const text = fs.readFileSync(absolutePath, 'utf8');
+    for (const phrase of RETIRED_SUPPORT_PHRASES) {
+      if (text.includes(phrase)) findings.push(`${relativePath}: "${phrase}"`);
+    }
+  }
+  return findings;
+}
+
 async function main() {
   const { listErrorGuidance } = await import('../dist/lib/error-guidance/catalog.js');
   const entries = listErrorGuidance();
@@ -72,11 +111,25 @@ async function main() {
     process.exit(1);
   }
 
+  const retired = findRetiredSupportPhrases(ROOT);
+  if (retired.length > 0) {
+    console.error('Retired support wording found in tracked files (help is offered only when the person asks):');
+    for (const finding of retired) {
+      console.error(`- ${finding}`);
+    }
+    process.exit(1);
+  }
+
   console.log(`✓ Error guidance catalog is valid (${entries.length} entries)`);
+  console.log('✓ No retired support wording in tracked files');
 }
 
-main().catch((error) => {
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
+  });
+}
+
+module.exports = { findRetiredSupportPhrases, RETIRED_SUPPORT_PHRASES };
 

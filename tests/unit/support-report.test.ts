@@ -1,12 +1,31 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, symlink, utimes, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import { syncBuiltinESMExports } from 'node:module';
 import { join } from 'node:path';
 import * as auth from '../../src/lib/auth.js';
 import { runSupport } from '../../src/commands/support.js';
 import { createSupportDraft, SUPPORT_TIMEOUT_MS, type SupportBundle } from '../../src/lib/support-report.js';
-import { setActiveProfile } from '../../src/lib/profile.js';
+import {
+  bundleDigest,
+  canonicalJson,
+  createHarnessContextFile,
+  discardOwnedHarnessContext,
+  purgeStaleHarnessContexts,
+  fitHarnessContext,
+  HARNESS_BLOCK_MAX_BYTES,
+  harnessBlockBytes,
+  pathAliases,
+  redactHarnessContext,
+  renderSupportPreview,
+  SupportContextError,
+  validateHarnessContext,
+  type HarnessContext,
+} from '../../src/lib/support-harness.js';
+import { getConfigFilePath, loadProfileConfig, setActiveProfile } from '../../src/lib/profile.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import {
+  harnessContextFixture,
   startDraftServer,
   SUPPORT_SESSION_TOKEN,
   type DraftServer,
@@ -21,6 +40,7 @@ const servers: DraftServer[] = [];
 
 afterEach(async () => {
   vi.restoreAllMocks();
+  syncBuiltinESMExports();
   vi.unstubAllEnvs();
   process.exitCode = 0;
   setActiveProfile('default');
@@ -36,6 +56,9 @@ describe('local support report redaction', () => {
     ['refreshToken: refresh-fixture-secret', 'refresh-fixture-secret'],
     ['password="password fixture secret"', 'password fixture secret'],
     ['api_key=api-fixture-secret', 'api-fixture-secret'],
+    ['AWS_ACCESS_KEY_ID=aws-id-fixture', 'aws-id-fixture'],
+    ['access_key: access-key-fixture', 'access-key-fixture'],
+    ['--access-key-id access-id-fixture', 'access-id-fixture'],
     ['AccountKey=storage-fixture-secret;', 'storage-fixture-secret'],
     ['--token command-fixture-secret', 'command-fixture-secret'],
     ['https://account:credential-fixture-secret@example.invalid', 'credential-fixture-secret'],
@@ -77,6 +100,295 @@ describe('local support report redaction', () => {
     expect(report).toContain('failed');
   });
 
+  test.each(['[redacted]PRIVATE_CANARY', '[first,second]PRIVATE_CANARY', '{first:second}PRIVATE_CANARY', '[redacted]"PRIVATE_CANARY"', '[redacted]" PRIVATE_CANARY"', '[first,second]"PRIVATE_CANARY"', '{first:second}"PRIVATE_CANARY"'])('redacts an opaque suffix after credential container %s', value => {
+    const clean = redactSupportText(`api_key=${value}`);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
+  test('literal slash-prefixed quoted tails stay private without changing JSON quote matching', () => {
+    for (let depth = 0; depth < 8; depth++) {
+      const quote = '\\'.repeat(depth) + '"';
+      const diagnostic = `${quote}api_key=[removed]${quote} ${quote}client_id=PRIVATE_CANARY${quote} ${quote}client_id${quote}=${quote}PUBLIC_IDENTIFIER${quote} status=public-id`;
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('PUBLIC_IDENTIFIER');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    for (let count = 1; count < 5; count++) {
+      const diagnostic = JSON.stringify({ api_key: 'PRIVATE_CANARY' + '\\'.repeat(count), client_id: 'PUBLIC_IDENTIFIER' });
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('PUBLIC_IDENTIFIER');
+      expect(redactSupportText(clean)).toBe(clean);
+      const publicText = JSON.stringify({ client_id: 'C:\\Program Files\\' + '\\'.repeat(count), status: 'public-id' });
+      expect(redactSupportText(publicText)).toBe(publicText);
+    }
+  });
+
+  test('assignments inside quoted credential continuations are not next fields', () => {
+    for (const value of ['api_key=[removed]', 'api_key=[first,PRIVATE_CANARY]', '"api_key=[removed]"']) {
+      for (const quote of ['"', "'"]) {
+        let diagnostic = `${value} ${quote}foo=PRIVATE_CANARY${quote} status=public-id`;
+        for (let depth = 0; depth < 4; depth++) {
+          const clean = redactSupportText(diagnostic);
+          expect(clean).not.toContain('PRIVATE_CANARY');
+          expect(clean).toContain('public-id');
+          expect(redactSupportText(clean)).toBe(clean);
+          diagnostic = JSON.stringify(diagnostic);
+        }
+      }
+    }
+    for (const quote of ['"', "'"]) {
+      let diagnostic = `api_key=[removed] ${quote}client_id${quote}=${quote}public-id${quote}`;
+      for (let depth = 0; depth < 4; depth++) {
+        expect(redactSupportText(diagnostic)).toBe(diagnostic);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+  });
+
+  test('unpaired or mismatched key quotes never terminate private tails', () => {
+  for (const diagnostic of ['api_key"=PRIVATE_CANARY status=public-id', "'password\"=PRIVATE_CANARY status=public-id"]) {
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  for (const value of ['first', '[removed]', '[redacted]', '[first]', '{first:visible}']) {
+    for (const malformed of ['client_id"', "client_id'", "\"client_id'", '\\"client_id\\\\"']) {
+      let diagnostic = `api_key=${value} ${malformed}=PUBLIC PRIVATE_CANARY status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+  }
+  for (const depth of [0, 1, 2, 3, 4, 6, 7]) {
+    const quote = '\\'.repeat(depth) + '"';
+    const diagnostic = `api_key=[removed] ${quote}client_id${quote}=${quote}PUBLIC_IDENTIFIER${quote} status=public-id`;
+    const clean = redactSupportText(diagnostic);
+    expect(clean).toContain('PUBLIC_IDENTIFIER');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  for (let count = 1; count < 5; count++) {
+    const diagnostic = JSON.stringify({ api_key: 'PRIVATE_CANARY', ['client_id' + '\\'.repeat(count)]: 'PUBLIC_IDENTIFIER' + '\\'.repeat(count), status: 'public-id' });
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('PUBLIC_IDENTIFIER');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  const dense = Array.from({ length: 500 }, () => 'api_key=[removed] client_id"=PUBLIC PRIVATE_CANARY status=public-id').join(' ');
+  const long = 'api_key=first client_id' + '\\'.repeat(65536) + '"=PUBLIC PRIVATE_CANARY status=public-id';
+  const started = performance.now();
+  for (const diagnostic of [dense, long]) {
+    const clean = redactSupportText(diagnostic);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(clean).toContain('public-id');
+    expect(redactSupportText(clean)).toBe(clean);
+  }
+  expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  test('quoted private continuations after an enclosing credential wrapper stay private and stable', () => {
+    for (const value of ['[first,PRIVATE_CANARY]', '{first:PRIVATE_CANARY}', '[removed]', '[redacted]']) {
+      for (const quote of ['"', "'"]) {
+        let diagnostic = `${quote}api_key=${value}${quote} ${quote}PRIVATE_CANARY extra private words${quote} status=public-id`;
+        for (let depth = 0; depth < 4; depth++) {
+          const clean = redactSupportText(diagnostic);
+          expect(clean).not.toContain('PRIVATE_CANARY');
+          expect(clean).not.toContain('extra private words');
+          expect(clean).toContain('public-id');
+          expect(redactSupportText(clean)).toBe(clean);
+          diagnostic = JSON.stringify(diagnostic);
+        }
+      }
+    }
+    expect(redactSupportText('"api_key=[]" "client_id"="public-id"')).toBe('"api_key=[redacted]" "client_id"="public-id"');
+    expect(redactSupportText('"api_key=[]" done safely')).toBe('"api_key=[redacted]" done safely');
+    expect(redactSupportText('"client_id=[]" "public-id"')).toBe('"client_id=[]" "public-id"');
+    const dense = Array.from({ length: 500 }, () => '"api_key=[removed]" "PRIVATE_CANARY" status=public-id').join(' ');
+    const chain = '"api_key=[]" ' + '"PRIVATE_CANARY" '.repeat(4096) + 'status=public-id';
+    const started = performance.now();
+    for (const input of [dense, chain]) {
+      const clean = redactSupportText(input);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  test('placeholder tails consume private words and delimiters while retaining fields and serialized wrappers', () => {
+    for (const suffix of [' ', '\t', ',', ';', '&', '}', ']', '};, & ']) {
+      let diagnostic = `api_key=[redacted]${suffix}PRIVATE_CANARY extra private words status=public-id`;
+      let stable = `api_key=[redacted]${suffix}status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).not.toContain('extra private words');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        expect(redactSupportText(stable)).toBe(stable);
+        diagnostic = JSON.stringify(diagnostic);
+        stable = JSON.stringify(stable);
+      }
+    }
+    for (const value of ['api_key=[redacted]', JSON.stringify('api_key=[redacted]'), '{"api_key":[redacted],"client_id":"public-id"}', 'client_id=[redacted] PRIVATE_CANARY']) {
+      expect(redactSupportText(value)).toBe(value);
+    }
+    const dense = Array.from({ length: 500 }, () => 'api_key=[redacted] PRIVATE_CANARY status=public-id').join(' ');
+    const long = 'api_key=[redacted]' + '};, & '.repeat(11000) + 'PRIVATE_CANARY status=public-id';
+    const started = performance.now();
+    for (const input of [dense, long]) {
+      const clean = redactSupportText(input);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('public-id');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  test('redacts delimiter-leading credential values without rescanning long prefixes', () => {
+    for (const prefix of ['}', ';', ',', '&', '};;,&']) {
+      let diagnostic = `api_key=${prefix})PRIVATE_CANARY status=public-id`;
+      for (let depth = 0; depth < 4; depth++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+    expect(redactSupportText('client_id=})public-id')).toBe('client_id=})public-id');
+    const long = 'api_key=' + '};,&'.repeat(16384) + 'PRIVATE_CANARY';
+    const started = performance.now();
+    const clean = redactSupportText(long);
+    expect(clean).not.toContain('PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+    expect(performance.now() - started).toBeLessThan(1000);
+  });
+
+  test('retains actual enclosing serialized wrapper quotes around a complete credential container', () => {
+    let diagnostic = 'api_key=[PRIVATE_CANARY]';
+    for (let depth = 0; depth < 4; depth++) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('PRIVATE_CANARY');
+      expect(clean).toContain('[redacted]');
+      expect(redactSupportText(clean)).toBe(clean);
+      diagnostic = JSON.stringify(diagnostic);
+    }
+    expect(redactSupportText(JSON.stringify('api_key=[]'))).toBe(JSON.stringify('api_key=[redacted]'));
+  });
+
+  test('complete credential containers remain private across nesting and serialized wrappers', () => {
+    for (const value of [[], {}, ['first', 'CONTAINER_PRIVATE_CANARY'], { first: 'visible', second: 'CONTAINER_PRIVATE_CANARY' }, [{ nested: ['CONTAINER_PRIVATE_CANARY', { punctuation: 'brackets ] } , inside quotes' }] }]]) {
+      let diagnostic = JSON.stringify({ ENTRA_CLIENT_SECRET: value, ENTRA_CLIENT_ID: 'public-id' });
+      for (let wrapper = 0; wrapper < 4; wrapper++) {
+        const clean = redactSupportText(diagnostic);
+        expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+        expect(clean).toContain('public-id');
+        expect(redactSupportText(clean)).toBe(clean);
+        diagnostic = JSON.stringify(diagnostic);
+      }
+    }
+    for (const diagnostic of ['secret=[first,CONTAINER_PRIVATE_CANARY', 'secret={first:visible,second:CONTAINER_PRIVATE_CANARY', 'secret=[first,} CONTAINER_PRIVATE_CANARY', 'secret=opaque:[first,CONTAINER_PRIVATE_CANARY]']) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+      expect(redactSupportText(clean)).toBe(clean);
+    }
+    const dense = Array.from({ length: 500 }, () => JSON.stringify(JSON.stringify({ secret: ['first', { value: 'CONTAINER_PRIVATE_CANARY' }] }))).join(' ');
+    const started = performance.now();
+    const clean = redactSupportText(dense);
+    expect(clean).not.toContain('CONTAINER_PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+    expect(performance.now() - started).toBeLessThan(1000);
+    const nested = 'secret=' + '['.repeat(16000) + 'CONTAINER_PRIVATE_CANARY' + ']'.repeat(16000);
+    expect(redactSupportText(nested)).not.toContain('CONTAINER_PRIVATE_CANARY');
+  });
+
+  test.each([0, 1, 3, 7])('redacts complete serialized credentials at quote escape depth %i', (depth) => {
+    const quote = '\\'.repeat(depth) + '"';
+    const inputs = [
+      `{${quote}ENTRA_CLIENT_SECRET${quote}:${quote}fixture private value${quote},${quote}status${quote}:${quote}failed${quote}}`,
+      `AWS_ACCESS_KEY_ID=${quote}fixture private value${quote} status=failed`,
+      `access_key=opaque:${quote}fixture private value${quote} status=failed`,
+      `--access-key ${quote}fixture private value${quote} --format json status=failed`,
+    ];
+    for (const input of inputs) {
+      const result = redactSupportText(input);
+      expect(result).not.toContain('fixture');
+      expect(result).not.toContain('private value');
+      expect(result).toContain('failed');
+      expect(result).toContain('[redacted]');
+      expect(redactSupportText(result)).toBe(result);
+    }
+  });
+
+  test('keeps escaped inner quotes inside the full serialized credential boundary', () => {
+    const diagnostic = String.raw`{"ENTRA_CLIENT_SECRET":"before \"fixture private value\" after","status":"failed"}`;
+    const serialized = JSON.stringify(diagnostic);
+    const result = redactSupportText(serialized);
+    expect(result).not.toContain('fixture');
+    expect(result).not.toContain('private value');
+    expect(result).toContain('failed');
+    expect(redactSupportText(result)).toBe(result);
+  });
+
+  test('redacts an unclosed escaped credential through its remaining text', () => {
+    const result = redactSupportText(String.raw`AWS_ACCESS_KEY_ID=\"fixture private value`);
+    expect(result).not.toContain('fixture');
+    expect(result).not.toContain('private value');
+    expect(redactSupportText(result)).toBe(result);
+  });
+
+  test.each([String.raw`ENTRA_CLIENT_\u0053ECRET`, String.raw`\u0061pi\u005fkey`, String.raw`AWS\u005fACCESS\u005fKEY\u005fID`, String.raw`client\u0053ecret`])('recognizes Unicode-escaped credential key %s without decoding reviewed text', (key) => {
+    let diagnostic = String.raw`{"fixtureKey":"unicode fixture private value","ENTRA_CLIENT_\u0049D":"public-id"}`.replace('fixtureKey', key);
+    for (let depth = 0; depth < 4; depth++) {
+      const clean = redactSupportText(diagnostic);
+      expect(clean).not.toContain('unicode fixture');
+      expect(clean).not.toContain('private value');
+      expect(clean).toContain('public-id');
+      expect(clean).not.toContain('ENTRA_CLIENT_ID');
+      expect(redactSupportText(clean)).toBe(clean);
+      diagnostic = JSON.stringify(diagnostic);
+    }
+  });
+
+  test('Unicode key recognition preserves benign escapes and handles malformed and adversarial runs', () => {
+    for (const benign of [String.raw`{"ENTRA_CLIENT_\u0049D":"public-id"}`, String.raw`metadata=example_\u0063ode`, String.raw`client_\u00ZZid=public-id`, '\\'.repeat(65536) + 'u000G']) {
+      expect(redactSupportText(benign)).toBe(benign);
+    }
+    const field = JSON.stringify(String.raw`{"ENTRA_CLIENT_\u0053ECRET":"DENSE_UNICODE_PRIVATE_CANARY"}`);
+    const clean = redactSupportText(Array.from({ length: 500 }, () => field).join(' '));
+    expect(clean).not.toContain('DENSE_UNICODE_PRIVATE_CANARY');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
+  test('redacts overlapping malformed quoted credentials without exposing the inner multiword tail', () => {
+    const text = 'oauth_token = "x\n api_key = "FIXTURE PRIVATE VALUE"';
+    const clean = redactSupportText(text);
+    expect(clean).not.toContain('FIXTURE');
+    expect(clean).not.toContain('PRIVATE VALUE');
+    expect(redactSupportText(clean)).toBe(clean);
+  });
+
+  test('redacts dense serialized assignments and leaves long harmless identifiers intact', () => {
+    const field = String.raw`{"ENTRA_CLIENT_SECRET":"dense fixture private value","status":"failed"}`;
+    const dense = Array.from({ length: 250 }, () => JSON.stringify(field)).join(' ');
+    const clean = redactSupportText(dense);
+    expect(clean).not.toContain('dense fixture');
+    expect(clean).not.toContain('private value');
+    expect(redactSupportText(clean)).toBe(clean);
+    const harmless = 'a'.repeat(64 * 1024);
+    expect(redactSupportText(harmless)).toBe(harmless);
+  });
+
   test('redacts nested secrets without losing report metadata or changing the input', () => {
     const input = {
       cli: { command: 'eai types push', exitCode: 1, errorCode: 'E001' },
@@ -109,7 +421,250 @@ describe('local support report redaction', () => {
   });
 });
 
+describe('harness session summary schema', () => {
+  test('accepts the contract shape and normalizes timestamps', () => {
+    const context = validateHarnessContext(harnessContextFixture({
+      commands: [{ command: 'eai types seed', exitCode: 1, at: 'Mon, 12 Oct 2026 01:02:03 GMT' }],
+      errors: [{ message: 'Not in an EAI project directory' }],
+    }));
+    expect(context).toMatchObject({ requestedByPerson: true, request: 'get help', truncated: false });
+    expect(context.commands).toEqual([{ command: 'eai types seed', exitCode: 1, at: '2026-10-12T01:02:03.000Z' }]);
+    expect(context.errors).toEqual([{ message: 'Not in an EAI project directory' }]);
+  });
+
+  test('defaults missing lists to empty and a missing truncated flag to false', () => {
+    const context = validateHarnessContext({ requestedByPerson: true, request: 'get help', goal: 'Seed types', summary: 'Seeding fails with E001.' });
+    expect(context).toEqual({
+      requestedByPerson: true, request: 'get help', goal: 'Seed types', summary: 'Seeding fails with E001.',
+      steps: [], commands: [], errors: [], attemptedFixes: [], filesTouched: [], truncated: false,
+    });
+  });
+
+  test.each<[string, Record<string, unknown>, string]>([
+    ['requestedByPerson false', { requestedByPerson: false }, 'requestedByPerson'],
+    ['requestedByPerson missing', { requestedByPerson: undefined }, 'requestedByPerson'],
+    ['request empty', { request: '   ' }, 'request'],
+    ['request missing', { request: undefined }, 'request'],
+    ['request too long', { request: 'x'.repeat(501) }, 'request'],
+    ['request wrong type', { request: 42 }, 'request'],
+    ['goal too long', { goal: 'x'.repeat(1001) }, 'goal'],
+    ['summary too long', { summary: 'x'.repeat(4001) }, 'summary'],
+    ['steps not a list', { steps: 'step' }, 'steps'],
+    ['steps too many', { steps: Array.from({ length: 51 }, () => 'step') }, 'steps'],
+    ['step too long', { steps: ['ok', 'x'.repeat(501)] }, 'steps[1]'],
+    ['commands too many', { commands: Array.from({ length: 51 }, () => ({ command: 'eai verify', exitCode: 1 })) }, 'commands'],
+    ['command not an object', { commands: ['eai verify'] }, 'commands[0]'],
+    ['command text missing', { commands: [{ exitCode: 1 }] }, 'commands[0].command'],
+    ['command exit code not an integer', { commands: [{ command: 'eai verify', exitCode: 1.5 }] }, 'commands[0].exitCode'],
+    ['command exit code out of range', { commands: [{ command: 'eai verify', exitCode: 2147483648 }] }, 'commands[0].exitCode'],
+    ['command error code too long', { commands: [{ command: 'eai verify', exitCode: 1, errorCode: 'x'.repeat(41) }] }, 'commands[0].errorCode'],
+    ['command reason code too long', { commands: [{ command: 'eai verify', exitCode: 1, reasonCode: 'x'.repeat(81) }] }, 'commands[0].reasonCode'],
+    ['command time invalid', { commands: [{ command: 'eai verify', exitCode: 1, at: 'yesterday' }] }, 'commands[0].at'],
+    ['command unknown key', { commands: [{ command: 'eai verify', exitCode: 1, stdout: 'raw output' }] }, 'commands[0] (unexpected field)'],
+    ['errors too many', { errors: Array.from({ length: 51 }, () => ({ message: 'failed' })) }, 'errors'],
+    ['error message missing', { errors: [{ code: 'E001' }] }, 'errors[0].message'],
+    ['error message too long', { errors: [{ message: 'x'.repeat(1001) }] }, 'errors[0].message'],
+    ['error code too long', { errors: [{ code: 'x'.repeat(81), message: 'failed' }] }, 'errors[0].code'],
+    ['error time too long', { errors: [{ message: 'failed', at: `2026-10-12T01:02:03.000Z${' '.repeat(20)}` }] }, 'errors[0].at'],
+    ['attempted fixes too many', { attemptedFixes: Array.from({ length: 21 }, () => 'fix') }, 'attemptedFixes'],
+    ['attempted fix too long', { attemptedFixes: ['x'.repeat(501)] }, 'attemptedFixes[0]'],
+    ['files too many', { filesTouched: Array.from({ length: 101 }, (_, index) => `src/file-${index}.ts`) }, 'filesTouched'],
+    ['file too long', { filesTouched: [`src/${'x'.repeat(260)}.ts`] }, 'filesTouched[0]'],
+    ['file absolute posix', { filesTouched: ['/Users/person/app/src/index.ts'] }, 'filesTouched[0] (absolute path)'],
+    ['file absolute windows', { filesTouched: ['C:\\Users\\person\\app\\src\\index.ts'] }, 'filesTouched[0] (absolute path)'],
+    ['file unc path', { filesTouched: ['\\\\server\\share\\index.ts'] }, 'filesTouched[0] (absolute path)'],
+    ['file home relative', { filesTouched: ['~/app/src/index.ts'] }, 'filesTouched[0] (absolute path)'],
+    ['truncated wrong type', { truncated: 'yes' }, 'truncated'],
+    ['unknown top-level key', { transcript: 'raw transcript text' }, 'context (unexpected field)'],
+  ])('rejects %s and names only the field', (_name, overrides, field) => {
+    let caught: unknown;
+    try {
+      validateHarnessContext(harnessContextFixture(overrides));
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(SupportContextError);
+    const error = caught as SupportContextError;
+    expect(error.code).toBe('context_invalid');
+    expect(error.message).toContain(field);
+    expect(error.message).not.toContain('raw transcript text');
+    expect(error.message).not.toContain('raw output');
+    expect(error.message).not.toContain('/Users/person');
+  });
+
+  test.each([null, [], 'summary', 42])('rejects a non-object context %j', (value) => {
+    expect(() => validateHarnessContext(value)).toThrow(SupportContextError);
+  });
+
+  test('redacts credentials and hides the home directory and project root in every text field', () => {
+    const home = '/Users/person';
+    const projectRoot = '/Users/person/apps/demo';
+    const secret = 'opaque-session-credential-fixture';
+    const text = (label: string): string => `${label} ${secret} Bearer bearer-fixture-secret ${projectRoot}/src/index.ts and ${home}/.eai/config.json`;
+    const context = validateHarnessContext(harnessContextFixture({
+      request: text('request'), goal: text('goal'), summary: text('summary'), steps: [text('step')],
+      commands: [{ command: text('command'), exitCode: 1, errorCode: `E001 ${secret}`, reasonCode: `reason ${secret}` }],
+      errors: [{ code: `code ${secret}`, message: text('message') }],
+      attemptedFixes: [text('fix')], filesTouched: [`src/${secret}.ts`],
+    }));
+    const redacted = redactHarnessContext(context, { sensitiveValues: [secret], homes: [home], projectRoots: [projectRoot] });
+    const serialized = JSON.stringify(redacted);
+    expect(serialized).not.toContain(secret);
+    expect(serialized).not.toContain('bearer-fixture-secret');
+    expect(serialized).not.toContain(home);
+    expect(redacted.request).toContain('./src/index.ts');
+    expect(redacted.request).toContain('~/.eai/config.json');
+    for (const value of [redacted.goal, redacted.summary, redacted.steps[0], redacted.commands[0].command, redacted.errors[0].message, redacted.attemptedFixes[0]]) {
+      expect(value).toContain('[redacted]');
+      expect(value).toContain('./src/index.ts');
+      expect(value).toContain('~/.eai/config.json');
+    }
+    expect(redacted.commands[0].errorCode).toBe('E001 [redacted]');
+    expect(redacted.commands[0].reasonCode).toBe('reason [redacted]');
+    expect(redacted.errors[0].code).toBe('code [redacted]');
+    expect(redacted.filesTouched[0]).toBe('src/[redacted].ts');
+    expect(redacted.requestedByPerson).toBe(true);
+  });
+
+  test('keeps every field within its limit after redaction lengthens a value', () => {
+    const context = validateHarnessContext(harnessContextFixture({ request: `${'r'.repeat(495)} ab` }));
+    const redacted = redactHarnessContext(context, { sensitiveValues: ['ab'], homes: ['/Users/person'], projectRoots: [] });
+    expect(redacted.request.length).toBeLessThanOrEqual(500);
+    expect(redacted.request).toContain('[redacted]'.slice(0, 500 - 496));
+  });
+
+  test('drops the oldest steps, then commands, then errors until the block fits, and marks it truncated', () => {
+    const base: HarnessContext = {
+      requestedByPerson: true, request: 'get help', goal: 'goal', summary: 's'.repeat(4000),
+      steps: [], commands: [], errors: [], attemptedFixes: Array.from({ length: 20 }, () => 'f'.repeat(500)), filesTouched: [], truncated: false,
+    };
+    const steps = Array.from({ length: 50 }, (_, index) => `step ${index} ${'y'.repeat(480)}`);
+    const commands = Array.from({ length: 50 }, (_, index) => ({ command: `command ${index} ${'y'.repeat(480)}`, exitCode: index }));
+    const errors = Array.from({ length: 50 }, (_, index) => ({ code: `E${index}`, message: `error ${index} ${'z'.repeat(980)}` }));
+    const oldestKept = (values: ReadonlyArray<{ readonly text: string }>, label: string, total: number): void => {
+      expect(values.length).toBeGreaterThan(0);
+      expect(values.length).toBeLessThan(total);
+      expect(values[0].text.startsWith(`${label} ${total - values.length} `)).toBe(true);
+      expect(values.at(-1)?.text.startsWith(`${label} ${total - 1} `)).toBe(true);
+    };
+
+    const stepsOnly = fitHarnessContext({ ...base, steps, commands: commands.slice(0, 1), errors: errors.slice(0, 1) });
+    expect(harnessBlockBytes({ ...base, steps, commands: commands.slice(0, 1), errors: errors.slice(0, 1) })).toBeGreaterThan(HARNESS_BLOCK_MAX_BYTES);
+    expect(harnessBlockBytes(stepsOnly)).toBeLessThanOrEqual(HARNESS_BLOCK_MAX_BYTES);
+    expect(stepsOnly.truncated).toBe(true);
+    oldestKept(stepsOnly.steps.map(text => ({ text })), 'step', 50);
+    expect(stepsOnly.commands).toEqual(commands.slice(0, 1));
+    expect(stepsOnly.errors).toEqual(errors.slice(0, 1));
+
+    const thenCommands = fitHarnessContext({ ...base, steps, commands, errors: errors.slice(0, 1) });
+    expect(harnessBlockBytes(thenCommands)).toBeLessThanOrEqual(HARNESS_BLOCK_MAX_BYTES);
+    expect(thenCommands.steps).toEqual([]);
+    oldestKept(thenCommands.commands.map(({ command }) => ({ text: command })), 'command', 50);
+    expect(thenCommands.errors).toEqual(errors.slice(0, 1));
+    expect(thenCommands.truncated).toBe(true);
+
+    const thenErrors = fitHarnessContext({ ...base, steps: steps.slice(0, 1), commands, errors });
+    expect(harnessBlockBytes(thenErrors)).toBeLessThanOrEqual(HARNESS_BLOCK_MAX_BYTES);
+    expect(thenErrors.steps).toEqual([]);
+    expect(thenErrors.commands).toEqual([]);
+    oldestKept(thenErrors.errors.map(({ message }) => ({ text: message })), 'error', 50);
+    expect(thenErrors.truncated).toBe(true);
+    expect(thenErrors.attemptedFixes).toEqual(base.attemptedFixes);
+    expect(thenErrors.summary).toBe(base.summary);
+  });
+
+  test('leaves a fitting block untouched and fails closed when nothing droppable remains', () => {
+    const small = validateHarnessContext(harnessContextFixture());
+    expect(fitHarnessContext(small)).toEqual(small);
+    const immovable: HarnessContext = {
+      ...small, steps: [], commands: [], errors: [], summary: 's'.repeat(4000),
+      attemptedFixes: Array.from({ length: 20 }, () => 'f'.repeat(500)),
+      filesTouched: Array.from({ length: 100 }, (_, index) => `src/${String(index).padStart(3, '0')}/${'p'.repeat(250)}`),
+    };
+    expect(() => fitHarnessContext(immovable)).toThrow(expect.objectContaining({ code: 'context_too_large' }));
+  });
+
+  test('digests are stable across key order and ignore undefined values', () => {
+    const left = { source: 'harness', cli: { exitCode: 1, command: 'eai verify' }, steps: ['a', 'b'], missing: undefined };
+    const right = { steps: ['a', 'b'], cli: { command: 'eai verify', exitCode: 1 }, source: 'harness' };
+    expect(canonicalJson(left)).toBe(canonicalJson(right));
+    expect(bundleDigest(left)).toBe(bundleDigest(right));
+    expect(bundleDigest(left)).toMatch(/^[0-9a-f]{64}$/);
+    expect(bundleDigest({ ...right, steps: ['b', 'a'] })).not.toBe(bundleDigest(right));
+    expect(bundleDigest({ ...right, source: 'eai-cli' })).not.toBe(bundleDigest(right));
+  });
+
+  test('renders every bundle field as plain text and ends with the digest', () => {
+    const bundle = {
+      source: 'harness', tool: { name: 'codex', version: '' }, cli: { command: 'eai verify', exitCode: 2 },
+      description: 'line one\nline two', organisationLocation: 'apac',
+      harness: { requestedByPerson: true, steps: ['first', 'second'], commands: [{ command: 'eai verify', exitCode: 2 }], errors: [], truncated: false },
+    };
+    const digest = bundleDigest(bundle);
+    const preview = renderSupportPreview(bundle, digest);
+    const lines = preview.split('\n');
+    expect(lines[0]).toContain('EAI support report (redacted)');
+    expect(lines.at(-1)).toBe(`Report digest: ${digest}`);
+    expect(preview).toContain('Source: harness');
+    expect(preview).toContain('Reporting tool:\n  Name: codex\n  Version: ');
+    expect(preview).toContain('Description:\n  line one\n  line two');
+    expect(preview).toContain('Organisation location: apac');
+    expect(preview).toContain('Requested by the person: yes');
+    expect(preview).toContain('Steps:\n    1. first\n    2. second');
+    expect(preview).toContain('Commands run:\n    1.\n      Command: eai verify\n      Exit code: 2');
+    expect(preview).toContain('Errors seen: none');
+    expect(preview).toContain('Truncated to fit: no');
+  });
+});
+
 describe('support consent and request limits', () => {
+  test.each([undefined, '0'.repeat(64)])('requires a matching digest for interactive --yes with digest %j', async (approvedDigest) => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation(value => { shown.push(String(value)); });
+    const confirm = vi.fn(async () => true);
+    await runSupport({ format: 'text', yes: true, approvedDigest, open: false }, { confirm, isInteractive: true });
+    expect(process.exitCode).toBe(1);
+    expect(shown.join('\n')).toContain('Nothing was sent.');
+    expect(confirm).not.toHaveBeenCalled();
+    expect(server.requests).toHaveLength(0);
+  });
+
+  test('sends the exact preview after matching interactive --yes approval', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation(value => { shown.push(String(value)); });
+    let jsonOutput = '';
+    vi.spyOn(process.stdout, 'write').mockImplementation(value => { jsonOutput += String(value); return true; });
+    await runSupport({ format: 'json', open: false }, { isInteractive: true });
+    const preview = JSON.parse(jsonOutput) as { bundleDigest: string; bundle: SupportBundle };
+    expect(server.requests).toHaveLength(0);
+    await runSupport({ format: 'text', yes: true, approvedDigest: preview.bundleDigest, open: false }, { isInteractive: true });
+    expect(process.exitCode).toBe(0);
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body).toEqual(preview.bundle);
+  });
+
   test.each(['opaque-process-credential-fixture', ''])('redacts shadowed project credentials before interactive consent with process value %j', async (processValue) => {
     const home = await createTestEnvironment();
     contexts.push(home);
@@ -124,7 +679,7 @@ describe('support consent and request limits', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
     vi.spyOn(auth, 'loadTokens').mockResolvedValue({
       accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
-      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture',
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
     });
     const shown: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
@@ -139,6 +694,7 @@ describe('support consent and request limits', () => {
     });
     expect(confirm).toHaveBeenCalledOnce();
     expect(previewAtConsent).toContain('[redacted]');
+    expect(previewAtConsent).toMatch(/Report digest: [0-9a-f]{64}/);
     expect(previewAtConsent).not.toContain(projectValue);
     expect(shown.join('\n')).not.toContain(projectValue);
     expect(server.requests).toHaveLength(0);
@@ -154,20 +710,79 @@ describe('support consent and request limits', () => {
     vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
     vi.spyOn(auth, 'loadTokens').mockResolvedValue({
       accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
-      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture',
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
     });
     const shown: string[] = [];
     vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
     const confirm = vi.fn(async () => {
       expect(shown.join('\n')).toContain('Redacted support report');
-      expect(shown.join('\n')).toContain('eai-cli');
+      expect(shown.join('\n')).toContain('harness');
       expect(shown.join('\n')).not.toContain(SUPPORT_SESSION_TOKEN);
       return false;
     });
-    await runSupport({ format: 'text', open: false }, { confirm, isInteractive: true });
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const contextFile = createHarnessContextFile();
+    await writeFile(contextFile, JSON.stringify(harnessContextFixture()), { mode: 0o600 });
+    await runSupport({ format: 'text', open: false, source: 'harness', contextFile }, { confirm, isInteractive: true });
+    await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(confirm).toHaveBeenCalledOnce();
     expect(shown.join('\n')).toContain('No report was sent and no draft was created.');
     expect(server.requests).toHaveLength(0);
+  });
+
+  test('asks where the organisation is based before showing the report and asking for consent when the session has no active workspace', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
+    const order: string[] = [];
+    const chooseOrganisationLocation = vi.fn(async () => {
+      order.push('location');
+      expect(shown.join('\n')).not.toContain('Redacted support report');
+      return 'americas' as const;
+    });
+    const confirm = vi.fn(async () => {
+      order.push('consent');
+      expect(shown.join('\n')).toContain('"organisationLocation": "americas"');
+      return true;
+    });
+    await runSupport({ format: 'text', open: false }, { confirm, chooseOrganisationLocation, isInteractive: true });
+    expect(order).toEqual(['location', 'consent']);
+    expect(server.requests).toHaveLength(1);
+    expect(server.requests[0].body.organisationLocation).toBe('americas');
+    expect(shown.join('\n')).toContain('#draft=');
+  });
+
+  test('interactive --yes with a mismatched digest sends nothing', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    const server = await startDraftServer();
+    servers.push(server);
+    vi.stubEnv('HOME', home.dir);
+    vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+    vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+    vi.spyOn(auth, 'loadTokens').mockResolvedValue({
+      accessToken: SUPPORT_SESSION_TOKEN, expiresAt: Date.now() + 60_000,
+      tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture',
+    });
+    const shown: string[] = [];
+    vi.spyOn(console, 'log').mockImplementation((value: unknown) => { shown.push(String(value)); });
+    const confirm = vi.fn(async () => true);
+    await runSupport({ format: 'text', open: false, yes: true, approvedDigest: 'f'.repeat(64) }, { confirm, isInteractive: true });
+    expect(confirm).not.toHaveBeenCalled();
+    expect(server.requests).toHaveLength(0);
+    expect(shown.join('\n')).toContain('The report changed since it was approved.');
+    expect(process.exitCode).toBe(1);
   });
 
   test.each([
@@ -250,4 +865,284 @@ describe('support consent and request limits', () => {
     expect(fetchSpy).toHaveBeenCalledTimes(1);
     expect(server.requests).toHaveLength(0);
   });
+});
+
+
+describe('support path safety', () => {
+  test.each(['../.env', 'src/../.env', 'src\\..\\.env', 'file://local/path', 'https://example.test/path', 'C:relative'])('rejects escaping or URL filesTouched: %s', file => {
+    expect(() => validateHarnessContext({ ...harnessContextFixture(), filesTouched: [file] })).toThrow(SupportContextError);
+  });
+
+  test('redacts both Windows separators while preserving sibling path prefixes', () => {
+    const input = validateHarnessContext({ ...harnessContextFixture(), summary: 'C:/Users/alex/project/src C:\\Users\\alex\\project\\src C:/Users/alexander/src' });
+    const safe = redactHarnessContext(input, { sensitiveValues: [], homes: ['C:\\Users\\alex'], projectRoots: ['C:\\Users\\alex\\project'] });
+    expect(safe.summary).toContain('./src');
+    expect(safe.summary).toContain('.\\src');
+    expect(safe.summary).toContain('C:/Users/alexander/src');
+    expect(safe.summary).not.toContain('C:/Users/alex/project');
+    expect(safe.summary).not.toContain('C:\\Users\\alex\\project');
+  });
+});
+
+
+test('hides the shell PWD alias of a project reached through a symlink', async () => {
+  const environment = await createTestEnvironment();
+  contexts.push(environment);
+  const project = join(environment.dir, 'project');
+  const alias = join(environment.dir, 'shell-alias');
+  await mkdir(project);
+  await symlink(project, alias);
+  vi.stubEnv('PWD', alias);
+  const roots = pathAliases(project);
+  expect(roots).toContain(alias);
+  const context = validateHarnessContext({ ...harnessContextFixture(), summary: `${alias}/src/index.ts` });
+  expect(redactHarnessContext(context, { sensitiveValues: [], homes: [], projectRoots: roots }).summary).toBe('./src/index.ts');
+});
+
+
+describe('support context ownership and closing path delimiters', () => {
+  test('preserves unrelated regular files inside the private directory during cleanup and stale purge', async () => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    vi.stubEnv('HOME', home.dir);
+    const directory = join(home.dir, '.eai', 'support', 'context');
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const unrelated = join(directory, 'unrelated.json');
+    await writeFile(unrelated, JSON.stringify(harnessContextFixture()));
+    await utimes(unrelated, new Date(0), new Date(0));
+    discardOwnedHarnessContext(unrelated);
+    purgeStaleHarnessContexts();
+    await expect(access(unrelated)).resolves.toBeUndefined();
+  });
+
+  test.each([']', '}', '>', '?'])('hides closed home/project prefixes in every text field for %s without hiding sibling paths', delimiter => {
+    const text = `/h${delimiter} /p${delimiter} /home /project`;
+    const context: HarnessContext = {
+      requestedByPerson: true, request: text, goal: text, summary: text, steps: [text],
+      commands: [{ command: text, exitCode: 1, errorCode: text, reasonCode: text }],
+      errors: [{ code: text, message: text }], attemptedFixes: [text], filesTouched: [text], truncated: false,
+    };
+    const safe = redactHarnessContext(context, { sensitiveValues: [], homes: ['/h'], projectRoots: ['/p'] });
+    const fields = [safe.request, safe.goal, safe.summary, ...safe.steps, safe.commands[0].command,
+      safe.commands[0].errorCode, safe.commands[0].reasonCode, safe.errors[0].code, safe.errors[0].message,
+      ...safe.attemptedFixes, ...safe.filesTouched];
+    for (const field of fields) expect(field).toBe(`~${delimiter} .${delimiter} /home /project`);
+  });
+});
+
+
+test('ownership markers do not authorize replacement files or symlinks', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const file = createHarnessContextFile();
+  const { rename, stat } = await import('node:fs/promises');
+  expect((await stat(file)).mode & 0o777).toBe(0o600);
+  await rename(file, `${file}.original`);
+  await writeFile(file, 'unrelated');
+  discardOwnedHarnessContext(file);
+  await expect(access(file)).resolves.toBeUndefined();
+  const link = createHarnessContextFile();
+  const { unlink } = await import('node:fs/promises');
+  await unlink(link);
+  await symlink(file, link);
+  discardOwnedHarnessContext(link);
+  await expect(access(link)).resolves.toBeUndefined();
+});
+
+
+test.each([false, true])('preserves an untracked private-directory file after an interactive send decision %s', async consent => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  const server = await startDraftServer();
+  servers.push(server);
+  vi.stubEnv('HOME', home.dir);
+  vi.stubEnv('EAI_WEBSITE_URL', server.origin);
+  vi.spyOn(process, 'cwd').mockReturnValue(home.dir);
+  vi.spyOn(auth, 'loadTokens').mockResolvedValue({ accessToken: SUPPORT_SESSION_TOKEN,
+    expiresAt: Date.now() + 60_000, tenantId: 'fixture', tenantName: 'fixture', clientId: 'fixture', activeTenantId: 'workspace-fixture' });
+  vi.spyOn(console, 'log').mockImplementation(() => {});
+  const directory = join(home.dir, '.eai', 'support', 'context');
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  const contextFile = join(directory, 'user-notes.json');
+  await writeFile(contextFile, JSON.stringify(harnessContextFixture()));
+  await runSupport({ format: 'text', open: false, source: 'harness', contextFile }, { confirm: async () => consent, isInteractive: true });
+  expect(server.requests).toHaveLength(consent ? 1 : 0);
+  await expect(access(contextFile)).resolves.toBeUndefined();
+});
+
+test('allocates context without loading authentication or posting a report', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ createContextFile: true, format: 'json' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  const output = JSON.parse(String(write.mock.calls[0][0])) as { contextFile: string; status: string; url: string };
+  expect(output.status).toBe('context_created');
+  expect(output.url).toBe('https://www.enterpriseaigroup.com/support?chat=open');
+  await expect(access(output.contextFile)).resolves.toBeUndefined();
+  await expect(access(`${output.contextFile}.owner`)).resolves.toBeUndefined();
+  discardOwnedHarnessContext(output.contextFile);
+  await expect(access(output.contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${output.contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+
+test('explicit decline cleans an allocated context without loading authentication', async () => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const contextFile = createHarnessContextFile();
+  await runSupport({ decline: true, contextFile, format: 'json' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+  await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+
+describe('local support actions use the trusted configured website', () => {
+  test.each([{ decline: true, yes: true }, { decline: true, createContextFile: true }])(
+    'conflicting local flags use the configured website without authentication or network: %j', async flags => {
+      const home = await createTestEnvironment();
+      contexts.push(home);
+      vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+      syncBuiltinESMExports();
+      vi.stubEnv('EAI_WEBSITE_URL', 'http://127.0.0.1:54321');
+      const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+      const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await runSupport({ ...flags, format: 'json' });
+      expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({
+        status: 'failed', url: 'http://127.0.0.1:54321/support?chat=open', error: { code: 'invalid_report' },
+      });
+      expect(process.exitCode).toBe(1);
+      expect(loadTokens).not.toHaveBeenCalled();
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
+  test.each(['default', 'environment', 'named-profile'] as const)('%s origin applies without authentication or network', async setting => {
+    const home = await createTestEnvironment();
+    contexts.push(home);
+    vi.stubEnv('HOME', home.dir);
+    vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+    syncBuiltinESMExports();
+    vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://support-env.fixture.invalid' : '');
+    if (setting === 'named-profile') {
+      setActiveProfile('fixture');
+      await mkdir(join(home.dir, '.eai'), { recursive: true, mode: 0o700 });
+      await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
+        publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
+        authClientId: 'fixture', websiteUrl: 'https://support-profile.fixture.invalid',
+      } } }), { mode: 0o600 });
+      expect(getConfigFilePath()).toBe(join(home.dir, '.eai', 'config.json'));
+      expect(await loadProfileConfig('fixture')).toMatchObject({ websiteUrl: 'https://support-profile.fixture.invalid' });
+    }
+    const expected = setting === 'default' ? 'https://www.enterpriseaigroup.com'
+      : setting === 'environment' ? 'https://support-env.fixture.invalid' : 'https://support-profile.fixture.invalid';
+    const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await runSupport({ createContextFile: true, format: 'json' });
+    const allocated = JSON.parse(String(write.mock.calls[0][0])) as { contextFile: string; url: string; status: string };
+    expect(allocated).toMatchObject({ status: 'context_created', url: `${expected}/support?chat=open` });
+    await expect(access(allocated.contextFile)).resolves.toBeUndefined();
+    write.mockClear();
+    await runSupport({ decline: true, contextFile: allocated.contextFile, format: 'json' });
+    expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined', url: `${expected}/support?chat=open` });
+    await expect(access(allocated.contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(`${allocated.contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(loadTokens).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+test.each([
+  ['malformed JSON', '{', 'context_invalid'],
+  ['oversized bytes', 'x'.repeat(65_537), 'context_too_large'],
+  ['invalid fields', JSON.stringify({ requestedByPerson: false }), 'context_invalid'],
+])('keeps the allocated file and ownership marker after an invalid preview: %s', async (_kind, input, code) => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+  syncBuiltinESMExports();
+  vi.stubEnv('EAI_WEBSITE_URL', 'http://127.0.0.1:54321');
+  vi.spyOn(auth, 'loadTokens').mockResolvedValue(null);
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  const contextFile = createHarnessContextFile();
+  await writeFile(contextFile, input);
+  const marker = await readFile(`${contextFile}.owner`, 'utf8');
+  await runSupport({ tool: 'codex', contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'failed', error: { code } });
+  expect(process.exitCode).toBe(1);
+  expect(await readFile(contextFile, 'utf8')).toBe(input);
+  expect(await readFile(`${contextFile}.owner`, 'utf8')).toBe(marker);
+  await writeFile(contextFile, JSON.stringify(harnessContextFixture()));
+  process.exitCode = 0;
+  write.mockClear();
+  await runSupport({ tool: 'codex', contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'signed_out' });
+  await expect(access(contextFile)).resolves.toBeUndefined();
+  write.mockClear();
+  await runSupport({ decline: true, contextFile, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined' });
+  await expect(access(contextFile)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${contextFile}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+
+test.each(['environment', 'named-profile'] as const)('explicit decline resolves %s origin and cleans locally', async setting => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+  syncBuiltinESMExports();
+  vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://decline-env.fixture.invalid' : '');
+  if (setting === 'named-profile') {
+    setActiveProfile('fixture');
+    await mkdir(join(home.dir, '.eai'), { recursive: true, mode: 0o700 });
+    await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
+      publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
+      authClientId: 'fixture', websiteUrl: 'https://decline-profile.fixture.invalid',
+    } } }), { mode: 0o600 });
+    expect(getConfigFilePath()).toBe(join(home.dir, '.eai', 'config.json'));
+    expect(await loadProfileConfig('fixture')).toMatchObject({ websiteUrl: 'https://decline-profile.fixture.invalid' });
+  }
+  const file = createHarnessContextFile();
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ decline: true, contextFile: file, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'declined',
+    url: `https://decline-${setting === 'environment' ? 'env' : 'profile'}.fixture.invalid/support?chat=open` });
+  await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${file}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
+});
+
+
+test.each(['missing-profile-origin', 'invalid-origin'] as const)('decline still removes its owned preview when %s changes', async setting => {
+  const home = await createTestEnvironment();
+  contexts.push(home);
+  vi.stubEnv('HOME', home.dir);
+  vi.stubEnv('EAI_WEBSITE_URL', setting === 'invalid-origin' ? 'https://support.fixture.invalid/unsafe-path' : '');
+  if (setting === 'missing-profile-origin') setActiveProfile('missing-support-origin');
+  const file = createHarnessContextFile();
+  const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));
+  const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('network must not run'));
+  const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+  await runSupport({ decline: true, contextFile: file, format: 'json' });
+  expect(JSON.parse(String(write.mock.calls[0][0]))).toMatchObject({ status: 'failed', url: 'https://www.enterpriseaigroup.com/support?chat=open' });
+  await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(access(`${file}.owner`)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(loadTokens).not.toHaveBeenCalled();
+  expect(fetch).not.toHaveBeenCalled();
 });

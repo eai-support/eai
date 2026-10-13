@@ -34,6 +34,12 @@ export function validDraftResponse(origin: string): Record<string, unknown> {
   };
 }
 
+/** The website's answer when neither a tenant home region nor an organisation location settles the storage region. */
+export const regionRequiredResponder: DraftResponder = (response) => {
+  response.writeHead(400, { 'content-type': 'application/json' });
+  response.end(JSON.stringify({ error: 'region_required' }));
+};
+
 export async function startDraftServer(respond?: DraftResponder): Promise<DraftServer> {
   const requests: DraftRequest[] = [];
   let origin = '';
@@ -77,7 +83,13 @@ export async function startDraftServer(respond?: DraftResponder): Promise<DraftS
   };
 }
 
-export async function writeSupportSession(home: string, expiresAt = Date.now() + 60 * 60 * 1000): Promise<void> {
+export interface SupportSessionOverrides {
+  readonly activeTenantId?: string;
+  readonly activeTenantName?: string;
+}
+
+/** Saves an encrypted login session; pass `{ activeTenantId: undefined }` for a session without an active workspace. */
+export async function writeSupportSession(home: string, expiresAt = Date.now() + 60 * 60 * 1000, overrides?: SupportSessionOverrides): Promise<void> {
   const directory = join(home, '.eai');
   await mkdir(directory, { recursive: true });
   const tokens = {
@@ -89,6 +101,7 @@ export async function writeSupportSession(home: string, expiresAt = Date.now() +
     clientId: 'client-fixture',
     activeTenantId: 'workspace-id-fixture',
     activeTenantName: 'Workspace fixture',
+    ...overrides,
   };
   const key = createHash('sha256').update(`eai-${home}-token-store`).digest();
   const iv = randomBytes(16);
@@ -97,16 +110,38 @@ export async function writeSupportSession(home: string, expiresAt = Date.now() +
   await writeFile(join(directory, 'tokens.json'), `${iv.toString('hex')}:${encrypted.toString('hex')}`, { mode: 0o600 });
 }
 
+/** A valid harness session summary in the website's `harness` shape. */
+export function harnessContextFixture(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    requestedByPerson: true,
+    request: 'get help',
+    goal: 'Seed the Object Types for the new app',
+    summary: 'eai types seed failed twice with E001 after the project root could not be found.',
+    steps: ['Ran eai types validate', 'Ran eai types seed'],
+    commands: [{ command: 'eai types seed', exitCode: 1, errorCode: 'E001', reasonCode: 'not_in_eai_project', at: '2026-10-12T01:02:03.000Z' }],
+    errors: [{ code: 'E001', message: 'Not in an EAI project directory', at: '2026-10-12T01:02:04.000Z' }],
+    attemptedFixes: ['Checked that eai.config.ts exists'],
+    filesTouched: ['src/eai.config/object-types.ts'],
+    truncated: false,
+    ...overrides,
+  };
+}
+
 export interface SupportCliResult {
   readonly code: number;
   readonly stdout: string;
   readonly stderr: string;
 }
 
-export function runSupportCli(home: string, args: readonly string[], environment: Record<string, string> = {}): Promise<SupportCliResult> {
+export interface SupportCliInput {
+  /** Text piped to the CLI's stdin; stdin is closed either way. */
+  readonly input?: string;
+}
+
+export function runSupportCli(home: string, args: readonly string[], environment: Record<string, string> = {}, { input }: SupportCliInput = {}): Promise<SupportCliResult> {
   const cliEntry = fileURLToPath(new URL('../../dist/index.js', import.meta.url));
   return new Promise((resolve, reject) => {
-    execFile(process.execPath, [cliEntry, ...args], {
+    const child = execFile(process.execPath, [cliEntry, ...args], {
       cwd: home,
       env: {
         ...process.env,
@@ -129,5 +164,6 @@ export function runSupportCli(home: string, args: readonly string[], environment
       }
       resolve({ code: error && typeof error.code === 'number' ? error.code : 0, stdout, stderr });
     });
+    child.stdin?.end(input ?? '');
   });
 }

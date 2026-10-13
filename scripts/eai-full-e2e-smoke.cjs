@@ -519,6 +519,12 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 const OPTION_DECISIONS = {
   'eai support': {
     '--yes': 'Creates a draft only after explicit human approval; local fixture tests cover the consented POST and refusal, and deployed smoke never supplies consent.',
+    '--decline': 'Owned local tests verify immediate identity-bound cleanup without authentication, network requests or deleting unrelated files; deployed smoke never handles customer context.',
+    '--create-context-file': 'Local owned tests verify private file allocation and identity-bound cleanup without authentication or network requests; deployed smoke never allocates customer context.',
+    '--context-file': 'Harness session summaries are redacted, capped and previewed by owned fixture tests; deployed smoke carries no customer session context.',
+    '--approved-digest': 'Digest-bound approval and consent_stale refusal are covered by owned fixture tests; deployed smoke never approves a report.',
+    '--organisation-location': 'The organisation-location question and region_required fallback are covered by owned fixture tests; deployed smoke never stores a report.',
+    '--no-last-error': 'Leaving the saved last error out is covered by owned fixture tests; deployed smoke runs the preview with explicit command metadata.',
   },
   'eai template check': {
     '--ai-plan': 'Read-only AI adoption-plan output is covered by template integration tests; release smoke avoids cloning the public template.',
