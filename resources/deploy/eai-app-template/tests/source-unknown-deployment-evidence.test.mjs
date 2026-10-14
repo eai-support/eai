@@ -32,6 +32,8 @@ const canonicalWorkflowRelativePath = '.github/workflows/eai-app.yml';
 const fixtureDirectory = 'tests/fixtures/source-unknown';
 const canonicalDigest =
   'bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed';
+const currentWorkflowDigest =
+  '74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5';
 const generatedDigest =
   '77d4951b3e6852ead73cef8b9e8901e3de774f9aca70f71cc0c932c13903ff32';
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -749,7 +751,7 @@ function resolveDeploymentWorkflowContext(
   if (!existsSync(manifestPath)) {
     assert.equal(
       digest(actual),
-      canonicalDigest,
+      currentWorkflowDigest,
       'Template workflow must retain the pinned canonical digest.',
     );
     return {
@@ -762,7 +764,7 @@ function resolveDeploymentWorkflowContext(
     validateCliManifest(manifest);
     assert.equal(
       digest(actual),
-      canonicalDigest,
+      currentWorkflowDigest,
       'CLI workflow must retain the pinned canonical digest.',
     );
     return {
@@ -1616,6 +1618,77 @@ test('workflow sends OIDC evidence directly to the canonical PublicAPI route', (
   }
 });
 
+test('GitHub attestation availability is exact and leaves signed handoff required', () => {
+  const workflow = readFileSync(workflowPath, 'utf8');
+  const decision = workflow.match(
+    /- name: Check GitHub attestation availability[\s\S]*?run: \|\n          node - <<'NODE'\n([\s\S]*?)\n          NODE/,
+  );
+  assert.ok(decision);
+  const script = decision[1].replace(/^ {10}/gm, '');
+  assert.match(
+    workflow,
+    /- name: Attest immutable image archive provenance\n        if: \$\{\{ steps\.attestation-availability\.outputs\.available == 'true' \}\}/,
+  );
+  assert.match(
+    workflow,
+    /- name: Request GitHub OIDC token and submit workflow evidence\n        env:/,
+  );
+  const directory = mkdtempSync(join(tmpdir(), 'eai-attestation-availability-'));
+  const eventPath = join(directory, 'event.json');
+  const outputPath = join(directory, 'output');
+  const repository = {
+    id: 1414837259,
+    full_name: 'customer/app',
+    private: true,
+    owner: { id: 332652381, login: 'customer', type: 'User' },
+  };
+  const check = (candidate) => {
+    writeFileSync(eventPath, JSON.stringify({ repository: candidate }));
+    writeFileSync(outputPath, '');
+    const result = spawnSync(process.execPath, ['-'], {
+      input: script,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        GITHUB_EVENT_PATH: eventPath,
+        GITHUB_OUTPUT: outputPath,
+        EXPECTED_REPOSITORY: 'customer/app',
+        EXPECTED_REPOSITORY_ID: '1414837259',
+        EXPECTED_OWNER_ID: '332652381',
+      },
+    });
+    return { result, output: readFileSync(outputPath, 'utf8') };
+  };
+  try {
+    const personalPrivate = check(repository);
+    assert.equal(personalPrivate.result.status, 0, personalPrivate.result.stderr);
+    assert.equal(personalPrivate.output, 'available=false\n');
+    for (const supported of [
+      { ...repository, private: false },
+      { ...repository, owner: { ...repository.owner, type: 'Organization' } },
+    ]) {
+      const outcome = check(supported);
+      assert.equal(outcome.result.status, 0, outcome.result.stderr);
+      assert.equal(outcome.output, 'available=true\n');
+    }
+    for (const invalid of [
+      { ...repository, private: undefined },
+      { ...repository, private: 'true' },
+      { ...repository, id: 3 },
+      { ...repository, full_name: 'other/app' },
+      { ...repository, owner: { ...repository.owner, type: undefined } },
+      { ...repository, owner: { ...repository.owner, id: 3 } },
+      { ...repository, owner: { ...repository.owner, login: 'other' } },
+    ]) {
+      const outcome = check(invalid);
+      assert.notEqual(outcome.result.status, 0);
+      assert.equal(outcome.output, '');
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
 test('reusable workflow compatibility keeps manual same-repository OIDC authority', () => {
   const workflow = readFileSync(workflowPath, 'utf8');
   const readme = readFileSync(readmePath, 'utf8');
@@ -1703,6 +1776,8 @@ test('local CLI dispatch binds direct DEV tunnel, original template and numeric 
     writeFileSync(join(root, '.eai/cli-managed-source-operation.json'), JSON.stringify({
       schemaVersion: 'eai.cli_managed_source_operation.v1',
       sourceMode: 'eai-cli-generated', operationId, environment: 'dev',
+      tenantId: 'tenant-parent', targetTenantId: 'hosting-tenant', appKey: 'rates-review',
+      repositoryAuthority: 'eai-managed',
       templateCommitSha: 'b'.repeat(40),
     }));
     execFileSync('git', ['init', '-q'], { cwd: root });
@@ -1720,6 +1795,68 @@ test('local CLI dispatch binds direct DEV tunnel, original template and numeric 
       '--local-e2e-expires-at', expiry, '--github-event-name', 'workflow_dispatch',
       '--reusable-call', 'false', '--repository-id', '12345'];
     runEvidenceScript(args);
+    writeFileSync(join(root, '.eai/cli-managed-source-operation.json'), JSON.stringify({
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
+      operationId, environment: 'dev', tenantId: 'tenant-parent', targetTenantId: 'hosting-tenant',
+      appKey: 'rates-review', repositoryAuthority: 'customer-owned', templateCommitSha: 'b'.repeat(40),
+    }));
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...args], { encoding: 'utf8' }).status, 1);
+    writeFileSync(join(root, '.eai/cli-managed-source-operation.json'), JSON.stringify({
+      schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
+      operationId, environment: 'dev', tenantId: 'tenant-parent', targetTenantId: 'hosting-tenant',
+      appKey: 'rates-review', repositoryAuthority: 'eai-managed', templateCommitSha: 'b'.repeat(40),
+    }));
+    const sameTemplate = [...args, '--local-e2e-template-commit-sha', 'b'.repeat(40)];
+    runEvidenceScript(sameTemplate);
+    const wrongInitialTemplate = [...args, '--local-e2e-template-commit-sha', 'd'.repeat(40)];
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...wrongInitialTemplate], { encoding: 'utf8' }).status, 1);
+    const predecessorOperationId = `cli-managed-${'e'.repeat(32)}`;
+    const historicalOperationId = `cli-managed-${'9'.repeat(32)}`;
+    const successorMarker = {
+      schemaVersion: 'eai.cli_managed_source_operation.v1',
+      sourceMode: 'eai-cli-generated', operationId: historicalOperationId, environment: 'dev',
+      tenantId: 'tenant-parent', targetTenantId: 'hosting-tenant', appKey: 'rates-review',
+      repositoryAuthority: 'customer-owned', templateCommitSha: 'b'.repeat(40),
+      predecessor: { operationId: predecessorOperationId },
+    };
+    const markerPath = join(root, '.eai/cli-managed-source-operation.json');
+    writeFileSync(markerPath, JSON.stringify(successorMarker));
+    const successor = [...args,
+      '--local-e2e-template-commit-sha', 'd'.repeat(40),
+      '--local-e2e-predecessor-operation-id', predecessorOperationId];
+    runEvidenceScript(successor);
+    runEvidenceScript(['collect', ...successor.slice(1),
+      '--repo', 'customer/rates-review', '--workflow', '.github/workflows/eai-app.yml',
+      '--ref', 'refs/heads/main', '--branch', 'main', '--workflow-run-id', '123456789',
+      '--workflow-run-attempt', '1', '--artifact-id', '987654321',
+      '--artifact-digest', `sha256:${'d'.repeat(64)}`, '--image-digest', `sha256:${'c'.repeat(64)}`]);
+    const collected = JSON.parse(readFileSync(join(root,
+      '.eai-build/evidence/source-unknown-deployment-evidence.json'), 'utf8'));
+    const successorTuple = ['eai.cli-managed-local-e2e-aud.v1',
+      'https://careful-8000.eai.devtunnels.ms', operationId, '12345', 'd'.repeat(40), expiry];
+    assert.equal(collected.localE2e.templateCommitSha, 'd'.repeat(40));
+    assert.equal(collected.localE2e.audience,
+      'api://enterprise-ai-publicapi/eai-cli-generated/local-v1/' + digest(JSON.stringify(successorTuple)));
+    writeFileSync(markerPath, JSON.stringify({ ...successorMarker,
+      predecessor: { operationId: `cli-managed-${'f'.repeat(32)}` } }));
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...successor], { encoding: 'utf8' }).status, 1);
+    writeFileSync(markerPath, JSON.stringify({ ...successorMarker, repositoryAuthority: 'eai-managed' }));
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...successor], { encoding: 'utf8' }).status, 1);
+    writeFileSync(markerPath, JSON.stringify(successorMarker));
+    for (const mutated of [
+      [...args],
+      [...successor.slice(0, -1), `cli-managed-${'f'.repeat(32)}`],
+      [...args, '--local-e2e-predecessor-operation-id', predecessorOperationId],
+      [...successor.slice(0, -3), 'not-a-sha', ...successor.slice(-2)],
+    ]) {
+      assert.equal(spawnSync(process.execPath, [evidenceScript, ...mutated], { encoding: 'utf8' }).status, 1);
+    }
+    const wrongScope = [...successor];
+    wrongScope[wrongScope.indexOf('--tenant-id') + 1] = 'another-tenant';
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...wrongScope], { encoding: 'utf8' }).status, 1);
+    const wrongRepository = [...successor];
+    wrongRepository[wrongRepository.indexOf('--repository-id') + 1] = '0';
+    assert.equal(spawnSync(process.execPath, [evidenceScript, ...wrongRepository], { encoding: 'utf8' }).status, 1);
     for (const [key, value] of [
       ['--public-api-url', 'https://attacker.example'],
       ['--environment', 'test'],
@@ -1742,9 +1879,41 @@ test('local CLI dispatch binds direct DEV tunnel, original template and numeric 
     const reusableInputs = workflow.slice(workflow.indexOf('  workflow_call:'), workflow.indexOf('\npermissions:'));
     assert.match(directInputs, /local_e2e_tunnel:/);
     assert.match(directInputs, /local_e2e_expires_at:/);
-    assert.doesNotMatch(reusableInputs, /local_e2e_tunnel:|local_e2e_expires_at:/);
+    assert.match(directInputs, /local_e2e_template_commit_sha:/);
+    assert.match(directInputs, /local_e2e_predecessor_operation_id:/);
+    assert.doesNotMatch(reusableInputs, /local_e2e_tunnel:|local_e2e_expires_at:|local_e2e_template_commit_sha:|local_e2e_predecessor_operation_id:/);
   } finally {
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('build and OIDC workflow stages enforce the same server-pinned successor template', () => {
+  const workflow = readFileSync(workflowPath, 'utf8');
+  const buildError = workflow.indexOf("throw new Error('Build evidence local successor binding changed.');");
+  const buildStart = workflow.lastIndexOf('if (sourceUnknownLocal', buildError);
+  const buildEnd = workflow.indexOf('\n            const tuple =', buildError);
+  const oidcStep = workflow.indexOf('name: Request GitHub OIDC token and submit workflow evidence');
+  const oidcStart = workflow.indexOf('if (sourceUnknownLocal\n', oidcStep);
+  const oidcEnd = workflow.indexOf('\n          const expectedKeys', oidcStart);
+  assert.ok(buildError > 0 && buildStart > 0 && buildEnd > buildError);
+  assert.ok(oidcStep > 0 && oidcStart > oidcStep && oidcEnd > oidcStart);
+  for (const guard of [workflow.slice(buildStart, buildEnd), workflow.slice(oidcStart, oidcEnd)]) {
+    const runGuard = (sourceUnknownLocal, localSha, serverSha, predecessorId = '') => runInNewContext(guard, {
+      sourceUnknownLocal,
+      local: { templateCommitSha: localSha },
+      process: {
+        env: {
+          LOCAL_E2E_TEMPLATE_COMMIT_SHA: serverSha,
+          LOCAL_E2E_PREDECESSOR_OPERATION_ID: predecessorId,
+        },
+        exit(code) { throw new Error(`exit ${code}`); },
+      },
+    });
+    assert.doesNotThrow(() => runGuard(false, 'a'.repeat(40), 'a'.repeat(40), `cli-managed-${'b'.repeat(32)}`));
+    assert.throws(() => runGuard(false, 'a'.repeat(40), 'c'.repeat(40), `cli-managed-${'b'.repeat(32)}`));
+    assert.doesNotThrow(() => runGuard(false, 'a'.repeat(40), ''));
+    assert.throws(() => runGuard(true, 'a'.repeat(40), 'c'.repeat(40)));
+    assert.throws(() => runGuard(true, 'a'.repeat(40), '', `cli-managed-${'b'.repeat(32)}`));
   }
 });
 
@@ -1768,6 +1937,12 @@ test('local customer-owned source uses its own exact direct-operation audience',
       '--github-event-name', 'workflow_dispatch', '--reusable-call', 'false',
       '--repository-id', '12345'];
     runEvidenceScript(args);
+    for (const extra of [
+      ['--local-e2e-template-commit-sha', 'd'.repeat(40)],
+      ['--local-e2e-predecessor-operation-id', `cli-managed-${'e'.repeat(32)}`],
+    ]) {
+      assert.equal(spawnSync(process.execPath, [evidenceScript, ...args, ...extra], { encoding: 'utf8' }).status, 1);
+    }
     const withoutTarget = [...args];
     withoutTarget.splice(withoutTarget.indexOf('--target-tenant-id'), 2);
     runEvidenceScript(withoutTarget);
@@ -5583,6 +5758,9 @@ syncBuiltinESMExports();
 const root = repoRoot;
 const fixtures = join(root, 'tests/fixtures/source-unknown');
 const canonical = regularBytes(workflowPath);
+const legacyCanonical = existsSync(join(fixtures, 'eai-app.yml'))
+  ? regularBytes(join(fixtures, 'eai-app.yml'))
+  : canonical;
 // INVARIANT: synthetic controlled input stays inline so legacy four-file repairs execute every control without new fixture dependencies.
 const generated = gunzipSync(
   Buffer.from(
@@ -5654,7 +5832,7 @@ function contextFixture(t, manifest, workflow = canonical, operation) {
   mkdirSync(join(directory, '.github/workflows'), { recursive: true });
   mkdirSync(join(directory, 'tests/fixtures'), { recursive: true });
   mkdirSync(join(directory, fixtureDirectory), { recursive: true });
-  writeFileSync(join(directory, fixtureDirectory, 'eai-app.yml'), canonical);
+  writeFileSync(join(directory, fixtureDirectory, 'eai-app.yml'), legacyCanonical);
   writeFileSync(
     join(directory, fixtureDirectory, 'generated-eai-app.yml'),
     generated,
@@ -6007,7 +6185,7 @@ test('generated contract fixture drift fails before comparison', () => {
 test('inline synthetic generated input retains repository and actual normalized export parity', () => {
   assert.equal(digest(generated), generatedDigest);
   if (existsSync(fixtures)) {
-    assert.ok(regularBytes(join(fixtures, 'eai-app.yml')).equals(canonical));
+    assert.equal(digest(regularBytes(join(fixtures, 'eai-app.yml'))), canonicalDigest);
     assert.ok(
       regularBytes(join(fixtures, 'generated-eai-app.yml')).equals(generated),
     );
@@ -6023,7 +6201,7 @@ test('inline synthetic generated input retains repository and actual normalized 
     );
     assert.equal(
       digest(regularBytes(join(root, canonicalWorkflowRelativePath))),
-      canonicalDigest,
+      currentWorkflowDigest,
     );
   }
 });

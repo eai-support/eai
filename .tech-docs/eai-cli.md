@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.3 |
+| Version | 3.20.4 |
 | Released | 2026-10-14 |
-| Last Material Change | Bounded consultant document analyzer configuration for the October launch |
-| Source Commit | `840427e94fb1b6be6b0e5560390fb8ee69983642` |
+| Last Material Change | Pin Template v1.0.17 for private customer managed deployment |
+| Source Commit | `996c8dad929ac0737bbd6d4dfb56922ee545bf41` |
 
 
 ## Install

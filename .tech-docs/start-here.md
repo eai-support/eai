@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.3** (2026-10-14): Bounded consultant document analyzer configuration for the October launch.
+The current CLI release is **v3.20.4** (2026-10-14): Pin Template v1.0.17 for private customer managed deployment.

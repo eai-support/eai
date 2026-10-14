@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.3. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.4. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -790,7 +790,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.3** (2026-10-14): Bounded consultant document analyzer configuration for the October launch.
+The current CLI release is **v3.20.4** (2026-10-14): Pin Template v1.0.17 for private customer managed deployment.
 
 ---
 
@@ -841,10 +841,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.3 |
+| Version | 3.20.4 |
 | Released | 2026-10-14 |
-| Last Material Change | Bounded consultant document analyzer configuration for the October launch |
-| Source Commit | `840427e94fb1b6be6b0e5560390fb8ee69983642` |
+| Last Material Change | Pin Template v1.0.17 for private customer managed deployment |
+| Source Commit | `996c8dad929ac0737bbd6d4dfb56922ee545bf41` |
 
 
 ## Install
