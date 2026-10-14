@@ -125,6 +125,20 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
     expect(existsSync(shadow)).toBe(false); expect(readFileSync(value.cliPath, 'utf8')).toBe(readFileSync(join(value.root, 'src/main.js'), 'utf8'));
     expect(qa.readPrivate(value.output)).toMatchObject({ status: 'passed', qualification: 'normal-build', qualified: true });
   });
+  test('the actual normal builder qualifies a receipt with the pinned template registry', () => {
+    const value = normalFixture();
+    const linked = JSON.parse(readFileSync(join(process.cwd(), 'resources/linked-sources.json'), 'utf8'));
+    writeFileSync(join(value.root, '.npmrc'), `@enterpriseaigroup:registry=${linked.appTemplate.enterpriseRegistry}\n`);
+    commit(value.root);
+    const result = spawnSync(process.execPath, [join(value.root, 'scripts/cli-qa-build-receipt.cjs'),
+      '--cli', value.cliPath, '--output', value.output], { cwd: value.root, encoding: 'utf8', timeout: 20000,
+      env: { ...process.env, NODE_PATH: resolve('node_modules') } });
+    expect(result.status, result.stderr).toBe(0);
+    const receipt = qa.readPrivate(value.output);
+    expect(receipt).toMatchObject({ status: 'passed', qualification: 'normal-build', qualified: true,
+      npmConfiguration: { project: 'pinned-template-registry' } });
+    expect(build.sourceBuildVerified(receipt, receipt.candidate, { now: Date.parse(receipt.observedAt) })).toBe(true);
+  });
   test.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'])('shared actual candidate collection excludes ambient %s override', key => {
     const value = normalFixture(), foreign = fixture();
     expect(actual(process.execPath, ['scripts/build.cjs'], { cwd: value.root }).status).toBe(0);
@@ -145,6 +159,27 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
     const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
     expect(receipt.status).toBe('passed'); expect(receipt.qualified).toBe(false); expect(receipt.sourceUnchanged).toBe(true);
     expect(receipt.sourceFileCount).toBe(6); expect(receipt.candidate.dirty).toBe(false);
+  });
+  test.each(['registry-only', 'registry-with-installation-pins'])('the pinned template scoped registry is admitted for a real %s build', variant => {
+    const value = fixture();
+    const linked = JSON.parse(readFileSync(join(process.cwd(), 'resources/linked-sources.json'), 'utf8'));
+    const registry = `@enterpriseaigroup:registry=${linked.appTemplate.enterpriseRegistry}\n`;
+    writeFileSync(join(value.root, '.npmrc'), (variant === 'registry-only'
+      ? registry : readFileSync(join(process.cwd(), '.npmrc'), 'utf8') + registry));
+    commit(value.root);
+    const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
+    expect(receipt.status).toBe('passed');
+    expect(receipt.sourceUnchanged).toBe(true);
+    expect(receipt.npmConfiguration.project).toBe('pinned-template-registry');
+  });
+  test.each([
+    '@enterpriseaigroup:registry=https://registry.npmjs.org/',
+    '@enterpriseaigroup:registry=http://enterpriseaigroup.github.io/enterpriseai-packages/registry',
+    '@enterpriseaigroup:registry=https://enterpriseaigroup.github.io/enterpriseai-packages/registry\n@enterpriseaigroup:registry=https://enterpriseaigroup.github.io/enterpriseai-packages/registry',
+  ])('a different or duplicated template registry is rejected before build (%s)', config => {
+    const value = fixture(); writeFileSync(join(value.root, '.npmrc'), config + '\n'); commit(value.root);
+    expect(() => build.runBuildReceipt(value.options, value.dependencies)).toThrow('NPM_PROJECT_CONFIG_UNSUPPORTED');
+    expect(value.builds()).toBe(0);
   });
   test.each(['//registry.npmjs.org/:_authToken=synthetic-only-config-token', 'prefix=/synthetic/override',
     'node-options=--conditions=synthetic-project-config', 'save-exact=false'])('unsupported project config %s never dispatches build', config => {

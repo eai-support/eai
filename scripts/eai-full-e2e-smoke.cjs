@@ -15,6 +15,7 @@ const { SCHEMA: TRANSPORT_SCHEMA, observationValid, primaryTransportMatches, obs
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
 const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.md');
+const WORKSPACE_MUTATION_TIMEOUT_MS = 180_000;
 const producerSchemas = new Map();
 function producerSchema(cliPath, candidate) {
   // A schema is immutable for the full observed runtime digest, not just the entry file.
@@ -2157,7 +2158,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const created = json(['tenant', 'create', '--name', 'EAI CLI Audit ' + runId + ' ' + nonce, '--slug', appName,
       '--parent', parentTenantId, '--domain', appName + '.example.invalid', '--usecase', 'generic', '--industry', 'test',
       '--starter-template', 'eai-app-template',
-      '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
+      '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId,
+        timeout: WORKSPACE_MUTATION_TIMEOUT_MS, observe(result) {
         const payload = parseJson(result.stdout, {});
         const tenant = payload.tenant;
         if (tenant?.reused === true) childAttempted = false;
@@ -2173,7 +2175,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     assertion('created-child-ownership', childOwned && created.tenant.id === child(),
       'Child creation did not acknowledge the exact run-specific tenant; cleanup ownership cannot be inferred.', false, created);
     const bootstrap = json(['tenant', 'bootstrap-admin', '--parent', parentTenantId, '--child', child(),
-      '--user-oid', actorId, '--user-email', actorEmail, '--format', 'json'], { cwd: controlRoot, scopeTenantId: child() });
+      '--user-oid', actorId, '--user-email', actorEmail, '--format', 'json'],
+      { cwd: controlRoot, scopeTenantId: child(), timeout: WORKSPACE_MUTATION_TIMEOUT_MS });
     assertion('child-admin-bootstrap', bootstrap.childTenantId === child() && bootstrap.parentTenantId === parentTenantId
       && bootstrap.userOid === actorId && bootstrap.usable === true && typeof bootstrap.membershipCreated === 'boolean'
       && typeof bootstrap.adminAssigned === 'boolean' && ['bootstrapped', 'already-usable'].includes(bootstrap.status)
@@ -2640,7 +2643,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       function deleteLeaf(id, parentId) {
         eai(['tenant', 'select', parentId], { cwd: controlRoot, scopeTenantId: parentId });
         const receipt = json(['tenant', 'delete', id, '--parent', parentId, '--force', '--force-hard-purge', '--format', 'json'],
-          { cwd: controlRoot, scopeTenantId: parentId });
+          { cwd: controlRoot, scopeTenantId: parentId, timeout: WORKSPACE_MUTATION_TIMEOUT_MS });
         assertion('child-hard-purge-receipt', receipt.id === id && receipt.deleted === true && receipt.hardPurged === true
           && receipt.response?.status === 'hard_purged' && receipt.response.parentTenantId === parentId,
         'Parent-authorized leaf cleanup was not confirmed by the exact hard-purge receipt.', false, receipt);
