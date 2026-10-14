@@ -319,6 +319,15 @@ describe('release metadata updater', () => {
 });
 
 describe('managed-deployment release documentation', () => {
+  test('ships app deletion help with its explicit runtime child target', () => {
+    for (const filename of ['cli-help.txt', 'llms-full.txt']) {
+      const asset = readFileSync(path.join(repoRoot, 'docs-site/static', filename), 'utf8');
+      const deleteHelp = asset.split('eai app delete --help\n')[1]?.split('\n---\n')[0];
+      expect(deleteHelp, filename).toBeDefined();
+      expect(deleteHelp, filename).toContain('--target-tenant-id <id>');
+    }
+  });
+
   test('ships the managed deployment help and portable documentation', () => {
     const help = readFileSync(path.join(repoRoot, 'docs-site/static/cli-help.txt'), 'utf-8');
     const full = readFileSync(path.join(repoRoot, 'docs-site/static/llms-full.txt'), 'utf-8');

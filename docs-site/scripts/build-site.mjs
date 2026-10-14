@@ -17,7 +17,7 @@ export function buildSite(site = defaultSite, runCompiler = (directory, staticDi
     cwd: directory,
     env: { ...process.env, EAI_DOCS_BUILD_STATIC_DIR: staticDirectory },
     stdio: 'inherit',
-  })) {
+  }), baseUrl = process.env.EAI_DOCS_BASE_URL || '/eai/') {
   const staticSource = path.join(site, 'static');
   const canonical = readFileSync(path.join(staticSource, canonicalRelative));
   for (const alias of aliases) {
@@ -38,6 +38,14 @@ export function buildSite(site = defaultSite, runCompiler = (directory, staticDi
     });
     mkdirSync(path.join(preparedStatic, 'registry'), { recursive: true });
     writeFileSync(path.join(preparedStatic, aliases[1]), canonical);
+
+    // Plain-text static assets do not receive Docusaurus's baseUrl handling.
+    const llmsIndex = path.join(preparedStatic, 'llms.txt');
+    const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+    writeFileSync(llmsIndex, readFileSync(llmsIndex, 'utf8').replace(
+      /(\]\()\/eai\//g,
+      (_match, destination) => `${destination}${normalizedBaseUrl}`,
+    ));
 
     const result = runCompiler(site, preparedStatic);
     if (result.error) throw result.error;

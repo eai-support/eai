@@ -440,6 +440,32 @@ Examples:
 
 ---
 
+eai app delete --help
+=====================
+
+Usage: eai app delete [options] <key>
+
+Permanently delete an app and every manifest-owned child
+
+Options:
+  --tenant-id <id>         Company workspace that owns the app enrollment
+  --target-tenant-id <id>  Runtime child workspace to delete from the owning
+                           company app
+  --confirm <app-key>      Confirm the exact app key for automation
+  --non-interactive        Disable prompts; requires --confirm with the exact
+                           app key (default: false)
+  --format <format>        Output format (text|json) (default: "text")
+  --json                   Output raw JSON (deprecated, use --format json)
+                           (default: false)
+  -h, --help               display help for command
+
+For a parent-owned app with a separate runtime child:
+  eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+The plan and final receipt must match the owner, requested child and exact runtime targets.
+Omit --target-tenant-id for the existing same-workspace deletion flow.
+
+---
+
 eai deploy source validate --help
 =================================
 

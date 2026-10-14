@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,6 +8,7 @@ import test from 'node:test';
 import { buildSite } from './build-site.mjs';
 
 const script = fileURLToPath(new URL('./build-site.mjs', import.meta.url));
+const sourceRoot = fileURLToPath(new URL('../../', import.meta.url));
 
 function fixture() {
   const site = mkdtempSync(path.join(tmpdir(), 'eai-docs-registry-test-'));
@@ -20,8 +21,70 @@ function fixture() {
     '@enterpriseai%2fcli',
     '@enterpriseai%2Fcli',
   ]) writeFileSync(path.join(registry, alias), canonical);
-  return { site, canonical, registry };
+  const llms = [
+    '- [Content Understanding](/eai/docs/content-understanding)',
+    '- [Help](/eai/cli-help.txt)',
+    '- [Registry](/eai/registry/)',
+    '- [Canonical docs](https://eai-support.github.io/eai/docs/content-understanding)',
+    '- [Unrelated](/eai-other/docs)',
+    'npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/',
+    '',
+  ].join('\n');
+  writeFileSync(path.join(site, 'static/llms.txt'), llms);
+  return { site, canonical, registry, llms };
 }
+
+for (const baseUrl of ['/eai/', '/docs/eai/', '/docs/eai']) {
+  test(`build mounts local llms links at ${baseUrl} without changing source or cross-host links`, () => {
+    const { site, llms } = fixture();
+    try {
+      buildSite(site, (_directory, prepared) => {
+        cpSync(prepared, path.join(site, 'build'), { recursive: true });
+        return { status: 0 };
+      }, baseUrl);
+      const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
+      const built = readFileSync(path.join(site, 'build/llms.txt'), 'utf8');
+      assert.ok(built.includes(`- [Content Understanding](${normalizedBaseUrl}docs/content-understanding)`));
+      assert.ok(built.includes(`- [Help](${normalizedBaseUrl}cli-help.txt)`));
+      assert.ok(built.includes(`- [Registry](${normalizedBaseUrl}registry/)`));
+      for (const line of llms.split('\n').slice(3)) assert.ok(built.includes(line));
+      assert.equal(readFileSync(path.join(site, 'static/llms.txt'), 'utf8'), llms);
+    } finally {
+      rmSync(site, { recursive: true, force: true });
+    }
+  });
+}
+
+test('docs asset verification rejects guidance for a different package version', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'eai-docs-guidance-test-'));
+  const files = [
+    'scripts/verify-docs-experience-assets.cjs',
+    'package.json',
+    'docs-site/static/docs-search-index.json',
+    'docs-site/static/docs-capabilities.json',
+    'docs-site/static/error-guidance.json',
+    'docs-site/src/components/RequestBuilder/index.js',
+    'docs-site/src/components/InstallerDownload/index.js',
+  ];
+  try {
+    for (const relative of files) {
+      const destination = path.join(root, relative);
+      mkdirSync(path.dirname(destination), { recursive: true });
+      copyFileSync(path.join(sourceRoot, relative), destination);
+    }
+    const verifier = path.join(root, 'scripts/verify-docs-experience-assets.cjs');
+    const current = spawnSync(process.execPath, [verifier], { encoding: 'utf8' });
+    assert.equal(current.status, 0, current.stderr);
+    const guidancePath = path.join(root, 'docs-site/static/error-guidance.json');
+    const guidance = JSON.parse(readFileSync(guidancePath, 'utf8'));
+    writeFileSync(guidancePath, JSON.stringify({ ...guidance, version: '0.0.0-stale' }));
+    const stale = spawnSync(process.execPath, [verifier], { encoding: 'utf8' });
+    assert.notEqual(stale.status, 0);
+    assert.match(stale.stderr, /Error guidance version does not match package version/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('build emits every registry alias from exact canonical bytes without editing the source tree', () => {
   const { site, canonical, registry } = fixture();
