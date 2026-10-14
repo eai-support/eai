@@ -5,11 +5,49 @@ description: Configure bounded document analyzers from your own harness and read
 
 # Content Understanding
 
+## October launch: document fields and background processing
+
+The October 15 scope uses the existing Admin Portal document workflow. A consultant's harness can turn a request such as “classify quotations, extract the supplier and total, and write a short summary” into a bounded JSON file. `eai docs configure-type` creates the tenant-owned leaf analyzer, verifies its exact fields and readback digest, then syncs the matching runtime document rules. The workspace UUID in the file and `--tenant-id` must use lowercase canonical hex. It accepts 1–32 scalar fields (`string`, `integer`, `number`, `boolean`, `date`, or `time`) with `extract` or `generate` methods. Document codes use only letters, numbers and underscores so distinct codes cannot collapse to one Admin Portal analyzer ID. Azure normalizes an `integer` analyzer field to `number` while the runtime rule stays `INTEGER`. The command does not accept figures, tables, nested fields, Azure credentials, or provider URLs.
+
+Run inside an initialized EAI project and select the intended profile explicitly. For DEV:
+
+```json
+{
+  "kind": "eai.document-type.configuration",
+  "schemaVersion": 1,
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "code": "Quotation",
+  "name": "Quotation",
+  "description": "Supplier quotation",
+  "fields": [
+    { "name": "supplierName", "description": "Supplier organisation", "type": "string", "method": "extract" },
+    { "name": "totalAmount", "description": "Total amount including tax", "type": "number", "method": "extract" },
+    { "name": "summary", "description": "One-sentence summary", "type": "string", "method": "generate" }
+  ]
+}
+```
+
+```bash
+eai --profile dev docs configure-type --file quotation.json --tenant-id <workspace-id> --format json
+eai --profile dev classifier save --file classifier.json --tenant-id <workspace-id> --format json
+eai --profile dev classifier publish <classifier-key> --tenant-id <workspace-id> --format json
+eai --profile dev classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --document-lifecycle business-document-v1 --tenant-id <workspace-id> --format json
+eai --profile dev docs classify ./quotation.pdf --storage-target resourceapi --vertical-key <app-key> --workflow-key <workflow-key> --tenant-id <workspace-id> --format json
+eai --profile dev docs job <job-id> --tenant-id <workspace-id> --wait --format json
+eai --profile dev docs get <document-id> --job-id <job-id> --tenant-id <workspace-id> --format json
+```
+
+The classifier's `documentTypeKey` must match the configuration `code`. The app and workflow must already be provisioned and entitled, and the business-document object types published before upload. A queued job is only acceptance; inspect the completed job and persisted field values. If `configure-type` reports a partial `runtime-sync` failure, retain the same file and inspect that phase before retrying. No automatic rollback or document re-upload is implied.
+
+The broader typed CU v2 mode below is a separate, gated capability and is not part of the October 15 launch. Its flags should remain off until its own provider and document-processing qualification passes.
+
+## Typed configuration after qualification
+
 Your harness authors a JSON manifest. The CLI validates it locally, reads the selected workspace's capabilities, obtains a plan, and submits that unchanged plan through the platform. The platform owns Azure credentials, approved models, analyzer ownership, publication and activation. No Azure key or resource URL belongs in the manifest.
 
 This mode supports typed document fields and one flat workflow classifier. It requires administrator permission and an enabled, ready workspace. Installed commands do not establish that the workspace has the capability. Nested classifiers, segmentation, audio/video, arbitrary model deployments and resource provisioning are unavailable in this mode; unsupported settings fail before any configuration writes.
 
-These commands require CLI v3.20.0 or newer. The 3.20.0 source candidate requires package publication and DEV provider qualification before launch; the existing published release is listed in [Start Here](./start-here.md). The release owner must also regenerate and commit the matching static fallback registry before installer promotion. Source validation does not establish that the candidate is installable from either release channel.
+These typed commands are installed in CLI v3.20.2, but remain disabled on DEV pending separate qualification. Installed commands do not establish readiness. Check the current package and workspace capabilities before planning.
 
 ## Author and validate
 

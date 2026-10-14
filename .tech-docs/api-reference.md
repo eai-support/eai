@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-10-13T03:27:15.179Z"
-source_commit: "79ea5af77c831b1005a4c3f6b5b43b9b0bcbeacc"
+generated_at: "2026-10-14T12:44:17.530Z"
+source_commit: "840427e94fb1b6be6b0e5560390fb8ee69983642"
 ---
 # EAI CLI — API Reference
 
@@ -844,6 +844,8 @@ Request an operator-assisted runtime workflow binding.
 `eai content-understanding schema` and `validate --file <path>` are local, authentication-free commands. `capabilities`, `plan`, `apply` and `status` use the selected workspace and require `--tenant-id`. `plan` is read-only; `apply` requires the original `--file` and saved JSON `--plan`, accepts an acknowledged `--operation-id` for resume, and optionally waits within `--timeout 1..1800`. Status only reads an existing operation and asks for explicit apply when mutation remains. JSON output uses `--format json`; pending work is distinct from completion. See [Content Understanding](content-understanding.md) for bounded fields, flat classification, readiness and unknown acknowledgement recovery.
 
 ### Document Commands
+
+For October launch-scope analyzer fields, use `eai docs configure-type --file <configuration.json> --tenant-id <workspace-id> --format json` before submitting a document. This named command maps a bounded document type and its scalar extract/generate fields to a tenant-owned analyzer and matching runtime rules, verifies analyzer readback, and reports any partial runtime-sync failure. It does not publish a classifier or enable the separately gated typed CU v2 workflow. See [Content Understanding](content-understanding.md) for the JSON shape and full background-job sequence.
 
 Uploads require authorized context: either an existing Curate planning project
 (`--planning-application-id <id>` or `--business-request-id <id>`), or paired

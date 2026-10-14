@@ -284,6 +284,44 @@ describe('managed-deployment release documentation', () => {
 });
 
 describe('static registry release staging', () => {
+  test('adds a patch release without deleting or trusting stale historical fallback archives', () => {
+    const workspace = mkdtempSync(path.join(tmpdir(), 'eai-registry-history-'));
+    const registry = path.join(workspace, 'docs-site/static/registry');
+    const canonical = path.join(registry, '@enterpriseai/cli');
+    const previousArchive = path.join(registry, '-/@enterpriseai/cli-3.20.2.tgz');
+    const previousBytes = Buffer.from('previous release fixture');
+    const digest = (algorithm: 'sha1' | 'sha512', bytes: Buffer, encoding: 'hex' | 'base64') =>
+      createHash(algorithm).update(bytes).digest(encoding);
+    try {
+      mkdirSync(path.join(workspace, 'scripts'), { recursive: true });
+      mkdirSync(path.dirname(canonical), { recursive: true });
+      mkdirSync(path.dirname(previousArchive), { recursive: true });
+      cpSync(path.join(repoRoot, 'scripts/generate-registry.cjs'), path.join(workspace, 'scripts/generate-registry.cjs'));
+      writeFileSync(path.join(workspace, 'package.json'), JSON.stringify({ name: '@enterpriseai/cli', version: '3.20.3',
+        description: 'Fixture', bin: { eai: 'dist/index.js' }, engines: { node: '>=24' }, dependencies: {} }));
+      writeFileSync(path.join(workspace, 'enterpriseai-cli-3.20.3.tgz'), 'new release fixture');
+      writeFileSync(previousArchive, previousBytes);
+      writeFileSync(canonical, JSON.stringify({ name: '@enterpriseai/cli', 'dist-tags': { latest: '3.20.2' },
+        versions: { '3.20.2': { name: '@enterpriseai/cli', version: '3.20.2', dist: {
+          tarball: 'https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.2.tgz',
+          shasum: digest('sha1', previousBytes, 'hex'), integrity: `sha512-${digest('sha512', previousBytes, 'base64')}`,
+        } } }, time: { '3.20.2': '2026-10-14T00:00:00.000Z' } }));
+
+      execFileSync(process.execPath, ['scripts/generate-registry.cjs'], { cwd: workspace });
+      const result = JSON.parse(readFileSync(canonical, 'utf8'));
+      expect(Object.keys(result.versions)).toEqual(['3.20.2', '3.20.3']);
+      expect(readFileSync(previousArchive)).toEqual(previousBytes);
+      expect(readFileSync(path.join(registry, 'index.html'), 'utf8')).toContain('cli-3.20.2.tgz');
+      expect(readFileSync(path.join(registry, 'index.html'), 'utf8')).toContain('cli-3.20.3.tgz');
+
+      writeFileSync(previousArchive, 'tampered release fixture');
+      expect(() => execFileSync(process.execPath, ['scripts/generate-registry.cjs'], { cwd: workspace, stdio: 'pipe' }))
+        .toThrow();
+    } finally {
+      rmSync(workspace, { recursive: true, force: true });
+    }
+  });
+
   test.skipIf(process.platform === 'win32')('stages every encoded alias from the new canonical Git blob', () => {
     const workspace = mkdtempSync(path.join(tmpdir(), 'eai-release-registry-'));
     const canonical = 'docs-site/static/registry/@enterpriseai/cli';

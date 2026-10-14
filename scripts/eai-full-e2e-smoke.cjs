@@ -101,6 +101,7 @@ const TRACEABILITY_BASE = [
   ['eai workflow status', 'read', 'live-optional', 'Runs for the exact workflow created by EAI_E2E_WORKFLOW_PROVISION=1; failures are not ignored.'],
   ['eai workflow request', 'create', 'covered-by-cli', 'Controlled command tests; operator request creation has no verified run-owned teardown.'],
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
+  ['eai docs configure-type', 'create/update', 'covered-by-cli', 'Owning command tests verify bounded tenant scope, provider status, analyzer readback and runtime sync. Manual DEV qualification is separate from this runner.'],
   ['eai docs classify', 'read/create', 'covered-by-cli', 'Controlled lifecycle helper tests use EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Full runner blocks EAI_E2E_DOCS=1 until a published business-document fixture can be created and verified in its isolated child.'],
   ['eai content-understanding schema', 'read-local', 'covered-by-cli', 'Local JSON schema is tested without a profile, token or network; schema describes semantic limits and does not imply deployed readiness.'],
   ['eai content-understanding validate', 'read-local', 'covered-by-cli', 'Owning manifest tests reject unsupported shapes and compare actual shared normalization/digest goldens before any authenticated context.'],
@@ -395,6 +396,7 @@ const SMOKE_CALLS = {
     'EAI_E2E_WORKFLOW_REQUEST=1 eai workflow request <workflow-key> --workspace <workspace-id> --display-name <name> --reason smoke --format json',
   ],
   'eai docs upload': [],
+  'eai docs configure-type': [],
   'eai docs classify': [
     'EAI_E2E_DOCS=1 eai docs classify <EAI_E2E_DOCS_FILE> --tenant-id <EAI_E2E_DOCS_TENANT_ID> --storage-target resourceapi --vertical-key <EAI_E2E_DOCS_VERTICAL_KEY> --workflow-key <EAI_E2E_DOCS_WORKFLOW_KEY> --format json',
   ],
@@ -557,6 +559,11 @@ const OPTION_DECISIONS = {
   'eai docs job': { '--format': 'JSON preserves the exact accepted job, stages and request scope.', '--tenant-id': 'Exact accepted job and owning tenant are checked.', '--wait': 'GET-only polling never repeats an upload.', '--timeout': 'Timeout retains the accepted job with nonzero pending result.' },
   'eai docs get': { '--format': 'JSON preserves full persisted recursive results rather than the job summary.', '--tenant-id': 'Returned tenant identity is checked when present.', '--job-id': 'Exact original job filter is forwarded and readbacks checked.', '--storage-target': 'Only ResourceAPI persisted results are supported.' },
   'eai docs upload': DOCUMENT_CONTEXT_OPTION_DECISIONS,
+  'eai docs configure-type': {
+    '--file': 'Owning tests reject malformed, oversized and unsupported configuration before network access.',
+    '--tenant-id': 'The exact UUID must match the file and selected workspace before writes.',
+    '--format': 'Structured JSON reports the verified result or failed phase without provider secrets.',
+  },
   'eai docs classify': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai start': {
     '--surface': 'Explicit provider selection is covered by command integration tests; release smoke keeps detection read-only.',
@@ -993,6 +1000,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'No - not executed',
     cleanupMechanism: 'Not required; controlled command tests only',
     cleanupVerified: 'Not applicable',
+  },
+  'eai docs configure-type': {
+    createsExternalArtifact: 'No - not executed by this runner',
+    cleanupMechanism: 'Controlled command tests only; manual DEV fixture records analyzer and runtime teardown separately',
+    cleanupVerified: 'Not applicable to this runner',
   },
   'eai docs classify': {
     createsExternalArtifact: 'Yes - document, file and analysis',

@@ -137,6 +137,9 @@ describe('agent guide', () => {
   test('catalog tells agents how to choose document workflow versus resource files', () => {
     const guide = getAgentGuide();
 
+    expect(guide.capabilities).toContain('document-type-configuration-v1');
+    expect(guide.operatingRules.join('\n')).toContain('The separate typed CU v2 mode remains gated until qualified.');
+
     expect(guide.operatingRules).toContain(
       'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
     );
@@ -148,6 +151,10 @@ describe('agent guide', () => {
         expect.objectContaining({
           title: 'Documents, files, and AI context',
           commands: expect.arrayContaining([
+            expect.objectContaining({
+              command: 'eai docs configure-type --file document-type.json --tenant-id <workspace-id> --format json',
+              mutates: true,
+            }),
             expect.objectContaining({
               command: 'eai docs upload <file>',
               mutates: true,
