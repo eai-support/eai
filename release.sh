@@ -24,6 +24,14 @@ Examples:
   ./release.sh patch "Fix auth token refresh bug"
   ./release.sh minor "Add bulk resource import command"
   ./release.sh major "Replace config schema with v3 format"
+
+Install after release publication (choose one):
+  Recommended npmjs package:
+    npm install -g eai-cli
+  Canonical npmjs package:
+    npm install -g @enterpriseai/cli
+  Static registry fallback:
+    npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 EOF
 }
 

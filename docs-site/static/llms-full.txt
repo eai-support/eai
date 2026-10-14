@@ -698,6 +698,31 @@ and want to add EAI services, documents, or workspace-aware patterns.
 Use [Manual and Managed Setup](./manual-and-managed-setup.md) when you work in
 CI, on a managed device, behind a proxy, or need to control each command.
 
+<details>
+<summary>Advanced: install the CLI directly</summary>
+
+For a manual CLI install, choose one of these commands.
+
+Recommended npmjs package:
+
+```bash
+npm install -g eai-cli
+```
+
+Canonical npmjs package:
+
+```bash
+npm install -g @enterpriseai/cli
+```
+
+Static registry fallback:
+
+```bash
+npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
+```
+
+</details>
+
 ## After Your Project Is Ready
 
 - Use [eai-gofer](./eai-gofer.md) to prepare your AI coding workspace.
