@@ -139,20 +139,25 @@ docsCommand.command('job <jobId>').description('Read an accepted document job; o
       const path = `/v4/data/documents/jobs/${encodeURIComponent(jobId)}`, deadline = Date.now() + timeout;
       let response = await context.client.getDocumentJob(jobId, Math.max(1, deadline - Date.now()));
       let job = parseJob(await readContentUnderstandingResponse(response), jobId, context.tenantId);
-      while (options.wait && ['queued', 'processing'].includes(String(job.status)) && Date.now() < deadline) {
+      const failedJob = () => ['failed', 'completed_with_errors'].includes(String(job.status))
+        || (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
+          .some(key => isRecord(doc[key]) && doc[key].status === 'failed'));
+      const pendingStages = () => (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
+        .some(key => isRecord(doc[key]) && (doc[key].status === 'pending' || doc[key].status === 'processing')));
+      while (options.wait && !failedJob() && (job.status !== 'completed' || pendingStages()) && Date.now() < deadline) {
         await new Promise<void>(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
         if (Date.now() >= deadline) break;
         response = await context.client.getDocumentJob(jobId, Math.max(1, deadline - Date.now()));
         job = parseJob(await readContentUnderstandingResponse(response), jobId, context.tenantId);
       }
-      const stageFailed = (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
-        .some(key => isRecord(doc[key]) && doc[key].status === 'failed'));
-      const failed = ['failed', 'completed_with_errors'].includes(String(job.status)) || stageFailed;
-      const pending = options.wait && job.status !== 'completed' && !failed;
+      const failed = failedJob();
+      const pending = !failed && ((options.wait && job.status !== 'completed') || (job.status === 'completed' && pendingStages()));
       printRead(options, { ok: !failed && !pending, status: response.status, request: { method: 'GET', path,
         ...context.client.getRequestScope() }, body: job,
         ...(failed || pending ? { error: { code: failed ? 'DOC_JOB_FAILED' : 'DOC_JOB_PENDING',
-          message: failed ? 'Document job failed or completed with errors; inspect its pipeline results.' : 'Wait deadline reached. Poll this job again; do not re-upload.', jobId } } : {}) });
+          message: failed ? 'Document job failed or completed with errors; inspect its pipeline results.'
+            : options.wait ? 'Wait deadline reached. Poll this job again; do not re-upload.'
+              : 'Document job has incomplete pipeline results. Poll this job again; do not re-upload.', jobId } } : {}) });
     } catch (error) { printRead(options, { ...readFailure(error), jobId }); }
   });
 

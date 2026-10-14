@@ -709,6 +709,61 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, request: { publicApiUrl: gateway, tenantId, path: '/v4/data/documents/jobs/job-one' }, body: job });
     expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
   });
+  test('processing job inspection remains a successful single read without --wait', async () => {
+    const job = { jobId: 'job-one', tenantId, status: 'processing', documents: [{ documentId: 'doc-one',
+      storage: { status: 'completed' }, classification: { status: 'processing' }, rag: { status: 'skipped' } }] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, body: job });
+    expect(process.exitCode).toBe(0); expect(calls).toHaveLength(1);
+  });
+  test.each(['storage', 'classification', 'rag'].flatMap(stage => ['pending', 'processing'].map(status => ({ stage, status })) ))(
+    'completed document summary with $stage=$status is pending and preserves the observed body', async ({ stage, status }) => {
+      const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+        storage: { status: 'completed' }, classification: { status: 'completed' }, rag: { status: 'skipped' }, [stage]: { status } }] };
+      routes = () => Response.json(job);
+      expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, body: job,
+        error: { code: 'DOC_JOB_PENDING', jobId: 'job-one' } });
+      expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+      expect(calls[0].init.method).toBe('GET');
+    });
+  test('document wait reads through a completed aggregate until its supplied pipeline completes', async () => {
+    vi.useFakeTimers(); let reads = 0;
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+      storage: { status: 'completed' }, classification: { status: 'processing' }, rag: { status: 'skipped' } }] };
+    const completed = { ...job, documents: [{ ...job.documents[0], classification: { status: 'completed' } }] };
+    routes = () => Response.json(++reads === 1 ? job : completed);
+    const result = docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '5']);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await result).toMatchObject({ ok: true, body: completed });
+    expect(calls).toHaveLength(2); expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+  });
+  test('document wait deadline retains a completed summary with an unfinished pipeline as pending', async () => {
+    vi.useFakeTimers();
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+      storage: { status: 'completed' }, classification: { status: 'pending' }, rag: { status: 'skipped' } }] };
+    routes = () => Response.json(job);
+    const result = docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '1']);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ ok: false, body: job, error: { code: 'DOC_JOB_PENDING', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+  });
+  test('document wait stops at an observed failed pipeline before polling again', async () => {
+    const job = { jobId: 'job-one', tenantId, status: 'processing', documents: [{ documentId: 'doc-one',
+      storage: { status: 'completed' }, classification: { status: 'failed' }, rag: { status: 'pending' } }] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '1']))
+      .toMatchObject({ ok: false, body: job, error: { code: 'DOC_JOB_FAILED', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+  });
+  test.each([
+    { name: 'skipped optional pipelines', document: { documentId: 'doc-one', storage: { status: 'completed' }, classification: { status: 'skipped' }, rag: { status: 'skipped' } } },
+    { name: 'absent optional pipeline fields', document: { documentId: 'doc-one' } },
+  ])('document wait preserves successful $name', async ({ document }) => {
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [document] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped, '--wait'])).toMatchObject({ ok: true, body: job });
+    expect(process.exitCode).toBe(0); expect(calls).toHaveLength(1);
+  });
   test.each(['https://fixture-user:fixture-scope-value@api.au.myenterprise.ai/public',
     'https://api.au.myenterprise.ai/public?opaque=fixture-scope-value', 'https://api.au.myenterprise.ai/public#fixture-scope-value',
     'ftp://api.au.myenterprise.ai/public', 'not-a-gateway'])(
