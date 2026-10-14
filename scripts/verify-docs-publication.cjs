@@ -7,6 +7,9 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const NAME = '@enterpriseai/cli';
 const PRIMARY = 'https://registry.npmjs.org/@enterpriseai%2fcli';
+const RELEASE_VISIBILITY_MS = 180000;
+const RETRY_GAP_MS = 5000;
+const REQUEST_TIMEOUT_MS = 15000;
 
 function preparedRelease(root = ROOT) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -32,17 +35,17 @@ function preparedRelease(root = ROOT) {
   return { version: pkg.version, archive, shasum, integrity };
 }
 
-async function readPublishedPackage() {
-  const response = await fetch(PRIMARY, { redirect: 'error', signal: AbortSignal.timeout(15000), headers: { 'cache-control': 'no-cache' } });
+async function readPublishedPackage(timeoutMs = REQUEST_TIMEOUT_MS) {
+  const response = await fetch(PRIMARY, { redirect: 'error', signal: AbortSignal.timeout(timeoutMs), headers: { 'cache-control': 'no-cache' } });
   if (!response.ok) throw new Error('Canonical publication unavailable.');
   return response.json();
 }
 
-async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage } = {}) {
+async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   let prepared;
   try { prepared = preparedRelease(root); } catch { return { allowed: false, reason: 'prepared-artifacts-invalid' }; }
   try {
-    const published = await readPublished();
+    const published = await readPublished(requestTimeoutMs);
     const entry = published?.versions?.[prepared.version];
     if (published?.name !== NAME || published?.['dist-tags']?.latest !== prepared.version
       || entry?.name !== NAME || entry?.version !== prepared.version
@@ -51,6 +54,22 @@ async function verifyDocsPublication({ root = ROOT, readPublished = readPublishe
     }
     return { allowed: true, reason: 'canonical-publication-matches', version: prepared.version };
   } catch { return { allowed: false, reason: 'canonical-publication-unavailable', version: prepared.version }; }
+}
+
+async function waitForDocsPublication({ release = false, now = () => performance.now(), sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), verify = verifyDocsPublication } = {}) {
+  const deadline = now() + (release ? RELEASE_VISIBILITY_MS : 0);
+  let result = { allowed: false, reason: 'canonical-publication-unavailable' };
+  do {
+    const remaining = deadline - now();
+    if (release && remaining <= 0) return result;
+    const requestTimeoutMs = release ? Math.max(1, Math.floor(Math.min(REQUEST_TIMEOUT_MS, remaining))) : REQUEST_TIMEOUT_MS;
+    result = await verify({ requestTimeoutMs });
+    if (result.allowed || result.reason === 'prepared-artifacts-invalid' || !release) return result;
+    const timeLeft = deadline - now();
+    if (timeLeft <= 0) return result;
+    await sleep(Math.min(RETRY_GAP_MS, timeLeft));
+  } while (now() < deadline);
+  return result;
 }
 
 function verifyPreparedSource(root = ROOT) {
@@ -89,14 +108,9 @@ async function main() {
     console.log(JSON.stringify(verifyPreparedSource())); return;
   }
   if (process.argv.length !== 2) throw new Error('Unsupported publication verifier option.');
-  let result;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    result = await verifyDocsPublication();
-    if (result.allowed) break;
-    if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 2000));
-  }
+  const result = await waitForDocsPublication({ release: process.env.REQUIRE_PUBLISHED_RELEASE === 'true' });
   console.log(JSON.stringify(result));
   if (!result.allowed) process.exitCode = 1;
 }
 if (require.main === module) main().catch(() => { console.error('Publication verification failed.'); process.exitCode = 1; });
-module.exports = { preparedRelease, verifyDocsPublication, verifyPreparedSource };
+module.exports = { preparedRelease, verifyDocsPublication, verifyPreparedSource, waitForDocsPublication };

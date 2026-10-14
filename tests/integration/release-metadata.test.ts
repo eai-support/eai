@@ -13,8 +13,9 @@ interface PublishedPackage {
 }
 
 const publication = createRequire(import.meta.url)('../../scripts/verify-docs-publication.cjs') as {
-  verifyDocsPublication(options: { root: string; readPublished: () => Promise<unknown> }): Promise<{ allowed: boolean; reason: string }>;
+  verifyDocsPublication(options: { root: string; readPublished: () => Promise<unknown>; requestTimeoutMs?: number }): Promise<{ allowed: boolean; reason: string }>;
   verifyPreparedSource(root: string): { runtimeFilesVerified: number };
+  waitForDocsPublication(options: { release?: boolean; now: () => number; sleep: (ms: number) => Promise<void>; verify: (options: { requestTimeoutMs: number }) => Promise<{ allowed: boolean; reason: string }> }): Promise<{ allowed: boolean; reason: string }>;
 };
 
 const repoRoot = path.resolve(__dirname, '../..');
@@ -67,6 +68,60 @@ describe('public documentation release qualification', () => {
       expect(result).toMatchObject({ allowed: false, reason: 'canonical-publication-unavailable' });
       expect(JSON.stringify(result)).not.toContain('private-transport-value');
     });
+  });
+  test('trusted release waits for pending publication to become exactly visible', async () => {
+    await fixture(async (root, published) => {
+      let clock = 0; let reads = 0; const sleeps: number[] = [];
+      const result = await publication.waitForDocsPublication({ release: true, now: () => clock,
+        sleep: async ms => { sleeps.push(ms); clock += ms; },
+        verify: options => publication.verifyDocsPublication({ root, ...options, readPublished: async () => ++reads === 1 ? { ...published, 'dist-tags': { latest: '3.19.5' } } : published }),
+      });
+      expect(result.allowed).toBe(true); expect(reads).toBe(2); expect(sleeps).toEqual([5000]);
+    });
+  });
+  test.each(['canonical-publication-does-not-match', 'canonical-publication-unavailable'])('perpetual %s denial ends at the trusted release deadline', async reason => {
+    let clock = 0; let reads = 0;
+    const result = await publication.waitForDocsPublication({ release: true, now: () => clock,
+      sleep: async ms => { clock += ms; }, verify: async () => { reads++; return { allowed: false, reason }; },
+    });
+    expect(result).toEqual({ allowed: false, reason }); expect(reads).toBe(36); expect(clock).toBe(180000);
+  });
+  test('network request timeout fits the remaining release deadline', async () => {
+    let clock = 0; const timeouts: number[] = [];
+    await publication.waitForDocsPublication({ release: true, now: () => clock,
+      sleep: async ms => { clock += ms + 1000; },
+      verify: async ({ requestTimeoutMs }) => { timeouts.push(requestTimeoutMs); clock += requestTimeoutMs; return { allowed: false, reason: 'canonical-publication-unavailable' }; },
+    });
+    expect(timeouts.at(-1)).toBe(12000); expect(clock).toBe(180000);
+    expect(timeouts.every(timeout => timeout > 0 && timeout <= 15000)).toBe(true);
+  });
+  test('an already exhausted release deadline cannot start another network proof', async () => {
+    let clockReads = 0; let reads = 0;
+    const result = await publication.waitForDocsPublication({ release: true,
+      now: () => clockReads++ === 0 ? 0 : 180000, sleep: async () => {},
+      verify: async () => { reads++; return { allowed: true, reason: 'canonical-publication-matches' }; },
+    });
+    expect(result.allowed).toBe(false); expect(reads).toBe(0);
+  });
+  test('invalid prepared artifacts fail immediately during a release without network or retry', async () => {
+    await fixture(async (root, published) => {
+      writeFileSync(path.join(root, 'docs-site/static/registry/-/@enterpriseai/cli-3.20.0.tgz'), 'changed');
+      let reads = 0; let sleeps = 0;
+      const result = await publication.waitForDocsPublication({ release: true, now: () => 0,
+        sleep: async () => { sleeps++; },
+        verify: options => publication.verifyDocsPublication({ root, ...options, readPublished: async () => { reads++; return published; } }),
+      });
+      expect(result.reason).toBe('prepared-artifacts-invalid'); expect(reads).toBe(0); expect(sleeps).toBe(0);
+    });
+  });
+  test('ordinary source publication checks deny immediately without release retries', async () => {
+    let reads = 0; let sleeps = 0;
+    const result = await publication.waitForDocsPublication({ now: () => 0,
+      sleep: async () => { sleeps++; }, verify: async () => { reads++; return { allowed: false, reason: 'canonical-publication-does-not-match' }; },
+    });
+    expect(result.allowed).toBe(false); expect(reads).toBe(1); expect(sleeps).toBe(0);
+    expect(readFileSync(path.join(repoRoot, 'scripts/verify-docs-publication.cjs'), 'utf8'))
+      .toContain("release: process.env.REQUIRE_PUBLISHED_RELEASE === 'true'");
   });
   test.each(['alias', 'latest-archive', 'versioned-archive'])('invalid prepared %s blocks before the primary request', async kind => {
     await fixture(async (root, published) => {
