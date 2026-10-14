@@ -1,8 +1,9 @@
 #!/usr/bin/env node
-// Prepared artifacts become public only after the canonical npm release matches their exact bytes.
+// Prepared artifacts become public only after npm's canonical tar payload matches exactly.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
+const { gunzipSync } = require('node:zlib');
 const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const NAME = '@enterpriseai/cli';
@@ -10,6 +11,8 @@ const PRIMARY = 'https://registry.npmjs.org/@enterpriseai%2fcli';
 const RELEASE_VISIBILITY_MS = 180000;
 const RETRY_GAP_MS = 5000;
 const REQUEST_TIMEOUT_MS = 15000;
+const MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
+const MAX_TAR_BYTES = 64 * 1024 * 1024;
 
 function preparedRelease(root = ROOT) {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
@@ -42,18 +45,50 @@ async function readPublishedPackage(timeoutMs = REQUEST_TIMEOUT_MS) {
   return response.json();
 }
 
-async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+async function readPublishedArchive(url, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const response = await fetch(url, { redirect: 'error', signal: AbortSignal.timeout(timeoutMs), headers: { 'cache-control': 'no-cache' } });
+  if (!response.ok || !response.body) throw new Error('Canonical archive unavailable.');
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of response.body) {
+    size += chunk.byteLength;
+    if (size > MAX_ARCHIVE_BYTES) throw new Error('Canonical archive exceeds the release limit.');
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks, size);
+}
+
+async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage, readPublishedTarball = readPublishedArchive, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
   let prepared;
   try { prepared = preparedRelease(root); } catch { return { allowed: false, reason: 'prepared-artifacts-invalid' }; }
   try {
     const published = await readPublished(requestTimeoutMs);
     const entry = published?.versions?.[prepared.version];
+    const tarball = `https://registry.npmjs.org/@enterpriseai/cli/-/cli-${prepared.version}.tgz`;
     if (published?.name !== NAME || published?.['dist-tags']?.latest !== prepared.version
       || entry?.name !== NAME || entry?.version !== prepared.version
-      || entry?.dist?.shasum !== prepared.shasum || entry?.dist?.integrity !== prepared.integrity) {
+      || entry?.dist?.tarball !== tarball) {
       return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
     }
-    return { allowed: true, reason: 'canonical-publication-matches', version: prepared.version };
+    if (entry.dist.shasum === prepared.shasum && entry.dist.integrity === prepared.integrity) {
+      return { allowed: true, reason: 'canonical-publication-matches', version: prepared.version };
+    }
+    if ((entry.dist.shasum === prepared.shasum) !== (entry.dist.integrity === prepared.integrity)
+      || !/^[a-f0-9]{40}$/.test(entry.dist.shasum)
+      || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(entry.dist.integrity)) {
+      return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
+    }
+    const bytes = await readPublishedTarball(tarball, requestTimeoutMs);
+    if (!Buffer.isBuffer(bytes) || bytes.length > MAX_ARCHIVE_BYTES
+      || crypto.createHash('sha1').update(bytes).digest('hex') !== entry.dist.shasum
+      || 'sha512-' + crypto.createHash('sha512').update(bytes).digest('base64') !== entry.dist.integrity) {
+      return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
+    }
+    const preparedTar = gunzipSync(fs.readFileSync(prepared.archive), { maxOutputLength: MAX_TAR_BYTES });
+    const publishedTar = gunzipSync(bytes, { maxOutputLength: MAX_TAR_BYTES });
+    const matches = preparedTar.equals(publishedTar);
+    return { allowed: matches, reason: matches ? 'canonical-publication-matches'
+      : 'canonical-publication-does-not-match', version: prepared.version };
   } catch { return { allowed: false, reason: 'canonical-publication-unavailable', version: prepared.version }; }
 }
 
