@@ -37,6 +37,7 @@ const DOC_ORDER = [
 ];
 const HELP_COMMANDS = [
   { label: "eai content-understanding --help", args: ["dist/index.js", "content-understanding", "--help"] },
+  { label: "eai docs configure-type --help", args: ["dist/index.js", "docs", "configure-type", "--help"] },
   { label: "eai docs job --help", args: ["dist/index.js", "docs", "job", "--help"] },
   { label: "eai docs get --help", args: ["dist/index.js", "docs", "get", "--help"] },
   { label: "eai --help", args: ["dist/index.js", "--help"] },

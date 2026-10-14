@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.2. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.3. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -79,6 +79,35 @@ classifier draft with the existing setup and eai classifier save commands.
 Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.
 Status only reads existing operations; acceptance and pending work are not completion.
 Succeeded historical work requires currentReady exactly true before document processing.
+```
+
+## eai docs configure-type --help
+
+```text
+Usage: eai docs configure-type [options]
+
+Configure bounded tenant-owned document fields for an existing classifier
+workflow
+
+Options:
+  --file <path>      Document type configuration JSON
+  --tenant-id <id>   Exact owning workspace UUID, matching the file
+  --format <format>  Output format (choices: "text", "json", default: "text")
+  -h, --help         display help for command
+
+Use a JSON file with kind "eai.document-type.configuration", schemaVersion 1, tenantId, code, name, description,
+and 1–32 fields with name, description, scalar type and extract/generate method.
+Codes use letters, numbers and underscores only; punctuation could collide in provider IDs.
+Use a lowercase canonical workspace UUID in the file and --tenant-id.
+Example:
+  {"kind":"eai.document-type.configuration","schemaVersion":1,"tenantId":"<workspace-id>",
+   "code":"Quotation","name":"Quotation","description":"Supplier quotation",
+   "fields":[{"name":"supplierName","description":"Supplier organisation", "type":"string","method":"extract"},
+             {"name":"summary","description":"One-sentence summary", "type":"string","method":"generate"}]}
+Run inside an initialized EAI project with an explicit --profile for the intended environment.
+The command verifies the tenant-owned analyzer before syncing runtime rules.
+It does not publish a classifier, bind an app/workflow, enable typed CU v2, or upload a document.
+On partial failure, retain the same file and retry only after inspecting the reported phase.
 ```
 
 ## eai docs job --help
@@ -761,7 +790,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.19.5** (2026-10-13): Adopt App Template v1.0.14 managed deployment producer.
+The current CLI release is **v3.20.3** (2026-10-14): Bounded consultant document analyzer configuration for the October launch.
 
 ---
 
@@ -812,10 +841,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.5 |
-| Released | 2026-10-13 |
-| Last Material Change | Adopt App Template v1.0.14 managed deployment producer |
-| Source Commit | `79ea5af77c831b1005a4c3f6b5b43b9b0bcbeacc` |
+| Version | 3.20.3 |
+| Released | 2026-10-14 |
+| Last Material Change | Bounded consultant document analyzer configuration for the October launch |
+| Source Commit | `840427e94fb1b6be6b0e5560390fb8ee69983642` |
 
 
 ## Install
@@ -958,7 +987,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
-| Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
@@ -2479,11 +2508,49 @@ Before committing a project that uses the EAI CLI:
 
 # Content Understanding
 
+## October launch: document fields and background processing
+
+The October 15 scope uses the existing Admin Portal document workflow. A consultant's harness can turn a request such as “classify quotations, extract the supplier and total, and write a short summary” into a bounded JSON file. `eai docs configure-type` creates the tenant-owned leaf analyzer, verifies its exact fields and readback digest, then syncs the matching runtime document rules. The workspace UUID in the file and `--tenant-id` must use lowercase canonical hex. It accepts 1–32 scalar fields (`string`, `integer`, `number`, `boolean`, `date`, or `time`) with `extract` or `generate` methods. Document codes use only letters, numbers and underscores so distinct codes cannot collapse to one Admin Portal analyzer ID. Azure normalizes an `integer` analyzer field to `number` while the runtime rule stays `INTEGER`. The command does not accept figures, tables, nested fields, Azure credentials, or provider URLs.
+
+Run inside an initialized EAI project and select the intended profile explicitly. For DEV:
+
+```json
+{
+  "kind": "eai.document-type.configuration",
+  "schemaVersion": 1,
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "code": "Quotation",
+  "name": "Quotation",
+  "description": "Supplier quotation",
+  "fields": [
+    { "name": "supplierName", "description": "Supplier organisation", "type": "string", "method": "extract" },
+    { "name": "totalAmount", "description": "Total amount including tax", "type": "number", "method": "extract" },
+    { "name": "summary", "description": "One-sentence summary", "type": "string", "method": "generate" }
+  ]
+}
+```
+
+```bash
+eai --profile dev docs configure-type --file quotation.json --tenant-id <workspace-id> --format json
+eai --profile dev classifier save --file classifier.json --tenant-id <workspace-id> --format json
+eai --profile dev classifier publish <classifier-key> --tenant-id <workspace-id> --format json
+eai --profile dev classifier target <classifier-key> --app <app-key> --workflow <workflow-key> --document-lifecycle business-document-v1 --tenant-id <workspace-id> --format json
+eai --profile dev docs classify ./quotation.pdf --storage-target resourceapi --vertical-key <app-key> --workflow-key <workflow-key> --tenant-id <workspace-id> --format json
+eai --profile dev docs job <job-id> --tenant-id <workspace-id> --wait --format json
+eai --profile dev docs get <document-id> --job-id <job-id> --tenant-id <workspace-id> --format json
+```
+
+The classifier's `documentTypeKey` must match the configuration `code`. The app and workflow must already be provisioned and entitled, and the business-document object types published before upload. A queued job is only acceptance; inspect the completed job and persisted field values. If `configure-type` reports a partial `runtime-sync` failure, retain the same file and inspect that phase before retrying. No automatic rollback or document re-upload is implied.
+
+The broader typed CU v2 mode below is a separate, gated capability and is not part of the October 15 launch. Its flags should remain off until its own provider and document-processing qualification passes.
+
+## Typed configuration after qualification
+
 Your harness authors a JSON manifest. The CLI validates it locally, reads the selected workspace's capabilities, obtains a plan, and submits that unchanged plan through the platform. The platform owns Azure credentials, approved models, analyzer ownership, publication and activation. No Azure key or resource URL belongs in the manifest.
 
 This mode supports typed document fields and one flat workflow classifier. It requires administrator permission and an enabled, ready workspace. Installed commands do not establish that the workspace has the capability. Nested classifiers, segmentation, audio/video, arbitrary model deployments and resource provisioning are unavailable in this mode; unsupported settings fail before any configuration writes.
 
-These commands require CLI v3.20.0 or newer. The 3.20.0 source candidate requires package publication and DEV provider qualification before launch; the existing published release is listed in [Start Here](./start-here.md). The release owner must also regenerate and commit the matching static fallback registry before installer promotion. Source validation does not establish that the candidate is installable from either release channel.
+These typed commands are installed in CLI v3.20.2, but remain disabled on DEV pending separate qualification. Installed commands do not establish readiness. Check the current package and workspace capabilities before planning.
 
 ## Author and validate
 
@@ -2605,7 +2672,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.2. The same catalog powers human stderr output, JSON output for AI
+v3.20.3. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -4127,6 +4194,8 @@ Request an operator-assisted runtime workflow binding.
 `eai content-understanding schema` and `validate --file <path>` are local, authentication-free commands. `capabilities`, `plan`, `apply` and `status` use the selected workspace and require `--tenant-id`. `plan` is read-only; `apply` requires the original `--file` and saved JSON `--plan`, accepts an acknowledged `--operation-id` for resume, and optionally waits within `--timeout 1..1800`. Status only reads an existing operation and asks for explicit apply when mutation remains. JSON output uses `--format json`; pending work is distinct from completion. See [Content Understanding](content-understanding.md) for bounded fields, flat classification, readiness and unknown acknowledgement recovery.
 
 ### Document Commands
+
+For October launch-scope analyzer fields, use `eai docs configure-type --file <configuration.json> --tenant-id <workspace-id> --format json` before submitting a document. This named command maps a bounded document type and its scalar extract/generate fields to a tenant-owned analyzer and matching runtime rules, verifies analyzer readback, and reports any partial runtime-sync failure. It does not publish a classifier or enable the separately gated typed CU v2 workflow. See [Content Understanding](content-understanding.md) for the JSON shape and full background-job sequence.
 
 Uploads require authorized context: either an existing Curate planning project
 (`--planning-application-id <id>` or `--business-request-id <id>`), or paired

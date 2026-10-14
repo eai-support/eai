@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.19.5** (2026-10-13): Adopt App Template v1.0.14 managed deployment producer.
+The current CLI release is **v3.20.3** (2026-10-14): Bounded consultant document analyzer configuration for the October launch.

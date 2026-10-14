@@ -55,6 +55,31 @@ function generatePackageRegistry({ packageName, packageMetadata, tarballName }) 
   const integrity = `sha512-${sha512}`;
 
   const packumentPath = path.join(REGISTRY_DIR, scope, 'cli');
+  const previous = fs.existsSync(packumentPath)
+    ? JSON.parse(fs.readFileSync(packumentPath, 'utf8'))
+    : null;
+  if (previous && (previous.name !== packageName || !previous.versions || typeof previous.versions !== 'object')) {
+    throw new Error('Existing static registry metadata is invalid');
+  }
+  const historicalVersions = {};
+  const historicalTimes = {};
+  for (const [historicalVersion, entry] of Object.entries(previous?.versions || {})) {
+    if (historicalVersion === version) continue;
+    if (!/^\d+\.\d+\.\d+$/.test(historicalVersion)
+      || entry?.name !== packageName || entry.version !== historicalVersion
+      || entry.dist?.tarball !== `${BASE_URL}/-/${scope}/cli-${historicalVersion}.tgz`) {
+      throw new Error(`Invalid historical static registry entry: ${historicalVersion}`);
+    }
+    const historicalArchive = path.join(REGISTRY_DIR, '-', scope, `cli-${historicalVersion}.tgz`);
+    if (!fs.existsSync(historicalArchive)) throw new Error(`Missing historical static registry archive: ${historicalVersion}`);
+    const bytes = fs.readFileSync(historicalArchive);
+    if (entry.dist.shasum !== crypto.createHash('sha1').update(bytes).digest('hex')
+      || entry.dist.integrity !== `sha512-${crypto.createHash('sha512').update(bytes).digest('base64')}`) {
+      throw new Error(`Historical static registry archive checksum mismatch: ${historicalVersion}`);
+    }
+    historicalVersions[historicalVersion] = entry;
+    if (typeof previous.time?.[historicalVersion] === 'string') historicalTimes[historicalVersion] = previous.time[historicalVersion];
+  }
   const tarballUrl = `${BASE_URL}/-/${scope}/cli-${version}.tgz`;
   const now = new Date().toISOString();
   const packument = {
@@ -63,6 +88,7 @@ function generatePackageRegistry({ packageName, packageMetadata, tarballName }) 
       latest: version,
     },
     versions: {
+      ...historicalVersions,
       [version]: {
         name: packageName,
         version,
@@ -79,6 +105,7 @@ function generatePackageRegistry({ packageName, packageMetadata, tarballName }) 
     },
     modified: now,
     time: {
+      ...historicalTimes,
       [version]: now,
       modified: now,
     },
@@ -98,7 +125,6 @@ function generatePackageRegistry({ packageName, packageMetadata, tarballName }) 
   const registryTarballDir = path.join(REGISTRY_DIR, '-', scope);
   const registryTarballPath = path.join(registryTarballDir, `cli-${version}.tgz`);
   const registryLatestTarballPath = path.join(registryTarballDir, 'cli-latest.tgz');
-  fs.rmSync(registryTarballDir, { recursive: true, force: true });
   fs.mkdirSync(registryTarballDir, { recursive: true });
   fs.copyFileSync(tarballPath, registryTarballPath);
   fs.copyFileSync(tarballPath, registryLatestTarballPath);
