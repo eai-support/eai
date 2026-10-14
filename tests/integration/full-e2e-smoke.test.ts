@@ -36,7 +36,7 @@ interface SmokeReport {
 }
 type ControlledOptions = { cwd: string; allowFailure: boolean; timeout: number; env: Record<string, string | undefined>; replaceEnv?: boolean;
   executedFile?: string; executedArgs?: string[] };
-type ControlledCall = { args: string[]; cwd: string };
+type ControlledCall = { args: string[]; cwd: string; timeout: number };
 type HarnessOptions = {
   parentTenantId?: string; actorId?: string; childTenantId?: string; expectedFixture?: Record<string, unknown>;
   runtime?: string;
@@ -341,6 +341,9 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(creation).toBeDefined();
     expect(creation!.args).not.toContain('--home-region');
     expect(controlled.calls.some(call => matches(call.args, ['tenant', 'create']))).toBe(false);
+    for (const command of [['workspace', 'create'], ['workspace', 'bootstrap-admin'], ['workspace', 'delete']]) {
+      expect(controlled.calls.find(call => matches(call.args, command))?.timeout).toBe(180_000);
+    }
   });
 
   // The receiver forbids unknown property and storage-binding fields. Local
@@ -604,7 +607,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
       if (invocation[0] === '--profile') expect(invocation[1]).toBe('dev-qa');
       expect(options.allowFailure).toBe(true);
       expect(options.timeout).toBeGreaterThan(0);
-      calls.push({ args, cwd: options.cwd });
+      calls.push({ args, cwd: options.cwd, timeout: options.timeout });
       const result = base(args, options);
       // Explicit controlled transport observation matching the new resource JSON contract.
       if (args[0] === 'resources' && ['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].includes(args[1])) {
