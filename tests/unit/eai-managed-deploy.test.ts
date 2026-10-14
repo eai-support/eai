@@ -745,22 +745,22 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b' },
+      candidate: { commit: '3162df8dffd36465ef2cec474eee4f8e6285ec3c' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
-        workflowSha256: 'sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed',
+        templateCommitSha: '3162df8dffd36465ef2cec474eee4f8e6285ec3c',
+        workflowSha256: 'sha256:74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5',
       },
       releaseGate: {
         status: 'released',
-        tag: 'v1.0.14',
-        commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
+        tag: 'v1.0.17',
+        commit: '3162df8dffd36465ef2cec474eee4f8e6285ec3c',
       },
     });
     const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
     expect(linkedSources.appTemplate).toMatchObject({
-      version: 'v1.0.14',
-      commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
+      version: 'v1.0.17',
+      commit: '3162df8dffd36465ef2cec474eee4f8e6285ec3c',
       packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
     });
     expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
@@ -868,6 +868,8 @@ describe('EAI managed deployment helpers', () => {
     const binding = {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
       operationId, environment: 'preview', templateCommitSha: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb',
+      tenantId: 'company-1', targetTenantId: 'runtime-1', appKey: 'fixture-app',
+      repositoryAuthority: 'eai-managed',
     };
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('Z', '+00:00');
     const output = join(project, 'validated-local-outputs');

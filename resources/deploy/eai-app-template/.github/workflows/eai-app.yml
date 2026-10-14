@@ -44,6 +44,12 @@ on:
       local_e2e_expires_at:
         description: Exact server-issued local dispatch expiry.
         required: false
+      local_e2e_template_commit_sha:
+        description: Exact server-pinned template SHA for a local CLI customer successor.
+        required: false
+      local_e2e_predecessor_operation_id:
+        description: Completed source operation recorded in the reviewed customer commit.
+        required: false
       publicapi_base_url:
         description: Deprecated alias for public_api_url; retained for compatibility.
         required: false
@@ -223,6 +229,8 @@ jobs:
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
           LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
           LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          LOCAL_E2E_TEMPLATE_COMMIT_SHA: ${{ inputs.local_e2e_template_commit_sha }}
+          LOCAL_E2E_PREDECESSOR_OPERATION_ID: ${{ inputs.local_e2e_predecessor_operation_id }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
           REPOSITORY_ID: ${{ github.repository_id }}
@@ -244,6 +252,8 @@ jobs:
             --legacy-public-api-url "$LEGACY_PUBLIC_API_URL" \
             --local-e2e-tunnel "$LOCAL_E2E_TUNNEL" \
             --local-e2e-expires-at "$LOCAL_E2E_EXPIRES_AT" \
+            --local-e2e-template-commit-sha "$LOCAL_E2E_TEMPLATE_COMMIT_SHA" \
+            --local-e2e-predecessor-operation-id "$LOCAL_E2E_PREDECESSOR_OPERATION_ID" \
             --github-event-name "$GITHUB_EVENT_NAME" \
             --reusable-call "$REUSABLE_CALL" \
             --repository-id "$REPOSITORY_ID" \
@@ -351,6 +361,8 @@ jobs:
           EAI_BOUND_PUBLIC_API_URL: ${{ inputs.public_api_url || inputs.publicapi_base_url }}
           LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
           LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          LOCAL_E2E_TEMPLATE_COMMIT_SHA: ${{ inputs.local_e2e_template_commit_sha }}
+          LOCAL_E2E_PREDECESSOR_OPERATION_ID: ${{ inputs.local_e2e_predecessor_operation_id }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
           REPOSITORY_ID: ${{ github.repository_id }}
@@ -364,6 +376,8 @@ jobs:
             --public-api-url "$EAI_BOUND_PUBLIC_API_URL" \
             --local-e2e-tunnel "$LOCAL_E2E_TUNNEL" \
             --local-e2e-expires-at "$LOCAL_E2E_EXPIRES_AT" \
+            --local-e2e-template-commit-sha "$LOCAL_E2E_TEMPLATE_COMMIT_SHA" \
+            --local-e2e-predecessor-operation-id "$LOCAL_E2E_PREDECESSOR_OPERATION_ID" \
             --github-event-name "$GITHUB_EVENT_NAME" \
             --reusable-call "$REUSABLE_CALL" \
             --repository-id "$REPOSITORY_ID" \
@@ -437,6 +451,8 @@ jobs:
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
           LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
           LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          LOCAL_E2E_TEMPLATE_COMMIT_SHA: ${{ inputs.local_e2e_template_commit_sha }}
+          LOCAL_E2E_PREDECESSOR_OPERATION_ID: ${{ inputs.local_e2e_predecessor_operation_id }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
           GITHUB_TOKEN: ${{ github.token }}
@@ -454,9 +470,13 @@ jobs:
             [[ ( "$SOURCE_MODE" == eai-cli-generated || "$SOURCE_MODE" == source-unknown ) && "$GITHUB_EVENT_NAME" == workflow_dispatch && "$REUSABLE_CALL" != true ]]
             [[ "$DEPLOY_ENVIRONMENT" == dev || "$DEPLOY_ENVIRONMENT" == preview ]]
             [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$ ]]
+            if [[ -n "$LOCAL_E2E_PREDECESSOR_OPERATION_ID" ]]; then
+              [[ "$SOURCE_MODE" == eai-cli-generated && -n "$LOCAL_E2E_TEMPLATE_COMMIT_SHA" ]]
+            fi
           else
             [[ "$LOCAL_E2E_TUNNEL" == false || -z "$LOCAL_E2E_TUNNEL" ]]
             [[ -z "$LOCAL_E2E_EXPIRES_AT" ]]
+            [[ -z "$LOCAL_E2E_TEMPLATE_COMMIT_SHA" && -z "$LOCAL_E2E_PREDECESSOR_OPERATION_ID" ]]
             [[ "$EAI_BOUND_PUBLIC_API_URL" =~ ^https://(dev-api\.au|(test-api|api)\.(au|ca|eu))\.myenterprise\.ai/public/?$ ]]
           fi
           [[ "$APP_KEY" =~ ^[a-z][a-z0-9-]{1,62}$ ]]
@@ -813,6 +833,12 @@ jobs:
             if (!sourceUnknownLocal && !/^[a-f0-9]{40}$/.test(local.templateCommitSha)) {
               throw new Error('Build evidence local template binding changed.');
             }
+            if (sourceUnknownLocal
+              ? (process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA || process.env.LOCAL_E2E_PREDECESSOR_OPERATION_ID)
+              : (process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA &&
+                  local.templateCommitSha !== process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA)) {
+              throw new Error('Build evidence local successor binding changed.');
+            }
             const tuple = sourceUnknownLocal
               ? ['eai.source-unknown-local-e2e-aud.v1', local.origin, process.env.TENANT_ID,
                   process.env.TARGET_TENANT_ID || process.env.TENANT_ID, process.env.APP_KEY, evidence.operationId,
@@ -1014,7 +1040,37 @@ jobs:
           });
           NODE
 
+      - name: Check GitHub attestation availability
+        id: attestation-availability
+        env:
+          EXPECTED_REPOSITORY: ${{ github.repository }}
+          EXPECTED_REPOSITORY_ID: ${{ github.repository_id }}
+          EXPECTED_OWNER_ID: ${{ github.repository_owner_id }}
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const { appendFileSync, readFileSync } = require('node:fs');
+          const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
+          const repository = event.repository;
+          const owner = repository?.owner;
+          if (!repository || !owner ||
+              !Number.isSafeInteger(repository.id) || repository.id < 1 ||
+              String(repository.id) !== process.env.EXPECTED_REPOSITORY_ID ||
+              repository.full_name !== process.env.EXPECTED_REPOSITORY ||
+              typeof repository.private !== 'boolean' ||
+              !Number.isSafeInteger(owner.id) || owner.id < 1 ||
+              String(owner.id) !== process.env.EXPECTED_OWNER_ID ||
+              !['User', 'Organization'].includes(owner.type) ||
+              owner.login !== process.env.EXPECTED_REPOSITORY.split('/')[0]) {
+            throw new Error('GitHub attestation availability requires exact provider repository metadata.');
+          }
+          // SECURITY: GitHub rejects attestations for personal-account private repositories; OIDC-bound artifact verification remains mandatory.
+          const available = !(repository.private && owner.type === 'User');
+          appendFileSync(process.env.GITHUB_OUTPUT, `available=${available}\n`);
+          NODE
+
       - name: Attest immutable image archive provenance
+        if: ${{ steps.attestation-availability.outputs.available == 'true' }}
         uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
         with:
           subject-path: .eai-build/eai-generated-app-image.tar
@@ -1028,6 +1084,8 @@ jobs:
           SOURCE_MODE: ${{ inputs.source_mode || 'source-unknown' }}
           LOCAL_E2E_TUNNEL: ${{ inputs.local_e2e_tunnel }}
           LOCAL_E2E_EXPIRES_AT: ${{ inputs.local_e2e_expires_at }}
+          LOCAL_E2E_TEMPLATE_COMMIT_SHA: ${{ inputs.local_e2e_template_commit_sha }}
+          LOCAL_E2E_PREDECESSOR_OPERATION_ID: ${{ inputs.local_e2e_predecessor_operation_id }}
           DEPLOY_ENVIRONMENT: ${{ needs.build.outputs.deployment_environment }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           REUSABLE_CALL: ${{ inputs.eai_reusable_call }}
@@ -1053,6 +1111,10 @@ jobs:
           const repoId = process.env.GITHUB_REPOSITORY_ID;
           const expiry = process.env.LOCAL_E2E_EXPIRES_AT;
           const sourceUnknownLocal = process.env.SOURCE_MODE === 'source-unknown';
+          if (sourceUnknownLocal
+            ? (process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA || process.env.LOCAL_E2E_PREDECESSOR_OPERATION_ID)
+            : (process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA &&
+                local?.templateCommitSha !== process.env.LOCAL_E2E_TEMPLATE_COMMIT_SHA)) process.exit(1);
           const expectedKeys = sourceUnknownLocal
             ? 'audience,expiresAt,mode,nonceDigest,origin'
             : 'audience,expiresAt,mode,origin,templateCommitSha';
