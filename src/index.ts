@@ -59,6 +59,8 @@ import { activateCommandProfile, setActiveProfile } from './lib/profile.js';
 import { ErrorCode, exitWithError } from './lib/error-codes.js';
 import { describeProgram } from './lib/schema-builder.js';
 import { installSupportErrorTracking, setSupportCommand } from './lib/support-context.js';
+import { validateCustomerCommitPreAction } from './commands/eai-managed-source-authorize-commit.js';
+import { printFailure } from './commands/eai-managed-deploy-output.js';
 
 const program = new Command();
 installSupportErrorTracking();
@@ -101,6 +103,11 @@ program
 
     const capability = `${actionCommand.parent?.name()}:${actionCommand.name()}`;
     if (capability === 'types:define' || capability === 'resources:indexes-apply') return;
+
+    if (capability === 'source:authorize-commit') {
+      try { validateCustomerCommitPreAction(actionCommand); }
+      catch (error) { printFailure(opts.format === 'json' ? 'json' : 'text', error); process.exit(1); }
+    }
 
     try {
       await activateCommandProfile(actionCommand);

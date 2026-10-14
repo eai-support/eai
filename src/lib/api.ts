@@ -371,6 +371,19 @@ export interface CliManagedSourcePreparationRequest {
   environment: 'preview' | 'dev' | 'test' | 'prod';
 }
 
+/** Explicit customer consent after merge; never a claim of GitHub APPROVED review. */
+export interface CliCustomerCommitRequest {
+  schemaVersion: 'eai.cli_customer_commit_request.v1';
+  targetTenantId: string;
+  environment: 'preview' | 'dev' | 'test' | 'prod';
+  githubLinkSessionId: string;
+  idempotencyKey: string;
+  predecessor: { operationId: string; integrityHash: string; mergedCommitSha: string };
+  pullRequestNumber: number;
+  expectedMergedCommitSha: string;
+  customerAuthorization: { kind: 'authenticated-exact-commit'; pullRequestNumber: number; mergedCommitSha: string };
+}
+
 /** Exact source operation; callers must not substitute the latest deployment. */
 export interface SourceUnknownOperationResponse {
   tenantId: string;
@@ -2024,6 +2037,20 @@ export class PlatformAPIClient {
     return this.managedPublicRequest(
       `${this.cliManagedSourcePath(tenantId, appKey)}/preparations`,
       'POST', data,
+    );
+  }
+
+  async authorizeCliCustomerCommit(tenantId: string, appKey: string, data: CliCustomerCommitRequest): Promise<Response> {
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/customer-merged-commits`, 'POST', data,
+    );
+  }
+
+  async getCliManagedSourceAnchor(tenantId: string, appKey: string, targetTenantId: string, environment: string): Promise<Response> {
+    if (!isManagedScopeIdentifier(targetTenantId)) throw new Error('Managed source target must be a safe path identifier.');
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/source-anchor?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET', undefined,
     );
   }
 

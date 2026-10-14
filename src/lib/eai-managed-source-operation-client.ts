@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isDeepStrictEqual } from "node:util";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
 import { CLI_MANAGED_SOURCE_LIMITS, ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
@@ -16,6 +17,9 @@ export interface ExpectedCliManagedSourceOperation {
   bundleSchemaVersion?: CliManagedSourceOperation['bundleSchemaVersion'];
   githubLinkSessionId?: string;
   verifiedGithubUser?: CliManagedSourceOperation["verifiedGithubUser"];
+  sourceKind?: 'bundle' | 'customer-merged-commit';
+  sourceProvenance?: CliManagedSourceOperation['sourceProvenance'];
+  customerAuthorization?: CliManagedSourceOperation['customerAuthorization'];
 }
 
 /** Repeat submission of the same actor-scoped source snapshot cannot create duplicate bot publications. */
@@ -48,6 +52,51 @@ export function validateCliManagedSourceOperation(
   scope: CliManagedSourceScope,
   expected?: ExpectedCliManagedSourceOperation,
 ): CliManagedSourceOperation {
+  const provenance = value?.sourceProvenance;
+  const authorization = value?.customerAuthorization;
+  const customerCommit = provenance?.kind === 'customer-merged-commit';
+  if (provenance !== undefined || authorization !== undefined) {
+    if (!customerCommit || !authorization || authorization.kind !== 'authenticated-exact-commit'
+      || !['deploying', 'handoff_pending', 'completed', 'failed'].includes(value.status)
+      || value.repositoryAuthority !== 'customer-owned' || !value.predecessor
+      || value.bundleSha256 !== undefined || value.bundleSchemaVersion !== undefined
+      || value.upload !== undefined || value.reviewRepair !== undefined
+      || Object.keys(authorization).sort().join(',') !== 'actorId,authorizedAt,githubUserId,kind,mergedCommitSha,pullRequestNumber'
+      || Object.keys(provenance).sort().join(',') !== 'checks,commitSha,kind,predecessorReachable,providerProofDigest,providerReviews,pullRequest,treeSha'
+      || typeof provenance.commitSha !== 'string' || typeof provenance.treeSha !== 'string'
+      || typeof provenance.providerProofDigest !== 'string' || typeof authorization.authorizedAt !== 'string'
+      || !/^[a-f0-9]{40}$/.test(provenance.commitSha) || !/^[a-f0-9]{40}$/.test(provenance.treeSha)
+      || !/^sha256:[a-f0-9]{64}$/.test(provenance.providerProofDigest) || provenance.predecessorReachable !== true
+      || provenance.commitSha === value.predecessor.mergedCommitSha
+      || authorization.actorId !== scope.actorId || authorization.githubUserId !== value.verifiedGithubUser?.id
+      || authorization.pullRequestNumber !== provenance.pullRequest?.number
+      || authorization.mergedCommitSha !== provenance.commitSha
+      || !Number.isFinite(Date.parse(authorization.authorizedAt))
+      || !provenance.pullRequest || !Number.isSafeInteger(provenance.pullRequest.number) || provenance.pullRequest.number < 1
+      || Object.keys(provenance.pullRequest).sort().join(',') !== 'baseBranch,baseSha,headBranch,headSha,mergedAt,mergedCommitSha,number'
+      || typeof provenance.pullRequest.headBranch !== 'string' || !provenance.pullRequest.headBranch
+      || typeof provenance.pullRequest.mergedAt !== 'string'
+      || provenance.pullRequest.mergedCommitSha !== provenance.commitSha
+      || provenance.pullRequest.baseBranch !== value.repository?.defaultBranch
+      || !/^[a-f0-9]{40}$/.test(provenance.pullRequest.headSha) || !/^[a-f0-9]{40}$/.test(provenance.pullRequest.baseSha)
+      || !Number.isFinite(Date.parse(provenance.pullRequest.mergedAt))
+      || value.review?.mergedCommitSha !== provenance.commitSha || value.review?.workflowRunId !== undefined
+      || value.review?.number !== provenance.pullRequest.number || value.review?.headSha !== provenance.pullRequest.headSha
+      || value.review?.headBranch !== provenance.pullRequest.headBranch || value.review?.baseSha !== provenance.pullRequest.baseSha
+      || !Array.isArray(provenance.checks) || provenance.checks.length < 1 || provenance.checks.length > 100
+      || new Set(provenance.checks.map(check => check.runId)).size !== provenance.checks.length
+      || provenance.checks.some(check => !check || check.headSha !== provenance.pullRequest.headSha
+        || Object.keys(check).sort().join(',') !== 'conclusion,headSha,name,runId'
+        || check.conclusion !== 'success' || !Number.isSafeInteger(check.runId) || check.runId < 1
+        || typeof check.name !== 'string' || !check.name)
+      || !Array.isArray(provenance.providerReviews) || provenance.providerReviews.length > 100
+      || provenance.providerReviews.some(review => !review || !Number.isSafeInteger(review.id) || review.id < 1
+        || Object.keys(review).sort().join(',') !== 'commitSha,id,state,userId'
+        || !Number.isSafeInteger(review.userId) || review.userId < 1 || !/^[a-f0-9]{40}$/.test(review.commitSha)
+        || !['APPROVED', 'CHANGES_REQUESTED', 'COMMENTED', 'DISMISSED', 'PENDING'].includes(review.state))) {
+      throw new ManagedSourceError('MANAGED_SOURCE_BINDING_MISMATCH', 'Customer commit does not retain exact consent and provider provenance.');
+    }
+  }
   const customerRepository = value?.repositoryAuthority === "customer-owned"
     && value.repository?.private === true
     && /^[a-z\d][a-z\d-]{0,38}$/i.test(value.repository.owner)
@@ -65,6 +114,9 @@ export function validateCliManagedSourceOperation(
     value.sourceMode !== "eai-cli-generated" ||
     !CLI_MANAGED_SOURCE_OPERATION_ID.test(value.operationId) ||
     (expected?.operationId && value.operationId !== expected.operationId) ||
+    (expected?.sourceKind && expected.sourceKind !== (customerCommit ? 'customer-merged-commit' : 'bundle')) ||
+    (expected?.sourceProvenance && !isDeepStrictEqual(expected.sourceProvenance, provenance)) ||
+    (expected?.customerAuthorization && !isDeepStrictEqual(expected.customerAuthorization, authorization)) ||
     value.actorId !== scope.actorId ||
     !scope.actorId ||
     value.tenantId !== scope.tenantId ||
@@ -72,7 +124,7 @@ export function validateCliManagedSourceOperation(
     value.targetTenantId !== scope.targetTenantId ||
     value.environment !== scope.environment ||
     !/^[a-f0-9]{40}$/.test(value.templateCommitSha) ||
-    !/^sha256:[a-f0-9]{64}$/.test(value.bundleSha256) ||
+    (!customerCommit && !/^sha256:[a-f0-9]{64}$/.test(value.bundleSha256 ?? '')) ||
     !/^sha256:[a-f0-9]{64}$/.test(value.configHash) ||
     (expected?.templateCommitSha &&
       value.templateCommitSha !== expected.templateCommitSha) ||
@@ -203,6 +255,9 @@ export async function pollCliManagedSource(
     configHash: initial?.configHash,
     githubLinkSessionId: initial?.githubLinkSessionId,
     verifiedGithubUser: initial?.verifiedGithubUser,
+    sourceKind: initial ? (initial.sourceProvenance ? 'customer-merged-commit' : 'bundle') : undefined,
+    sourceProvenance: initial?.sourceProvenance,
+    customerAuthorization: initial?.customerAuthorization,
   };
   while (true) {
     if (!operation) {
@@ -233,6 +288,9 @@ export async function pollCliManagedSource(
     expected.configHash = operation.configHash;
     expected.githubLinkSessionId = operation.githubLinkSessionId;
     expected.verifiedGithubUser = operation.verifiedGithubUser;
+    expected.sourceKind = operation.sourceProvenance ? 'customer-merged-commit' : 'bundle';
+    expected.sourceProvenance = operation.sourceProvenance;
+    expected.customerAuthorization = operation.customerAuthorization;
     if (
       !options.wait ||
       classifyCliManagedSourceOperation(operation) !== "pending" ||

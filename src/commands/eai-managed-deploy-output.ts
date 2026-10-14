@@ -67,15 +67,20 @@ export function printManagedSourceOperation(
     sourceMode: operation.sourceMode,
     status: operation.status,
     publicationStatus: operation.status,
+    error: operation.error,
     classification,
     templateCommitSha: operation.templateCommitSha,
     bundleSha256: operation.bundleSha256,
     configHash: operation.configHash,
     sourceBinding: {
       repository: `${operation.repository.owner}/${operation.repository.name}`,
-      commitSha: operation.review?.mergedSha,
+      commitSha: operation.sourceProvenance?.commitSha ?? operation.review?.mergedSha,
     },
     review: operation.review,
+    ...(operation.sourceProvenance ? {
+      sourceProvenance: operation.sourceProvenance, customerAuthorization: operation.customerAuthorization,
+      githubApprovedReviewClaim: false,
+    } : {}),
     deploymentId: operation.deployment?.requestId,
     activeUrl: operation.deployment?.liveUrl,
     runtimeIdentity: operation.deployment?.runtimeIdentity,
@@ -123,7 +128,7 @@ export async function printManagedSourceCompletion(
   const revision = isRecord(operation.sourceRevision)
     ? operation.sourceRevision
     : undefined;
-  const mergedSha = publication.review?.mergedSha;
+  const mergedSha = publication.sourceProvenance?.commitSha ?? publication.review?.mergedSha;
   const hasExactMergedSha =
     typeof mergedSha === "string" && /^[a-f0-9]{40}$/.test(mergedSha);
   if (
@@ -146,6 +151,11 @@ export async function printManagedSourceCompletion(
     publicationStatus: publication.status,
     templateCommitSha: publication.templateCommitSha,
     bundleSha256: publication.bundleSha256,
+    ...(publication.sourceProvenance ? {
+      sourceProvenance: publication.sourceProvenance,
+      customerAuthorization: publication.customerAuthorization,
+      githubApprovedReviewClaim: false,
+    } : {}),
   });
   if (classifyManagedOperationStatus(operation) === "failed")
     process.exitCode = 1;

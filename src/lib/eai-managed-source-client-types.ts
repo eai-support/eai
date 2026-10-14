@@ -27,7 +27,18 @@ export interface CliManagedSourceOperation extends CliManagedSourceScope {
     | "failed";
   githubLinkSessionId?: string;
   templateCommitSha: string;
-  bundleSha256: string;
+  bundleSha256?: string;
+  sourceProvenance?: {
+    kind: 'customer-merged-commit'; commitSha: string; treeSha: string; providerProofDigest: string;
+    predecessorReachable: true;
+    pullRequest: { number: number; headBranch: string; baseBranch: string; headSha: string; baseSha: string; mergedCommitSha: string; mergedAt: string };
+    checks: { name: string; headSha: string; conclusion: 'success'; runId: number }[];
+    providerReviews: { id: number; state: string; commitSha: string; userId: number }[];
+  };
+  customerAuthorization?: {
+    kind: 'authenticated-exact-commit'; actorId: string; githubUserId: number;
+    pullRequestNumber: number; mergedCommitSha: string; authorizedAt: string;
+  };
   configHash: string;
   bundleSchemaVersion?: 'eai.cli_managed_source_bundle.v1' | 'eai.cli_managed_source_bundle.v2';
   reviewRepair?: CliManagedSourceReviewRepair;

@@ -252,7 +252,7 @@
         },
         {
           "id": "eai-cli-managed-tenantinfra-deploy",
-          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate.",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate. Explicit deploy source authorize-commit records linked-customer exact-commit consent after provider verification, without uploaded bundle bytes or a GitHub approved-review claim; ordinary bundle publication and source-unknown paths remain unchanged.",
           "owned_paths": [
             ".eai/test-coverage.json",
             "docs-site/static/cli-help.txt",
@@ -291,7 +291,8 @@
             "tests/unit/gofer-resource-override.test.ts",
             "tests/integration/create.test.ts",
             "resources/gofer/**",
-            "tests/integration/gofer.test.ts"
+            "tests/integration/gofer.test.ts",
+            "src/commands/eai-managed-source-authorize-commit.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
@@ -311,7 +312,9 @@
             "tests/integration/create.test.ts",
             "tests/integration/gofer.test.ts",
             "tests/integration/init.test.ts",
-            "tests/integration/linked-sources.test.ts"
+            "tests/integration/linked-sources.test.ts",
+            "tests/unit/customer-merged-commit.test.ts",
+            "tests/integration/customer-merged-commit-command.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
