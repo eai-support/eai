@@ -1,0 +1,444 @@
+{
+  "input": {
+    "kind": "eai.content-understanding",
+    "schemaVersion": 1,
+    "tenantId": "11111111-1111-4111-8111-111111111111",
+    "bundleKey": "procurement",
+    "provider": "azure-content-understanding",
+    "apiVersion": "2025-11-01",
+    "binding": {
+      "appKey": "document-assistant",
+      "workflowKey": "procurement",
+      "documentLifecycle": "business-document-v1"
+    },
+    "documentTypes": [
+      {
+        "code": "Quotation",
+        "name": "Quotation",
+        "contentUnderstanding": {
+          "analyzerDefinition": {
+            "fieldSchema": {
+              "fields": {
+                "quotationNumber": {
+                  "type": "string",
+                  "method": "extract",
+                  "description": "Read the quotation number"
+                },
+                "validUntil": {
+                  "type": "date",
+                  "method": "extract"
+                },
+                "arrivalTime": {
+                  "type": "time",
+                  "method": "extract"
+                },
+                "totalAmount": {
+                  "type": "number",
+                  "method": "extract"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "method": "extract"
+                },
+                "includesTax": {
+                  "type": "boolean",
+                  "method": "extract"
+                },
+                "supplier": {
+                  "$ref": "#/definitions/Supplier"
+                },
+                "lineItems": {
+                  "type": "array",
+                  "method": "generate",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "method": "extract"
+                      },
+                      "expenseCategory": {
+                        "type": "string",
+                        "method": "classify",
+                        "enum": [
+                          "Goods",
+                          "Transportation",
+                          "Services",
+                          "Other"
+                        ],
+                        "enumDescriptions": {
+                          "Goods": "Physical goods",
+                          "Transportation": "Delivery charges",
+                          "Services": "Installation charges",
+                          "Other": "Anything else"
+                        }
+                      }
+                    }
+                  }
+                },
+                "additionalSpecifications": {
+                  "type": "json",
+                  "method": "generate",
+                  "description": "Preserve supplier-specific specifications"
+                },
+                "summary": {
+                  "type": "string",
+                  "method": "generate",
+                  "description": "Summarize the main decisions"
+                }
+              },
+              "definitions": {
+                "Supplier": {
+                  "type": "object",
+                  "method": "extract",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "method": "extract"
+                    },
+                    "address": {
+                      "type": "string",
+                      "method": "extract"
+                    },
+                    "contact": {
+                      "type": "string",
+                      "method": "extract"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "classifier": {
+      "classifierKey": "procurement",
+      "displayName": "Procurement router",
+      "definition": {
+        "labels": [
+          {
+            "key": "Quote",
+            "displayName": "Quotation",
+            "description": "A supplier quotation",
+            "documentTypeKey": "Quotation"
+          },
+          {
+            "key": "Other",
+            "displayName": "Other",
+            "description": "Anything else for manual review",
+            "documentTypeKey": "Other"
+          }
+        ],
+        "minimumConfidence": 0.75
+      }
+    }
+  },
+  "normalized": {
+    "kind": "eai.content-understanding",
+    "schemaVersion": 1,
+    "tenantId": "11111111-1111-4111-8111-111111111111",
+    "bundleKey": "procurement",
+    "provider": "azure-content-understanding",
+    "apiVersion": "2025-11-01",
+    "binding": {
+      "appKey": "document-assistant",
+      "workflowKey": "procurement",
+      "documentLifecycle": "business-document-v1"
+    },
+    "documentTypes": [
+      {
+        "code": "Quotation",
+        "name": "Quotation",
+        "contentUnderstanding": {
+          "analyzerDefinition": {
+            "schemaVersion": 1,
+            "baseAnalyzerId": "prebuilt-document",
+            "modelProfile": "default",
+            "config": {
+              "returnDetails": true,
+              "estimateFieldSourceAndConfidence": true
+            },
+            "fieldSchema": {
+              "fields": {
+                "quotationNumber": {
+                  "type": "string",
+                  "method": "extract",
+                  "description": "Read the quotation number"
+                },
+                "validUntil": {
+                  "type": "date",
+                  "method": "extract"
+                },
+                "arrivalTime": {
+                  "type": "time",
+                  "method": "extract"
+                },
+                "totalAmount": {
+                  "type": "number",
+                  "method": "extract"
+                },
+                "quantity": {
+                  "type": "integer",
+                  "method": "extract"
+                },
+                "includesTax": {
+                  "type": "boolean",
+                  "method": "extract"
+                },
+                "supplier": {
+                  "$ref": "#/definitions/Supplier"
+                },
+                "lineItems": {
+                  "type": "array",
+                  "method": "generate",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "description": {
+                        "type": "string",
+                        "method": "extract"
+                      },
+                      "expenseCategory": {
+                        "type": "string",
+                        "method": "classify",
+                        "enum": [
+                          "Goods",
+                          "Transportation",
+                          "Services",
+                          "Other"
+                        ],
+                        "enumDescriptions": {
+                          "Goods": "Physical goods",
+                          "Transportation": "Delivery charges",
+                          "Services": "Installation charges",
+                          "Other": "Anything else"
+                        }
+                      }
+                    }
+                  }
+                },
+                "additionalSpecifications": {
+                  "type": "json",
+                  "method": "generate",
+                  "description": "Preserve supplier-specific specifications"
+                },
+                "summary": {
+                  "type": "string",
+                  "method": "generate",
+                  "description": "Summarize the main decisions"
+                }
+              },
+              "definitions": {
+                "Supplier": {
+                  "type": "object",
+                  "method": "extract",
+                  "properties": {
+                    "name": {
+                      "type": "string",
+                      "method": "extract"
+                    },
+                    "address": {
+                      "type": "string",
+                      "method": "extract"
+                    },
+                    "contact": {
+                      "type": "string",
+                      "method": "extract"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    ],
+    "classifier": {
+      "classifierKey": "procurement",
+      "displayName": "Procurement router",
+      "definition": {
+        "labels": [
+          {
+            "key": "Quote",
+            "displayName": "Quotation",
+            "description": "A supplier quotation",
+            "documentTypeKey": "Quotation"
+          },
+          {
+            "key": "Other",
+            "displayName": "Other",
+            "description": "Anything else for manual review",
+            "documentTypeKey": "Other"
+          }
+        ],
+        "minimumConfidence": 0.75
+      }
+    }
+  },
+  "canonical": "{\"apiVersion\":\"2025-11-01\",\"binding\":{\"appKey\":\"document-assistant\",\"documentLifecycle\":\"business-document-v1\",\"workflowKey\":\"procurement\"},\"bundleKey\":\"procurement\",\"classifier\":{\"classifierKey\":\"procurement\",\"definition\":{\"labels\":[{\"description\":\"A supplier quotation\",\"displayName\":\"Quotation\",\"documentTypeKey\":\"Quotation\",\"key\":\"Quote\"},{\"description\":\"Anything else for manual review\",\"displayName\":\"Other\",\"documentTypeKey\":\"Other\",\"key\":\"Other\"}],\"minimumConfidence\":0.75},\"displayName\":\"Procurement router\"},\"documentTypes\":[{\"code\":\"Quotation\",\"contentUnderstanding\":{\"analyzerDefinition\":{\"baseAnalyzerId\":\"prebuilt-document\",\"config\":{\"estimateFieldSourceAndConfidence\":true,\"returnDetails\":true},\"fieldSchema\":{\"definitions\":{\"Supplier\":{\"method\":\"extract\",\"properties\":{\"address\":{\"method\":\"extract\",\"type\":\"string\"},\"contact\":{\"method\":\"extract\",\"type\":\"string\"},\"name\":{\"method\":\"extract\",\"type\":\"string\"}},\"type\":\"object\"}},\"fields\":{\"additionalSpecifications\":{\"description\":\"Preserve supplier-specific specifications\",\"method\":\"generate\",\"type\":\"json\"},\"arrivalTime\":{\"method\":\"extract\",\"type\":\"time\"},\"includesTax\":{\"method\":\"extract\",\"type\":\"boolean\"},\"lineItems\":{\"items\":{\"properties\":{\"description\":{\"method\":\"extract\",\"type\":\"string\"},\"expenseCategory\":{\"enum\":[\"Goods\",\"Transportation\",\"Services\",\"Other\"],\"enumDescriptions\":{\"Goods\":\"Physical goods\",\"Other\":\"Anything else\",\"Services\":\"Installation charges\",\"Transportation\":\"Delivery charges\"},\"method\":\"classify\",\"type\":\"string\"}},\"type\":\"object\"},\"method\":\"generate\",\"type\":\"array\"},\"quantity\":{\"method\":\"extract\",\"type\":\"integer\"},\"quotationNumber\":{\"description\":\"Read the quotation number\",\"method\":\"extract\",\"type\":\"string\"},\"summary\":{\"description\":\"Summarize the main decisions\",\"method\":\"generate\",\"type\":\"string\"},\"supplier\":{\"$ref\":\"#/definitions/Supplier\"},\"totalAmount\":{\"method\":\"extract\",\"type\":\"number\"},\"validUntil\":{\"method\":\"extract\",\"type\":\"date\"}}},\"modelProfile\":\"default\",\"schemaVersion\":1}},\"name\":\"Quotation\"}],\"kind\":\"eai.content-understanding\",\"provider\":\"azure-content-understanding\",\"schemaVersion\":1,\"tenantId\":\"11111111-1111-4111-8111-111111111111\"}",
+  "definitionDigest": "2b62455371b4e52cb6dcc7ad4f507f79fa2899c43a4b8c2bdf59a6dc3152925d",
+  "modelBindingFingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "leafDigest": "f40e9ffacbfbbb20a0ba00cd4ce470b41df80ccd0e6b062f0b0a778a8c12aec8",
+  "analyzerId": "eai_typed_f40e9ffacbfbbb20a0ba00cd4ce470b41df80ccd0e6b062f0b0a77",
+  "numericEdges": [
+    {
+      "value": 0,
+      "canonical": "{\"minimumConfidence\":0}",
+      "digest": "2697b7acfcdccce10f01c87ee16fcd616e9b914c6d32839c6f1350e1e6bdc0a8"
+    },
+    {
+      "value": 1,
+      "canonical": "{\"minimumConfidence\":1}",
+      "digest": "d2a477d64d250bd5434eea5c663f34a08e85fbe253c45fc2aa353933b61d6a92"
+    },
+    {
+      "value": 0.75,
+      "canonical": "{\"minimumConfidence\":0.75}",
+      "digest": "ad8b7c69835fc90a0b66ea39d720b3cdc76a85832363b6cd798019018c7bcc8b"
+    },
+    {
+      "value": 1e-06,
+      "canonical": "{\"minimumConfidence\":0.000001}",
+      "digest": "3c581a52cf6032bd7200e39108cac27d90745e7e47fb84b1c4b6be0dfcf42af1"
+    },
+    {
+      "value": 1e-07,
+      "canonical": "{\"minimumConfidence\":1e-7}",
+      "digest": "8fc82dddde5f22c98d6d8c8f1fa717f7321093bad884e72139f5592e390840ba"
+    }
+  ],
+  "unicode": {
+    "input": {
+      "2": "two",
+      "10": "ten",
+      "😀": "emoji",
+      "": "private",
+      "Z": "ascii"
+    },
+    "canonical": "{\"10\":\"ten\",\"2\":\"two\",\"Z\":\"ascii\",\"😀\":\"emoji\",\"\":\"private\"}",
+    "digest": "b686c1491d20fd1de2edf69361804c122e9ae236b8dd17b9541af709613668ae"
+  },
+  "pinnedV2": {
+    "request": {
+      "tenant_id": "11111111-1111-4111-8111-111111111111",
+      "custom_execution_mode": "pinned-v2",
+      "custom_execution_id": "generation-quotation-1",
+      "custom_evaluated_at": "2026-10-13T00:00:00.000000Z",
+      "document_type": "Quotation",
+      "use_custom_analyzer": true,
+      "analyzer_id": "eai_typed_f40e9ffacbfbbb20a0ba00cd4ce470b41df80ccd0e6b062f0b0a77",
+      "analyzer_logical_key": "Quotation",
+      "analyzer_definition": {
+        "schemaVersion": 1,
+        "baseAnalyzerId": "prebuilt-document",
+        "modelProfile": "default",
+        "config": {
+          "returnDetails": true,
+          "estimateFieldSourceAndConfidence": true
+        },
+        "fieldSchema": {
+          "fields": {
+            "quotationNumber": {
+              "type": "string",
+              "method": "extract",
+              "description": "Read the quotation number"
+            },
+            "validUntil": {
+              "type": "date",
+              "method": "extract"
+            },
+            "arrivalTime": {
+              "type": "time",
+              "method": "extract"
+            },
+            "totalAmount": {
+              "type": "number",
+              "method": "extract"
+            },
+            "quantity": {
+              "type": "integer",
+              "method": "extract"
+            },
+            "includesTax": {
+              "type": "boolean",
+              "method": "extract"
+            },
+            "supplier": {
+              "$ref": "#/definitions/Supplier"
+            },
+            "lineItems": {
+              "type": "array",
+              "method": "generate",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "type": "string",
+                    "method": "extract"
+                  },
+                  "expenseCategory": {
+                    "type": "string",
+                    "method": "classify",
+                    "enum": [
+                      "Goods",
+                      "Transportation",
+                      "Services",
+                      "Other"
+                    ],
+                    "enumDescriptions": {
+                      "Goods": "Physical goods",
+                      "Transportation": "Delivery charges",
+                      "Services": "Installation charges",
+                      "Other": "Anything else"
+                    }
+                  }
+                }
+              }
+            },
+            "additionalSpecifications": {
+              "type": "json",
+              "method": "generate",
+              "description": "Preserve supplier-specific specifications"
+            },
+            "summary": {
+              "type": "string",
+              "method": "generate",
+              "description": "Summarize the main decisions"
+            }
+          },
+          "definitions": {
+            "Supplier": {
+              "type": "object",
+              "method": "extract",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "method": "extract"
+                },
+                "address": {
+                  "type": "string",
+                  "method": "extract"
+                },
+                "contact": {
+                  "type": "string",
+                  "method": "extract"
+                }
+              }
+            }
+          }
+        }
+      },
+      "expected_analyzer_definition_digest": "f40e9ffacbfbbb20a0ba00cd4ce470b41df80ccd0e6b062f0b0a778a8c12aec8",
+      "expected_model_binding_fingerprint": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "context_data": {
+        "taxRate": 1.0,
+        "epsilon": 1e-07,
+        "𐀀": "astral letter"
+      },
+      "expected_custom_definition_digest": "9daaaadb756ac1637e8a4862cae08568486fd55f36b49ae1597187501f86e7eb"
+    },
+    "executionDigest": "9daaaadb756ac1637e8a4862cae08568486fd55f36b49ae1597187501f86e7eb"
+  },
+  "normalizationOwner": "Configurator/AICore actual validators agree; fixtures are controlled, not live qualification"
+}

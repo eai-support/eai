@@ -48,6 +48,7 @@ import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
+import { contentUnderstandingCommand, contentUnderstandingPreflightOperationId } from './commands/content-understanding.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -102,7 +103,11 @@ program
     }
 
     const capability = `${actionCommand.parent?.name()}:${actionCommand.name()}`;
-    if (capability === 'types:define' || capability === 'resources:indexes-apply') return;
+    if (capability === 'types:define' || capability === 'resources:indexes-apply'
+      || capability === 'content-understanding:schema' || capability === 'content-understanding:validate') return;
+
+    const retainedOperationId = capability === 'content-understanding:apply' || capability === 'content-understanding:status'
+      ? contentUnderstandingPreflightOperationId(opts) : undefined;
 
     if (capability === 'source:authorize-commit') {
       try { validateCustomerCommitPreAction(actionCommand); }
@@ -113,7 +118,7 @@ program
       await activateCommandProfile(actionCommand);
     } catch (error) {
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        opts.format === 'json' || opts.json ? 'json' : 'text');
+        opts.format === 'json' || opts.json ? 'json' : 'text', retainedOperationId);
     }
   });
 
@@ -148,6 +153,7 @@ program.addCommand(supportCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
 program.addCommand(classifierCommand);
+program.addCommand(contentUnderstandingCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -244,7 +250,7 @@ ${chalk.bold('Accessibility:')}
   ${chalk.cyan('eai --no-color <command>')}
 `);
 
-function readTopLevelCommandName(args: readonly string[]): string | null {
+function readTopLevelCommandIndex(args: readonly string[]): number | null {
   const flagsWithValues = new Set(['--profile']);
 
   for (let i = 0; i < args.length; i += 1) {
@@ -254,7 +260,7 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
     }
 
     if (arg === '--') {
-      return args[i + 1] ?? null;
+      return args[i + 1] ? i + 1 : null;
     }
 
     if (arg.startsWith('--profile=')) {
@@ -270,10 +276,15 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
       continue;
     }
 
-    return arg;
+    return i;
   }
 
   return null;
+}
+
+function readTopLevelCommandName(args: readonly string[]): string | null {
+  const index = readTopLevelCommandIndex(args);
+  return index === null ? null : args[index] ?? null;
 }
 
 function readInvocationProfile(args: readonly string[]): string {
@@ -289,6 +300,28 @@ function readInvocationProfile(args: readonly string[]): string {
     }
   }
   return profile;
+}
+
+/** Recover only a CU command's own ID when bootstrap profile syntax fails. */
+function readContentUnderstandingBootstrapOperationId(args: readonly string[]): string | undefined {
+  const groupIndex = readTopLevelCommandIndex(args);
+  if (groupIndex === null || args[groupIndex] !== 'content-understanding') return undefined;
+  const relativeIndex = readTopLevelCommandIndex(args.slice(groupIndex + 1));
+  if (relativeIndex === null) return undefined;
+  const commandIndex = groupIndex + 1 + relativeIndex;
+  const command = contentUnderstandingCommand.commands.find(item => item.name() === args[commandIndex]);
+  if (!command || !['apply', 'status'].includes(command.name())) return undefined;
+  let operationId: string | undefined;
+  for (let index = commandIndex + 1; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--') break;
+    const equal = arg.indexOf('='), flag = equal < 0 ? arg : arg.slice(0, equal);
+    const option = [...program.options, ...command.options].find(item => item.long === flag || item.short === flag);
+    if (!option) continue;
+    const value = equal >= 0 ? arg.slice(equal + 1) : option.required || option.optional ? args[++index] : undefined;
+    if (option.long === '--operation-id') operationId = value;
+  }
+  return contentUnderstandingPreflightOperationId({ operationId, format: isMachineReadableInvocation(args) ? 'json' : 'text' });
 }
 
 function isHelpInvocation(args: readonly string[]): boolean {
@@ -326,16 +359,23 @@ if (cliArgs.includes('--describe')) {
   const invokedCommand = program.commands.find(command => command.name() === topLevelCommandName
     || command.aliases().includes(topLevelCommandName ?? ''));
   if (invokedCommand) setSupportCommand(`eai ${invokedCommand.name()}`);
-  try {
-    setActiveProfile(readInvocationProfile(cliArgs));
-  } catch (error) {
-    exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-      isMachineReadableInvocation(cliArgs) ? 'json' : 'text');
+  const commandIndex = readTopLevelCommandIndex(cliArgs);
+  const isLocalContentUnderstanding = topLevelCommandName === 'content-understanding' && commandIndex !== null
+    && ['schema', 'validate'].includes(readTopLevelCommandName(cliArgs.slice(commandIndex + 1)) ?? '');
+  if (!isLocalContentUnderstanding) {
+    try {
+      setActiveProfile(readInvocationProfile(cliArgs));
+    } catch (error) {
+      const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
+      exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
+    }
   }
-  const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
+  const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||
     isMachineReadableInvocation(cliArgs) ||
+    isLocalContentUnderstanding ||
     (topLevelCommandName === 'types' && cliArgs.includes('define')) ||
     (topLevelCommandName === 'resources' && cliArgs.includes('indexes-apply'));
 

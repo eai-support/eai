@@ -677,6 +677,19 @@ describe('tenant list filtering', () => {
     );
   });
 
+  test.each(['context', 'memberships'])('typed auth mismatch stops %s before token or transport dispatch', async source => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue('Private stored authority and client diagnostic');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const result = source === 'context'
+      ? resolveActiveTenantContext({ publicApiUrl: DEFAULT_PUBLIC_API_URL, interactive: false })
+      : fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+    await expect(result).rejects.toMatchObject({ name: 'TenantAuthConfigMismatchError',
+      safeMessage: 'Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.' });
+    expect(auth.getAccessToken).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('returns login refresh guidance when no access token can be loaded for membership lookup', async () => {
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue(null);

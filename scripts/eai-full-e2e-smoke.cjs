@@ -101,6 +101,14 @@ const TRACEABILITY_BASE = [
   ['eai workflow request', 'create', 'covered-by-cli', 'Controlled command tests; operator request creation has no verified run-owned teardown.'],
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
   ['eai docs classify', 'read/create', 'covered-by-cli', 'Controlled lifecycle helper tests use EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Full runner blocks EAI_E2E_DOCS=1 until a published business-document fixture can be created and verified in its isolated child.'],
+  ['eai content-understanding schema', 'read-local', 'covered-by-cli', 'Local JSON schema is tested without a profile, token or network; schema describes semantic limits and does not imply deployed readiness.'],
+  ['eai content-understanding validate', 'read-local', 'covered-by-cli', 'Owning manifest tests reject unsupported shapes and compare actual shared normalization/digest goldens before any authenticated context.'],
+  ['eai content-understanding capabilities', 'read', 'covered-by-cli', 'Owning transport tests verify actual workspace and trusted gateway binding; mode stays disabled until deployed qualification.'],
+  ['eai content-understanding plan', 'read', 'covered-by-cli', 'Reads platform prerequisites and binds original file bytes, workspace, gateway and opaque server versions; no mutation is claimed.'],
+  ['eai content-understanding apply', 'create/update/read', 'covered-by-cli', 'Owning controls cover original durable operation recovery, current capability gates, unknown acknowledgement and immutable resume. No live materialization is claimed.'],
+  ['eai content-understanding status', 'read', 'covered-by-cli', 'GET-only polling of one existing operation; explicit apply continuation, pending deadlines and failed/partial/unknown states remain nonzero.'],
+  ['eai docs job', 'read', 'covered-by-cli', 'Owning job/tenant, failed-stage and timeout controls poll exact accepted work without re-upload.'],
+  ['eai docs get', 'read', 'covered-by-cli', 'Owning record/job/tenant controls preserve nested values, nullable evidence and provenance from persisted ResourceAPI records.'],
   ['eai docs index', 'create/update', 'covered-by-cli', 'Controlled command tests only; indexing is not executed or claimed by the classification smoke.'],
   ['eai deploy app', 'create/update/read', 'live-optional', 'EAI_E2E_DEPLOY=1 publishes only the run-created app through EAI-managed source, requires exact successful deployment evidence and operation-bound doctor; actor proof or review pending is blocked.'],
   ['eai deploy source move', 'read/browser-handoff', 'manual', 'The CLI checks the exact active EAI-managed source and deployment, then opens the Portal for actor-bound native transfer. Controlled command tests cover the handoff; the local SOT journey owns live transfer, rebind and cleanup evidence.'],
@@ -539,6 +547,14 @@ const OPTION_DECISIONS = {
     '--ai-plan': 'Read-only AI adoption-plan output is covered by template integration tests; release smoke avoids cloning the public template.',
     '--preserve-ui': 'Presentation preservation is asserted by template integration tests and remains enabled for AI plans.',
   },
+  'eai content-understanding schema': { '--format': 'Owning local schema controls verify the machine-readable JSON body.' },
+  'eai content-understanding validate': { '--format': 'Owning local JSON validation results do not establish backend readiness.', '--file': 'Owning local tests validate the original JSON file; deployed qualification remains separate.' },
+  'eai content-understanding capabilities': { '--format': 'Owning transport controls retain exact selected-workspace JSON capability observations.', '--tenant-id': 'Owning gateway/scope controls use an explicit canonical workspace UUID.' },
+  'eai content-understanding plan': { '--format': 'Only unchanged JSON plan output may be supplied to apply.', '--file': 'Owning controls bind exact original bytes to the plan.', '--tenant-id': 'Manifest workspace and selected gateway must agree before planning.' },
+  'eai content-understanding apply': { '--format': 'Owning JSON controls distinguish pending, failure and immutable operation success.', '--file': 'Original file-byte drift refuses apply.', '--plan': 'Only the unchanged scope-bound ready saved plan is accepted.', '--tenant-id': 'Owning controls reject foreign tenant selections.', '--operation-id': 'Resume retains the acknowledged immutable operation.', '--wait': 'Only an acknowledged operation with nextAction apply may resume remaining writes.', '--timeout': 'Bounded wait retains the original ID and never creates replacement work.' },
+  'eai content-understanding status': { '--format': 'JSON retains the acknowledged operation and next action without mutation.', '--tenant-id': 'Owning controls reject foreign observations.', '--operation-id': 'Only this acknowledged operation is read.', '--wait': 'GET-only wait explicitly asks for apply when mutations remain.', '--timeout': 'Owning deadlines retain pending operation identity.' },
+  'eai docs job': { '--format': 'JSON preserves the exact accepted job, stages and request scope.', '--tenant-id': 'Exact accepted job and owning tenant are checked.', '--wait': 'GET-only polling never repeats an upload.', '--timeout': 'Timeout retains the accepted job with nonzero pending result.' },
+  'eai docs get': { '--format': 'JSON preserves full persisted recursive results rather than the job summary.', '--tenant-id': 'Returned tenant identity is checked when present.', '--job-id': 'Exact original job filter is forwarded and readbacks checked.', '--storage-target': 'Only ResourceAPI persisted results are supported.' },
   'eai docs upload': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai docs classify': DOCUMENT_CONTEXT_OPTION_DECISIONS,
   'eai start': {
@@ -766,6 +782,7 @@ const DEFAULT_ARTIFACT_CLEANUP = {
 };
 
 const ARTIFACT_CLEANUP = {
+  'eai content-understanding apply': { createsExternalArtifact: 'Yes - tenant configuration, publications and owned provider analyzers', cleanupMechanism: 'No live smoke yet; authorized fixture owner must retain operation and verify owned cleanup during DEV qualification', cleanupVerified: 'No - controlled tests only; deployment and live qualification required' },
   'eai init': {
     createsExternalArtifact: 'Yes - app binding and local workspace',
     cleanupMechanism: 'Bind only the acknowledged new app; finally app delete, leaf tenant hard-purge; private local workspace retained for evidence',

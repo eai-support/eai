@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Release-aligned documentation surfaces for `@enterpriseai/cli` v3.19.5.
+> Source documentation surfaces for `@enterpriseai/cli` package source v3.20.0. This snapshot does not certify release-channel publication.
 
 ## Install
 
@@ -49,6 +49,7 @@ npm install -g @enterpriseai/cli
 - [V4 Documents And Files](/eai/docs/app-template/documents-and-files)
 - [Config-Driven UI](/eai/docs/app-template/config-driven-ui)
 - [EAI CLI - Configuration](/eai/docs/configuration)
+- [Content Understanding](/eai/docs/content-understanding)
 - [Error Guidance](/eai/docs/error-guidance)
 - [EAI CLI — API Reference](/eai/docs/api-reference)
 

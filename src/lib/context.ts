@@ -11,12 +11,14 @@ import {
   resolvePublicApiUrl,
   resolveActiveTenantContext,
   TenantMembershipAuthError,
+  TenantLoginRequiredError,
+  TenantAuthConfigMismatchError,
   type TenantMembership,
   type ActiveTenantContext,
   type PublicApiRequestPolicy,
 } from './tenant-context.js';
 import type { StoredTokens } from './auth.js';
-import { ErrorCode, exitWithError } from './error-codes.js';
+import { ErrorCode, errorCatalog, exitWithError } from './error-codes.js';
 
 export interface CommandContext {
   root: string;
@@ -42,9 +44,12 @@ export async function resolveCommandContext(options?: {
   validatePublicApiUrl?: (url: string) => string;
   publicApiUrl?: string;
   pinPublicApiUrl?: boolean;
+  /** Let an owning command retain operation identity instead of exiting here. */
+  onError?: (code: ErrorCode, message?: string) => never;
 }): Promise<CommandContext> {
   const root = await findProjectRoot();
   if (!root) {
+    options?.onError?.(ErrorCode.E001);
     exitWithError(ErrorCode.E001);
   }
 
@@ -68,8 +73,17 @@ export async function resolveCommandContext(options?: {
       pinPublicApiUrl: options?.pinPublicApiUrl,
     });
   } catch (error) {
+    if (error instanceof TenantLoginRequiredError) {
+      options?.onError?.(ErrorCode.E101);
+      exitWithError(ErrorCode.E101);
+    }
     if (error instanceof TenantMembershipAuthError) {
+      options?.onError?.(ErrorCode.E102);
       exitWithError(ErrorCode.E102);
+    }
+    if (error instanceof TenantAuthConfigMismatchError) {
+      options?.onError?.(ErrorCode.E104, errorCatalog[ErrorCode.E104].message.replace('{details}', error.safeMessage));
+      exitWithError(ErrorCode.E104, { details: error.safeMessage });
     }
     throw error;
   }

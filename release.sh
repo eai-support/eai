@@ -24,6 +24,14 @@ Examples:
   ./release.sh patch "Fix auth token refresh bug"
   ./release.sh minor "Add bulk resource import command"
   ./release.sh major "Replace config schema with v3 format"
+
+Install after release publication (choose one):
+  Recommended npmjs package:
+    npm install -g eai-cli
+  Canonical npmjs package:
+    npm install -g @enterpriseai/cli
+  Static registry fallback:
+    npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 EOF
 }
 
@@ -296,10 +304,6 @@ fi
 if [[ "$RELEASE_PHASE" == "publish" ]]; then
   TAG_NAME="v$OLD_VERSION"
 
-  section "Waiting for docs/static-registry deployment from main"
-  wait_for_main_docs_run "$(git rev-parse HEAD)"
-  echo "  ✓ Deploy Docs workflow completed"
-
   section "Creating and pushing release tag"
   if remote_tag_exists "$TAG_NAME"; then
     echo "✗ Remote tag $TAG_NAME already exists"
@@ -312,7 +316,7 @@ if [[ "$RELEASE_PHASE" == "publish" ]]; then
 
   section "Waiting for GitHub release workflow"
   wait_for_release_run "$TAG_NAME"
-  echo "  ✓ Release workflow completed"
+  echo "  ✓ Release workflow and qualified Docs publication completed"
 
   section "Verifying public release channels"
   verify_npmjs_latest "$NPM_PACKAGE" "$OLD_VERSION"

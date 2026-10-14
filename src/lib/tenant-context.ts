@@ -36,6 +36,22 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const TENANT_MEMBERSHIP_AUTH_MESSAGE =
   "Authentication is missing or expired. Run `eai login` to refresh your session.";
 
+export class TenantLoginRequiredError extends Error {
+  constructor() {
+    super("Not logged in. Run `eai login` to authenticate.");
+    this.name = "TenantLoginRequiredError";
+  }
+}
+
+export class TenantAuthConfigMismatchError extends Error {
+  readonly safeMessage = "Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.";
+
+  constructor(diagnostic: string) {
+    super(diagnostic);
+    this.name = "TenantAuthConfigMismatchError";
+  }
+}
+
 export class TenantMembershipAuthError extends Error {
   readonly status?: number;
 
@@ -721,11 +737,11 @@ export async function fetchTenantAdminMemberships(
 }> {
   const tokens = await loadTokens();
   if (!tokens?.oid) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
   const authMismatch = await getActiveAuthConfigMismatch(tokens);
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
   const resolvedPublicApiUrl = publicApiUrl
@@ -773,7 +789,7 @@ export async function saveActiveTenantSelection(
 ): Promise<StoredTokens> {
   const tokens = existingTokens ?? (await loadTokens());
   if (!tokens) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
 
   const next: StoredTokens = {
@@ -872,7 +888,7 @@ export async function resolveActiveTenantContext(options?: {
     options?.projectRoot,
   );
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
   // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call

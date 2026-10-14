@@ -24,7 +24,7 @@ const sidebars = {
     {
       type: "category",
       label: "EAI CLI",
-      items: ["configuration", "deploy-anywhere", "error-guidance", "api-reference"],
+      items: ["configuration", "content-understanding", "deploy-anywhere", "error-guidance", "api-reference"],
     },
     {
       type: "category",

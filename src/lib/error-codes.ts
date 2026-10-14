@@ -236,15 +236,18 @@ export function exitWithError(
   code: ErrorCode,
   context?: Record<string, string>,
   format?: 'text' | 'json',
+  retainedOperationId?: string,
 ): never {
   recordSupportError({ code, message: formatError(code, context) });
   if (format === 'json') {
-    console.error(JSON.stringify(redactSupportBundle(formatErrorJSON(code, context)), null, 2));
+    const envelope = formatErrorJSON(code, context) as { error: Record<string, unknown> };
+    if (retainedOperationId) envelope.error.operationId = retainedOperationId;
+    console.error(JSON.stringify(redactSupportBundle(envelope), null, 2));
   } else {
     // Import error symbol only when needed (avoids circular dependency)
     const errorSymbol = '✗';
     const errorMessage = redactSupportText(formatError(code, context));
-    console.error(`${errorSymbol} ${errorMessage}`);
+    console.error(`${errorSymbol} ${errorMessage}${retainedOperationId ? `\n\nOperation ID: ${retainedOperationId}` : ''}`);
   }
 
   process.exit(1);

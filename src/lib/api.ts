@@ -17,6 +17,7 @@ import { captureProfileConfig, getActiveProfile, getProfileCaptureGeneration } f
 import { toObjectTypeSlug } from './utils.js';
 import { isCanonicalObjectTypeSlug } from './object-type-identifiers.js';
 import { safePlatformDiagnostics, type SafeRotationFailure } from './platform-diagnostics.js';
+import type { ContentUnderstandingManifest } from './content-understanding-manifest.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 /** Sanitized authority from the exact bearer and gateway used by an opted-in init request. */
@@ -1074,6 +1075,22 @@ function parseBuilderReadiness(body: Record<string, unknown>): BuilderReadinessR
   };
 }
 
+/** Validate a forwarding scope without changing the configured request basis. */
+function requireSafePublicApiScopeUrl(value: string): string {
+  const message = 'PublicAPI request scope requires a safe HTTP(S) gateway without credentials, query or fragment.';
+  if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value
+    || Array.from(value).some(character => character === '\\' || character.charCodeAt(0) <= 0x20 || character.charCodeAt(0) === 0x7f)
+    || value.includes('?') || value.includes('#')) {
+    throw new Error(message);
+  }
+  let gateway: URL;
+  try { gateway = new URL(value); } catch { throw new Error(message); }
+  if (!['http:', 'https:'].includes(gateway.protocol) || gateway.username || gateway.password || gateway.search || gateway.hash) {
+    throw new Error(message);
+  }
+  return value;
+}
+
 export class PlatformAPIClient {
   private readonly profileAuthorizedGateway: boolean;
   private readonly profileCaptureGeneration = getProfileCaptureGeneration();
@@ -1120,6 +1137,12 @@ export class PlatformAPIClient {
       || this.profileName !== getActiveProfile()) {
       throw new Error('Private managed API client authority changed; create a new client for the selected profile.');
     }
+  }
+
+  /** Public forwarding identity from this bound client; contains no credentials or provider topology. */
+  getRequestScope(): { publicApiUrl: string; tenantId: string } {
+    this.assertProfileAuthority();
+    return { publicApiUrl: requireSafePublicApiScopeUrl(this.baseUrl), tenantId: this.tenantId };
   }
 
   private async headers(): Promise<Record<string, string>> {
@@ -1894,6 +1917,39 @@ export class PlatformAPIClient {
         tenantId: this.tenantId,
       }),
     });
+  }
+
+  /** Read existing document work; a polling timeout never submits another upload. */
+  async getDocumentJob(jobId: string, timeoutMs?: number): Promise<Response> {
+    return this.publicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/jobs/${encodeURIComponent(jobId)}`, 'GET', undefined,
+      undefined, undefined, undefined, timeoutMs ?? 30000);
+  }
+
+  async getDocumentRecord(documentId: string, jobId?: string, timeoutMs?: number): Promise<Response> {
+    return this.publicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/records/${encodeURIComponent(documentId)}`, 'GET', undefined,
+      { storage_target: 'resourceapi', ...(jobId ? { job_id: jobId } : {}) }, undefined, undefined, timeoutMs ?? 30000);
+  }
+
+  /** Typed document configuration uses the selected trusted PublicAPI gateway only. */
+  async getContentUnderstandingCapabilities(timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/content-understanding/capabilities?${new URLSearchParams({ tenant_id: this.tenantId })}`,
+      'GET', undefined, { timeoutMs });
+  }
+
+  async planContentUnderstandingConfiguration(manifest: ContentUnderstandingManifest, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/content-understanding/configurations/plan`,
+      'POST', { tenantId: this.tenantId, manifest }, { timeoutMs });
+  }
+
+  async applyContentUnderstandingConfiguration(manifest: ContentUnderstandingManifest, planDigest: string,
+    expectedVersions: Record<string, unknown>, operationId?: string, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/content-understanding/configurations/apply`, 'POST',
+      { tenantId: this.tenantId, manifest, planDigest, expectedVersions, ...(operationId ? { operationId } : {}) }, { timeoutMs });
+  }
+
+  async getContentUnderstandingOperation(operationId: string, timeoutMs?: number): Promise<Response> {
+    return this.managedPublicRequest(`${PUBLIC_DATA_DOCUMENTS_PATH}/content-understanding/configurations/operations/${encodeURIComponent(operationId)}?${new URLSearchParams({ tenant_id: this.tenantId })}`,
+      'GET', undefined, { timeoutMs });
   }
 
   // --------------- Tenants ---------------
