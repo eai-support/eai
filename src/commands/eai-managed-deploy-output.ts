@@ -67,6 +67,7 @@ export function printManagedSourceOperation(
     sourceMode: operation.sourceMode,
     status: operation.status,
     publicationStatus: operation.status,
+    error: operation.error,
     classification,
     templateCommitSha: operation.templateCommitSha,
     bundleSha256: operation.bundleSha256,
@@ -150,6 +151,11 @@ export async function printManagedSourceCompletion(
     publicationStatus: publication.status,
     templateCommitSha: publication.templateCommitSha,
     bundleSha256: publication.bundleSha256,
+    ...(publication.sourceProvenance ? {
+      sourceProvenance: publication.sourceProvenance,
+      customerAuthorization: publication.customerAuthorization,
+      githubApprovedReviewClaim: false,
+    } : {}),
   });
   if (classifyManagedOperationStatus(operation) === "failed")
     process.exitCode = 1;

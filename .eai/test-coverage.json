@@ -313,7 +313,8 @@
             "tests/integration/gofer.test.ts",
             "tests/integration/init.test.ts",
             "tests/integration/linked-sources.test.ts",
-            "tests/unit/customer-merged-commit.test.ts"
+            "tests/unit/customer-merged-commit.test.ts",
+            "tests/integration/customer-merged-commit-command.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
