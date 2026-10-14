@@ -249,6 +249,7 @@ function localE2eBinding(options, mode, environment, root) {
     binding.templateCommitSha?.match(/^[a-f0-9]{40}$/) === null ||
     !/^[a-f0-9]{40}$/.test(binding.templateCommitSha || '') ||
     (predecessorOperationId && binding.repositoryAuthority !== 'customer-owned') ||
+    (!predecessorOperationId && binding.repositoryAuthority === 'customer-owned') ||
     (!predecessorOperationId && serverTemplateCommitSha &&
       binding.templateCommitSha !== serverTemplateCommitSha)
   ) {
