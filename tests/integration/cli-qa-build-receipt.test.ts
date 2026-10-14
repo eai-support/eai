@@ -146,6 +146,27 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
     expect(receipt.status).toBe('passed'); expect(receipt.qualified).toBe(false); expect(receipt.sourceUnchanged).toBe(true);
     expect(receipt.sourceFileCount).toBe(6); expect(receipt.candidate.dirty).toBe(false);
   });
+  test.each(['registry-only', 'registry-with-installation-pins'])('the pinned template scoped registry is admitted for a real %s build', variant => {
+    const value = fixture();
+    const linked = JSON.parse(readFileSync(join(process.cwd(), 'resources/linked-sources.json'), 'utf8'));
+    const registry = `@enterpriseaigroup:registry=${linked.appTemplate.enterpriseRegistry}\n`;
+    writeFileSync(join(value.root, '.npmrc'), (variant === 'registry-only'
+      ? registry : readFileSync(join(process.cwd(), '.npmrc'), 'utf8') + registry));
+    commit(value.root);
+    const receipt = build.runBuildReceipt(value.options, { ...value.dependencies, execute: actual });
+    expect(receipt.status).toBe('passed');
+    expect(receipt.sourceUnchanged).toBe(true);
+    expect(receipt.npmConfiguration.project).toBe('pinned-template-registry');
+  });
+  test.each([
+    '@enterpriseaigroup:registry=https://registry.npmjs.org/',
+    '@enterpriseaigroup:registry=http://enterpriseaigroup.github.io/enterpriseai-packages/registry',
+    '@enterpriseaigroup:registry=https://enterpriseaigroup.github.io/enterpriseai-packages/registry\n@enterpriseaigroup:registry=https://enterpriseaigroup.github.io/enterpriseai-packages/registry',
+  ])('a different or duplicated template registry is rejected before build (%s)', config => {
+    const value = fixture(); writeFileSync(join(value.root, '.npmrc'), config + '\n'); commit(value.root);
+    expect(() => build.runBuildReceipt(value.options, value.dependencies)).toThrow('NPM_PROJECT_CONFIG_UNSUPPORTED');
+    expect(value.builds()).toBe(0);
+  });
   test.each(['//registry.npmjs.org/:_authToken=synthetic-only-config-token', 'prefix=/synthetic/override',
     'node-options=--conditions=synthetic-project-config', 'save-exact=false'])('unsupported project config %s never dispatches build', config => {
     const value = fixture(); writeFileSync(join(value.root, '.npmrc'), config + '\n'); commit(value.root);
