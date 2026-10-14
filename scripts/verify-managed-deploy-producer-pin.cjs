@@ -64,13 +64,14 @@ function assertProducerDispatchInputs(workflow) {
     'source_mode', 'app_key', 'tenant_id', 'target_tenant_id',
     'operation_id', 'nonce', 'config_hash', 'commit_sha',
     'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at',
+    'local_e2e_template_commit_sha', 'local_e2e_predecessor_operation_id',
   ]) {
     if (!new RegExp(`^      ${input}:`, 'm').test(dispatch)) {
       throw new Error(`workflow does not declare dispatch input ${input}.`);
     }
   }
   const reusable = workflow.split('  workflow_call:\n')[1] || '';
-  if (/^      local_e2e_(?:tunnel|expires_at):/m.test(reusable)) {
+  if (/^      local_e2e_(?:tunnel|expires_at|template_commit_sha|predecessor_operation_id):/m.test(reusable)) {
     throw new Error('local tunnel inputs must not be declared for reusable calls.');
   }
 }

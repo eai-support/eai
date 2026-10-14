@@ -173,7 +173,10 @@ function validateDeploymentBinding(options, mode) {
 function localE2eBinding(options, mode, environment, root) {
   const flag = option(options, 'localE2eTunnel');
   const expiresAt = option(options, 'localE2eExpiresAt');
-  if (!['', 'false', 'true'].includes(flag) || (flag !== 'true' && expiresAt)) {
+  const serverTemplateCommitSha = option(options, 'localE2eTemplateCommitSha');
+  const predecessorOperationId = option(options, 'localE2ePredecessorOperationId');
+  if (!['', 'false', 'true'].includes(flag) ||
+    (flag !== 'true' && (expiresAt || serverTemplateCommitSha || predecessorOperationId))) {
     throw new Error('Local deployment inputs conflict.');
   }
   if (flag !== 'true') return null;
@@ -181,6 +184,7 @@ function localE2eBinding(options, mode, environment, root) {
   const operationId = option(options, 'operationId');
   const repositoryId = option(options, 'repositoryId');
   if (
+    (mode !== 'eai-cli-generated' && (serverTemplateCommitSha || predecessorOperationId)) ||
     !['eai-cli-generated', 'source-unknown'].includes(mode) ||
     !['preview', 'dev'].includes(environment) ||
     option(options, 'githubEventName') !== 'workflow_dispatch' ||
@@ -224,21 +228,38 @@ function localE2eBinding(options, mode, environment, root) {
   if (!/^cli-managed-[a-f0-9]{32}$/.test(operationId)) {
     throw new Error('Local CLI operation binding is invalid.');
   }
+  if ((serverTemplateCommitSha && !/^[a-f0-9]{40}$/.test(serverTemplateCommitSha)) ||
+    (predecessorOperationId && (!/^cli-managed-[a-f0-9]{32}$/.test(predecessorOperationId) ||
+      predecessorOperationId === operationId || !serverTemplateCommitSha))) {
+    throw new Error('Local CLI successor binding is invalid.');
+  }
   const binding = JSON.parse(readRegularFileNoFollow(root, '.eai/cli-managed-source-operation.json').toString('utf8'));
   if (
     binding.schemaVersion !== 'eai.cli_managed_source_operation.v1' ||
     binding.sourceMode !== mode ||
-    binding.operationId !== operationId ||
+    (predecessorOperationId
+      ? (binding.predecessor?.operationId !== predecessorOperationId ||
+        !/^cli-managed-[a-f0-9]{32}$/.test(binding.operationId || '') ||
+        binding.operationId === operationId)
+      : binding.operationId !== operationId) ||
+    binding.tenantId !== option(options, 'tenantId') ||
+    binding.appKey !== option(options, 'appKey') ||
+    binding.targetTenantId !== option(options, 'targetTenantId') ||
     binding.environment !== environment ||
     binding.templateCommitSha?.match(/^[a-f0-9]{40}$/) === null ||
-    !/^[a-f0-9]{40}$/.test(binding.templateCommitSha || '')
+    !/^[a-f0-9]{40}$/.test(binding.templateCommitSha || '') ||
+    (predecessorOperationId && binding.repositoryAuthority !== 'customer-owned') ||
+    (!predecessorOperationId && serverTemplateCommitSha &&
+      binding.templateCommitSha !== serverTemplateCommitSha)
   ) {
     throw new Error('Local deployment original source binding is invalid.');
   }
-  const tuple = ['eai.cli-managed-local-e2e-aud.v1', origin, operationId, repositoryId, binding.templateCommitSha, expiresAt];
+  // SECURITY: the committed marker is historical for customer successors; the server pins the current template in its OIDC audience.
+  const templateCommitSha = serverTemplateCommitSha || binding.templateCommitSha;
+  const tuple = ['eai.cli-managed-local-e2e-aud.v1', origin, operationId, repositoryId, templateCommitSha, expiresAt];
   return {
     mode: 'local-tunnel-v1', origin, expiresAt,
-    templateCommitSha: binding.templateCommitSha,
+    templateCommitSha,
     audience: LOCAL_E2E_AUDIENCE_PREFIX + createHash('sha256').update(JSON.stringify(tuple)).digest('hex'),
   };
 }

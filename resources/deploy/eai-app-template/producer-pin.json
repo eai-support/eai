@@ -2,28 +2,28 @@
   "schemaVersion": "eai.managed-deploy-producer-pin.v1",
   "repository": "eai-support/eai-app-template",
   "candidate": {
-    "commit": "c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b",
+    "commit": "b356af6b4e21ff0f62dc27bdd3c261cc8c0f44b0",
     "workflow": {
       "path": ".github/workflows/eai-app.yml",
-      "sha256": "sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed"
+      "sha256": "sha256:ecb61e8922594ec9b74a67301156787cd3ce656c43d6254d3dfd8a6dbe08bb6c"
     },
     "collector": {
       "path": "scripts/source-unknown-deployment-evidence.mjs",
-      "sha256": "sha256:06e7f33bf1db1d7adbebb75a76d2756e46371318f36d2518c5cfbb58ad4f5e1c"
+      "sha256": "sha256:328ab41974ed67e67af3b045bd27fa172fef39e799352301453264871b7409dc"
     },
     "evidenceTest": {
       "path": "tests/source-unknown-deployment-evidence.test.mjs",
-      "sha256": "sha256:fe5f8381d882ac39656b67b30e1e18193cb676a8aba26a6776a88880a3bb5827"
+      "sha256": "sha256:d9d82acd1b1bce2b5e3ce8a9cac8a476264b64fbc9bf626f714fcc84299d4087"
     }
   },
   "releaseGate": {
-    "status": "released",
-    "tag": "v1.0.14",
-    "commit": "c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b"
+    "status": "awaiting-producer-release",
+    "tag": null,
+    "commit": null
   },
   "githubProducerIdentity": {
     "profile": "github-environment-v1",
-    "templateCommitSha": "c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b",
-    "workflowSha256": "sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed"
+    "templateCommitSha": "b356af6b4e21ff0f62dc27bdd3c261cc8c0f44b0",
+    "workflowSha256": "sha256:ecb61e8922594ec9b74a67301156787cd3ce656c43d6254d3dfd8a6dbe08bb6c"
   }
 }

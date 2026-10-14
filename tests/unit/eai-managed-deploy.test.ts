@@ -745,16 +745,16 @@ describe('EAI managed deployment helpers', () => {
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
-      candidate: { commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b' },
+      candidate: { commit: 'b356af6b4e21ff0f62dc27bdd3c261cc8c0f44b0' },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
-        workflowSha256: 'sha256:bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed',
+        templateCommitSha: 'b356af6b4e21ff0f62dc27bdd3c261cc8c0f44b0',
+        workflowSha256: 'sha256:ecb61e8922594ec9b74a67301156787cd3ce656c43d6254d3dfd8a6dbe08bb6c',
       },
       releaseGate: {
-        status: 'released',
-        tag: 'v1.0.14',
-        commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
+        status: 'awaiting-producer-release',
+        tag: null,
+        commit: null,
       },
     });
     const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
@@ -763,12 +763,12 @@ describe('EAI managed deployment helpers', () => {
       commit: 'c8a8aed26c4d159a4fa2598d9b5e8a495203dd8b',
       packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
     });
-    expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
+    expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).toThrow('linked app template');
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
     expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);
     const evidenceTest = await readFile(join(root, pin.candidate.evidenceTest.path));
     expect(`sha256:${createHash('sha256').update(evidenceTest).digest('hex')}`).toBe(pin.candidate.evidenceTest.sha256);
-    for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at']) {
+    for (const input of ['source_mode', 'app_key', 'tenant_id', 'target_tenant_id', 'operation_id', 'nonce', 'config_hash', 'commit_sha', 'public_api_url', 'env', 'local_e2e_tunnel', 'local_e2e_expires_at', 'local_e2e_template_commit_sha', 'local_e2e_predecessor_operation_id']) {
       expect(workflow).toMatch(new RegExp(`^      ${input}:`, 'm'));
     }
   });
@@ -868,6 +868,8 @@ describe('EAI managed deployment helpers', () => {
     const binding = {
       schemaVersion: 'eai.cli_managed_source_operation.v1', sourceMode: 'eai-cli-generated',
       operationId, environment: 'preview', templateCommitSha: 'd5085aab64f020e1816c11e2eaf461fbed1f2dcb',
+      tenantId: 'company-1', targetTenantId: 'runtime-1', appKey: 'fixture-app',
+      repositoryAuthority: 'eai-managed',
     };
     const expiresAt = new Date(Date.now() + 30 * 60 * 1000).toISOString().replace('Z', '+00:00');
     const output = join(project, 'validated-local-outputs');
@@ -884,6 +886,16 @@ describe('EAI managed deployment helpers', () => {
       await promisify(execFile)(process.execPath, [...args, '--environment', environment]);
       expect(await readFile(output, 'utf8')).toBe(`deployment_environment=${environment}\ngithub_environment=eai-generated-${environment}\n`);
     }
+    const predecessorOperationId = `cli-managed-${'e'.repeat(32)}`;
+    await writeFile(bindingPath, JSON.stringify({ ...binding, operationId: predecessorOperationId,
+      repositoryAuthority: 'customer-owned',
+      predecessor: { operationId: `cli-managed-${'b'.repeat(32)}` } }), { mode: 0o600 });
+    await promisify(execFile)(process.execPath, [...args, '--environment', 'preview',
+      '--local-e2e-template-commit-sha', 'd'.repeat(40),
+      '--local-e2e-predecessor-operation-id', `cli-managed-${'b'.repeat(32)}`]);
+    await expect(promisify(execFile)(process.execPath, [...args, '--environment', 'preview',
+      '--local-e2e-template-commit-sha', 'd'.repeat(40),
+      '--local-e2e-predecessor-operation-id', `cli-managed-${'f'.repeat(32)}`])).rejects.toMatchObject({ code: 1 });
     await writeFile(bindingPath, JSON.stringify(binding), { mode: 0o600 });
     for (const invalid of [
       ['--environment', 'test'], ['--environment', 'prod'],
