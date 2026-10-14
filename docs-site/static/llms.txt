@@ -1,6 +1,6 @@
 # EAI CLI Documentation
 
-> Source documentation surfaces for `@enterpriseai/cli` package source v3.20.1. This snapshot does not certify release-channel publication.
+> Source documentation surfaces for `@enterpriseai/cli` package source v3.20.2. This snapshot does not certify release-channel publication.
 
 ## Install
 

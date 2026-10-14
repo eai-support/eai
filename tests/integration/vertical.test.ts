@@ -891,7 +891,8 @@ describe('eai app', () => {
       if (url === `${jobsUrl}/app-prov-async?targetTenantId=runtime-child` && method === 'GET') {
         expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe(COMPANY_TENANT_ID);
         expect(init?.body).toBeUndefined();
-        return jsonResponse(responseForRead(++reads));
+        const result = responseForRead(++reads);
+        return result instanceof Response ? result : jsonResponse(result);
       }
       return jsonResponse({ message: `Unexpected request: ${method} ${url}` }, 500);
     });
@@ -933,6 +934,190 @@ describe('eai app', () => {
     expect(savedContract).toMatchObject({ tenantId: 'runtime-child', source: { provisioningJobId: 'app-prov-async' } });
     const output = JSON.parse(outputSpy.mock.calls.flat().join(''));
     expect(output).toMatchObject({ tenantId: COMPANY_TENANT_ID, targetTenantId: 'runtime-child', provisioning: { status: 'ready', jobId: 'app-prov-async' } });
+  });
+
+  test.each([
+    [502, 'EXTERNAL_SERVICE_ERROR'],
+    [503, 'PASSIVE_SCHEMA_MISMATCH'],
+  ])('provision keeps its acknowledged job during bounded HTTP %s dependency convergence', async (status, errorCode) => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    let readCount = 0;
+    const fetchMock = mockProvisioningJob(read => {
+      readCount = read;
+      if (read === 1) return appJobFixture('running');
+      if (read < 4) return jsonResponse({ detail: { error: errorCode,
+        message: 'A platform dependency is temporarily unavailable' } }, status as number);
+      return appJobFixture('ready');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const completion = appCommand.parseAsync(provisionArgs, { from: 'user' }).then(() => undefined, error => error);
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(6_000);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await completion).toBeUndefined();
+    expect(readCount).toBe(4);
+    const polls = fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'));
+    expect(polls).toHaveLength(4);
+    expect(polls.every(([input, init]) => requestUrl(input).endsWith('/app-prov-async?targetTenantId=runtime-child')
+      && requestMethod(init) === 'GET' && init?.body === undefined)).toBe(true);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(JSON.parse(outputSpy.mock.calls.flat().join('')).provisioning).toMatchObject({ status: 'ready', jobId: 'app-prov-async' });
+    expect(JSON.parse(await readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).source)
+      .toEqual({ provisioningJobId: 'app-prov-async' });
+  });
+
+  test('provision stops after three consecutive dependency-read retries and keeps local files', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    const contractPath = join(env.dir, '.eai/storage-bindings.json');
+    await mkdir(join(env.dir, '.eai'), { recursive: true });
+    await writeFile(contractPath, 'existing-local-contract\n');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(() => jsonResponse({ detail: { error: 'EXTERNAL_SERVICE_ERROR' } }, 502));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const rejected = expect(appCommand.parseAsync(provisionArgs, { from: 'user' })).rejects.toThrow('fixture-exit');
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(8_000);
+    await rejected;
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(4);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    expect(await readFile(contractPath, 'utf-8')).toBe('existing-local-contract\n');
+    const output = vi.mocked(console.error).mock.calls.flat().join('');
+    expect(output).toContain('Could not read app provisioning job app-prov-async: 502');
+    expect(output).toContain('Rerun with --job-id app-prov-async');
+  });
+
+  test('provision resets its consecutive dependency-read budget only after valid job readback', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(read => read === 4 || read === 8
+      ? appJobFixture(read === 8 ? 'ready' : 'running')
+      : jsonResponse({ detail: { error: 'EXTERNAL_SERVICE_ERROR' } }, 502));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const completion = appCommand.parseAsync(provisionArgs, { from: 'user' }).then(() => undefined, error => error);
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(16_000);
+    expect(await completion).toBeUndefined();
+    expect(JSON.parse(outputSpy.mock.calls.flat().join('')).provisioning.status).toBe('ready');
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(8);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+  });
+
+  test.each([
+    { status: 'failed' },
+    { status: 'interrupted' },
+    { jobId: 'different-job' },
+    { tenantId: 'different-company' },
+    { appKey: 'different-app' },
+    { enrollment: { childTenantId: 'different-runtime' } },
+  ])('provision still rejects terminal or foreign readback after dependency retries (%j)', async overrides => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(read => read === 1
+      ? jsonResponse({ detail: { error: 'EXTERNAL_SERVICE_ERROR' } }, 502)
+      : { ...appJobFixture('ready'), ...overrides });
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const rejected = expect(appCommand.parseAsync(provisionArgs, { from: 'user' })).rejects.toThrow('fixture-exit');
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(4_000);
+    await rejected;
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(2);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test('provision retains its original deadline across temporary dependency errors', async () => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(read => read % 2 === 0
+      ? appJobFixture('running')
+      : jsonResponse({ detail: { error: 'EXTERNAL_SERVICE_ERROR' } }, 502));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const rejected = expect(appCommand.parseAsync(provisionArgs, { from: 'user' })).rejects.toThrow('fixture-exit');
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    const started = Date.now();
+    await vi.advanceTimersByTimeAsync(900_000);
+    await rejected;
+    expect(Date.now() - started).toBe(900_000);
+    expect(vi.mocked(console.error).mock.calls.flat().join('')).toContain('Timed out after 900 seconds waiting');
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?')).length)
+      .toBeLessThanOrEqual(450);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test.each([
+    new Response('not JSON', { status: 502, headers: { 'content-type': 'application/json' } }),
+    new Response(JSON.stringify({ detail: { error: 'EXTERNAL_SERVICE_ERROR' } }), {
+      status: 502, headers: { 'content-type': 'text/plain' },
+    }),
+  ])('provision does not retry a malformed dependency error body or media type', async response => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(() => response.clone());
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const rejected = expect(appCommand.parseAsync(provisionArgs, { from: 'user' })).rejects.toThrow('fixture-exit');
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(2_000);
+    await rejected;
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  test.each([
+    [401, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [403, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [404, { detail: { error: 'APP_PROVISIONING_JOB_NOT_FOUND' } }],
+    [409, { detail: { error: 'APP_PROVISIONING_JOB_CHANGED' } }],
+    [422, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [500, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [502, { detail: { error: 'UNRECOGNIZED_ERROR' } }],
+    [502, { message: 'EXTERNAL_SERVICE_ERROR' }],
+    [503, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [504, { detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+    [502, { ...appJobFixture('failed'), detail: { error: 'EXTERNAL_SERVICE_ERROR' } }],
+  ])('provision does not retry unqualified HTTP %s job reads (%j)', async (status, body) => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(() => jsonResponse(body, status as number));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const rejected = expect(appCommand.parseAsync(provisionArgs, { from: 'user' })).rejects.toThrow('fixture-exit');
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([, init]) => requestMethod(init) === 'POST')).toBe(true));
+    await vi.advanceTimersByTimeAsync(2_000);
+    await rejected;
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   test.each(['failed', 'interrupted'])('provision exits nonzero for %s readback and preserves existing local configuration', async status => {

@@ -58,6 +58,7 @@ const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_PROVISIONING_WAIT_MS = 900_000;
 const APP_PROVISIONING_POLL_MS = 2_000;
+const APP_PROVISIONING_READ_MAX_RETRIES = 3;
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
 
@@ -303,6 +304,17 @@ function validateAppProvisioningJob(
   return payload;
 }
 
+/** Only the acknowledged job's GET may wait through a short dependency outage. */
+function isAppProvisioningReadUnavailable(response: Response, payload: unknown): boolean {
+  if (!isRecord(payload) || payload.jobId !== undefined || payload.status !== undefined
+    || !isRecord(payload.detail)
+    || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return false;
+  }
+  return (response.status === 502 && payload.detail.error === 'EXTERNAL_SERVICE_ERROR')
+    || (response.status === 503 && payload.detail.error === 'PASSIVE_SCHEMA_MISMATCH');
+}
+
 async function waitForAppProvisioningReady(
   client: PlatformAPIClient,
   initialPayload: unknown,
@@ -314,6 +326,7 @@ async function waitForAppProvisioningReady(
   const deadline = Date.now() + APP_PROVISIONING_WAIT_MS;
   let payload = validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey, expectedJobId);
   const jobId = payload.jobId as string;
+  let unavailableReads = 0;
   const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
 
   for (;;) {
@@ -345,9 +358,17 @@ async function waitForAppProvisioningReady(
     }
     if (Date.now() >= deadline) throw timedOut();
     if (!response.ok) {
+      if (isAppProvisioningReadUnavailable(response, responsePayload)) {
+        if (unavailableReads < APP_PROVISIONING_READ_MAX_RETRIES) {
+          unavailableReads += 1;
+          continue;
+        }
+        throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
+      }
       throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed.`);
     }
     payload = validateAppProvisioningJob(responsePayload, companyTenantId, runtimeTenantId, appKey, jobId);
+    unavailableReads = 0;
   }
 }
 
