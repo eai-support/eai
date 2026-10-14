@@ -96,8 +96,8 @@
       },
       "dist": {
         "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.2.tgz",
-        "shasum": "9347117464fbf1fc3ecddd77edf36f9513040ad5",
-        "integrity": "sha512-Pck4vx4tnRxf4xTFv917r24HO7CR+KyF3MlVCDCl3vPcmCzchVIQRuThPVKNSryoZtWXYs7uCi/MT9ci/3K4uw=="
+        "shasum": "530d70e8f722a1a17464cb864bce4ce9390dafdd",
+        "integrity": "sha512-JXo05q28v80fwYymY9MQ16kqmNaldiAkYRkYBUddoAChe+ys5CCqRrKMRQxfIJun4fVn8yhwyzMb7LhapejPUA=="
       }
     }
   },

@@ -871,7 +871,7 @@ describe('eai app', () => {
   });
 
   function mockProvisioningJob(
-    responseForRead: (read: number) => Record<string, unknown>,
+    responseForRead: (read: number) => Record<string, unknown> | Response,
     initialOverrides: Record<string, unknown> = {},
   ): ReturnType<typeof vi.fn> {
     let reads = 0;
@@ -897,6 +897,39 @@ describe('eai app', () => {
       return jsonResponse({ message: `Unexpected request: ${method} ${url}` }, 500);
     });
   }
+
+  test.each([
+    [502, 'EXTERNAL_SERVICE_ERROR'],
+    [503, 'PASSIVE_SCHEMA_MISMATCH'],
+  ])('provision --job-id retries only its exact initial HTTP %s dependency read', async (status, errorCode) => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf-8');
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const fetchMock = mockProvisioningJob(read => read === 1
+      ? jsonResponse({ detail: { error: errorCode } }, status as number)
+      : appJobFixture('ready'));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.useFakeTimers();
+    const completion = appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--job-id', 'app-prov-async', '--format', 'json'], { from: 'user' }).then(() => undefined, error => error);
+    await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([input]) =>
+      requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(1));
+    expect(await readFile(join(env.dir, '.env.local'), 'utf-8')).toBe(originalEnv);
+    await expect(readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(await completion).toBeUndefined();
+    const reads = fetchMock.mock.calls.filter(([input]) =>
+      requestUrl(input).includes('/provisioning-jobs/app-prov-async?'));
+    expect(reads).toHaveLength(2);
+    expect(reads.every(([input, init]) => requestUrl(input).endsWith('/app-prov-async?targetTenantId=runtime-child')
+      && requestMethod(init) === 'GET' && init?.body === undefined)).toBe(true);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'POST')).toHaveLength(0);
+    expect(JSON.parse(outputSpy.mock.calls.flat().join('')).provisioning).toMatchObject({ status: 'ready', jobId: 'app-prov-async' });
+    expect(JSON.parse(await readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8')).source)
+      .toEqual({ provisioningJobId: 'app-prov-async' });
+  });
 
   function appJobFixture(status: string): Record<string, unknown> {
     return { tenantId: COMPANY_TENANT_ID, appKey: 'planning-portal', verticalKey: 'planning-portal',
