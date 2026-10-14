@@ -28,7 +28,7 @@ const guide: AgentGuide = {
   schemaVersion: 1,
   audience: 'ai-agents',
   purpose: 'Help an AI agent discover EAI CLI capabilities, prefer structured output, and recover from known errors without private platform knowledge.',
-  capabilities: ['app-manifest-name-slug-negotiation-v1', 'content-understanding-manifest-v1', 'resource-mutation-response-scope-v1'],
+  capabilities: ['app-manifest-name-slug-negotiation-v1', 'content-understanding-manifest-v1', 'document-type-configuration-v1', 'resource-mutation-response-scope-v1'],
   firstCommands: [
     {
       command: 'eai --describe',
@@ -63,8 +63,9 @@ const guide: AgentGuide = {
     'For normal workspace user/admin addition, use eai user invite --email <email> --workspace <workspace-id> --role <role>; use workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'If user invite fails with a 5xx or EXTERNAL_SERVICE_ERROR, run eai errors explain user_invite_external_service_existing_member --format json, check for an existing member with eai user list, and only then use eai user role set by member ID when approved.',
     'For files, use eai docs when the file is a document to process, classify, index, or expose to AI context. Use eai resources file only when the file is attached to a typed resource object file property.',
+    'For launch-scope document fields, build a bounded eai.document-type.configuration JSON file from the person’s requested document type and scalar extract/generate fields, then use eai docs configure-type on its exact workspace. Publish and bind the matching workflow classifier before submitting a document. The separate typed CU v2 mode remains gated until qualified.',
     'Do not invent standalone PublicAPI v4 blob-upload flows. Ask whether the user needs a document workflow or a resource file property.',
-    'For document analyzer setup, author a bounded manifest with eai content-understanding schema, validate it locally, inspect selected-workspace capabilities, and save a ready plan before apply. The app/workflow binding must already exist; when configuring a classifier, prepare its matching tenant-owned draft with eai classifier save first. Installed manifest support does not mean the backend mode is enabled or qualified. The platform owns Azure credentials and model mappings; never call Azure directly or invent analyzer IDs. Graphs and segmentation are unavailable in this launch mode.',
+    'For the separately gated typed CU v2 mode, author a bounded manifest with eai content-understanding schema, validate it locally, inspect selected-workspace capabilities, and save a ready plan before apply. The app/workflow binding must already exist; when configuring a classifier, prepare its matching tenant-owned draft with eai classifier save first. Installed manifest support does not mean the backend mode is enabled or qualified. The platform owns Azure credentials and model mappings; never call Azure directly or invent analyzer IDs. Graphs and segmentation are unavailable in this mode.',
     'Keep the unchanged Content Understanding manifest and saved plan. Apply acknowledgement can be unknown; never automatically repeat it or create a replacement plan. Deliberately repeating the original apply recovers its durable operation. Once acknowledged, use status or --operation-id with its exact nonzero canonical UUID to resume that operation. Ready typed mode requires features.typed_fields and features.flatClassifiers exactly true; advanced formula, figure and output-format settings require features.advancedDocumentConfig exactly true before initial apply and acknowledged continuation. A succeeded historical operation requires currentReady exactly true before its configuration can be treated as currently ready.',
     'Use eai workspace bootstrap-admin only for first-admin repair on an immediate child workspace.',
     'Query eai errors explain at most once for the original failure; reuse existing guidance across recovery steps. Never retry or explain a failed eai errors explain command.',
@@ -193,8 +194,10 @@ const guide: AgentGuide = {
     {
       step: 5,
       title: 'Documents, files, and AI context',
-      instruction: 'Choose the public v4 file model before writing code. Use document workflow commands for upload, classification, and RAG; use resource file commands for attachments to typed business records.',
+      instruction: 'Choose the public v4 file model before writing code. Configure bounded document fields and an existing published workflow classifier, then use document workflow commands for upload, classification, and readback. Use resource file commands for attachments to typed business records.',
       commands: [
+        { command: 'eai docs configure-type --help', mutates: false, purpose: 'Read the bounded launch configuration JSON shape before authoring a document type.' },
+        { command: 'eai docs configure-type --file document-type.json --tenant-id <workspace-id> --format json', mutates: true, purpose: 'Create and verify the tenant-owned leaf analyzer, then sync matching runtime rules. The file describes code, name, description and 1–32 scalar extract/generate fields; see command help. This does not publish or bind the workflow classifier.' },
         { command: 'eai docs upload <file>', mutates: true, purpose: 'Submit once for full processing with authorised app/workflow or project context; poll the returned job.' },
         { command: 'eai docs classify <file>', mutates: true, purpose: 'Submit once for classification with paired --vertical-key and --workflow-key or authorised project context; do not upload the file first.' },
         { command: 'eai docs index <document-id>', mutates: true, purpose: 'Index a document so AI/RAG workflows can answer from it.' },

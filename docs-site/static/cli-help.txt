@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.2
+Package source version: 3.20.3
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -57,6 +57,36 @@ classifier draft with the existing setup and eai classifier save commands.
 Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.
 Status only reads existing operations; acceptance and pending work are not completion.
 Succeeded historical work requires currentReady exactly true before document processing.
+
+---
+
+eai docs configure-type --help
+==============================
+
+Usage: eai docs configure-type [options]
+
+Configure bounded tenant-owned document fields for an existing classifier
+workflow
+
+Options:
+  --file <path>      Document type configuration JSON
+  --tenant-id <id>   Exact owning workspace UUID, matching the file
+  --format <format>  Output format (choices: "text", "json", default: "text")
+  -h, --help         display help for command
+
+Use a JSON file with kind "eai.document-type.configuration", schemaVersion 1, tenantId, code, name, description,
+and 1–32 fields with name, description, scalar type and extract/generate method.
+Codes use letters, numbers and underscores only; punctuation could collide in provider IDs.
+Use a lowercase canonical workspace UUID in the file and --tenant-id.
+Example:
+  {"kind":"eai.document-type.configuration","schemaVersion":1,"tenantId":"<workspace-id>",
+   "code":"Quotation","name":"Quotation","description":"Supplier quotation",
+   "fields":[{"name":"supplierName","description":"Supplier organisation", "type":"string","method":"extract"},
+             {"name":"summary","description":"One-sentence summary", "type":"string","method":"generate"}]}
+Run inside an initialized EAI project with an explicit --profile for the intended environment.
+The command verifies the tenant-owned analyzer before syncing runtime rules.
+It does not publish a classifier, bind an app/workflow, enable typed CU v2, or upload a document.
+On partial failure, retain the same file and retry only after inspecting the reported phase.
 
 ---
 

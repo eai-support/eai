@@ -11,6 +11,7 @@ import * as out from '../lib/output.js';
 import { isRecord } from '../lib/utils.js';
 import { ContentUnderstandingError } from '../lib/content-understanding-manifest.js';
 import { readContentUnderstandingResponse, requireWaitTimeout } from '../lib/content-understanding-client.js';
+import { configureDocumentTypeCommand } from './document-type-config.js';
 
 interface DocumentCommandOptions extends DocumentUploadContext {
   tenantId?: string;
@@ -72,7 +73,8 @@ Examples:
   $ eai docs upload ./reports/site-plan.pdf --storage-target resourceapi --planning-application-id <projectId>
 
 Typical workflow:
-  1. Configure and publish the app's document schemas and workflow classifier
+  1. Configure the document type fields with docs configure-type, then publish
+     the app's document schemas and workflow classifier
   2. Run classify once to upload and queue analysis, or upload for full processing
   3. Poll the returned job ID and read the saved results; acceptance is not completion
      eai docs job <job-id> --tenant-id <workspace-id> --wait --format json
@@ -86,6 +88,8 @@ Use docs commands when the file is the subject of document processing or AI
 context. Use "eai resources file" when the file is an attachment to a typed
 resource object.
   `);
+
+docsCommand.addCommand(configureDocumentTypeCommand);
 
 interface DocumentReadOptions extends DocumentCommandOptions {
   jobId?: string;

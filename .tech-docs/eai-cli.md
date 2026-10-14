@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.19.5 |
-| Released | 2026-10-13 |
-| Last Material Change | Adopt App Template v1.0.14 managed deployment producer |
-| Source Commit | `79ea5af77c831b1005a4c3f6b5b43b9b0bcbeacc` |
+| Version | 3.20.3 |
+| Released | 2026-10-14 |
+| Last Material Change | Bounded consultant document analyzer configuration for the October launch |
+| Source Commit | `840427e94fb1b6be6b0e5560390fb8ee69983642` |
 
 
 ## Install
@@ -160,7 +160,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
-| Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
