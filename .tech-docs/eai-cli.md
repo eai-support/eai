@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.4 |
+| Version | 3.20.5 |
 | Released | 2026-10-14 |
-| Last Material Change | Pin Template v1.0.17 for private customer managed deployment |
-| Source Commit | `996c8dad929ac0737bbd6d4dfb56922ee545bf41` |
+| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
+| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
 
 
 ## Install
@@ -76,6 +76,17 @@ The CLI checks the exact parent/app/child enrollment before publishing through
 the parent app route and reads schema visibility from the child. This mode
 stops if the manifest route or binding is unavailable; it does not switch to
 direct Object Type writes.
+
+Delete that app through its owning parent and explicitly identify the runtime child:
+
+```bash
+eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+```
+
+The CLI keeps the parent as the enrollment owner, passes the child to the ownership
+plan and deletion request, and verifies the same owner, child, manifest and runtime
+targets in the final receipt. A mismatched plan stops before deletion. Omit
+`--target-tenant-id` for an app whose enrollment and runtime use the same workspace.
 
 ## Check Source Before EAI Hosting
 

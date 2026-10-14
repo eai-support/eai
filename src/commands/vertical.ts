@@ -63,12 +63,16 @@ const APP_DELETE_WARNING = 'This cannot be undone. All application data and meta
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
 
 /** Scoped cleanup must retain the exact plan targets; legacy plans carry no target authority. */
-function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string): value is string[] {
+function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string, targetTenantId: string): value is string[] {
   return Array.isArray(value) && value.length > 0 && value.every(target =>
     typeof target === 'string' && target.length > 0 && target.length <= 256 && target.trim() === target,
-  ) && new Set(value).size === value.length && value.includes(companyTenantId);
+  ) && new Set(value).size === value.length && value.includes(companyTenantId) && value.includes(targetTenantId);
 }
 
+/** Older same-tenant providers may omit the target; an explicit request must be acknowledged. */
+function appDeletionTargetMatches(payload: Record<string, unknown>, targetTenantId: string, required: boolean): boolean {
+  return payload.targetTenantId === targetTenantId || (!required && !Object.hasOwn(payload, 'targetTenantId'));
+}
 
 /** Require the immutable deletion plan to cover every deployment environment exactly once. */
 export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
@@ -960,24 +964,39 @@ verticalCommand
 verticalCommand
   .command('delete <key>')
   .description('Permanently delete an app and every manifest-owned child')
-  .option('--tenant-id <id>', 'Run against a specific company workspace')
+  .option('--tenant-id <id>', 'Company workspace that owns the app enrollment')
+  .option('--target-tenant-id <id>', 'Runtime child workspace to delete from the owning company app')
   .option('--confirm <app-key>', 'Confirm the exact app key for automation')
   .option('--non-interactive', 'Disable prompts; requires --confirm with the exact app key', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `\nFor a parent-owned app with a separate runtime child:
+  eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+The plan and final receipt must match the owner, requested child and exact runtime targets.
+Omit --target-tenant-id for the existing same-workspace deletion flow.
+`)
   .action(async (key: string, options) => {
     const appKey = key.trim();
     if (!appKey) fail('App key is required.');
     if (options.json) options.format = 'json';
     const format = normalizeFormat(options);
+    if (options.targetTenantId !== undefined) {
+      try {
+        requireManagedScopeIdentifier(options.targetTenantId, '--target-tenant-id');
+      } catch {
+        fail('--target-tenant-id must be a non-empty exact workspace identifier.');
+      }
+    }
     const ctx = await resolveAppManagementContext({
       tenantId: options.tenantId,
       interactive: !options.tenantId && !options.nonInteractive,
     });
     const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
     const client = createAppManagementClient(ctx, companyTenantId);
+    const explicitTarget = options.targetTenantId !== undefined;
+    const targetTenantId = options.targetTenantId ?? companyTenantId;
 
-    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
+    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId);
     const plan = await readResponsePayload(planResponse);
     if (!planResponse.ok || !isRecord(plan)) {
       fail(
@@ -991,13 +1010,15 @@ verticalCommand
     const scopedCleanup = plan.cleanupContract === 'eai.app-scoped-cleanup.v2';
     const runtimeTargets = plan.runtimeTenantIds;
     if (
+      plan.tenantId !== companyTenantId ||
       plan.appKey !== appKey ||
+      !appDeletionTargetMatches(plan, targetTenantId, explicitTarget) ||
       plan.confirmationRequired !== appKey ||
       !/^[a-f0-9]{64}$/.test(manifestHash) ||
       !isCompleteAppDeletionEnvironmentSet(environments) ||
       (scopedCleanup
-        ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId)
-        : Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
+        ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId, targetTenantId)
+        : explicitTarget || Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
     ) {
       fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
     }
@@ -1033,6 +1054,7 @@ verticalCommand
       confirmationAppKey: appKey,
       ownershipManifestHash: manifestHash,
       environments,
+      ...(explicitTarget ? { targetTenantId } : {}),
     });
     const receipt = await readResponsePayload(response);
     if (!response.ok || !isRecord(receipt)) {
@@ -1049,10 +1071,12 @@ verticalCommand
       typeof receipt.operationId !== 'string' ||
       receipt.operationId.length === 0 ||
       receipt.planHash !== manifestHash ||
+      receipt.ownershipManifestHash !== manifestHash ||
       receipt.status !== 'deleted' ||
       receipt.verified !== true ||
       receipt.appKey !== appKey ||
       receipt.tenantId !== companyTenantId ||
+      !appDeletionTargetMatches(receipt, targetTenantId, explicitTarget || Object.hasOwn(plan, 'targetTenantId')) ||
       (capturedRuntimeTargets
         ? !Array.isArray(returnedRuntimeTargets) || returnedRuntimeTargets.length !== capturedRuntimeTargets.length ||
           !capturedRuntimeTargets.every((target, index) => returnedRuntimeTargets[index] === target)

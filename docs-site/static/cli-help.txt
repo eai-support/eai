@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.4
+Package source version: 3.20.5
 
 Install / update the CLI:
 npm install -g eai-cli
