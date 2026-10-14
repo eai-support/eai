@@ -125,6 +125,20 @@ describe('actual source/build/runtime binding with explicitly controlled fixture
     expect(existsSync(shadow)).toBe(false); expect(readFileSync(value.cliPath, 'utf8')).toBe(readFileSync(join(value.root, 'src/main.js'), 'utf8'));
     expect(qa.readPrivate(value.output)).toMatchObject({ status: 'passed', qualification: 'normal-build', qualified: true });
   });
+  test('the actual normal builder qualifies a receipt with the pinned template registry', () => {
+    const value = normalFixture();
+    const linked = JSON.parse(readFileSync(join(process.cwd(), 'resources/linked-sources.json'), 'utf8'));
+    writeFileSync(join(value.root, '.npmrc'), `@enterpriseaigroup:registry=${linked.appTemplate.enterpriseRegistry}\n`);
+    commit(value.root);
+    const result = spawnSync(process.execPath, [join(value.root, 'scripts/cli-qa-build-receipt.cjs'),
+      '--cli', value.cliPath, '--output', value.output], { cwd: value.root, encoding: 'utf8', timeout: 20000,
+      env: { ...process.env, NODE_PATH: resolve('node_modules') } });
+    expect(result.status, result.stderr).toBe(0);
+    const receipt = qa.readPrivate(value.output);
+    expect(receipt).toMatchObject({ status: 'passed', qualification: 'normal-build', qualified: true,
+      npmConfiguration: { project: 'pinned-template-registry' } });
+    expect(build.sourceBuildVerified(receipt, receipt.candidate, { now: Date.parse(receipt.observedAt) })).toBe(true);
+  });
   test.each(['GIT_DIR', 'GIT_WORK_TREE', 'GIT_INDEX_FILE'])('shared actual candidate collection excludes ambient %s override', key => {
     const value = normalFixture(), foreign = fixture();
     expect(actual(process.execPath, ['scripts/build.cjs'], { cwd: value.root }).status).toBe(0);
