@@ -152,6 +152,16 @@ describe('public documentation release qualification', () => {
   test('real prepared archive exactly matches all current packaged runtime files', () => {
     expect(publication.verifyPreparedSource(repoRoot).runtimeFilesVerified).toBeGreaterThan(0);
   });
+  test('current version listing advertises the prepared archive checksum', () => {
+    const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
+    const registry = path.join(repoRoot, 'docs-site/static/registry');
+    const archive = readFileSync(path.join(registry, `-/@enterpriseai/cli-${pkg.version}.tgz`));
+    const shasum = createHash('sha1').update(archive).digest('hex');
+    const packument = JSON.parse(readFileSync(path.join(registry, '@enterpriseai/cli'), 'utf8'));
+    const listing = readFileSync(path.join(registry, 'index.html'), 'utf8');
+    expect(packument.versions[pkg.version].dist.shasum).toBe(shasum);
+    expect(listing).toContain(`<td><code title="${shasum}">${shasum.slice(0, 12)}...</code></td>`);
+  });
   test('a checksummed prepared archive cannot publish different current runtime source', () => {
     const root = mkdtempSync(path.join(tmpdir(), 'eai-prepared-source-mismatch-'));
     try {
