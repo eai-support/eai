@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.4** (2026-10-14): Pin Template v1.0.17 for private customer managed deployment.
+The current CLI release is **v3.20.5** (2026-10-14): Pin parent-owned app deletion to its requested runtime child.

@@ -2003,10 +2003,12 @@ export class PlatformAPIClient {
     );
   }
 
-  async getAppDeletionPlan(tenantId: string, appKey: string): Promise<Response> {
+  async getAppDeletionPlan(tenantId: string, appKey: string, targetTenantId?: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/deletion-plan`,
       'GET',
+      undefined,
+      targetTenantId === undefined ? undefined : { targetTenantId },
     );
   }
 
@@ -2017,6 +2019,7 @@ export class PlatformAPIClient {
       confirmationAppKey: string;
       ownershipManifestHash: string;
       environments: string[];
+      targetTenantId?: string;
     },
   ): Promise<Response> {
     return this.publicRequest(

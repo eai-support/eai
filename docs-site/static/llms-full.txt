@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.4. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.5. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -453,6 +453,31 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
 ```
 
+## eai app delete --help
+
+```text
+Usage: eai app delete [options] <key>
+
+Permanently delete an app and every manifest-owned child
+
+Options:
+  --tenant-id <id>         Company workspace that owns the app enrollment
+  --target-tenant-id <id>  Runtime child workspace to delete from the owning
+                           company app
+  --confirm <app-key>      Confirm the exact app key for automation
+  --non-interactive        Disable prompts; requires --confirm with the exact
+                           app key (default: false)
+  --format <format>        Output format (text|json) (default: "text")
+  --json                   Output raw JSON (deprecated, use --format json)
+                           (default: false)
+  -h, --help               display help for command
+
+For a parent-owned app with a separate runtime child:
+  eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+The plan and final receipt must match the owner, requested child and exact runtime targets.
+Omit --target-tenant-id for the existing same-workspace deletion flow.
+```
+
 ## eai deploy source validate --help
 
 ```text
@@ -790,7 +815,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.4** (2026-10-14): Pin Template v1.0.17 for private customer managed deployment.
+The current CLI release is **v3.20.5** (2026-10-14): Pin parent-owned app deletion to its requested runtime child.
 
 ---
 
@@ -841,10 +866,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.4 |
+| Version | 3.20.5 |
 | Released | 2026-10-14 |
-| Last Material Change | Pin Template v1.0.17 for private customer managed deployment |
-| Source Commit | `996c8dad929ac0737bbd6d4dfb56922ee545bf41` |
+| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
+| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
 
 
 ## Install
@@ -903,6 +928,17 @@ The CLI checks the exact parent/app/child enrollment before publishing through
 the parent app route and reads schema visibility from the child. This mode
 stops if the manifest route or binding is unavailable; it does not switch to
 direct Object Type writes.
+
+Delete that app through its owning parent and explicitly identify the runtime child:
+
+```bash
+eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+```
+
+The CLI keeps the parent as the enrollment owner, passes the child to the ownership
+plan and deletion request, and verifies the same owner, child, manifest and runtime
+targets in the final receipt. A mismatched plan stops before deletion. Omit
+`--target-tenant-id` for an app whose enrollment and runtime use the same workspace.
 
 ## Check Source Before EAI Hosting
 
@@ -2672,7 +2708,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.3. The same catalog powers human stderr output, JSON output for AI
+v3.20.5. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

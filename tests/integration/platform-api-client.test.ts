@@ -13,6 +13,25 @@ import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, 
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
 
+describe('app deletion owner and target transport', () => {
+  afterEach(() => vi.restoreAllMocks())
+  test.each([undefined, 'runtime-child'])('pins the optional target %s without changing the owner header', async targetTenantId => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
+    const client = new PlatformAPIClient('https://example.test/public', 'parent-owner')
+    await client.getAppDeletionPlan('parent-owner', 'owned-app', targetTenantId)
+    const body = { confirmationAppKey: 'owned-app', ownershipManifestHash: 'a'.repeat(64),
+      environments: ['preview', 'dev', 'test', 'prod'], ...(targetTenantId === undefined ? {} : { targetTenantId }) }
+    await client.deleteApp('parent-owner', 'owned-app', body)
+    const path = 'https://example.test/public/v4/platform/tenants/parent-owner/apps/owned-app'
+    expect(fetchMock.mock.calls).toEqual([
+      [path + '/deletion-plan' + (targetTenantId === undefined ? '' : '?targetTenantId=runtime-child'),
+        expect.objectContaining({ method: 'GET', headers: expect.objectContaining({ 'X-Tenant-Id': 'parent-owner' }) })],
+      [path, expect.objectContaining({ method: 'DELETE', body: JSON.stringify(body),
+        headers: expect.objectContaining({ 'X-Tenant-Id': 'parent-owner' }) })],
+    ])
+  })
+})
+
 describe('QA primary scope follows declared client routes', () => {
   const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
   const tenant = '11111111-1111-4111-8111-111111111111'

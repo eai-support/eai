@@ -537,6 +537,9 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai app delete': {
+    '--target-tenant-id': 'Parent-owned runtime-child cleanup is covered by exact plan/query/body and receipt integration tests; the live smoke uses a dedicated same-workspace app.',
+  },
   'eai support': {
     '--yes': 'Creates a draft only after explicit human approval; local fixture tests cover the consented POST and refusal, and deployed smoke never supplies consent.',
     '--decline': 'Owned local tests verify immediate identity-bound cleanup without authentication, network requests or deleting unrelated files; deployed smoke never handles customer context.',

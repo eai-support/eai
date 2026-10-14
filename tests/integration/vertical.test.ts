@@ -484,6 +484,119 @@ describe('eai app', () => {
     );
   });
 
+  test.each([
+    ['child', 'success'],
+    ['same-tenant', 'success'],
+    ['legacy-default', 'success'],
+    ['legacy-default-receipt-target', 'success'],
+    ['plan-wrong-owner', 'plan'],
+    ['plan-missing-owner', 'plan'],
+    ['plan-wrong-child', 'plan'],
+    ['plan-missing-child', 'plan'],
+    ['plan-null-child', 'plan'],
+    ['plan-child-absent-from-runtime', 'plan'],
+    ['plan-legacy-explicit-child', 'plan'],
+    ['default-plan-foreign-child', 'plan'],
+    ['receipt-wrong-owner', 'receipt'],
+    ['receipt-wrong-child', 'receipt'],
+    ['receipt-missing-child', 'receipt'],
+    ['receipt-wrong-ownership-hash', 'receipt'],
+    ['receipt-missing-ownership-hash', 'receipt'],
+    ['default-receipt-foreign-child', 'receipt'],
+    ['default-receipt-downgrade', 'receipt'],
+  ])('pins the requested app deletion owner and runtime: %s', async (scenario, phase) => {
+    await seedLoggedInTenant();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const hash = 'a'.repeat(64);
+    const explicit = !scenario.startsWith('legacy-default') && !scenario.startsWith('default-');
+    const target = scenario === 'same-tenant' ? COMPANY_TENANT_ID : 'runtime-child';
+    const plan: Record<string, unknown> = {
+      tenantId: COMPANY_TENANT_ID, targetTenantId: target, appKey: 'post-pilot',
+      confirmationRequired: 'post-pilot', ownershipManifestHash: hash,
+      environments: ['preview', 'dev', 'test', 'prod'], cleanupContract: 'eai.app-scoped-cleanup.v2',
+      runtimeTenantIds: target === COMPANY_TENANT_ID ? [COMPANY_TENANT_ID] : [target, COMPANY_TENANT_ID],
+    };
+    const receipt: Record<string, unknown> = {
+      schemaVersion: 'eai.app-deletion-receipt.v1', operationId: 'appdel-operation-1',
+      planHash: hash, ownershipManifestHash: hash, tenantId: COMPANY_TENANT_ID,
+      targetTenantId: target, appKey: 'post-pilot', status: 'deleted', verified: true,
+      runtimeTenantIds: [...plan.runtimeTenantIds as string[]],
+    };
+    if (scenario.startsWith('legacy-default')) {
+      delete plan.targetTenantId; delete plan.cleanupContract; delete plan.runtimeTenantIds;
+      delete receipt.targetTenantId; delete receipt.runtimeTenantIds;
+      if (scenario === 'legacy-default-receipt-target') receipt.targetTenantId = COMPANY_TENANT_ID;
+    }
+    if (scenario === 'plan-wrong-owner') plan.tenantId = 'foreign-owner';
+    if (scenario === 'plan-missing-owner') delete plan.tenantId;
+    if (scenario === 'plan-wrong-child') plan.targetTenantId = 'foreign-child';
+    if (scenario === 'plan-missing-child') delete plan.targetTenantId;
+    if (scenario === 'plan-null-child') plan.targetTenantId = null;
+    if (scenario === 'plan-child-absent-from-runtime') plan.runtimeTenantIds = ['foreign-child', COMPANY_TENANT_ID];
+    if (scenario === 'plan-legacy-explicit-child') {
+      delete plan.targetTenantId; delete plan.cleanupContract; delete plan.runtimeTenantIds;
+    }
+    if (scenario.startsWith('default-receipt')) {
+      plan.targetTenantId = COMPANY_TENANT_ID; plan.runtimeTenantIds = [COMPANY_TENANT_ID];
+      receipt.runtimeTenantIds = [COMPANY_TENANT_ID];
+    }
+    if (scenario === 'receipt-wrong-owner') receipt.tenantId = 'foreign-owner';
+    if (scenario === 'receipt-wrong-child') receipt.targetTenantId = 'foreign-child';
+    if (scenario === 'receipt-missing-child' || scenario === 'default-receipt-downgrade') delete receipt.targetTenantId;
+    if (scenario === 'receipt-wrong-ownership-hash') receipt.ownershipManifestHash = 'b'.repeat(64);
+    if (scenario === 'receipt-missing-ownership-hash') delete receipt.ownershipManifestHash;
+
+    const planUrl = `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot/deletion-plan${explicit ? `?targetTenantId=${target}` : ''}`;
+    const deleteUrl = `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/post-pilot`;
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = requestUrl(input); const method = requestMethod(init);
+      if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') return jsonResponse({ tenants: [{
+        id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', slug: 'builder-workspace',
+        isActive: true, roles: ['tenant-admin'],
+      }] });
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/management` && method === 'GET') {
+        return jsonResponse({ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', region: 'au' });
+      }
+      if (url === planUrl && method === 'GET') return jsonResponse(plan);
+      if (url === deleteUrl && method === 'DELETE') return jsonResponse(receipt);
+      throw new Error(`unexpected provider request: ${method} ${url}`);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const invocation = appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+      ...(explicit ? ['--target-tenant-id', target] : []), '--confirm', 'post-pilot', '--non-interactive', '--format', 'json'], { from: 'user' });
+    if (phase === 'success') {
+      await invocation;
+      expect(JSON.parse(output.mock.calls.map(call => String(call[0])).join(''))).toEqual(receipt);
+    } else {
+      await expect(invocation).rejects.toThrow('fixture-process-exit');
+      expect(output).not.toHaveBeenCalled();
+      expect(errors.mock.calls.flat().join(' ')).toContain(phase === 'plan'
+        ? 'invalid app deletion ownership plan' : 'verified app deletion receipt');
+    }
+    expect(fetchMock).toHaveBeenCalledWith(planUrl, expect.objectContaining({
+      method: 'GET', headers: expect.objectContaining({ 'X-Tenant-Id': COMPANY_TENANT_ID }),
+    }));
+    const deletes = fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'DELETE');
+    expect(deletes).toHaveLength(phase === 'plan' ? 0 : 1);
+    if (deletes.length) expect(deletes[0]).toEqual([deleteUrl, expect.objectContaining({
+      method: 'DELETE', headers: expect.objectContaining({ 'X-Tenant-Id': COMPANY_TENANT_ID }),
+      body: JSON.stringify({ confirmationAppKey: 'post-pilot', ownershipManifestHash: hash,
+        environments: ['preview', 'dev', 'test', 'prod'], ...(explicit ? { targetTenantId: target } : {}) }),
+    })]);
+  });
+
+  test.each(['', ' child', 'child ', '.', '..', 'child/other', 'child\nother'])
+    ('rejects invalid app deletion target %j before any request', async target => {
+      const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
+      vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+      await expect(appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+        '--target-tenant-id', target, '--confirm', 'post-pilot', '--non-interactive', '--format', 'json'], { from: 'user' }))
+        .rejects.toThrow('fixture-process-exit');
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+
   test('requires every app deletion environment exactly once', () => {
     expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod'])).toBe(true);
     expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test'])).toBe(false);

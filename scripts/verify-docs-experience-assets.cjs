@@ -4,10 +4,16 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const staticDirectory = path.join(__dirname, "..", "docs-site", "static");
+const packageVersion = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"), "utf8")).version;
+const guidance = JSON.parse(fs.readFileSync(path.join(staticDirectory, "error-guidance.json"), "utf8"));
 const search = JSON.parse(fs.readFileSync(path.join(staticDirectory, "docs-search-index.json"), "utf8"));
 const capabilities = JSON.parse(fs.readFileSync(path.join(staticDirectory, "docs-capabilities.json"), "utf8"));
 const requestBuilder = fs.readFileSync(path.join(__dirname, "..", "docs-site", "src", "components", "RequestBuilder", "index.js"), "utf8");
 const installerDownload = fs.readFileSync(path.join(__dirname, "..", "docs-site", "src", "components", "InstallerDownload", "index.js"), "utf8");
+
+if (guidance.version !== packageVersion) {
+  throw new Error("Error guidance version does not match package version. Run npm run docs:error-guidance.");
+}
 
 if (search.schemaVersion !== 1 || search.items.length < 10) {
   throw new Error("The documentation search index is incomplete.");
