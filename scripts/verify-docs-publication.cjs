@@ -58,10 +58,11 @@ async function readPublishedArchive(url, timeoutMs = REQUEST_TIMEOUT_MS) {
   return Buffer.concat(chunks, size);
 }
 
-async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage, readPublishedTarball = readPublishedArchive, requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+async function verifyDocsPublication({ root = ROOT, readPublished = readPublishedPackage, readPublishedTarball = readPublishedArchive, requestTimeoutMs = REQUEST_TIMEOUT_MS, now = () => performance.now() } = {}) {
   let prepared;
   try { prepared = preparedRelease(root); } catch { return { allowed: false, reason: 'prepared-artifacts-invalid' }; }
   try {
+    const requestDeadline = now() + requestTimeoutMs;
     const published = await readPublished(requestTimeoutMs);
     const entry = published?.versions?.[prepared.version];
     const tarball = `https://registry.npmjs.org/@enterpriseai/cli/-/cli-${prepared.version}.tgz`;
@@ -78,7 +79,9 @@ async function verifyDocsPublication({ root = ROOT, readPublished = readPublishe
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(entry.dist.integrity)) {
       return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
     }
-    const bytes = await readPublishedTarball(tarball, requestTimeoutMs);
+    const archiveTimeoutMs = Math.floor(requestDeadline - now());
+    if (archiveTimeoutMs <= 0) throw new Error('Canonical archive request budget exhausted.');
+    const bytes = await readPublishedTarball(tarball, archiveTimeoutMs);
     if (!Buffer.isBuffer(bytes) || bytes.length > MAX_ARCHIVE_BYTES
       || crypto.createHash('sha1').update(bytes).digest('hex') !== entry.dist.shasum
       || 'sha512-' + crypto.createHash('sha512').update(bytes).digest('base64') !== entry.dist.integrity) {
