@@ -28,7 +28,8 @@ function preparedRelease(root = ROOT) {
   const data = fs.readFileSync(archive);
   const shasum = crypto.createHash('sha1').update(data).digest('hex');
   const integrity = 'sha512-' + crypto.createHash('sha512').update(data).digest('base64');
-  if (entry.dist?.shasum !== shasum || entry.dist?.integrity !== integrity
+  if (entry.dist?.tarball !== `https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-${pkg.version}.tgz`
+    || entry.dist?.shasum !== shasum || entry.dist?.integrity !== integrity
     || !fs.readFileSync(path.join(registry, '-/@enterpriseai/cli-latest.tgz')).equals(data)) {
     throw new Error('Prepared archive checksum mismatch.');
   }

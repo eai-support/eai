@@ -9,7 +9,7 @@ import { createHash } from 'node:crypto';
 interface PublishedPackage {
   name: string;
   'dist-tags': { latest: string };
-  versions: Record<string, { name: string; version: string; dist: { shasum: string; integrity: string } }>;
+  versions: Record<string, { name: string; version: string; dist: { tarball?: string; shasum: string; integrity: string } }>;
 }
 
 const publication = createRequire(import.meta.url)('../../scripts/verify-docs-publication.cjs') as {
@@ -30,6 +30,7 @@ describe('public documentation release qualification', () => {
       mkdirSync(path.join(registry, '-/@enterpriseai'), { recursive: true });
       const archive = Buffer.from('controlled canonical archive');
       const entry = { name: '@enterpriseai/cli', version: '3.20.0', dist: {
+        tarball: 'https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.0.tgz',
         shasum: createHash('sha1').update(archive).digest('hex'),
         integrity: 'sha512-' + createHash('sha512').update(archive).digest('base64'),
       } };
@@ -47,6 +48,20 @@ describe('public documentation release qualification', () => {
     await fixture(async (root, published) => {
       expect(await publication.verifyDocsPublication({ root, readPublished: async () => published }))
         .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+    });
+  });
+  test.each(['missing', 'wrong'])('prepared %s tarball URL refuses before canonical publication access', async kind => {
+    await fixture(async (root, published) => {
+      const prepared = JSON.parse(JSON.stringify(published)) as PublishedPackage;
+      if (kind === 'missing') delete prepared.versions['3.20.0'].dist.tarball;
+      else prepared.versions['3.20.0'].dist.tarball = 'https://registry.npmjs.org/@enterpriseai/cli/-/cli-3.20.0.tgz';
+      for (const relative of ['@enterpriseai/cli', '@enterpriseai%2fcli', '@enterpriseai%2Fcli', '%40enterpriseai%2Fcli']) {
+        writeFileSync(path.join(root, 'docs-site/static/registry', relative), JSON.stringify(prepared));
+      }
+      let reads = 0;
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => { reads++; return published; } }))
+        .toEqual({ allowed: false, reason: 'prepared-artifacts-invalid' });
+      expect(reads).toBe(0);
     });
   });
   test.each(['unpublished', 'wrong-name', 'wrong-latest', 'wrong-version', 'wrong-sha1', 'wrong-sha512', 'malformed'])
