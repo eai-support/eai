@@ -160,6 +160,71 @@ describe('eai app', () => {
   const emptyInventory = { docs: [], totalDocs: 0, totalPages: 1, limit: 50, page: 1, pagingCounter: 1,
     hasPrevPage: false, hasNextPage: false, prevPage: null, nextPage: null };
 
+  // Canonical ResourceAPI offset envelopes, with observed app records replaced by owned fixtures.
+  const canonicalEmptyInventory = { docs: [], totalDocs: 0, totalPages: 1, limit: 50, page: 1,
+    hasPrevPage: false, hasNextPage: false, nextCursor: null };
+  const canonicalInventory = { ...canonicalEmptyInventory, totalDocs: 1,
+    docs: [{ id: 'fixture-app', data: { verticalKey: 'fixture-app', displayName: 'Owned inventory fixture' } }] };
+  const canonicalMultiplePages = { ...canonicalInventory, limit: 1, totalDocs: 2, totalPages: 2, hasNextPage: true };
+
+  test.each([
+    { name: 'empty observed v4 envelope', payload: canonicalEmptyInventory },
+    { name: 'nonempty observed v4 envelope', payload: canonicalInventory },
+    { name: 'offset next page with a null cursor', payload: canonicalMultiplePages },
+    { name: 'offset next page with an opaque cursor', payload: { ...canonicalMultiplePages, nextCursor: 'opaque-continuation' } },
+    { name: 'exactly full terminal page', payload: { ...canonicalInventory, limit: 1 } },
+    { name: 'canonical and complete consistent legacy metadata', payload: { ...emptyInventory, ...canonicalInventory } },
+    { name: 'nonempty legacy inventory', payload: { ...emptyInventory, ...canonicalInventory, nextCursor: undefined } },
+    { name: 'multiple-page legacy inventory', payload: { ...emptyInventory, ...canonicalMultiplePages, nextCursor: undefined, nextPage: 2 } },
+  ])('app list accepts $name', async ({ payload }) => {
+    await seedLoggedInTenant(); inventoryFetch(payload);
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--limit', String(payload.limit), '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.map(args => String(args[0])).join(''))).toEqual({ tenantId: COMPANY_TENANT_ID, apps: payload.docs });
+    expect(exit).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
+  });
+
+  test.each([
+    { name: 'missing both pagination families', payload: { ...canonicalInventory, nextCursor: undefined } },
+    { name: 'partial legacy paging counter', payload: { ...canonicalInventory, pagingCounter: 1 } },
+    { name: 'partial legacy next page', payload: { ...canonicalInventory, nextPage: null } },
+    { name: 'partial legacy previous page', payload: { ...canonicalInventory, prevPage: null } },
+    { name: 'conflicting legacy counter', payload: { ...emptyInventory, ...canonicalInventory, pagingCounter: 2 } },
+    { name: 'conflicting legacy next page', payload: { ...emptyInventory, ...canonicalInventory, nextPage: 2 } },
+    { name: 'conflicting legacy previous page', payload: { ...emptyInventory, ...canonicalInventory, prevPage: 1 } },
+    { name: 'later page instead of requested first page', payload: { ...canonicalInventory, page: 2, totalDocs: 2, totalPages: 2, limit: 1, hasPrevPage: true } },
+    { name: 'empty beyond-end page instead of requested first page', payload: { ...canonicalEmptyInventory, page: 2, hasPrevPage: true } },
+    { name: 'wrong previous-page flag', payload: { ...canonicalInventory, hasPrevPage: true } },
+    { name: 'wrong next-page flag', payload: { ...canonicalInventory, hasNextPage: true } },
+    { name: 'wrong total-page count', payload: { ...canonicalInventory, totalPages: 2 } },
+    { name: 'zero canonical total pages', payload: { ...canonicalEmptyInventory, totalPages: 0 } },
+    { name: 'wrong document count', payload: { ...canonicalInventory, totalDocs: 0 } },
+    { name: 'missing first-page rows', payload: { ...canonicalInventory, docs: [] } },
+    { name: 'excess first-page rows', payload: { ...canonicalMultiplePages, docs: [...canonicalInventory.docs, ...canonicalInventory.docs] } },
+    { name: 'fractional count', payload: { ...canonicalInventory, totalDocs: 1.5 } },
+    { name: 'unsafe count', payload: { ...canonicalInventory, totalDocs: Number.MAX_SAFE_INTEGER + 1 } },
+    { name: 'negative count', payload: { ...canonicalInventory, totalDocs: -1 } },
+    { name: 'zero limit', payload: { ...canonicalInventory, limit: 0 } },
+    { name: 'string limit', payload: { ...canonicalInventory, limit: '50' } },
+    { name: 'empty cursor', payload: { ...canonicalMultiplePages, nextCursor: '' } },
+    { name: 'nonstring cursor', payload: { ...canonicalMultiplePages, nextCursor: false } },
+    { name: 'cursor without a next page', payload: { ...canonicalInventory, nextCursor: 'opaque-continuation' } },
+    { name: 'missing record identity', payload: { ...canonicalInventory, docs: [{ data: {} }] } },
+    { name: 'empty record identity', payload: { ...canonicalInventory, docs: [{ id: '', data: {} }] } },
+    { name: 'array record data', payload: { ...canonicalInventory, docs: [{ id: 'fixture-app', data: [] }] } },
+    { name: 'null record data', payload: { ...canonicalInventory, docs: [{ id: 'fixture-app', data: null }] } },
+  ])('app list rejects $name without changing workspace state', async ({ payload }) => {
+    await seedLoggedInTenant(); inventoryFetch(payload);
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
+    const errors = vi.spyOn(console, 'error');
+    await expect(appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--format', 'json'], { from: 'user' })).rejects.toThrow('Controlled inventory exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(errors.mock.calls.flat().join(' ')).toContain('invalid response');
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
+  });
+
   test.each([0, 1])('app list accepts an authoritative empty page with totalPages=%i', async totalPages => {
     await seedLoggedInTenant(); inventoryFetch({ ...emptyInventory, totalPages });
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);

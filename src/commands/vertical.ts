@@ -776,12 +776,19 @@ function isValidAppInventory(payload: unknown): boolean {
   const limit = payload.limit;
   if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0
     || typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1
-    || payload.page !== 1 || payload.pagingCounter !== 1) return false;
-  const pages = count === 0 ? payload.totalPages : Math.ceil(count / limit);
-  return (count > 0 ? payload.totalPages === pages : payload.totalPages === 0 || payload.totalPages === 1)
-    && payload.docs.length === Math.min(count, limit) && payload.hasPrevPage === false && payload.prevPage === null
-    && payload.hasNextPage === (typeof pages === 'number' && pages > 1)
-    && payload.nextPage === (typeof pages === 'number' && pages > 1 ? 2 : null);
+    || payload.page !== 1) return false;
+  const hasCursor = Object.hasOwn(payload, 'nextCursor');
+  const legacyFields = ['pagingCounter', 'prevPage', 'nextPage'];
+  const hasLegacy = legacyFields.some(key => Object.hasOwn(payload, key));
+  if (!hasCursor && !hasLegacy || hasLegacy && !legacyFields.every(key => Object.hasOwn(payload, key))) return false;
+  const pages = Math.max(1, Math.ceil(count / limit));
+  const hasNextPage = pages > 1;
+  if (!(payload.totalPages === pages || !hasCursor && count === 0 && payload.totalPages === 0)
+    || payload.docs.length !== Math.min(count, limit) || payload.hasPrevPage !== false
+    || payload.hasNextPage !== hasNextPage) return false;
+  if (hasCursor && (payload.nextCursor !== null && (typeof payload.nextCursor !== 'string' || !payload.nextCursor.length)
+    || !hasNextPage && payload.nextCursor !== null)) return false;
+  return !hasLegacy || payload.pagingCounter === 1 && payload.prevPage === null && payload.nextPage === (hasNextPage ? 2 : null);
 }
 
 async function readResponsePayload(res: Response): Promise<unknown> {
