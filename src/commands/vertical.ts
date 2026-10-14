@@ -58,6 +58,7 @@ const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
 const APP_PROVISIONING_WAIT_MS = 900_000;
 const APP_PROVISIONING_POLL_MS = 2_000;
+const APP_PROVISIONING_READ_MAX_RETRIES = 3;
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
 
@@ -303,8 +304,20 @@ function validateAppProvisioningJob(
   return payload;
 }
 
+/** Only an exact job's GET may wait through a short dependency outage. */
+function isAppProvisioningReadUnavailable(response: Response, payload: unknown): boolean {
+  if (!isRecord(payload) || payload.jobId !== undefined || payload.status !== undefined
+    || !isRecord(payload.detail)
+    || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return false;
+  }
+  return (response.status === 502 && payload.detail.error === 'EXTERNAL_SERVICE_ERROR')
+    || (response.status === 503 && payload.detail.error === 'PASSIVE_SCHEMA_MISMATCH');
+}
+
 async function waitForAppProvisioningReady(
   client: PlatformAPIClient,
+  initialResponse: Response,
   initialPayload: unknown,
   companyTenantId: string,
   runtimeTenantId: string,
@@ -312,27 +325,45 @@ async function waitForAppProvisioningReady(
   expectedJobId?: string,
 ): Promise<Record<string, unknown>> {
   const deadline = Date.now() + APP_PROVISIONING_WAIT_MS;
-  let payload = validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey, expectedJobId);
-  const jobId = payload.jobId as string;
+  const acknowledged = initialResponse.ok
+    ? validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey, expectedJobId)
+    : undefined;
+  const jobId = (acknowledged?.jobId as string | undefined) || expectedJobId;
+  if (!jobId) {
+    throw new Error('Provisioning returned no exact app job; local configuration was not changed.');
+  }
+  let response = initialResponse;
+  let responsePayload = initialPayload;
+  let unavailableReads = 0;
   const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
 
   for (;;) {
-    if (payload.status === 'ready') return payload;
-    if (payload.status !== 'running') {
-      const failedSteps = Array.isArray(payload.steps)
-        ? payload.steps.filter(isRecord).filter(step => step.status === 'failed')
-          .map(step => step.key).filter((key): key is string => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(key))
-        : [];
-      const status = /^[a-zA-Z0-9_-]{1,64}$/.test(String(payload.status)) ? payload.status : 'unknown';
-      throw new Error(`App provisioning job ${jobId} is ${status}${failedSteps.length ? ` (failed steps: ${failedSteps.join(', ')})` : ''}; local configuration was not changed.`);
+    if (!response.ok) {
+      if (!isAppProvisioningReadUnavailable(response, responsePayload)) {
+        throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed.`);
+      }
+      if (unavailableReads >= APP_PROVISIONING_READ_MAX_RETRIES) {
+        throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
+      }
+      unavailableReads += 1;
+    } else {
+      const payload = validateAppProvisioningJob(responsePayload, companyTenantId, runtimeTenantId, appKey, jobId);
+      unavailableReads = 0;
+      if (payload.status === 'ready') return payload;
+      if (payload.status !== 'running') {
+        const failedSteps = Array.isArray(payload.steps)
+          ? payload.steps.filter(isRecord).filter(step => step.status === 'failed')
+            .map(step => step.key).filter((key): key is string => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(key))
+          : [];
+        const status = /^[a-zA-Z0-9_-]{1,64}$/.test(String(payload.status)) ? payload.status : 'unknown';
+        throw new Error(`App provisioning job ${jobId} is ${status}${failedSteps.length ? ` (failed steps: ${failedSteps.join(', ')})` : ''}; local configuration was not changed.`);
+      }
     }
     const remaining = deadline - Date.now();
     if (remaining <= 0) throw timedOut();
     await new Promise<void>(resolve => setTimeout(resolve, Math.min(APP_PROVISIONING_POLL_MS, remaining)));
     const requestBudget = deadline - Date.now();
     if (requestBudget <= 0) throw timedOut();
-    let response: Response;
-    let responsePayload: unknown;
     try {
       response = await client.getAppProvisioningJob(appKey, jobId, runtimeTenantId,
         Math.min(requestBudget, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS));
@@ -344,10 +375,6 @@ async function waitForAppProvisioningReady(
       throw err;
     }
     if (Date.now() >= deadline) throw timedOut();
-    if (!response.ok) {
-      throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed.`);
-    }
-    payload = validateAppProvisioningJob(responsePayload, companyTenantId, runtimeTenantId, appKey, jobId);
   }
 }
 
@@ -1843,7 +1870,7 @@ verticalCommand
         : await appClient.createAppProvisioningJob(verticalKey, runtimeTenantId === appTenantId ? undefined : runtimeTenantId);
     const responsePayload = await readResponsePayload(res);
 
-    if (!res.ok) {
+    if (!res.ok && !(options.jobId && isAppProvisioningReadUnavailable(res, responsePayload))) {
       spinner?.fail('Failed to prepare app storage');
       fail(isRecord(responsePayload) && typeof responsePayload.message === 'string'
         ? responsePayload.message
@@ -1853,7 +1880,7 @@ verticalCommand
     let completedPayload: unknown = responsePayload;
     if (!options.dryRun) {
       try {
-        completedPayload = await waitForAppProvisioningReady(appClient, responsePayload,
+        completedPayload = await waitForAppProvisioningReady(appClient, res, responsePayload,
           appTenantId, runtimeTenantId, verticalKey, options.jobId);
       } catch (err) {
         spinner?.fail('App provisioning did not complete');
