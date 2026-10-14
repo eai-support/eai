@@ -1,0 +1,49 @@
+# plan-before-code gate. Canonical copy: enterpriseaigroup/eai-stack
+# .claude/skills/plan-before-code/references/plan-gate.yml — edit there, then copy.
+# Advisory (warnings only) until the repo variable PLAN_GATE_ENFORCE is "true".
+# Structure-only: the full section check is check_plan.py, run locally by the planning agent.
+name: plan-gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  plan-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check PR body Plan line
+        env:
+          # Passed via env, never interpolated into the script: the PR body is untrusted.
+          BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.head_ref }}
+          ENFORCE: ${{ vars.PLAN_GATE_ENFORCE }}
+        run: |
+          fail() {
+            if [ "$ENFORCE" = "true" ]; then echo "::error::$1"; exit 1; fi
+            echo "::warning::$1 (advisory: set repo variable PLAN_GATE_ENFORCE=true to enforce)"; exit 0
+          }
+          case "$HEAD_REF" in
+            hotfix/*|release/*|dependabot/*|renovate/*) echo "Exempt branch $HEAD_REF"; exit 0 ;;
+          esac
+          line=$(printf '%s\n' "$BODY" | tr -d '\r' | grep -m1 -iE '^\**plan\**:' || true)
+          [ -n "$line" ] || fail "PR body needs 'Plan: <path or URL to plan.md>' or 'Plan: exempt — <reason>'. See the plan-before-code skill."
+          value=$(printf '%s' "$line" | sed -E 's/^\**[Pp][Ll][Aa][Nn]\**:\**[[:space:]]*//; s/[`<>]//g; s/[[:space:]]+$//')
+          if printf '%s' "$value" | grep -qiE '^exempt[[:space:]]*(—|-|:)+[[:space:]]*[[:alnum:]].{3,}'; then
+            echo "Plan exemption: $value"; exit 0
+          fi
+          printf '%s' "$value" | grep -qiE '^exempt' && fail "Plan exemption needs a reason: 'Plan: exempt — <reason>'."
+          if printf '%s' "$value" | grep -qE '^https?://'; then
+            echo "Plan linked externally: $value (approvals checked in that repo)"; exit 0
+          fi
+          [ -f "$value" ] || fail "Plan file '$value' not found in this PR. Use a repo path, a URL, or 'Plan: exempt — <reason>'."
+          for role in Product CEO; do
+            grep -qE "^[[:space:]]*-[[:space:]]*${role}:[[:space:]]*[^[:space:]<].*[0-9]{4}-[0-9]{2}-[0-9]{2}" "$value" \
+              || fail "$value: missing dated ${role} approval in §14 (format: '- ${role}: Name, YYYY-MM-DD')."
+          done
+          echo "Plan approved: $value"
