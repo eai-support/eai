@@ -142,8 +142,14 @@ docsCommand.command('job <jobId>').description('Read an accepted document job; o
       const failedJob = () => ['failed', 'completed_with_errors'].includes(String(job.status))
         || (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
           .some(key => isRecord(doc[key]) && doc[key].status === 'failed'));
-      const pendingStages = () => (job.documents as Record<string, unknown>[]).some(doc => ['storage', 'classification', 'rag']
-        .some(key => isRecord(doc[key]) && (doc[key].status === 'pending' || doc[key].status === 'processing')));
+      const pendingStages = () => {
+        const documents = job.documents as Record<string, unknown>[];
+        return documents.length === 0 || documents.some(doc => ['storage', 'classification', 'rag'].some(key => {
+          if (!Object.hasOwn(doc, key)) return false;
+          const stage = doc[key];
+          return !isRecord(stage) || (stage.status !== 'completed' && stage.status !== 'skipped');
+        }));
+      };
       while (options.wait && !failedJob() && (job.status !== 'completed' || pendingStages()) && Date.now() < deadline) {
         await new Promise<void>(resolve => setTimeout(resolve, Math.min(2000, Math.max(0, deadline - Date.now()))));
         if (Date.now() >= deadline) break;

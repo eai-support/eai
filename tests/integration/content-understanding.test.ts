@@ -764,6 +764,73 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await docs(['job', 'job-one', ...scoped, '--wait'])).toMatchObject({ ok: true, body: job });
     expect(process.exitCode).toBe(0); expect(calls).toHaveLength(1);
   });
+  const malformedJobStages = [
+    { name: 'null', value: null }, { name: 'boolean', value: false },
+    { name: 'primitive completion', value: 'completed' }, { name: 'array', value: [] },
+    { name: 'missing status', value: {} }, { name: 'null status', value: { status: null } },
+    { name: 'numeric status', value: { status: 1 } }, { name: 'array status', value: { status: ['completed'] } },
+    { name: 'unrecognized response status', value: { status: 'unrecognized-fixture-value' } },
+  ];
+  test.each(['storage', 'classification', 'rag'].flatMap(stage => malformedJobStages.map(shape => ({ stage, ...shape }))))(
+    'supplied $stage with $name cannot qualify a completed document job', async ({ stage, value }) => {
+      const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+        storage: { status: 'completed' }, classification: { status: 'completed' }, rag: { status: 'skipped' }, [stage]: value }] };
+      routes = () => Response.json(job);
+      expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, body: job,
+        error: { code: 'DOC_JOB_PENDING', jobId: 'job-one' } });
+      expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
+    });
+  test('an empty document list cannot qualify a completed document job', async () => {
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: false, body: job,
+      error: { code: 'DOC_JOB_PENDING', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+  });
+  test.each([
+    { name: 'empty documents', documents: [] },
+    { name: 'null stage', documents: [{ documentId: 'doc-one', classification: null }] },
+    { name: 'malformed stage', documents: [{ documentId: 'doc-one', classification: { status: ['completed'] } }] },
+    { name: 'unrecognized response status', documents: [{ documentId: 'doc-one', classification: { status: 'unrecognized-fixture-value' } }] },
+  ])('document wait polls through $name until an exact terminal response', async ({ documents }) => {
+    vi.useFakeTimers(); let reads = 0;
+    const incomplete = { jobId: 'job-one', tenantId, status: 'completed', documents };
+    const completed = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+      storage: { status: 'completed' }, classification: { status: 'completed' }, rag: { status: 'skipped' } }] };
+    routes = () => Response.json(++reads === 1 ? incomplete : completed);
+    const result = docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '5']);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(await result).toMatchObject({ ok: true, body: completed });
+    expect(calls).toHaveLength(2); expect(calls.every(call => call.init.method === 'GET')).toBe(true);
+  });
+  test.each([
+    { name: 'empty documents', documents: [] },
+    { name: 'null stage', documents: [{ documentId: 'doc-one', storage: null }] },
+    { name: 'malformed stage', documents: [{ documentId: 'doc-one', rag: false }] },
+    { name: 'unrecognized response status', documents: [{ documentId: 'doc-one', classification: { status: 'unrecognized-fixture-value' } }] },
+  ])('document wait deadline retains $name as pending without coercion', async ({ documents }) => {
+    vi.useFakeTimers();
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents };
+    routes = () => Response.json(job);
+    const result = docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '1']);
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ ok: false, body: job, error: { code: 'DOC_JOB_PENDING', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+  });
+  test.each(['queued', 'processing'])('non-wait %s inspection does not impose completion requirements', async status => {
+    const job = { jobId: 'job-one', tenantId, status, documents: [{ documentId: 'doc-one', storage: null, rag: false }] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped])).toMatchObject({ ok: true, body: job });
+    expect(process.exitCode).toBe(0); expect(calls).toHaveLength(1);
+  });
+  test('a failed stage takes precedence over malformed pending stages', async () => {
+    const job = { jobId: 'job-one', tenantId, status: 'completed', documents: [{ documentId: 'doc-one',
+      storage: null, classification: { status: 'failed' }, rag: false }] };
+    routes = () => Response.json(job);
+    expect(await docs(['job', 'job-one', ...scoped, '--wait', '--timeout', '1']))
+      .toMatchObject({ ok: false, body: job, error: { code: 'DOC_JOB_FAILED', jobId: 'job-one' } });
+    expect(process.exitCode).toBe(1); expect(calls).toHaveLength(1);
+  });
   test.each(['https://fixture-user:fixture-scope-value@api.au.myenterprise.ai/public',
     'https://api.au.myenterprise.ai/public?opaque=fixture-scope-value', 'https://api.au.myenterprise.ai/public#fixture-scope-value',
     'ftp://api.au.myenterprise.ai/public', 'not-a-gateway'])(
