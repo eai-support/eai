@@ -1,0 +1,205 @@
+const SCHEMA = 'eai.cli-qa-transport.v1';
+const LOCAL_GROUPS = new Set(['start', 'dev', 'logout', 'runtime', 'update', 'gofer', 'template', 'blocks', 'errors', 'agent']);
+const LOCAL_COMMANDS = new Set(['eai env list', 'eai types validate', 'eai deploy source validate', 'eai deploy setup', 'eai deploy env',
+  'eai types define', 'eai resources indexes-apply', 'eai content-understanding schema', 'eai content-understanding validate']);
+const RESOURCE_RESPONSES = new Set(['eai resources create', 'eai resources batch-create', 'eai resources batch-import',
+  'eai resources delete', 'eai resources batch-delete']);
+const record = value => value && typeof value === 'object' && !Array.isArray(value);
+function requiresProtectedScope(command) {
+  return command.startsWith('eai ') && !LOCAL_GROUPS.has(command.split(' ')[1]) && !LOCAL_COMMANDS.has(command);
+}
+function primaryTransportMatches(command, observed) {
+  // Response metadata binds scope; only the separate request receipt proves a primary route.
+  if (observed.source === 'resource-json') return false;
+  if (typeof observed.method !== 'string' || typeof observed.path !== 'string' || observed.path.length > 2048
+    || !observed.path.startsWith('/') || /[?#\r\n]/.test(observed.path)) return false;
+  let gateway;
+  try { gateway = new URL(observed.publicApiUrl); } catch { return false; }
+  const prefix = gateway.pathname.replace(/\/$/, '');
+  if (!observed.path.startsWith(prefix + '/')) return false;
+  const path = observed.path.slice(prefix.length), group = command.split(' ')[1], action = command.split(' ')[2];
+  const tenant = '/v4/platform/tenants/' + encodeURIComponent(observed.tenantId);
+  const resources = '/v4/data/resources/' + encodeURIComponent(observed.tenantId);
+  const below = base => path === base || path.startsWith(base + '/');
+  const segments = base => path.startsWith(base + '/') ? path.slice(base.length + 1).split('/') : [];
+  const children = segments(tenant);
+  if (group === 'publicapi') return observed.method === action.toUpperCase() && path.startsWith('/v4/');
+  if (group === 'workspace' || group === 'tenant') {
+    // These commands consume identity inventory/cache; a regional-routing
+    // tenant-management lookup is auxiliary and cannot qualify their output.
+    if (['list', 'info', 'select'].includes(action)) return path === '/v4/identity/tenants' && observed.method === 'GET';
+    if (action === 'storage') {
+      const suffix = { list: '/storage', verify: '/storage/doctor' }[command.split(' ')[3]];
+      return suffix !== undefined && observed.method === 'GET' && path === resources + suffix;
+    }
+    if (observed.method !== 'POST') return false;
+    if (action === 'create') return path === '/v4/platform/tenants' || path === tenant + '/children';
+    if (action === 'bootstrap-admin') return children.length === 3 && children[0] === 'children'
+      && children[1] !== '' && children[2] === 'bootstrap-admin';
+    if (action === 'delete') return path === tenant + '/delete'
+      || (children.length === 3 && children[0] === 'children' && children[1] !== '' && children[2] === 'delete');
+    return false;
+  }
+  if (group === 'whoami') return path === '/v4/identity/tenants' && observed.method === 'GET';
+  if (group === 'doctor') return observed.method === 'GET' && (path === '/health' || path === '/v4/identity/me');
+  if (group === 'app' || group === 'vertical' || group === 'init' || group === 'create') {
+    const apps = tenant + '/apps', enrollment = resources + '/tenant-vertical-enrollment';
+    const appSegments = segments(apps);
+    if (action === 'create') return observed.method === 'POST' && path === apps;
+    if (action === 'delete') return observed.method === 'DELETE' && appSegments.length === 1 && appSegments[0] !== '';
+    if (action === 'provision') return appSegments[0] !== '' && appSegments[1] === 'provisioning-jobs'
+      && ((observed.method === 'POST' && appSegments.length === 2)
+        || (observed.method === 'GET' && appSegments.length === 3 && appSegments[2] !== ''));
+    if (action === 'list' || action === 'select') return observed.method === 'GET' && path === enrollment;
+    if (action === 'auth' && command.split(' ')[3] === 'status') return observed.method === 'GET' && path === tenant + '/authorized-apps';
+    // Preserve the separate initializer contracts; app actions require their declared endpoints.
+    if (group === 'init' || group === 'create') return ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(observed.method) && (below(apps) || below(enrollment));
+    if (action === 'deploy-source-unknown-status') return observed.method === 'GET' && appSegments.length === 4
+      && appSegments[0] !== '' && appSegments[1] === 'source-unknown' && appSegments[2] === 'deployments' && appSegments[3] === 'latest';
+    const operation = { 'connect-existing': 'register', 'adopt-observed': 'register', 'workflow-setup': 'workflow-setup',
+      'workflow-evidence': 'workflow-evidence', 'deploy-source-unknown': 'deploy' }[action];
+    return operation !== undefined && observed.method === 'POST' && appSegments.length === 3
+      && appSegments[0] !== '' && appSegments[1] === 'source-unknown' && appSegments[2] === operation;
+  }
+  if (group === 'user') {
+    const members = tenant + '/members';
+    const memberSegments = segments(members);
+    if (action === 'list') return observed.method === 'GET' && path === members;
+    if (action === 'roles') return observed.method === 'GET' && path === tenant + '/role-definitions';
+    if (action === 'invite' || (action === 'role' && command.split(' ')[3] === 'set'))
+      return (observed.method === 'POST' && path === members + '/invite')
+        || (action === 'role' && observed.method === 'PATCH' && memberSegments.length === 2
+          && memberSegments[0] !== '' && memberSegments[1] === 'roles');
+    if (action === 'provision-me') return observed.method === 'POST' && path === '/v4/identity/me/provision';
+    return false;
+  }
+  if (group === 'resources') {
+    if (action === 'indexes-plan') return observed.method === 'POST' && path === tenant + '/resourceapi/index-plan';
+    if (action === 'cache-refresh') return observed.method === 'POST' && path === tenant + '/resourceapi/cache-refresh';
+    if (action === 'schema') return observed.method === 'GET' && path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId);
+    const namespaceRoutes = {
+      query: ['POST', '/query'], search: ['POST', '/search'], doctor: ['GET', '/storage/doctor'],
+      'performance-status': ['GET', '/storage/schema-status'], 'sync-schema': ['POST', '/storage/sync-schema'],
+    };
+    const namespace = action === 'storage'
+      ? { status: ['GET', '/storage'], doctor: ['GET', '/storage/doctor'] }[command.split(' ')[3]]
+      : namespaceRoutes[action];
+    if (namespace) return observed.method === namespace[0] && path === resources + namespace[1];
+    const parts = segments(resources);
+    let decoded;
+    try { decoded = parts.map(part => decodeURIComponent(part)); } catch { return false; }
+    if (!decoded.length || decoded.some(part => !part || part === '.' || part === '..' || /[\/\\\u0000-\u001f\u007f]/.test(part))
+      || ['operations', 'query', 'search', 'storage', 'metering'].includes(decoded[0])) return false;
+    if (action === 'create' || action === 'list') return parts.length === 1 && observed.method === (action === 'create' ? 'POST' : 'GET');
+    if (action === 'get' || action === 'update' || action === 'delete') return parts.length === 2
+      && observed.method === { get: 'GET', update: 'PUT', delete: 'DELETE' }[action]
+      && !(action === 'get' && decoded[1] === 'stream');
+    if (['batch-create', 'batch-import', 'batch-update', 'batch-delete'].includes(action))
+      return observed.method === 'POST' && parts.length === 3 && parts[1] === 'batch' && parts[2] === action.slice(6);
+    if (action === 'aggregate') return observed.method === 'POST' && parts.length === 2 && parts[1] === 'aggregate';
+    if (action === 'file') return parts.length === 4 && parts[2] === 'files'
+      && observed.method === { upload: 'POST', get: 'GET', delete: 'DELETE' }[command.split(' ')[3]];
+    return false;
+  }
+  if (group === 'types') {
+    const definitions = '/v4/data/resources/object-types', definitionSegments = segments(definitions);
+    if (['seed', 'diff', 'pull'].includes(action) && observed.method === 'GET')
+      return path === definitions || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId);
+    return action === 'seed' && ((observed.method === 'POST' && path === definitions)
+      || (observed.method === 'PATCH' && definitionSegments.length === 1 && definitionSegments[0] !== ''));
+  }
+  if (group === 'classifier') {
+    const drafts = resources + '/shared-document-classifier', draftSegments = segments(drafts);
+    if (action === 'list') return observed.method === 'GET' && path === drafts;
+    if (action === 'save') return (observed.method === 'POST' && path === drafts)
+      || (observed.method === 'PUT' && draftSegments.length === 1 && draftSegments[0] !== '');
+    const classifierSegments = segments('/v4/data/documents/content-understanding/classifiers');
+    if (action === 'delete') return observed.method === 'DELETE' && classifierSegments.length === 1 && classifierSegments[0] !== '';
+    const operation = { publish: 'publish', target: 'targets', disable: 'disable', enable: 'enable' }[action];
+    return operation !== undefined && observed.method === 'POST' && classifierSegments.length === 2
+      && classifierSegments[0] !== '' && classifierSegments[1] === operation;
+  }
+  if (group === 'docs') {
+    if (action === 'upload' || action === 'classify') return observed.method === 'POST' && path === '/v4/data/documents/upload';
+    if (action === 'index') return observed.method === 'POST' && path === '/v4/data/documents/rag-index';
+    const collection = { job: 'jobs', get: 'records' }[action];
+    if (collection === undefined) return false;
+    const documentSegments = segments('/v4/data/documents/' + collection);
+    return observed.method === 'GET' && documentSegments.length === 1 && documentSegments[0] !== '';
+  }
+  if (group === 'content-understanding') {
+    const base = '/v4/data/documents/content-understanding';
+    if (action === 'capabilities') return observed.method === 'GET' && path === base + '/capabilities';
+    if (action === 'plan' || action === 'apply') return observed.method === 'POST' && path === base + '/configurations/' + action;
+    if (action !== 'status') return false;
+    const operationSegments = segments(base + '/configurations/operations');
+    return observed.method === 'GET' && operationSegments.length === 1 && operationSegments[0] !== '';
+  }
+  if (group === 'workflow') {
+    if (action === 'readiness') return observed.method === 'GET' && path === '/v4/integrations/builder/readiness';
+    if (action === 'request') return observed.method === 'POST' && path === '/v4/workflows/runtime-requests';
+    if (action === 'status') {
+      const workflowSegments = segments('/v4/workflows/runtime');
+      return observed.method === 'GET' && workflowSegments.length === 2 && workflowSegments[0] !== '' && workflowSegments[1] === 'status';
+    }
+    const configurationSegments = segments(resources);
+    return action === 'provision' && ['shared-workflow-config', 'vertical-product-config', 'shared-ai-profile', 'shared-chatbot-config'].includes(configurationSegments[0])
+      && ((observed.method === 'POST' && configurationSegments.length === 1)
+        || (observed.method === 'PUT' && configurationSegments.length === 2 && configurationSegments[1] !== ''));
+  }
+  if (group === 'chat') {
+    if (observed.method !== 'POST' || !['send', 'stream'].includes(action)) return false;
+    const chatSegments = segments('/v4/ai/chat' + (action === 'stream' ? '/stream' : ''));
+    return chatSegments.length === 3 && chatSegments[0] === encodeURIComponent(observed.tenantId)
+      && chatSegments[1] !== '' && chatSegments[2] !== '';
+  }
+  if (group === 'provision') {
+    if (action === 'resourceapi-bundle' || action === 'resourceapi-refresh') return observed.method === 'POST'
+      && path === tenant + '/resourceapi/' + (action === 'resourceapi-bundle' ? 'passive-bundle' : 'passive-refresh');
+    if (action === 'storage') return observed.method === 'POST' && path === resources + '/storage/provision';
+    if (action !== 'entra') return false;
+    const entra = '/v4/platform/provisioning/entra-apps', entraSegments = segments(entra);
+    return (observed.method === 'POST' && path === entra)
+      || (observed.method === 'POST' && entraSegments.length === 2 && entraSegments[0] !== '' && entraSegments[1] === 'rotate-secret')
+      || (observed.method === 'DELETE' && entraSegments.length === 1 && entraSegments[0] !== '');
+  }
+  if (group === 'deploy') {
+    // Source move and doctor require Portal/external evidence beyond prerequisite reads.
+    if (action !== 'app') return false;
+    const appSegments = segments(tenant + '/apps');
+    if (!appSegments.length || appSegments.some(part => part === '')) return false;
+    if (observed.method === 'GET' && appSegments.length === 4 && appSegments[2] === 'operations') {
+      return ['managed-deployments', 'cli-managed-source'].includes(appSegments[1]);
+    }
+    if (observed.method !== 'POST') return false;
+    return (appSegments.length === 3 && ((appSegments[1] === 'cli-managed-source' && appSegments[2] === 'preparations')
+      || (appSegments[1] === 'source-unknown' && ['register', 'workflow-setup', 'deploy'].includes(appSegments[2]))))
+      || (appSegments.length === 4 && appSegments[1] === 'environments' && appSegments[3] === 'runtime-bootstrap');
+  }
+  if (group === 'verify') return observed.method === 'GET' && (action === 'storage'
+    ? path === resources + '/storage' || path === resources + '/storage/doctor'
+    : path === '/health' || path === '/v4/identity/me' || path === '/v4/data/resources/health'
+      || path === '/v4/data/resources/object-types' || path === '/v4/data/resources/schema/' + encodeURIComponent(observed.tenantId));
+  return false;
+}
+function observationValid(value, executionId) {
+  if (!record(value) || value.schemaVersion !== SCHEMA || value.executionId !== executionId || value.proofKind !== 'transport-response'
+    || Object.keys(value).some(key => !['schemaVersion', 'executionId', 'publicApiUrl', 'tenantId', 'proofKind', 'method', 'path', 'source'].includes(key))
+    || typeof value.publicApiUrl !== 'string' || (value.tenantId !== null && (typeof value.tenantId !== 'string'
+      || !/^[A-Za-z0-9_.:@-]{1,128}$/.test(value.tenantId)))) return false;
+  if (value.source === 'resource-json') {
+    if (value.method !== undefined || value.path !== undefined) return false;
+  } else if (value.source !== undefined || !['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].includes(value.method)
+    || typeof value.path !== 'string' || value.path.length > 2048 || !value.path.startsWith('/') || /[?#\r\n]/.test(value.path)) return false;
+  try { const url = new URL(value.publicApiUrl); return ['https:', 'http:'].includes(url.protocol)
+    && !url.username && !url.password && !url.search && !url.hash; } catch { return false; }
+}
+function observedScopeVerified(entry) {
+  const values = entry.transportObservations;
+  return Array.isArray(values) && values.length > 0 && values.length <= 256
+    && typeof entry.scopeTenantId === 'string' && entry.scopeTenantId !== 'system'
+    && values.every(value => observationValid(value, entry.executionId) && value.publicApiUrl === entry.publicApiUrl
+      && (value.tenantId === 'system' || value.tenantId === null || value.tenantId === entry.scopeTenantId))
+    && values.some(value => value.tenantId === entry.scopeTenantId && primaryTransportMatches(entry.command, value));
+}
+module.exports = { SCHEMA, requiresProtectedScope, RESOURCE_RESPONSES, primaryTransportMatches, observationValid, observedScopeVerified };

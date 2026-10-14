@@ -81,7 +81,7 @@ function controlled() {
       fixtureId: foundation.fixtureId, foundationParentTenantId: foundation.parentTenantId,
       environment: foundation.environment, publicApiUrl: foundation.publicApiUrl,
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id }, actors: foundation.actors });
-    const ownedCommand = (row: typeof ownership.creation.command) => ({ ...row, assertions: [row.assertion.name] });
+    const ownedCommand = (row: typeof ownership.creation.command) => ({ ...row, assertions: [row.assertion] });
     return { candidate, preflight, fixtureId: foundation.fixtureId,
       foundationParentTenantId: foundation.parentTenantId,
       tenantIds: { a: foundation.workspaces.a.id, b: foundation.workspaces.b.id },
@@ -95,7 +95,7 @@ function controlled() {
       deletionCycle: { tenantId: child, appKey, enrollmentId: enrollment, recreatedEnrollmentId: recreated,
         deletionVerified: true, firstInventoryEmpty: true, recreatedSameKey: true },
       commands: [ownedCommand(ownership.creation.command),
-        ...[...steps.commands].sort((a, b) => a.sequence - b.sequence).map(row => ({ ...row, assertions: row.assertions.map(value => value.name) })),
+        ...[...steps.commands].sort((a, b) => a.sequence - b.sequence),
         ownedCommand(ownership.cleanup.command)],
       assertions: [ownership.creation.command.assertion, ...steps.commands.flatMap(row => row.assertions), ownership.cleanup.command.assertion],
       cleanup: [{ artifact: 'entra-registration', status: 'passed', evidence: steps.registration },
@@ -104,6 +104,8 @@ function controlled() {
   const dependencies = { now: () => now, env: {}, execute, candidateEvidence: () => candidate,
     runLive: (_cli: string, dependencies: { env: Record<string, string> }) => {
       expect(dependencies.env.EAI_E2E_REQUIRE_FIRST_EMPTY).toBe('1'); expect(dependencies.env.EAI_E2E_RECREATE_AFTER_DELETE).toBe('1');
+      expect(dependencies.env.EAI_E2E_CANONICAL_CYCLE_COMMANDS).toBe('1');
+      expect(dependencies.env.EAI_E2E_CHILD_HOME_REGION).toBeUndefined();
       expect(dependencies.env.EAI_E2E_PROVISION_ENTRA).toBe('1'); return liveReport();
     } };
   return { root, foundation, options, dependencies, deployments, preflight, buildReceipt, liveReport, runs: () => runs };
@@ -191,6 +193,90 @@ describe('ten fresh owned CLI rotation/delete/recreate cycles', () => {
     const guard = report.assertions.find(row => row.name === name)!; guard.executionSequence += 100;
     expect(qa.cycleReceiptVerified(cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true }))).toBe(false);
   });
+  test.each(['step', 'creation', 'purge'].flatMap(family =>
+    ['legacy', 'missing', 'malformed', 'foreign-guard', 'duplicate'].map(failure => ({ family, failure }))))(
+    'raw $family execution UUID $failure cannot qualify a lifecycle projection', ({ family, failure }) => {
+      const fixture = controlled(), report = fixture.liveReport();
+      const name = family === 'step' ? 'rotation-changed-local-credential'
+        : family === 'creation' ? 'created-child-ownership' : 'child-hard-purge-receipt';
+      const command = report.commands.find(row => row.assertions.some(assertion => assertion.name === name))!;
+      if (failure === 'legacy') Object.assign(command, { executionId: undefined, assertions: command.assertions.map(assertion => assertion.name) });
+      if (failure === 'missing') Object.assign(command, { executionId: undefined });
+      if (failure === 'malformed') command.executionId = 'not-an-execution';
+      if (failure === 'foreign-guard') {
+        report.assertions = report.assertions.map(assertion => assertion.name === name ? { ...assertion, executionId: uuid(999) } : assertion);
+      }
+      if (failure === 'duplicate') report.commands.push({ ...command, command: 'eai workspace list', phase: 'unrelated',
+        executionSequence: report.commands.length, assertions: [] });
+      expect(qa.cycleReceiptVerified(cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true }))).toBe(false);
+    });
+  test.each(['step', 'creation', 'purge'].flatMap(family => ['command', 'assertion'].flatMap(target =>
+    ['missing', 'malformed', 'foreign'].map(failure => ({ family, target, failure }))))) (
+    'serialized $family $target execution UUID $failure cannot qualify a lifecycle', ({ family, target, failure }) => {
+      const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+      expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+      const command = family === 'step' ? receipt.stepEvidence.commands[0]
+        : family === 'creation' ? receipt.ownershipEvidence.creation.command : receipt.ownershipEvidence.cleanup.command;
+      const row = target === 'command' ? command : family === 'step' ? command.assertions[0] : command.assertion;
+      row.executionId = failure === 'missing' ? undefined : failure === 'malformed' ? 'not-an-execution' : uuid(999);
+      expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+    });
+  test.each(['step', 'creation', 'purge'])('serialized $family reused execution UUID cannot count as a fresh invocation', family => {
+    const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+    const command = family === 'step' ? receipt.stepEvidence.commands[0]
+      : family === 'creation' ? receipt.ownershipEvidence.creation.command : receipt.ownershipEvidence.cleanup.command;
+    const reused = receipt.stepEvidence.commands[1].executionId;
+    command.executionId = reused;
+    (family === 'step' ? command.assertions[0] : command.assertion).executionId = reused;
+    expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+  });
+  test('ten cycles cannot reuse execution UUID receipts from a previous lifecycle', () => {
+    const fixture = controlled();
+    const receipts = Array.from({ length: 10 }, () => cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true }));
+    expect(receipts.every(receipt => qa.cycleReceiptVerified(receipt))).toBe(true);
+    expect(qa.cycleIdentitiesFresh(receipts)).toBe(true);
+    const prior = receipts[0].stepEvidence.commands[0], repeated = receipts[1].stepEvidence.commands[0];
+    repeated.executionId = prior.executionId; repeated.assertions[0].executionId = prior.executionId;
+    expect(qa.cycleReceiptVerified(receipts[1])).toBe(true);
+    expect(qa.cycleIdentitiesFresh(receipts)).toBe(false);
+  });
+  test.each(['step', 'creation', 'purge'])('raw %s alias substitution cannot become canonical lifecycle proof', family => {
+    const fixture = controlled(), report = fixture.liveReport();
+    const name = family === 'step' ? 'rotation-changed-local-credential'
+      : family === 'creation' ? 'created-child-ownership' : 'child-hard-purge-receipt';
+    const row = report.commands.find(row => row.assertions.some(assertion => assertion.name === name))!;
+    const alias = 'eai legacy-spelling';
+    Object.assign(row, { alias, invokedCommand: alias });
+    for (const assertion of row.assertions) Object.assign(assertion, { alias });
+    expect(qa.cycleReceiptVerified(cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true }))).toBe(false);
+  });
+  test('canonical selection retains original indices when an unrelated alias precedes every owned execution', () => {
+    const fixture = controlled(), report = fixture.liveReport();
+    const alias = { command: 'eai workspace list', invokedCommand: 'eai tenant list', alias: 'eai tenant list',
+      executionId: uuid(999), executionSequence: 0, phase: 'preflight', status: 'passed', exitCode: 0, assertions: [] };
+    for (const row of report.commands) {
+      row.executionSequence++;
+      for (const assertion of row.assertions) assertion.executionSequence++;
+    }
+    const executions = [alias, ...report.commands];
+    Object.assign(report, { executions });
+    const receipt = cycles.cycleReceipt({ ...report, localProjectCleanupVerified: true });
+    expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+    expect(receipt.ownershipEvidence.creation.command.sequence).toBe(1);
+    expect(receipt.ownershipEvidence.cleanup.command.sequence).toBe(executions.length - 1);
+    expect(receipt.stepEvidence.commands.every((row: { sequence: number }) => row.sequence > 1)).toBe(true);
+  });
+  test.each(['step', 'creation', 'purge'].flatMap(family => ['alias', 'invokedCommand', 'assertionAlias'].map(field => ({ family, field }))))(
+    'serialized $family $field alias substitution cannot qualify a canonical cycle', ({ family, field }) => {
+      const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
+      expect(qa.cycleReceiptVerified(receipt)).toBe(true);
+      const row = family === 'step' ? receipt.stepEvidence.commands[0]
+        : family === 'creation' ? receipt.ownershipEvidence.creation.command : receipt.ownershipEvidence.cleanup.command;
+      if (field === 'assertionAlias') (family === 'step' ? row.assertions[0] : row.assertion).alias = 'eai legacy-spelling';
+      else row[field] = 'eai legacy-spelling';
+      expect(qa.cycleReceiptVerified(receipt)).toBe(false);
+    });
   test.each(['legacy', 'controlled', 'PATH', 'wrong-script', 'missing-config', 'user-config', 'global-config', 'node-policy'])('serialized app build %s cannot qualify retained cycles', failure => {
     const fixture = controlled(), receipt = cycles.cycleReceipt({ ...fixture.liveReport(), localProjectCleanupVerified: true });
     expect(qa.cycleReceiptVerified(receipt)).toBe(true);

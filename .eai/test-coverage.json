@@ -414,7 +414,7 @@
         },
         {
           "id": "eai-cli-owned-qualification",
-          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending.",
+          "description": "Explicit non-production QA foundation, journaled owned child creation and existing role actors; candidate-bound command/alias/option/deployment observations with strict cleanup and ten fresh rotation/delete/recreate qualification. Missing fixtures and deployed receipts remain pending. Actual local/live producers retain UUID-bound semantic assertions, canonical/alias/unsupported collections and an ordered lifecycle execution ledger; JSON-only exits and unverified options remain incomplete. Canonical lifecycle selection preserves original ledger indices and explicit semantic source handles; response-bound resource mutation scope gates ID adoption and cleanup, with exact-owner readback for legacy workflow acknowledgments. Exact protected qualification additionally requires a same-execution primary transport observation; null/system identity scopes and non-PublicAPI transports remain source follow-ups, not live-only pending work.",
           "owned_paths": [
             ".github/workflows/ci.yml",
             "tests/unit/cli-test-coverage.test.ts",
@@ -439,7 +439,16 @@
             "tests/integration/cli-qa-build-receipt.test.ts",
             "scripts/cli-local-child-ownership.cjs",
             "scripts/cli-qa-cycle-steps.cjs",
-            "tests/helpers/cli-qa-cycle-model.ts"
+            "tests/helpers/cli-qa-cycle-model.ts",
+            "scripts/cli-smoke-execution-evidence.cjs",
+            "src/lib/api.ts",
+            "src/commands/resources.ts",
+            "src/lib/agent-guide.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/agent-guide.test.ts",
+            "scripts/cli-qa-execution-scope.cjs",
+            "src/lib/cli-qa-transport.ts"
           ],
           "required_repo_tests": [
             "tests/unit/cli-test-coverage.test.ts",
@@ -448,7 +457,10 @@
             "tests/integration/cli-permanent-cycles.test.ts",
             "tests/integration/full-e2e-smoke.test.ts",
             "tests/integration/cli-qa-authorization.test.ts",
-            "tests/integration/cli-qa-build-receipt.test.ts"
+            "tests/integration/cli-qa-build-receipt.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/agent-guide.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"

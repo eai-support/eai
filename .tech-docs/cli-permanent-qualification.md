@@ -6,6 +6,12 @@ retained QA foundation, permission probes and disposable lifecycle runner.
 read-only canaries in `eai-testing-dev` check the released artifact. Neither
 controlled tests nor a successful selected lifecycle certify every CLI command.
 
+Every canonical or unsupported receipt must retain `invokedCommand` exactly
+equal to its canonical `command`. An alias receipt must retain the exact
+declared alias in both `invokedCommand` and `alias`. Missing, padded or different
+spellings keep qualification incomplete even when transport and assertions
+otherwise match. Observed failures remain visible when spelling is inconsistent.
+
 ## Candidate and private evidence
 
 Use Node 24, install the locked dependencies, and commit the candidate before
@@ -276,7 +282,7 @@ matching top-level header cannot replace these observations. Each selected
 command and guard also carries the producer's same observed invocation sequence;
 a guard from another invocation cannot prove that selected step. Assertion-name
 lists must be arrays. This selected lifecycle proof does not implement
-the complete per-command producer-to-audit mapping tracked in issue #384.
+the command/option qualification contract. The producer now emits UUID-bound assertion records; selected lifecycle proof still cannot qualify unexecuted commands or options.
 
 Intentionally unsupported capability classification stays separate from observed
 execution status. Failed, blocked and incomplete attempts remain visible;
@@ -370,12 +376,70 @@ remains reconcilable but cannot certify the role case.
 Every allow/deny case names its scoped row; flags without those receipts
 cannot certify authorization. Candidate/deployment read failures after output
 validation leave a private blocked summary before any runtime mutation.
-Raw local/live smoke summaries prove selected command journeys and deliberately
-omit full per-command completion evidence. The audit preserves their observed
-success counts while classifying those partial observations as `incomplete`.
-Automatic producer-to-audit enrichment remains a follow-up: it must associate
-real named assertions and full command/option coverage rather than manufacture
-`coverageComplete: true` from a successful subprocess exit.
+Local/live producers allocate a fresh execution UUID before each actual
+invocation and retain structured assertions bound to that execution. `commands`,
+`aliases` and `unsupported` contain their respective actual CLI invocations;
+`executions` preserves the full ordered lifecycle ledger, including npm builds.
+An alias does not also create a canonical command receipt. Each semantic check
+keeps its observed outcome, scope and invocation sequence. JSON-format checks
+name `--format`; rotation evidence names `--rotate-secret`. Other option checks
+require their own observed semantic assertions.
+Canonical summary coverage excludes alias executions, including failed alias
+attempts. Both selected lifecycle and child ownership projections preserve each
+command and guard's exact execution UUID. Missing, legacy, mismatched or reused
+UUIDs cannot certify either projection, including reuse across the ten cycles.
+Both projections require the exact canonical invoked spelling and no alias on
+the command or assertion. The qualifier selects canonical workspace commands;
+the general smoke still records legacy aliases separately. Selected receipts
+keep their original full-ledger positions, including preceding alias attempts.
+Every live semantic assertion names its exact recorded response; only explicit
+global checks may use an unbound source.
+
+Resource create, batch-create, batch-import, delete and batch-delete JSON includes
+`request.publicApiUrl`, `request.tenantId` and `request.proofKind` set to
+`transport-response`. The client snapshots those safe fields at dispatch and
+binds them to the exact response, replacing backend-supplied request assertions.
+The runner validates supplied scope on every ownership observer before adopting
+IDs, and requires this transport proof for resource adoption and deletion.
+Missing or foreign proof leaves an unverified mutation without copying returned
+IDs into cleanup. Other existing owner acknowledgments remain explicitly labeled
+without transport proof; workflow resources require an exact tenant and owner
+readback before deletion. No flags, generic success or returned ID invents scope
+proof. Independent cleanup of an already verified disposable child continues.
+The app-create JSON `request` is an enrollment payload. The runner accepts only
+its exact invocation-bound tenant, app key, display name and authored options,
+then requires the full owned enrollment acknowledgment before adopting its ID.
+This domain payload remains acknowledgment-only and supplies no transport proof;
+foreign or malformed forwarding metadata still blocks every ownership observer.
+
+Protected command qualification additionally requires an actual response-bound
+scope for that exact execution UUID. The QA runner reserves a private pipe on
+descriptor 3; the API client emits only safe gateway, actual tenant header,
+method and pathname after receiving that exact unredirected response. Query
+strings, credentials, headers and bodies are omitted. The runner collects the
+whole bounded pipe before adoption, checks primary routes/methods, and rejects
+foreign non-global scopes. A regular-file descriptor is never written. Missing
+or weak request metadata remains incomplete despite successful semantic checks.
+
+Full qualification still has a tracked source dependency in CLI issue #384:
+`whoami`, `workspace list`, `workspace info`, `workspace select` (and their tenant
+aliases), `doctor` and `login` need an authenticated identity/profile-scope audit
+contract. Their actual inventory/auth transport uses null/system scope or cached
+state; an auxiliary regional tenant lookup cannot turn that into owned-workspace
+proof. The new contract must bind the real authenticated actor, profile, gateway,
+response outcome and execution identity without inventing an owned tenant header.
+`env pull/push` and `support` additionally need evidence for their Azure CLI and
+Website transports. These are source follow-ups; live testing alone cannot make
+the current generic owned-tenant consumer certify every command.
+
+Only a verified semantic contract can set command completion. Exit zero, JSON
+shape, read-only preservation, global preflight success and later passing
+invocations cannot complete an unchecked contract. Missing unsupported
+authentication/network observations remain incomplete; the producer does not
+invent them. Controlled producer-to-audit tests verify this mapping, and a
+normal offline smoke verifies actual installed command assertions. Selected
+local checks do not prove authentication, deployed backend parity,
+normal-role authorization, provider readiness or ten full lifecycle cycles.
 The local Docker lifecycle harness also requires its single newly visible
 matching-slug child to carry the exact requested `parentId` before selection,
 storage provisioning or cleanup. Missing or mismatched parent metadata fails

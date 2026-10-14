@@ -9,10 +9,18 @@ const { basename, dirname, join, relative, resolve, sep } = require('node:path')
 const ts = require('typescript');
 const { operationalEnvironment, installedGitExecution } = require('./cli-qa-operational-env.cjs');
 const qa = require('./cli-qa-foundation.cjs');
+const { producerEvidence } = require('./cli-smoke-execution-evidence.cjs');
+const { SCHEMA: TRANSPORT_SCHEMA, observationValid, primaryTransportMatches, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const ROOT = resolve(__dirname, '..');
 const DEFAULT_CLI = join(ROOT, 'dist', 'index.js');
 const TRACEABILITY_DOC = join(ROOT, '.tech-docs', 'full-e2e-smoke-traceability.md');
+const producerSchemas = new Map();
+function producerSchema(cliPath, candidate) {
+  // A schema is immutable for the full observed runtime digest, not just the entry file.
+  if (!producerSchemas.has(candidate.runtimeSha256)) producerSchemas.set(candidate.runtimeSha256, leafEntries(describeCli(cliPath)));
+  return producerSchemas.get(candidate.runtimeSha256);
+}
 
 const TRACEABILITY_BASE = [
   ['eai init', 'create-local', 'live', 'Scaffolds a disposable workspace bound to the exact app already created in the fresh child.'],
@@ -806,12 +814,12 @@ const ARTIFACT_CLEANUP = {
   'eai resources batch-create': {
     createsExternalArtifact: 'Yes - ResourceAPI rows',
     cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
-    cleanupVerified: 'Requires explicit per-row ResourceAPI GET 404 after finally cleanup',
+    cleanupVerified: 'Requires exact response-bound mutation scope and per-row ResourceAPI GET 404 after finally cleanup',
   },
   'eai resources batch-import': {
     createsExternalArtifact: 'Yes - ResourceAPI rows, audit history, and async projection work',
     cleanupMechanism: 'eai resources batch-delete and per-resource delete fallback',
-    cleanupVerified: 'Requires explicit per-row ResourceAPI GET 404 after finally cleanup',
+    cleanupVerified: 'Requires exact response-bound mutation scope and per-row ResourceAPI GET 404 after finally cleanup',
   },
   'eai resources batch-update': {
     createsExternalArtifact: 'Updates ResourceAPI rows',
@@ -821,12 +829,12 @@ const ARTIFACT_CLEANUP = {
   'eai resources batch-delete': {
     createsExternalArtifact: 'No - cleanup command',
     cleanupMechanism: 'Deletes smoke-created batch rows',
-    cleanupVerified: 'Requires exact batch counts and per-row GET 404; partial results fail with individual fallback',
+    cleanupVerified: 'Requires response-bound mutation scope, exact batch counts and per-row GET 404; partial results fail with individual fallback',
   },
   'eai resources create': {
     createsExternalArtifact: 'Yes - ResourceAPI rows/files/search documents',
     cleanupMechanism: 'eai resources delete and eai resources file delete',
-    cleanupVerified: 'Requires explicit ResourceAPI GET 404 after finally cleanup',
+    cleanupVerified: 'Requires exact response-bound mutation scope and ResourceAPI GET 404 after finally cleanup',
   },
   'eai resources update': {
     createsExternalArtifact: 'Updates ResourceAPI rows',
@@ -836,7 +844,7 @@ const ARTIFACT_CLEANUP = {
   'eai resources delete': {
     createsExternalArtifact: 'No - cleanup command',
     cleanupMechanism: 'Deletes smoke-created resources',
-    cleanupVerified: 'Requires explicit ResourceAPI GET 404 after finally cleanup',
+    cleanupVerified: 'Requires exact response-bound mutation scope and ResourceAPI GET 404 after finally cleanup',
   },
   'eai resources file upload': {
     createsExternalArtifact: 'Yes - blob/file attachment',
@@ -1137,6 +1145,7 @@ function runCommand(command, args, options = {}) {
     shell: false,
     timeout: options.timeout,
     maxBuffer: 8 * 1024 * 1024,
+    ...(options.transportReceipt ? { stdio: ['ignore', 'pipe', 'pipe', 'pipe'] } : {}),
   });
 
   const stdout = result.stdout || '';
@@ -1144,7 +1153,8 @@ function runCommand(command, args, options = {}) {
   if (result.status !== 0 && !options.allowFailure) {
     throw new Error(`Command failed: eai ${args.join(' ')}\n${redact(`${stdout}\n${stderr}`).trim()}`);
   }
-  return { status: result.status ?? 1, stdout, stderr };
+  return { status: result.status ?? 1, stdout, stderr,
+    ...(options.transportReceipt ? { transportOutput: result.output?.[3] || '' } : {}) };
 }
 
 function redact(value) {
@@ -1538,7 +1548,7 @@ function executedCommand(args) {
 
 function coverageEvidence(commands) {
   return TRACEABILITY.map(row => {
-    const executions = commands.filter(entry => entry.command === row.command);
+    const executions = commands.filter(entry => entry.command === row.command && entry.alias === undefined);
     return { command: row.command, plannedCoverage: row.coverage, executions: executions.length,
       status: row.coverage === 'unsupported' ? 'unsupported'
         : !executions.length ? 'not-run' : executions.some(entry => entry.status === 'failed') ? 'failed'
@@ -1607,6 +1617,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
   const report = { schemaVersion: 'eai.cli-lifecycle-smoke.v2', qualification: 'local-fixtures',
     candidate: candidateEvidence(cliPath), status: 'running', coverageComplete: false, commands: [], assertions: [],
     created: {}, cleanup: [], leftovers: [], cleanupVerified: false, cleanupStatus: 'not-needed', localCleanupVerified: false };
+  const evidence = producerEvidence(report, producerSchema(cliPath, report.candidate), dependencies.executionUuid);
   const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { mode: 0o600 }); };
   // Override child-process HOME only. Never load, copy or change the operator's auth files.
   const childEnv = operationalEnvironment({ ...process.env, ...env });
@@ -1616,13 +1627,14 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     EAI_AUTH_SCOPE: 'api://local-fixture/access', EAI_CLI_CLIENT_ID: '22222222-2222-4222-8222-222222222222',
     BASE_URL_PUBLIC_API: 'https://dev-api.au.myenterprise.ai/public', EAI_GOFER_REFRESH_SOURCE: 'bundled',
     EAI_GOFER_REFRESH_BUNDLED_ONLY: '1', NO_UPDATE_NOTIFIER: '1', CI: '1', GIT_CONFIG_NOSYSTEM: '1', GIT_TERMINAL_PROMPT: '0' });
-  function verify(name, condition) {
-    report.assertions.push({ name, phase: 'local', status: condition ? 'passed' : 'failed' }); checkpoint();
+  let activeExecution;
+  function verify(name, condition, settings = {}) {
+    evidence.assert(activeExecution, name, condition ? 'passed' : 'failed', { phase: 'local',
+      contract: !name.startsWith('read-only-files-') && !name.startsWith('successful-local-json-'), ...settings }); checkpoint();
     if (!condition) throw new Error('Local qualification assertion failed: ' + name + '.');
   }
   function invoke(args, validate = () => {}, options = {}) {
-    const entry = { command: executedCommand(args), phase: 'local', status: 'running', options: args.filter(arg => arg.startsWith('--')) };
-    report.commands.push(entry); checkpoint();
+    const entry = evidence.start(args, 'local'); activeExecution = entry; checkpoint();
     const started = Date.now();
     try {
       const originalFiles = options.allowAppWrites ? null : appDigest();
@@ -1634,14 +1646,17 @@ function runLocalSmoke(cliPath, dependencies = {}) {
       if (originalFiles) verify('read-only-files-' + args.slice(0, 2).join('-'), appDigest() === originalFiles);
       entry.status = options.incomplete ? 'incomplete' : 'passed';
       if (options.incomplete) { entry.coverageComplete = false; entry.reason = options.incomplete; }
-      checkpoint(); return result;
+      else evidence.complete(entry);
+      checkpoint(); return evidence.bind(result, entry);
     } catch (error) {
-      entry.status = 'failed'; entry.reason = 'Local contract or subprocess failed; raw output is omitted.'; checkpoint(); return null;
-    }
+      entry.status = 'failed'; entry.coverageComplete = false; entry.reason = 'Local contract or subprocess failed; raw output is omitted.'; checkpoint(); return null;
+    } finally { activeExecution = undefined; }
   }
   function json(args, validate = () => {}, options = {}) {
     return invoke(args, result => {
       const body = JSON.parse(result.stdout);
+      if (args.includes('--format') && args[args.indexOf('--format') + 1] === 'json')
+        verify('json-output-format', body !== null && typeof body === 'object', { option: '--format', contract: false });
       verify('successful-local-json-' + args.slice(0, 2).join('-'), body && typeof body === 'object'
         && body.ok !== false && body.success !== false && body.valid !== false && !['fail', 'failed'].includes(body.status));
       validate(body);
@@ -1708,7 +1723,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
     invoke(['login', '--callback-port', '0'], result => verify('invalid-login-callback-rejected', /Invalid callback port/.test(result.stdout + result.stderr)),
       { expectedFailure: true, incomplete: 'Invalid callback rejection only; real browser PKCE authentication is not exercised.' });
     if (env.EAI_E2E_LOCAL_UPDATE === '1') invoke(['update', '--check', '--no-project-refresh']);
-    report.status = report.commands.some(entry => entry.status === 'failed') ? 'failed' : 'passed';
+    report.status = report.executions.some(entry => entry.status === 'failed') ? 'failed' : 'passed';
   } catch (error) {
     report.status = 'failed'; report.error = 'Local fixture setup or assertion failed; raw output is omitted.';
   } finally {
@@ -1719,7 +1734,7 @@ function runLocalSmoke(cliPath, dependencies = {}) {
       cleanup.status = report.localCleanupVerified ? 'passed' : 'failed';
     } catch { cleanup.status = 'failed'; }
     if (cleanup.status !== 'passed') { report.status = 'failed'; report.leftovers.push({ artifact: 'local-fixtures', reason: 'Disposable fixture cleanup was not verified.' }); }
-    report.coverage = coverageEvidence(report.commands); report.coverageComplete = report.coverage.every(entry => entry.status === 'passed'); checkpoint();
+    report.coverage = coverageEvidence(report.executions); report.coverageComplete = report.coverage.every(entry => entry.status === 'passed'); checkpoint();
   }
   log('[e2e] Local qualification ' + report.status + '. Summary: ' + summaryPath);
   if (report.status !== 'passed') {
@@ -1788,47 +1803,150 @@ function runLiveSmoke(cliPath, dependencies = {}) {
   const batchIds = [];
   const child = () => report.created.childTenantId;
   const runtime = () => report.created.runtimeTenantId;
+  const evidence = producerEvidence(report, producerSchema(cliPath, report.candidate), dependencies.executionUuid);
   const checkpoint = () => { qa.assertPrivateDirectory(runParents); writeFileSync(summaryPath, JSON.stringify(report, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 }); };
 
-  function assertion(name, condition, message, blocked = false) {
-    const last = report.commands.at(-1);
-    report.assertions.push({ name, phase, status: condition ? 'passed' : blocked ? 'blocked' : 'failed',
-      environment: report.environment, publicApiUrl: expectedApi, scopeTenantId: last?.scopeTenantId,
-      executionSequence: last?.executionSequence });
-    if (last) {
-      (last.assertions ||= []).push(name);
-      if (!condition) last.status = blocked ? 'blocked' : 'failed';
-    }
+  function assertion(name, condition, message, blocked = false, source, settings = {}) {
+    const entry = source && (evidence.receipt(source) || (report.executions.includes(source) ? source : undefined));
+    if (source !== null && !entry) throw new Error('A semantic assertion requires an explicit recorded response; global assertions require explicit null.');
+    evidence.assert(entry, name, condition ? 'passed' : blocked ? 'blocked' : 'failed', { phase,
+      contract: !['valid-json-output', 'successful-json-contract', 'valid-app-inventory-json'].includes(name), ...settings });
     checkpoint();
     if (!condition) throw blocked ? new SmokeBlocked(message) : new Error(message);
   }
   function eai(args, options = {}) {
-    const selector = ['--tenant-id', '--tenant', '--workspace'].find(flag => args.includes(flag));
-    const entry = { command: executedCommand(args), phase, status: 'running', executionSequence: report.commands.length,
-      environment: report.environment, publicApiUrl: expectedApi,
-      scopeTenantId: options.scopeTenantId || (selector ? args[args.indexOf(selector) + 1] : undefined),
-      // Save option names only. Arguments, command output and env can contain secrets.
-      options: args.filter(arg => arg.startsWith('--')) };
-    report.commands.push(entry); checkpoint();
+    // The qualifier requests canonical invocations; the general smoke keeps
+    // alias execution visible without letting it substitute for canonical proof.
+    if (env.EAI_E2E_CANONICAL_CYCLE_COMMANDS === '1' && args[0] === 'tenant') args = ['workspace', ...args.slice(1)];
+    const canonical = executedCommand(args);
+    // These management commands actually authorize through the parent client,
+    // even when their result describes a child. Preserve that forwarding scope.
+    const parentScoped = ['eai workspace create', 'eai workspace bootstrap-admin', 'eai workspace delete'].includes(canonical);
+    const selector = (parentScoped ? ['--parent'] : ['--tenant-id', '--tenant', '--workspace']).find(flag => args.includes(flag));
+    // Record the actual invoked spelling and scope used in this subprocess. No argument values are retained.
+    const entry = evidence.start(args, phase, { environment: report.environment, publicApiUrl: expectedApi,
+      scopeTenantId: selector ? args[args.indexOf(selector) + 1] : options.scopeTenantId });
+    entry.selectedScopeTenantId = entry.scopeTenantId;
+    checkpoint();
     const started = now();
     try {
       const result = execute(command, ['--profile', profile, ...args], { cwd: options.cwd || projectRoot,
+        transportReceipt: true,
         allowFailure: true, replaceEnv: true, env: { ...childEnv, EAI_PROFILE: profile, BASE_URL_PUBLIC_API: expectedApi,
           EAI_TENANT_ID: (options.cwd || projectRoot) === projectRoot ? runtime() || undefined : undefined,
           EAI_PARENT_TENANT_ID: (options.cwd || projectRoot) === projectRoot ? child() || undefined : undefined,
-          EAI_APP_KEY: (options.cwd || projectRoot) === projectRoot ? report.created.appKey || undefined : undefined },
+          EAI_APP_KEY: (options.cwd || projectRoot) === projectRoot ? report.created.appKey || undefined : undefined,
+          EAI_CLI_QA_EXECUTION_ID: entry.executionId, EAI_CLI_QA_TRANSPORT_FD: '3' },
         timeout: options.timeout || 60000 });
       entry.exitCode = result.status;
       entry.durationMs = Math.max(0, now() - started);
-      options.observe?.(result); // Record returned IDs before any status/contract assertion can throw.
+      // The reserved pipe belongs to this exact subprocess. Complete collection
+      // and validation before any ownership observer can adopt backend IDs.
+      let transports = [];
+      const pipe = result.transportOutput;
+      if (pipe !== undefined && (typeof pipe !== 'string' || Buffer.byteLength(pipe) > 128 * 1024))
+        throw new Error('QA transport receipt is malformed or exceeds its bound. Returned IDs were not adopted.');
+      if (pipe) {
+        try { transports = pipe.trim().split('\n').map(value => JSON.parse(value)); }
+        catch { throw new Error('QA transport receipt is malformed. Returned IDs were not adopted.'); }
+        if (transports.length > 256 || !transports.every(value => observationValid(value, entry.executionId) && value.source === undefined
+          && value.publicApiUrl === expectedApi)) throw new Error('QA transport receipt does not match this exact invocation or gateway. Returned IDs were not adopted.');
+        const primary = transports.filter(value => primaryTransportMatches(entry.command, value));
+        const actualScopes = [...new Set(primary.map(value => value.tenantId))];
+        if (actualScopes.length === 1) entry.observedPrimaryTenantId = actualScopes[0];
+        if (actualScopes.length === 1 && (entry.scopeTenantId === undefined || actualScopes[0] === null || actualScopes[0] === 'system'))
+          entry.scopeTenantId = actualScopes[0];
+        const foreignScope = transports.some(value => value.tenantId !== null && value.tenantId !== 'system' && value.tenantId !== entry.scopeTenantId);
+        // A global read may include a regional-routing lookup. Keep both actual
+        // namespaces incomplete; no observer is permitted to adopt from it.
+        if (foreignScope && (options.observe || entry.selectedScopeTenantId !== undefined
+          || (entry.scopeTenantId !== null && entry.scopeTenantId !== 'system')))
+          throw new Error('QA transport receipt observed a foreign non-global scope. Returned IDs were not adopted.');
+        entry.transportObservations = transports;
+      }
+      const payload = parseJson(result.stdout, {});
+      const supplied = payload && typeof payload === 'object' && Object.hasOwn(payload, 'request');
+      const observedRequest = supplied ? payload.request : undefined;
+      // App create already emits its enrollment request, not transport scope.
+      // Accept only that exact command-bound domain shape; the observer still
+      // requires the full owned response acknowledgment before adopting IDs.
+      const optionValue = flag => args.includes(flag) ? args[args.indexOf(flag) + 1] : undefined;
+      const expectedAppRequest = entry.command === 'eai app create' && typeof args[2] === 'string' && optionValue('--key')
+        ? { tenantId: entry.scopeTenantId, verticalKey: optionValue('--key').trim(), displayName: args[2].trim(),
+          status: optionValue('--status') || 'pending', source: optionValue('--source') || 'eai-cli',
+          ...(optionValue('--template') ? { templateKey: optionValue('--template') } : {}),
+          ...(optionValue('--app-url') ? { appUrl: optionValue('--app-url') } : {}) } : undefined;
+      const appDomainRequest = supplied && expectedAppRequest && observedRequest && typeof observedRequest === 'object'
+        && !Array.isArray(observedRequest) && Object.keys(observedRequest).length === Object.keys(expectedAppRequest).length
+        && Object.entries(expectedAppRequest).every(([key, value]) => Object.hasOwn(observedRequest, key) && observedRequest[key] === value)
+        && payload.tenantId === entry.scopeTenantId && payload.appKey === expectedAppRequest.verticalKey;
+      const resourceMutation = ['eai resources create', 'eai resources batch-create', 'eai resources batch-import',
+        'eai resources delete', 'eai resources batch-delete'].includes(entry.command);
+      const requestMatches = observedRequest && typeof observedRequest === 'object' && !Array.isArray(observedRequest)
+        && observedRequest.publicApiUrl === entry.publicApiUrl && observedRequest.tenantId === entry.scopeTenantId
+        && typeof observedRequest.tenantId === 'string' && observedRequest.tenantId.length > 0
+        && (!Object.hasOwn(observedRequest, 'proofKind') || observedRequest.proofKind === 'transport-response');
+      if ((supplied && (entry.command === 'eai app create' ? !appDomainRequest : !requestMatches))
+        || (resourceMutation && (!requestMatches || observedRequest.proofKind !== 'transport-response'
+          || Object.keys(observedRequest).some(key => !['publicApiUrl', 'tenantId', 'proofKind'].includes(key))))) {
+        // Never copy unverifiable backend IDs into adoption or cleanup journals.
+        entry.scopeObservation = 'unverified';
+        if (supplied) {
+          let safeGateway;
+          try {
+            const url = new URL(observedRequest?.publicApiUrl);
+            if (['https:', 'http:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash
+              && url.href.length <= 4096) safeGateway = observedRequest.publicApiUrl;
+          } catch { /* Unverifiable scope is not copied into the receipt. */ }
+          entry.publicApiUrl = safeGateway;
+          entry.scopeTenantId = typeof observedRequest?.tenantId === 'string'
+            && /^[A-Za-z0-9_.:@-]{1,128}$/.test(observedRequest.tenantId) ? observedRequest.tenantId : undefined;
+        }
+        if (options.observe || resourceMutation) report.leftovers.push({ artifact: 'unverified-mutation',
+          command: entry.command, executionId: entry.executionId,
+          reason: 'Mutation response scope is missing, invalid or differs from the selected invocation; returned IDs were not adopted.' });
+        throw new Error('Observed PublicAPI forwarding is missing or differs from the actual selected invocation scope.');
+      }
+      if (resourceMutation && requestMatches && observedRequest.proofKind === 'transport-response') {
+        entry.transportObservations = [...transports, { schemaVersion: TRANSPORT_SCHEMA, executionId: entry.executionId,
+          publicApiUrl: observedRequest.publicApiUrl, tenantId: observedRequest.tenantId,
+          proofKind: 'transport-response', source: 'resource-json' }];
+      }
+      if (requestMatches) entry.scopeObservation = observedRequest.proofKind === 'transport-response'
+        ? 'transport-response' : 'cli-request-metadata';
+      else if (options.observe) {
+        entry.scopeObservation = 'exact-owner-acknowledgment-required';
+        entry.scopeObservationLimitations = 'No transport scope was emitted; only exact owned acknowledgments with authoritative cleanup readback are eligible.';
+      }
+      if (observedScopeVerified(entry)) entry.scopeObservation = 'transport-response';
+      else if (!options.observe) {
+        entry.scopeObservation = 'qualification-incomplete';
+        entry.scopeObservationLimitations = entry.scopeTenantId === 'system' || entry.scopeTenantId === null
+          ? 'Actual global/system transport requires a separate identity/profile-scope audit contract; it is not an owned workspace observation.'
+          : 'Selected flags and profile state do not prove the actual protected response scope.';
+      }
+      evidence.bind(result, entry);
       entry.status = result.status === 0 ? 'passed' : 'failed'; checkpoint();
+      if (result.status !== 0 && options.observe) {
+        const body = parseJson(result.stdout, {});
+        const refusedCreation = body.ok === false && [400, 401, 403, 404, 409, 422].includes(body.status)
+          && ['eai workspace create', 'eai app create'].includes(entry.command);
+        // Explicit refusals carry diagnostics only; no ownership observer sees failed output.
+        if (refusedCreation && entry.command === 'eai workspace create') {
+          childAttempted = false;
+          if (body.status === 403) throw new SmokeBlocked('DEV denied child creation for the QA actor; no creation was acknowledged.');
+        } else if (refusedCreation) appAttempted = false;
+        else report.leftovers.push({ artifact: 'unverified-mutation', command: entry.command, executionId: entry.executionId,
+          reason: 'Exit success was not observed; returned IDs were not adopted.' });
+        checkpoint();
+      }
       if (result.status !== 0 && !options.allowFailure) {
         const body = parseJson(result.stdout, {});
         const code = body.error?.code || body.serverCode || body.code;
         const safeCode = typeof code === 'string' && /^[A-Z0-9_:-]{1,100}$/.test(code) ? '; ' + code : '';
         throw new Error(entry.command + ' failed (exit ' + result.status + safeCode + ').');
       }
-      return result;
+      return evidence.bind(result, entry);
     } catch (error) {
       entry.status = error instanceof SmokeBlocked ? 'blocked' : 'failed'; checkpoint(); throw error;
     }
@@ -1837,13 +1955,21 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const result = eai(args, options);
     let payload;
     try { payload = JSON.parse(result.stdout); } catch {
-      assertion('valid-json-output', false, executedCommand(args) + ' did not return JSON.');
+      assertion('valid-json-output', false, executedCommand(args) + ' did not return JSON.', false, result);
     }
-    assertion('successful-json-contract', payload && typeof payload === 'object'
+    const successful = result.status === 0 && payload && typeof payload === 'object'
       && payload.ok !== false && payload.success !== false && !['fail', 'failed'].includes(payload.status)
-      && !(Number(payload.failed) > 0) && !(Number(payload.summary?.fail) > 0) && !(Number(payload.summary?.failed) > 0),
-    executedCommand(args) + ' returned an unsuccessful result.');
-    const entry = report.commands.at(-1);
+      && !(Number(payload.failed) > 0) && !(Number(payload.summary?.fail) > 0) && !(Number(payload.summary?.failed) > 0);
+    if (!successful && options.observe) report.leftovers.push({ artifact: 'unverified-mutation',
+      command: executedCommand(args), executionId: evidence.receipt(result).executionId,
+      reason: 'A successful JSON result was not observed; returned IDs were not adopted.' });
+    assertion('successful-json-contract', successful,
+    executedCommand(args) + ' returned an unsuccessful result.', false, result);
+    const entry = evidence.receipt(result);
+    evidence.bind(payload, entry); evidence.bind(payload.body, entry);
+    options.observe?.(result); // Adopt only after scope, zero exit and successful JSON are verified.
+    if (args.includes('--format') && args[args.indexOf('--format') + 1] === 'json')
+      assertion('json-output-format', payload && typeof payload === 'object', 'JSON output format was not observed.', false, result, { option: '--format', contract: false });
     if (payload.summary && typeof payload.summary === 'object') {
       entry.result = Object.fromEntries(Object.entries(payload.summary)
         .filter(([, value]) => typeof value === 'number' || typeof value === 'boolean'));
@@ -1852,9 +1978,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     return payload;
   }
   function appNpm(script, timeout) {
-    const entry = { command: 'npm run ' + script, phase, scopeTenantId: runtime(), status: 'running', executionSequence: report.commands.length,
-      environment: report.environment, publicApiUrl: expectedApi };
-    report.commands.push(entry); checkpoint();
+    const entry = evidence.start('npm run ' + script, phase, { scopeTenantId: runtime(),
+      environment: report.environment, publicApiUrl: expectedApi }); checkpoint();
     const started = now();
     try {
       const built = require('./cli-qa-npm-execution.cjs').runNpmScript({ cwd: projectRoot, configParent: runRoot,
@@ -1868,7 +1993,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       const result = built.result; entry.npmExecution = built.npmExecution;
       entry.exitCode = result.status; entry.status = result.status === 0 ? 'passed' : 'failed';
       entry.durationMs = Math.max(0, now() - started); checkpoint();
-      return result;
+      return evidence.bind(result, entry);
     } catch (error) {
       entry.status = 'failed'; entry.durationMs = Math.max(0, now() - started); checkpoint();
       throw error;
@@ -1881,8 +2006,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     const result = eai(['publicapi', 'get', path, '--tenant-id', scope, '--format', 'json'], { allowFailure: true, cwd: controlRoot });
     const body = parseJson(result.stdout, {});
     assertion('explicit-404-after-delete', result.status !== 0 && body.ok === false && body.status === 404,
-      'Deletion absence was not proven for ' + path + '.');
-    report.commands.at(-1).status = 'passed'; checkpoint();
+      'Deletion absence was not proven for ' + path + '.', false, result);
+    evidence.receipt(result).status = 'passed'; checkpoint();
   }
   function cleanupStep(artifact, action, recordLeftover = true) {
     const receipt = { artifact, status: 'running' };
@@ -1893,79 +2018,86 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     }
     checkpoint();
   }
-  function recordResource(type, id) {
+  function recordResource(type, id, source, acknowledgment) {
     if (typeof id !== 'string' || !id || report.created.resources.some(row => row.type === type && row.id === id)) return;
-    report.created.resources.push({ type, id }); checkpoint();
+    const entry = evidence.receipt(source);
+    if (!entry || entry.scopeTenantId !== runtime() || entry.publicApiUrl !== expectedApi
+      || (!acknowledgment && entry.scopeObservation !== 'transport-response')) {
+      throw new Error('Resource adoption requires exact response-bound scope or an exact tenant-owned acknowledgment.');
+    }
+    report.created.resources.push({ type, id, ownership: { kind: acknowledgment ? 'tenant-owned-acknowledgment' : 'transport-response',
+      executionId: entry.executionId, tenantId: runtime(), publicApiUrl: expectedApi,
+      ...(acknowledgment ? { fields: acknowledgment } : {}) } }); checkpoint();
   }
 
   try {
     if (dependencies.expectedFixture !== undefined) {
       const context = retainedFixtureContext(dependencies.expectedFixture, profile, env.EAI_E2E_TEST_USER_OID, parentTenantId);
-      assertion('retained-fixture-context', Boolean(context), 'Retained fixture references must match the explicit administrator and parent.', true);
+      assertion('retained-fixture-context', Boolean(context), 'Retained fixture references must match the explicit administrator and parent.', true, null);
       Object.assign(report, context); checkpoint();
       for (const id of [context.foundationParentTenantId, context.tenantIds.a, context.tenantIds.b]) reservedTenantIds.add(id.toLowerCase());
     }
     for (const key of ['EAI_E2E_TEST_PROFILE', 'EAI_E2E_TEST_USERNAME', 'EAI_E2E_PARENT_TENANT_ID'])
-      assertion('prerequisite-' + key, Boolean(env[key]?.trim()), 'Live mode requires ' + key + '.', true);
+      assertion('prerequisite-' + key, Boolean(env[key]?.trim()), 'Live mode requires ' + key + '.', true, null);
     assertion('cleanup-preflight-file', Boolean(env.EAI_E2E_CLEANUP_PREFLIGHT) && existsSync(env.EAI_E2E_CLEANUP_PREFLIGHT),
-      'EAI_E2E_CLEANUP_PREFLIGHT must name a fresh deployed child-delete route observation.', true);
+      'EAI_E2E_CLEANUP_PREFLIGHT must name a fresh deployed child-delete route observation.', true, null);
     const allowedApis = ['https://dev-api.au.myenterprise.ai/public',
       ...['au', 'ca', 'eu'].map(region => 'https://test-api.' + region + '.myenterprise.ai/public')];
     assertion('non-production-api-scope', allowedApis.includes(expectedApi.replace(/\/$/, '')),
-      'Live smoke permits canonical DEV AU or TEST AU/CA/EU PublicAPI URLs only.', true);
+      'Live smoke permits canonical DEV AU or TEST AU/CA/EU PublicAPI URLs only.', true, null);
     assertion('mandatory-isolation-and-cleanup', env.EAI_E2E_CREATE_CHILD_TENANT !== '0' && env.EAI_E2E_CLEANUP !== '0',
-      'Live mode always creates and cleans a child tenant; isolation or cleanup cannot be disabled.', true);
-    assertion('valid-run-id', /^[0-9]{1,14}$/.test(runId), 'EAI_E2E_RUN_ID must contain 1-14 digits.', true);
+      'Live mode always creates and cleans a child tenant; isolation or cleanup cannot be disabled.', true, null);
+    assertion('valid-run-id', /^[0-9]{1,14}$/.test(runId), 'EAI_E2E_RUN_ID must contain 1-14 digits.', true, null);
     for (const key of ['EAI_E2E_ENV_MUTATION', 'EAI_E2E_WORKFLOW_REQUEST', 'EAI_E2E_RESOURCEAPI_REFRESH',
       'EAI_E2E_RESOURCEAPI_BUNDLE_APPLY', 'EAI_E2E_DOCS', 'EAI_E2E_CACHE_REFRESH'])
-      assertion('supported-' + key, env[key] !== '1', key + ' needs a run-owned fixture and verified teardown; this runner does not execute that lane.', true);
+      assertion('supported-' + key, env[key] !== '1', key + ' needs a run-owned fixture and verified teardown; this runner does not execute that lane.', true, null);
     assertion('supported-EAI_E2E_INDEXES_APPLY', env.EAI_E2E_INDEXES_APPLY !== '1',
-      'Index apply is unsupported: PublicAPI exposes dry-run index planning only.', true);
+      'Index apply is unsupported: PublicAPI exposes dry-run index planning only.', true, null);
     assertion('run-owned-workflow-required', !env.EAI_E2E_WORKFLOW_KEY,
-      'Use EAI_E2E_WORKFLOW_PROVISION=1; existing workflow keys are not run-owned fixtures.', true);
+      'Use EAI_E2E_WORKFLOW_PROVISION=1; existing workflow keys are not run-owned fixtures.', true, null);
     assertion('operation-bound-doctor-required', !env.EAI_E2E_DEPLOYED_URL,
-      'Use EAI_E2E_DEPLOY=1; doctor must bind to this run\'s exact operation.', true);
+      'Use EAI_E2E_DEPLOY=1; doctor must bind to this run\'s exact operation.', true, null);
     if (env.EAI_E2E_INVITE_TEST_USER)
-      assertion('invite-fixture-oid', Boolean(env.EAI_E2E_INVITE_TEST_USER_OID), 'EAI_E2E_INVITE_TEST_USER_OID is required for an existing QA identity.', true);
+      assertion('invite-fixture-oid', Boolean(env.EAI_E2E_INVITE_TEST_USER_OID), 'EAI_E2E_INVITE_TEST_USER_OID is required for an existing QA identity.', true, null);
     if (env.EAI_E2E_CHAT === '1')
       assertion('chat-runtime-fixture', env.EAI_E2E_WORKFLOW_PROVISION === '1' && Boolean(env.EAI_E2E_AI_PROVIDER) && Boolean(env.EAI_E2E_AI_MODEL),
-        'Chat requires EAI_E2E_WORKFLOW_PROVISION=1, EAI_E2E_AI_PROVIDER and EAI_E2E_AI_MODEL.', true);
+        'Chat requires EAI_E2E_WORKFLOW_PROVISION=1, EAI_E2E_AI_PROVIDER and EAI_E2E_AI_MODEL.', true, null);
     assertion('entra-rotation-prerequisite', env.EAI_E2E_ROTATE_ENTRA_SECRET !== '1' || env.EAI_E2E_PROVISION_ENTRA === '1',
-      'Entra secret rotation requires EAI_E2E_PROVISION_ENTRA=1.', true);
+      'Entra secret rotation requires EAI_E2E_PROVISION_ENTRA=1.', true, null);
     assertion('recreation-first-read-prerequisite', env.EAI_E2E_RECREATE_AFTER_DELETE !== '1' || env.EAI_E2E_REQUIRE_FIRST_EMPTY === '1',
-      'Same-key recreation requires EAI_E2E_REQUIRE_FIRST_EMPTY=1.', true);
+      'Same-key recreation requires EAI_E2E_REQUIRE_FIRST_EMPTY=1.', true, null);
     const timeoutSeconds = Number(env.EAI_E2E_DEPLOY_TIMEOUT || '900');
     if (env.EAI_E2E_DEPLOY === '1')
       assertion('bounded-deploy-timeout', Number.isInteger(timeoutSeconds) && timeoutSeconds > 0 && timeoutSeconds <= 1800,
-        'EAI_E2E_DEPLOY_TIMEOUT must be 1-1800 seconds.', true);
+        'EAI_E2E_DEPLOY_TIMEOUT must be 1-1800 seconds.', true, null);
     const whoami = eai(['whoami'], { cwd: controlRoot, allowFailure: true });
-    assertion('authenticated-qa-profile', whoami.status === 0, 'Authenticate the explicit QA profile before live smoke.', true);
+    assertion('authenticated-qa-profile', whoami.status === 0, 'Authenticate the explicit QA profile before live smoke.', true, whoami);
     const apiLine = whoami.stdout.replace(/\u001b\[[0-9;]*m/g, '').split(/\r?\n/).find(line => line.includes('PublicAPI'));
     const reportedUrls = apiLine?.match(/https?:\/\/\S+/g) || [];
     assertion('exact-dev-public-api', reportedUrls.some(url => url.replace(/\/$/, '') === expectedApi.replace(/\/$/, '')),
-      'QA profile PublicAPI target does not match EAI_E2E_EXPECTED_PUBLIC_API.', true);
+      'QA profile PublicAPI target does not match EAI_E2E_EXPECTED_PUBLIC_API.', true, whoami);
     const visibleParents = json(['tenant', 'list', '--format', 'json'], { cwd: controlRoot });
     assertion('qa-parent-visible-and-selectable', Array.isArray(visibleParents.tenants)
       && visibleParents.tenants.some(tenant => tenant.id === parentTenantId && tenant.isActive !== false && tenant.directMembership !== false),
-      'The supplied QA parent is not visible as an active selectable workspace for this profile.', true);
+      'The supplied QA parent is not visible as an active selectable workspace for this profile.', true, visibleParents);
     eai(['tenant', 'select', parentTenantId], { cwd: controlRoot, scopeTenantId: parentTenantId });
     const parent = json(['tenant', 'info', parentTenantId, '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId });
-    assertion('exact-qa-parent', parent.id === parentTenantId, 'QA parent identity did not match.', true);
+    assertion('exact-qa-parent', parent.id === parentTenantId, 'QA parent identity did not match.', true, parent);
     const identity = publicGet('/v4/identity/me', parentTenantId, { cwd: controlRoot });
     const actorId = identity?.oid || identity?.user?.oid;
     const actorEmail = identity?.email || identity?.upn || identity?.user?.email;
     assertion('exact-qa-actor', Boolean(actorId) && typeof actorEmail === 'string'
       && actorEmail.toLowerCase() === expectedUsername.toLowerCase()
       && (!env.EAI_E2E_TEST_USER_OID || actorId === env.EAI_E2E_TEST_USER_OID),
-    'Authenticated QA actor does not match the explicit expected identity.', true);
+    'Authenticated QA actor does not match the explicit expected identity.', true, identity);
     const management = publicGet('/v4/platform/tenants/' + encodeURIComponent(parentTenantId) + '/management', parentTenantId, { cwd: controlRoot });
-    assertion('qa-parent-management', management?.id === parentTenantId, 'Explicit QA parent management could not be verified.', true);
+    assertion('qa-parent-management', management?.id === parentTenantId, 'Explicit QA parent management could not be verified.', true, management);
     const memberships = publicGet('/v4/platform/users/' + encodeURIComponent(actorId)
       + '/memberships?tenant_id=' + encodeURIComponent(parentTenantId), parentTenantId, { cwd: controlRoot });
     assertion('parent-admin-create-bootstrap-cleanup', Array.isArray(memberships?.tenants)
       && memberships.tenants.some(member => member.id === parentTenantId && Array.isArray(member.roles)
         && member.roles.includes('tenant-admin') && member.isActive !== false),
-      'The exact QA actor requires an active tenant-admin membership in the explicit parent.', true);
+      'The exact QA actor requires an active tenant-admin membership in the explicit parent.', true, memberships);
     const preflight = parseJson(readFileSync(env.EAI_E2E_CLEANUP_PREFLIGHT, 'utf8'), {});
     const age = now() - Date.parse(preflight.observedAt);
     assertion('deployed-parent-cleanup-contract', preflight.schemaVersion === 'eai.cli-child-cleanup-preflight.v1'
@@ -1973,7 +2105,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       && /^[a-f0-9]{40}$/.test(preflight.publicApiGitSha || '') && /^[a-f0-9]{40}$/.test(preflight.adminApiGitSha || '')
       && preflight.childDeleteRoute === '/v4/platform/tenants/{parent}/children/{child}/delete' && preflight.childDeleteVerified === true
       && Number.isFinite(age) && age >= -60000 && age <= 3600000,
-    'Deployed child-delete route observation is missing, stale or mismatched to DEV, QA parent or actor.', true);
+    'Deployed child-delete route observation is missing, stale or mismatched to DEV, QA parent or actor.', true, null);
     report.preflight = { schemaVersion: preflight.schemaVersion, publicApiUrl: preflight.publicApiUrl,
       parentTenantId: preflight.parentTenantId, actorId: preflight.actorId, childDeleteVerified: preflight.childDeleteVerified,
       publicApiGitSha: preflight.publicApiGitSha, adminApiGitSha: preflight.adminApiGitSha,
@@ -1985,7 +2117,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       ? capability.reasonCode : 'capability_not_allowed';
     report.preflight.childCreate = { outcome: capability?.outcome || 'unknown', reasonCode }; checkpoint();
     assertion('child-create-capability-allowed', capability?.outcome === 'allow',
-      'DEV child-tenants create is blocked: ' + reasonCode + '. Use an eligible dedicated QA workspace; resolve subscription or admin prerequisites first.', true);
+      'DEV child-tenants create is blocked: ' + reasonCode + '. Use an eligible dedicated QA workspace; resolve subscription or admin prerequisites first.', true, capability);
     if (env.EAI_E2E_INVITE_TEST_USER) {
       // user list requires a project even with --tenant. Keep this read-only
       // project context separate from both control commands and the future app.
@@ -1996,11 +2128,12 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         ROUTING_BOOTSTRAP_PUBLIC_API_URL: expectedApi, EAI_TENANT_ID: parentTenantId };
       writeFileSync(join(readRoot, '.env.local'), Object.entries(readEnv)
         .map(([key, value]) => key + '=' + JSON.stringify(value)).join('\n') + '\n', { mode: 0o600 });
-      const members = json(['user', 'list', '--tenant', parentTenantId, '--search', env.EAI_E2E_INVITE_TEST_USER, '--format', 'json'], { cwd: readRoot }).data;
+      const memberResult = json(['user', 'list', '--tenant', parentTenantId, '--search', env.EAI_E2E_INVITE_TEST_USER, '--format', 'json'], { cwd: readRoot });
+      const members = memberResult.data;
       assertion('existing-invite-fixture', Array.isArray(members) && members.some(member =>
         String(member.email || '').toLowerCase() === env.EAI_E2E_INVITE_TEST_USER.toLowerCase()
         && [member.userId, member.oid, member.id].includes(env.EAI_E2E_INVITE_TEST_USER_OID)),
-      'Invite fixture must be an exact existing QA parent member; directory-user deletion is unavailable.', true);
+      'Invite fixture must be an exact existing QA parent member; directory-user deletion is unavailable.', true, memberResult);
     }
 
     phase = 'isolation'; childAttempted = true;
@@ -2009,10 +2142,6 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       '--starter-template', 'eai-app-template',
       '--format', 'json'], { cwd: controlRoot, scopeTenantId: parentTenantId, observe(result) {
         const payload = parseJson(result.stdout, {});
-        if (result.status !== 0 && payload.ok === false && [400, 401, 403, 404, 409, 422].includes(payload.status)) {
-          childAttempted = false;
-          if (payload.status === 403) throw new SmokeBlocked('DEV denied child creation for the QA actor; no creation was acknowledged.');
-        }
         const tenant = payload.tenant;
         if (tenant?.reused === true) childAttempted = false;
         const immediateParent = tenant?.parentTenantId ?? tenant?.parentTenant?.id ?? tenant?.parentTenant;
@@ -2025,20 +2154,19 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         }
       } });
     assertion('created-child-ownership', childOwned && created.tenant.id === child(),
-      'Child creation did not acknowledge the exact run-specific tenant; cleanup ownership cannot be inferred.');
+      'Child creation did not acknowledge the exact run-specific tenant; cleanup ownership cannot be inferred.', false, created);
     const bootstrap = json(['tenant', 'bootstrap-admin', '--parent', parentTenantId, '--child', child(),
       '--user-oid', actorId, '--user-email', actorEmail, '--format', 'json'], { cwd: controlRoot, scopeTenantId: child() });
     assertion('child-admin-bootstrap', bootstrap.childTenantId === child() && bootstrap.parentTenantId === parentTenantId
       && bootstrap.userOid === actorId && bootstrap.usable === true && typeof bootstrap.membershipCreated === 'boolean'
       && typeof bootstrap.adminAssigned === 'boolean' && ['bootstrapped', 'already-usable'].includes(bootstrap.status)
       && (bootstrap.status !== 'already-usable' || (bootstrap.membershipCreated === false && bootstrap.adminAssigned === false)),
-      'Child tenant bootstrap was not confirmed.');
+      'Child tenant bootstrap was not confirmed.', false, bootstrap);
     eai(['tenant', 'select', child()], { cwd: controlRoot, scopeTenantId: child() });
     phase = 'app'; appAttempted = true;
     const app = json(['app', 'create', appName, '--key', appName, '--tenant-id', child(), '--format', 'json'], {
       cwd: controlRoot, observe(result) {
         const body = parseJson(result.stdout, {});
-        if (result.status !== 0 && body.ok === false && [400, 401, 403, 404, 409, 422].includes(body.status)) appAttempted = false;
         const response = body.response, enrollment = response?.app, created = response?.created;
         const childId = response?.childTenant?.id;
         const exactChildBinding = childId ? (typeof childId === 'string' && enrollment?.childTenantId === childId)
@@ -2054,55 +2182,54 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           report.created.runtimeTenantId = childId || enrollment.parentTenantId; checkpoint();
         }
       } });
-    assertion('created-app-ownership', appOwned, 'App creation did not acknowledge a new exact enrollment.');
+    assertion('created-app-ownership', appOwned, 'App creation did not acknowledge a new exact enrollment.', false, app);
     assertion('runtime-creation-binding', runtime() === child()
       || (app.response.created.childTenant === true && app.response.childTenant?.id === runtime()),
-    'App runtime must be the run-created child or an acknowledged new descendant.');
+    'App runtime must be the run-created child or an acknowledged new descendant.', false, app);
     runtimeOwned = runtime() === child();
     if (runtime() !== child()) {
       const management = publicGet('/v4/platform/tenants/' + encodeURIComponent(runtime()) + '/management', child(), { cwd: controlRoot });
       assertion('runtime-isolated-descendant', management?.id === runtime()
         && (management.parentTenantId || management.parentTenant?.id || management.parentTenant) === child(),
-      'App runtime is outside the disposable child boundary.');
+      'App runtime is outside the disposable child boundary.', false, management);
       runtimeOwned = true;
       json(['tenant', 'bootstrap-admin', '--parent', child(), '--child', runtime(),
         '--user-oid', actorId, '--user-email', actorEmail, '--format', 'json'], { cwd: controlRoot, scopeTenantId: runtime() });
     }
-    eai(['init', appName, '--app-key', appName, '--skip-prompts', '--current-dir', '--company-workspace', child(),
+    const scaffold = eai(['init', appName, '--app-key', appName, '--skip-prompts', '--current-dir', '--company-workspace', child(),
       '--package-profile', 'external', '--no-splash'], { timeout: 600000, scopeTenantId: child() });
     assertion('scaffold-bound-to-isolation', readEnvValue(projectRoot, 'EAI_PARENT_TENANT_ID') === child()
       && readEnvValue(projectRoot, 'EAI_TENANT_ID') === runtime() && readEnvValue(projectRoot, 'EAI_APP_KEY') === appName,
-    'Scaffold binding differs from this run\'s acknowledged child/app/runtime.');
+    'Scaffold binding differs from this run\'s acknowledged child/app/runtime.', false, scaffold);
     json(['start', '--check', '--format', 'json']);
     json(['user', 'provision-me', '--workspace', runtime(), '--format', 'json']);
     json(['user', 'roles', '--workspace', runtime(), '--format', 'json']);
     const ownMembers = json(['user', 'list', '--tenant', runtime(), '--search', actorEmail, '--format', 'json']);
     assertion('qa-child-membership', Array.isArray(ownMembers.data) && ownMembers.data.some(member =>
-      String(member.email || '').toLowerCase() === actorEmail.toLowerCase()), 'QA membership was not visible in the isolated runtime.');
+      String(member.email || '').toLowerCase() === actorEmail.toLowerCase()), 'QA membership was not visible in the isolated runtime.', false, ownMembers);
     if (env.EAI_E2E_INVITE_TEST_USER) {
       const args = ['--email', env.EAI_E2E_INVITE_TEST_USER, '--tenant', runtime(), '--role', env.EAI_E2E_INVITE_ROLE || 'tenant-viewer', '--format', 'json'];
       const observeInvite = result => {
         const invitation = parseJson(result.stdout, {});
         if (invitation.userId && invitation.userId !== env.EAI_E2E_INVITE_TEST_USER_OID) {
-          report.created.directoryUsers.push(invitation.userId);
-          report.leftovers.push({ artifact: 'directory-user:' + invitation.userId, reason: 'Unexpected global identity; CLI has no directory-user deletion.' });
+          report.leftovers.push({ artifact: 'directory-user', reason: 'Unexpected global identity was not adopted; exact ownership and directory-user deletion are unavailable.' });
           checkpoint();
         }
       };
       const invited = json(['user', 'invite', ...args], { observe: observeInvite });
       assertion('invite-reused-existing-user', invited.inviteMode === 'existing_user_reused' && invited.userId === env.EAI_E2E_INVITE_TEST_USER_OID,
-        'Invite returned an unexpected or newly-created directory identity; global cleanup is not proven.');
+        'Invite returned an unexpected or newly-created directory identity; global cleanup is not proven.', false, invited);
       const assigned = json(['user', 'role', 'set', ...args], { observe: observeInvite });
       assertion('role-assignment-existing-user', assigned.userId === env.EAI_E2E_INVITE_TEST_USER_OID,
-        'Role assignment did not retain the exact existing QA identity.');
+        'Role assignment did not retain the exact existing QA identity.', false, assigned);
       const members = json(['user', 'list', '--tenant', runtime(), '--search', env.EAI_E2E_INVITE_TEST_USER, '--format', 'json']);
       assertion('invite-child-membership', members.data?.some(member =>
-        [member.userId, member.oid, member.id].includes(env.EAI_E2E_INVITE_TEST_USER_OID)), 'Invited membership was not visible.');
+        [member.userId, member.oid, member.id].includes(env.EAI_E2E_INVITE_TEST_USER_OID)), 'Invited membership was not visible.', false, members);
     }
     if (env.EAI_E2E_NEGATIVE_TESTS === '1') {
       const invalid = eai(['user', 'invite', '--email', 'not-an-email', '--tenant', runtime(), '--role', 'tenant-viewer', '--format', 'json'], { allowFailure: true });
-      assertion('invalid-invite-rejected', invalid.status !== 0, 'Invalid email unexpectedly succeeded.');
-      report.commands.at(-1).status = 'passed'; checkpoint();
+      assertion('invalid-invite-rejected', invalid.status !== 0, 'Invalid email unexpectedly succeeded.', false, invalid);
+      evidence.receipt(invalid).status = 'passed'; checkpoint();
     }
 
     phase = 'local-checks';
@@ -2132,16 +2259,16 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           || appProvisioning.provisioning.enrollment.childTenantId === null
           || appProvisioning.provisioning.enrollment.childTenantId === runtime()
         : appProvisioning.provisioning.enrollment.childTenantId === runtime()),
-    'App provisioning did not return exact persisted job readiness.');
-    assertion('provision-keeps-runtime', readEnvValue(projectRoot, 'EAI_TENANT_ID') === runtime(), 'App provisioning changed runtime scope.');
+    'App provisioning did not return exact persisted job readiness.', false, appProvisioning);
+    assertion('provision-keeps-runtime', readEnvValue(projectRoot, 'EAI_TENANT_ID') === runtime(), 'App provisioning changed runtime scope.', false, appProvisioning);
     json(['provision', 'storage', '--tenant-id', runtime(), '--format', 'json']);
     writeSmokeObjectTypes(projectRoot, appName, runId, runtime());
     // Follow the selected app template's source-to-generated-artifact contract.
     // This must precede validation/seed and any independent app-build lane.
     const generated = appNpm('build:object-types', 120000);
-    assertion('consultant-object-types-generation', generated.status === 0, 'Scaffolded Object Type generation failed.');
+    assertion('consultant-object-types-generation', generated.status === 0, 'Scaffolded Object Type generation failed.', false, generated);
     const generatedCheck = appNpm('check:object-types', 120000);
-    assertion('consultant-object-types-generated-current', generatedCheck.status === 0, 'Generated Object Type artifacts are missing or stale.');
+    assertion('consultant-object-types-generated-current', generatedCheck.status === 0, 'Generated Object Type artifacts are missing or stale.', false, generatedCheck);
     const definitions = smokeObjectTypes(appName, runId, runtime());
     const [pgType, docType, fileType, searchType] = definitions.map(definition => definition.slug);
     const bundleFile = join(projectRoot, 'smoke-object-types.json');
@@ -2172,9 +2299,9 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       phase = 'resource-lifecycle';
       function create(type, data) {
         const body = json(['resources', 'create', type, '--tenant-id', runtime(), '--data', JSON.stringify(data), '--format', 'json'],
-          { observe: result => recordResource(type, extractId(parseJson(result.stdout, {}))) });
+          { observe: result => recordResource(type, extractId(parseJson(result.stdout, {})), result) });
         const id = extractId(body);
-        assertion('resource-creation-id', Boolean(id), 'Resource creation returned no ID for ' + type + '.'); return id;
+        assertion('resource-creation-id', Boolean(id), 'Resource creation returned no ID for ' + type + '.', false, body); return id;
       }
       const pgId = create(pgType, { title: 'postgres smoke', status: 'draft', count: 1 });
       const docId = create(docType, { title: 'documentdb smoke', status: 'draft' });
@@ -2184,14 +2311,14 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         json(['resources', 'update', type, id, '--tenant-id', runtime(), '--data', JSON.stringify(data), '--format', 'json']);
         const saved = json(['resources', 'get', type, id, '--tenant-id', runtime(), '--format', 'json']);
         assertion('resource-update-persisted', (saved.data || saved.resource?.data)?.title === data.title
-          && (saved.data || saved.resource?.data)?.status === data.status, 'Updated resource was not persisted.');
+          && (saved.data || saved.resource?.data)?.status === data.status, 'Updated resource was not persisted.', false, saved);
       }
       const fileId = create(fileType, { title: 'file smoke', status: 'draft' });
       const upload = join(projectRoot, 'smoke-file.txt'), download = join(projectRoot, 'smoke-file-downloaded.txt');
       const contents = 'EAI file smoke ' + runId + '\n'; writeFileSync(upload, contents, 'utf8');
       json(['resources', 'file', 'upload', fileType, fileId, 'attachment', upload, '--tenant-id', runtime(), '--format', 'json']);
-      eai(['resources', 'file', 'get', fileType, fileId, 'attachment', '--tenant-id', runtime(), '--output', download]);
-      assertion('file-roundtrip-bytes', existsSync(download) && readFileSync(download, 'utf8') === contents, 'Downloaded bytes differ from uploaded fixture.');
+      const downloaded = eai(['resources', 'file', 'get', fileType, fileId, 'attachment', '--tenant-id', runtime(), '--output', download]);
+      assertion('file-roundtrip-bytes', existsSync(download) && readFileSync(download, 'utf8') === contents, 'Downloaded bytes differ from uploaded fixture.', false, downloaded);
       json(['resources', 'file', 'delete', fileType, fileId, 'attachment', '--tenant-id', runtime(), '--force', '--format', 'json']);
       absent('/v4/data/resources/' + encodeURIComponent(runtime()) + '/' + encodeURIComponent(fileType)
         + '/' + encodeURIComponent(fileId) + '/files/attachment', runtime());
@@ -2206,18 +2333,18 @@ function runLiveSmoke(cliPath, dependencies = {}) {
             const payload = parseJson(result.stdout, {});
             for (const row of payload.results || payload.resources || payload.created || payload.items || []) {
               const id = row.id || row.resource?.id;
-              if (typeof id === 'string' && id) { ids.push(id); batchIds.push(id); recordResource(pgType, id); }
+              if (typeof id === 'string' && id) { recordResource(pgType, id, result); ids.push(id); batchIds.push(id); }
             }
           } });
-        assertion('complete-batch-creation', ids.length === 2 && body.failed === 0 && body.succeeded === 2, operation + ' did not acknowledge every row.');
+        assertion('complete-batch-creation', ids.length === 2 && body.failed === 0 && body.succeeded === 2, operation + ' did not acknowledge every row.', false, body);
       }
       const file = join(projectRoot, 'batch-update.json');
       createJsonFile(file, batchIds.map((id, index) => ({ id, version: 1,
         data: { title: 'batch updated ' + index, status: 'batch-updated', count: index + 10 } })));
       const updated = json(['resources', 'batch-update', pgType, '--tenant-id', runtime(), '--file', file, '--format', 'json']);
-      assertion('complete-batch-update', updated.failed === 0 && updated.succeeded === batchIds.length, 'Batch update was partial.');
+      assertion('complete-batch-update', updated.failed === 0 && updated.succeeded === batchIds.length, 'Batch update was partial.', false, updated);
       const listed = json(['resources', 'list', pgType, '--tenant-id', runtime(), '--format', 'json']);
-      assertion('created-row-visible', (listed.docs || listed.resources || listed.items || []).some(row => row.id === pgId), 'List missed the exact created row.');
+      assertion('created-row-visible', (listed.docs || listed.resources || listed.items || []).some(row => row.id === pgId), 'List missed the exact created row.', false, listed);
       json(['resources', 'aggregate', pgType, '--tenant-id', runtime(), '--group-by', 'status',
         '--metrics', JSON.stringify({ total: { function: 'count' } }), '--format', 'json']);
       // Dedicated PostgreSQL queries must stay in one database. The three
@@ -2238,22 +2365,22 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const queried = json(['resources', 'query', '--tenant-id', runtime(), '--types', fixture.types.join(','), '--limit', '20', '--format', 'json']);
         assertion('query-' + fixture.backend + '-results-contract', Array.isArray(queried.results)
           && Number.isSafeInteger(queried.totalResults) && queried.totalResults === queried.results.length,
-        'Query did not return a complete results contract for ' + fixture.backend + '.');
+        'Query did not return a complete results contract for ' + fixture.backend + '.', false, queried);
         for (const [type, id, expected] of fixture.rows) {
           assertion('query-' + fixture.backend + '-created-row-' + id, queried.results.some(result => {
             const row = result && typeof result === 'object' ? result[type] : undefined;
             return row?.id === id && row.data && typeof row.data === 'object'
               && Object.entries(expected).every(([key, value]) => row.data[key] === value);
-          }), 'Query missed the exact created row or persisted data for ' + type + '.');
+          }), 'Query missed the exact created row or persisted data for ' + type + '.', false, queried);
         }
       }
-      let indexed = false;
+      let indexed = false, found;
       for (let attempt = 0; attempt < 10 && !indexed; attempt++) {
-        const found = json(['resources', 'search', term, '--tenant-id', runtime(), '--types', searchType, '--fulltext', '--format', 'json']);
+        found = json(['resources', 'search', term, '--tenant-id', runtime(), '--types', searchType, '--fulltext', '--format', 'json']);
         indexed = Array.isArray(found.results) && found.results.some(row => (row.id || row.resourceId || row.resource?.id) === searchId);
         if (!indexed && attempt < 9) wait(2000);
       }
-      assertion('exact-search-resource', indexed, 'Search did not return the exact run-created resource.');
+      assertion('exact-search-resource', indexed, 'Search did not return the exact run-created resource.', false, found);
     }
 
     if (env.EAI_E2E_WORKFLOW_PROVISION === '1') {
@@ -2267,14 +2394,16 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         if (body.tenantId !== runtime()) return;
         if (body.workflow?.objectType === 'shared-workflow-config' && body.workflow.workflowKey === key
           && body.workflow.action === 'created' && typeof body.workflow.id === 'string' && body.workflow.id) {
-          recordResource(body.workflow.objectType, body.workflow.id);
+          recordResource(body.workflow.objectType, body.workflow.id, result, { workflowKey: key });
           report.created.workflowIds.push(body.workflow.id); checkpoint();
         }
         if (body.app?.objectType === 'vertical-product-config' && body.app.appKey === appName
-          && body.app.configKey === 'workflow:' + key && body.app.action === 'created') recordResource(body.app.objectType, body.app.id);
+          && body.app.configKey === 'workflow:' + key && body.app.action === 'created') recordResource(body.app.objectType, body.app.id, result,
+            { verticalKey: appName, configKey: 'workflow:' + key });
         for (const row of Array.isArray(body.aiRuntime) ? body.aiRuntime : []) {
           if (row.action === 'created' && ((row.objectType === 'shared-ai-profile' && row.key === key + '-default-model')
-            || (row.objectType === 'shared-chatbot-config' && row.key === key + '-chat'))) recordResource(row.objectType, row.id);
+            || (row.objectType === 'shared-chatbot-config' && row.key === key + '-chat'))) recordResource(row.objectType, row.id, result,
+              row.objectType === 'shared-ai-profile' ? { profileKey: row.key } : { configKey: row.key });
         }
       } });
       assertion('workflow-provisioned-scope', provision.tenantId === runtime()
@@ -2283,10 +2412,10 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         && provision.app?.objectType === 'vertical-product-config' && provision.app.appKey === appName
         && provision.app.configKey === 'workflow:' + key && provision.app.action === 'created'
         && typeof provision.app.id === 'string' && Boolean(provision.app.id),
-      'Workflow provisioning did not acknowledge exact newly created workflow and app config resources.');
+      'Workflow provisioning did not acknowledge exact newly created workflow and app config resources.', false, provision);
       const id = readEnvValue(projectRoot, 'NEXT_PUBLIC_SMOKE_WORKFLOW_ID');
       assertion('workflow-provisioned-id', id === provision.workflow.id && provision.env?.NEXT_PUBLIC_SMOKE_WORKFLOW_ID === id,
-        'Provisioning did not save its exact acknowledged workflow resource ID.');
+        'Provisioning did not save its exact acknowledged workflow resource ID.', false, provision);
       const savedWorkflow = json(['resources', 'get', 'shared-workflow-config', id, '--tenant-id', runtime(), '--format', 'json']);
       const workflowData = savedWorkflow.data;
       assertion('workflow-config-persisted', savedWorkflow.id === id && workflowData?.tenantId === runtime()
@@ -2294,47 +2423,48 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         && Array.isArray(workflowData.consumedBy) && workflowData.consumedBy.includes(appName)
         && Array.isArray(workflowData.definition?.workflowDefinition?.stages)
         && workflowData.definition.workflowDefinition.stages.some(stage => stage.id === 'chat' && stage.code === 'chat'),
-      'Provisioned workflow config was not persisted in its exact runtime.');
+      'Provisioned workflow config was not persisted in its exact runtime.', false, savedWorkflow);
       const savedAppConfig = json(['resources', 'get', 'vertical-product-config', provision.app.id,
         '--tenant-id', runtime(), '--format', 'json']);
       const appConfigData = savedAppConfig.data;
       assertion('workflow-app-config-persisted', savedAppConfig.id === provision.app.id && appConfigData?.tenantId === runtime()
         && appConfigData.verticalKey === appName && appConfigData.configKey === 'workflow:' + key
         && appConfigData.config?.workflowKey === key && appConfigData.config.setupStatus === 'completed'
-        && appConfigData.config.setup?.stageIds?.chat === 'chat', 'Provisioned workflow app binding was not persisted.');
+        && appConfigData.config.setup?.stageIds?.chat === 'chat', 'Provisioned workflow app binding was not persisted.', false, savedAppConfig);
       const readiness = json(['workflow', 'status', key, '--tenant', runtime(), '--format', 'json']);
       assertion('workflow-status-exact-scope', readiness.workflowKey === key && readiness.tenantId === runtime()
         && ['available', 'not_ready', 'blocked', 'operator_required', 'paid_upgrade_required', 'rate_limited', 'upgrade_required', 'unsupported'].includes(readiness.status)
         && typeof readiness.reasonCode === 'string' && Boolean(readiness.reasonCode)
         && (readiness.status !== 'available' || (typeof readiness.runtimeWorkflowRef === 'string' && Boolean(readiness.runtimeWorkflowRef))),
-      'Workflow status did not return the exact public workflow key and runtime readiness contract.');
+      'Workflow status did not return the exact public workflow key and runtime readiness contract.', false, readiness);
       report.workflowReadiness = { workflowKey: key, status: readiness.status, reasonCode: readiness.reasonCode,
         executable: readiness.status === 'available' };
       if (readiness.status !== 'available') {
-        const entry = report.commands.at(-1);
+        const entry = evidence.receipt(readiness);
         entry.status = 'incomplete'; entry.coverageComplete = false;
         entry.reason = 'Workflow config was saved; executable AICore runtime binding is not available (' + readiness.status + ').';
       }
       checkpoint();
       if (env.EAI_E2E_CHAT === '1') {
         const chat = eai(['chat', 'send', 'Reply READY.', '--workflow', key, '--stage', 'chat']);
-        assertion('chat-response', /\bREADY\b/.test(chat.stdout), 'Chat did not return the expected fixture response.');
+        assertion('chat-response', /\bREADY\b/.test(chat.stdout), 'Chat did not return the expected fixture response.', false, chat);
       }
     }
     if (env.EAI_E2E_PROVISION_ENTRA === '1') {
       phase = 'app-sign-in'; entraAttempted = true;
+      let entra;
       try {
-        eai(['provision', 'entra', '--company-tenant', child(), '--app-key', appName, '--tenant-id', runtime(), '--create-local-secret', '--force']);
+        entra = eai(['provision', 'entra', '--company-tenant', child(), '--app-key', appName, '--tenant-id', runtime(), '--create-local-secret', '--force']);
       } finally { report.created.entraClientId = readEnvValue(projectRoot, 'ENTRA_CLIENT_ID'); checkpoint(); }
-      assertion('entra-client-captured', Boolean(report.created.entraClientId), 'Entra setup did not persist its client ID.');
+      assertion('entra-client-captured', Boolean(report.created.entraClientId), 'Entra setup did not persist its client ID.', false, entra);
       const auth = json(['app', 'auth', 'status', appName, '--tenant-id', runtime(), '--client-id', report.created.entraClientId, '--skip-validate', '--format', 'json']);
-      assertion('entra-runtime-authorized', auth.tenantAuthorizedApps?.status === 'authorized', 'Entra client was not authorized for the isolated runtime.');
+      assertion('entra-runtime-authorized', auth.tenantAuthorizedApps?.status === 'authorized', 'Entra client was not authorized for the isolated runtime.', false, auth);
       if (env.EAI_E2E_ROTATE_ENTRA_SECRET === '1') {
         const before = readEnvValue(projectRoot, 'ENTRA_CLIENT_SECRET');
-        eai(['provision', 'entra', '--rotate-secret'], { scopeTenantId: runtime() });
+        const rotated = eai(['provision', 'entra', '--rotate-secret'], { scopeTenantId: runtime() });
         const after = readEnvValue(projectRoot, 'ENTRA_CLIENT_SECRET');
         assertion('rotation-changed-local-credential', Boolean(before) && Boolean(after) && before !== after,
-          'Successful rotation did not replace the isolated app credential.');
+          'Successful rotation did not replace the isolated app credential.', false, rotated, { option: '--rotate-secret' });
         report.rotationCycle = { clientId: report.created.entraClientId, tenantId: runtime(), appKey: appName,
           commandDispatches: 1, credentialChanged: true }; checkpoint();
       }
@@ -2342,7 +2472,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
     if (env.EAI_E2E_BUILD !== '0') {
       phase = 'build';
       const build = appNpm('build', 600000);
-      assertion('consultant-app-build', build.status === 0, 'Scaffolded consultant app build failed.');
+      assertion('consultant-app-build', build.status === 0, 'Scaffolded consultant app build failed.', false, build);
     }
     if (env.EAI_E2E_DEPLOY === '1') {
       phase = 'managed-deploy';
@@ -2358,16 +2488,16 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       if (['GITHUB_IDENTITY_VERIFICATION_REQUIRED', 'GITHUB_LINK_REQUIRED', 'GITHUB_LINK_BROWSER_REQUIRED', 'GITHUB_LINK_PENDING',
         'GITHUB_LINK_SESSION_REQUIRED', 'GITHUB_LINK_SESSION_PENDING'].includes(deployed.error?.code)
         || deployed.status === 'pending_review' || deployed.classification === 'pending') {
-        report.commands.at(-1).status = 'blocked';
+        evidence.receipt(result).status = 'blocked';
         throw new SmokeBlocked('Managed deployment awaits actor verification, review or operation completion.');
       }
       assertion('exact-deployment-operation', result.status === 0 && deployed.tenantId === child()
         && deployed.targetTenantId === runtime() && deployed.appKey === appName && deployed.classification === 'succeeded'
         && typeof deployed.operationId === 'string' && Boolean(deployed.activeUrl) && Boolean(deployed.deploymentId),
-      'Managed deployment did not complete an exact operation bound to this run.');
+      'Managed deployment did not complete an exact operation bound to this run.', false, result);
       const doctor = json(['deploy', 'doctor', '--operation-id', deployed.operationId, '--app-key', appName, '--tenant-id', child(),
         '--target-tenant-id', runtime(), '--evidence-out', join(runRoot, 'deploy-doctor.json'), '--format', 'json'], { timeout: 180000 });
-      assertion('operation-bound-doctor', doctor.status === 'pass', 'Deployment doctor failed.');
+      assertion('operation-bound-doctor', doctor.status === 'pass', 'Deployment doctor failed.', false, doctor);
     }
   } catch (error) {
     originalError = error; report.status = error instanceof SmokeBlocked ? 'blocked' : 'failed'; report.error = redact(error.message);
@@ -2379,10 +2509,16 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const file = join(projectRoot, 'batch-delete.json'); createJsonFile(file, batchIds.map(id => ({ id })));
         const body = json(['resources', 'batch-delete', report.created.resources.find(row => batchIds.includes(row.id)).type,
           '--tenant-id', runtime(), '--file', file, '--force', '--format', 'json']);
-        assertion('complete-batch-delete', body.failed === 0 && body.succeeded === batchIds.length, 'Batch deletion was partial.');
+        assertion('complete-batch-delete', body.failed === 0 && body.succeeded === batchIds.length, 'Batch deletion was partial.', false, body);
         batchDeleted = true; return { acknowledged: batchIds.length };
       }, false);
       for (const row of [...report.created.resources].reverse()) cleanupStep('resource:' + row.type + '/' + row.id, () => {
+        if (row.ownership?.kind === 'tenant-owned-acknowledgment') {
+          const owned = json(['resources', 'get', row.type, row.id, '--tenant-id', runtime(), '--format', 'json']);
+          assertion('resource-owner-readback-before-cleanup', owned.id === row.id && owned.data?.tenantId === runtime()
+            && Object.entries(row.ownership.fields).every(([key, value]) => owned.data?.[key] === value),
+          'Resource acknowledgment lacks an authoritative exact tenant/owner readback; cleanup is blocked.', false, owned);
+        }
         const path = '/v4/data/resources/' + encodeURIComponent(runtime()) + '/' + encodeURIComponent(row.type) + '/' + encodeURIComponent(row.id);
         let alreadyAbsent = false;
         if (!batchDeleted && batchIds.includes(row.id)) {
@@ -2390,8 +2526,8 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           const body = parseJson(result.stdout, {});
           alreadyAbsent = result.status !== 0 && body.ok === false && body.status === 404;
           assertion('batch-fallback-resource-observed', alreadyAbsent || (result.status === 0 && body.ok === true && body.body?.id === row.id),
-            'Batch fallback could not verify the exact resource or its absence.');
-          report.commands.at(-1).status = 'passed'; checkpoint();
+            'Batch fallback could not verify the exact resource or its absence.', false, result);
+          evidence.receipt(result).status = 'passed'; checkpoint();
         }
         if (!alreadyAbsent && (!batchDeleted || !batchIds.includes(row.id)))
           json(['resources', 'delete', row.type, row.id, '--tenant-id', runtime(), '--force', '--format', 'json']);
@@ -2404,7 +2540,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         const result = json(['publicapi', 'delete', '/v4/platform/provisioning/entra-apps/' + encodeURIComponent(report.created.entraClientId),
           '--tenant-id', runtime(), '--data', JSON.stringify({ tenant_id: runtime(), delete_registration: true }), '--format', 'json']);
         assertion('entra-cleanup-receipt', entraDeletionReceiptVerified(result.body, report.created.entraClientId, runtime()),
-        'Entra deletion receipt did not prove authorization and registration absence.');
+        'Entra deletion receipt did not prove authorization and registration absence.', false, result);
         return { clientId: report.created.entraClientId, tenantId: runtime(), authorizationAbsent: true,
           registrationAbsent: true, registrationAbsenceVerified: true, absenceMethod: 'exact-deauthorization-and-graph-backed-registration-receipt' };
       });
@@ -2415,11 +2551,11 @@ function runLiveSmoke(cliPath, dependencies = {}) {
         assertion('app-cleanup-targets-isolated', plan?.tenantId === child() && plan?.appKey === appName
           && plan.cleanupContract === 'eai.app-scoped-cleanup.v2' && Array.isArray(plan.runtimeTenantIds)
           && plan.runtimeTenantIds.includes(child()) && plan.runtimeTenantIds.every(id => ownedTargets.includes(id)),
-        'App cleanup plan includes an unowned runtime target or lacks the app-scoped cleanup contract.');
+        'App cleanup plan includes an unowned runtime target or lacks the app-scoped cleanup contract.', false, plan);
         const receipt = json(['app', 'delete', appName, '--tenant-id', child(), '--confirm', appName, '--non-interactive', '--format', 'json'], { cwd: controlRoot });
         assertion('app-deletion-receipt', receipt.schemaVersion === 'eai.app-deletion-receipt.v1'
           && receipt.status === 'deleted' && receipt.verified === true && receipt.appKey === appName && receipt.tenantId === child()
-          && typeof receipt.operationId === 'string' && receipt.operationId.length > 0, 'Exact app deletion receipt was not verified.');
+          && typeof receipt.operationId === 'string' && receipt.operationId.length > 0, 'Exact app deletion receipt was not verified.', false, receipt);
         report.deletionCycle = { tenantId: child(), appKey: appName, enrollmentId: report.created.enrollmentId,
           deletionVerified: true, firstInventoryEmpty: false, recreatedSameKey: false }; checkpoint();
         let apps;
@@ -2428,25 +2564,26 @@ function runLiveSmoke(cliPath, dependencies = {}) {
             { cwd: controlRoot, allowFailure: true });
           if (result.status === 0) {
             apps = parseJson(result.stdout, undefined);
-            assertion('valid-app-inventory-json', apps && typeof apps === 'object', 'App inventory did not return JSON.');
+            evidence.bind(apps, evidence.receipt(result));
+            assertion('valid-app-inventory-json', apps && typeof apps === 'object', 'App inventory did not return JSON.', false, result);
             if (attempt === 0) report.deletionCycle.firstInventoryEmpty = Array.isArray(apps.apps) && apps.apps.length === 0;
             checkpoint();
             if (env.EAI_E2E_REQUIRE_FIRST_EMPTY === '1') assertion('first-app-inventory-empty',
-              report.deletionCycle.firstInventoryEmpty, 'The first app inventory after verified deletion must be successful and empty.');
+              report.deletionCycle.firstInventoryEmpty, 'The first app inventory after verified deletion must be successful and empty.', false, result);
             break;
           }
           if (env.EAI_E2E_REQUIRE_FIRST_EMPTY === '1') assertion('first-app-inventory-empty', false,
-            'The first app inventory after verified deletion failed; retrying cannot qualify first-read freshness.');
+            'The first app inventory after verified deletion failed; retrying cannot qualify first-read freshness.', false, result);
           const retryable = /\b(?:429 Too Many Requests|502 Bad Gateway|503 Service Unavailable|504 Gateway Timeout)\b/
             .test(result.stderr || '');
-          report.commands.at(-1).retryableReadFailure = retryable; checkpoint();
+          evidence.receipt(result).retryableReadFailure = retryable; checkpoint();
           if (!retryable || attempt === 2) throw new Error('App enrollment absence could not be verified after deletion.');
           wait(1000 * (attempt + 1));
         }
         assertion('app-enrollment-absent', Array.isArray(apps.apps) && !apps.apps.some(row =>
-          (row.data?.verticalKey || row.verticalKey) === appName || row.id === report.created.enrollmentId), 'App enrollment remains after deletion.');
+          (row.data?.verticalKey || row.verticalKey) === appName || row.id === report.created.enrollmentId), 'App enrollment remains after deletion.', false, apps);
         if (env.EAI_E2E_RECREATE_AFTER_DELETE === '1') {
-          assertion('recreate-same-owned-runtime', runtime() === child(), 'Recreation qualification requires the original run-owned runtime to be the company child.');
+          assertion('recreate-same-owned-runtime', runtime() === child(), 'Recreation qualification requires the original run-owned runtime to be the company child.', false, null);
           let recreatedId;
           try {
             const recreated = json(['app', 'create', appName, '--key', appName, '--tenant-id', child(), '--format', 'json'], {
@@ -2461,22 +2598,22 @@ function runLiveSmoke(cliPath, dependencies = {}) {
                 }
               } });
             assertion('new-enrollment-same-key', Boolean(recreatedId) && recreatedId !== report.created.enrollmentId
-              && recreated.response.app.id === recreatedId, 'Recreation must return a fresh enrollment ID for the same exact app key.');
+              && recreated.response.app.id === recreatedId, 'Recreation must return a fresh enrollment ID for the same exact app key.', false, recreated);
             report.deletionCycle.recreatedSameKey = true; report.deletionCycle.recreatedEnrollmentId = recreatedId; checkpoint();
             const inventory = json(['app', 'list', '--tenant-id', child(), '--format', 'json'], { cwd: controlRoot });
             assertion('recreated-enrollment-visible', Array.isArray(inventory.apps) && inventory.apps.length === 1
               && inventory.apps[0].id === recreatedId && inventory.apps[0].data?.verticalKey === appName,
-            'Recreated app inventory does not contain exactly the fresh same-key enrollment.');
+            'Recreated app inventory does not contain exactly the fresh same-key enrollment.', false, inventory);
           } finally {
             if (recreatedId) {
               const cleanup = json(['app', 'delete', appName, '--tenant-id', child(), '--confirm', appName,
                 '--non-interactive', '--format', 'json'], { cwd: controlRoot });
               assertion('recreated-app-deletion-receipt', cleanup.schemaVersion === 'eai.app-deletion-receipt.v1'
                 && cleanup.status === 'deleted' && cleanup.verified === true && cleanup.appKey === appName
-                && cleanup.tenantId === child(), 'Recreated app deletion was not verified.');
+                && cleanup.tenantId === child(), 'Recreated app deletion was not verified.', false, cleanup);
               const inventory = json(['app', 'list', '--tenant-id', child(), '--format', 'json'], { cwd: controlRoot });
               assertion('recreated-app-first-inventory-empty', Array.isArray(inventory.apps) && inventory.apps.length === 0,
-                'Recreated app cleanup did not produce an empty first inventory.');
+                'Recreated app cleanup did not produce an empty first inventory.', false, inventory);
             } else report.leftovers.push({ artifact: 'recreated-app', reason: 'Creation attempted without an exact acknowledged new enrollment; physical child cleanup remains required.' });
           }
         }
@@ -2489,22 +2626,22 @@ function runLiveSmoke(cliPath, dependencies = {}) {
           { cwd: controlRoot, scopeTenantId: parentId });
         assertion('child-hard-purge-receipt', receipt.id === id && receipt.deleted === true && receipt.hardPurged === true
           && receipt.response?.status === 'hard_purged' && receipt.response.parentTenantId === parentId,
-        'Parent-authorized leaf cleanup was not confirmed by the exact hard-purge receipt.');
+        'Parent-authorized leaf cleanup was not confirmed by the exact hard-purge receipt.', false, receipt);
         // Deleted-tenant policy fencing can deny management reads. Prove
         // absence through the still-authorized parent's complete inventory.
-        let inventoryComplete = false;
+        let inventoryComplete = false, children;
         for (let offset = 0; offset < 1000 && !inventoryComplete; offset += 100) {
-          const children = publicGet('/v4/platform/tenants/' + encodeURIComponent(parentId)
+          children = publicGet('/v4/platform/tenants/' + encodeURIComponent(parentId)
             + '/children?limit=100&offset=' + offset, parentId, { cwd: controlRoot });
           assertion('child-inventory-contract', Array.isArray(children) && children.length <= 100
             && children.every(row => typeof row?.id === 'string' && row.id.length > 0),
-          'Parent child inventory did not return a complete page of exact tenant IDs.');
+          'Parent child inventory did not return a complete page of exact tenant IDs.', false, children);
           assertion('purged-child-absent-from-parent', !children.some(row => row.id === id),
-            'The hard-purged child remains in its parent inventory.');
+            'The hard-purged child remains in its parent inventory.', false, children);
           inventoryComplete = children.length < 100;
         }
         assertion('complete-parent-child-inventory', inventoryComplete,
-          'Parent child inventory exceeded the bounded verification limit.');
+          'Parent child inventory exceeded the bounded verification limit.', false, children);
         return { tenantId: receipt.id, parentTenantId: receipt.response.parentTenantId, deleted: receipt.deleted,
           hardPurged: receipt.hardPurged, receiptStatus: receipt.response.status, absenceVerified: true,
           absenceMethod: 'complete-parent-children-inventory' };
@@ -2512,7 +2649,7 @@ function runLiveSmoke(cliPath, dependencies = {}) {
       if (runtimeOwned && runtime() !== child()) cleanupStep('runtime-tenant', () => deleteLeaf(runtime(), child()));
       cleanupStep('child-tenant', () => deleteLeaf(child(), parentTenantId));
     } else if (childAttempted) report.leftovers.push({ artifact: 'child-tenant', reason: 'Creation attempted without an acknowledged run-specific tenant ID.' });
-    report.coverage = coverageEvidence(report.commands);
+    report.coverage = coverageEvidence(report.executions);
     report.coverageComplete = report.coverage.every(row => row.status === 'passed');
     const artifactCleanup = report.cleanup.filter(row => row.artifact !== 'batch-resources');
     report.cleanupRequired = childAttempted || appAttempted || entraAttempted || artifactCleanup.length > 0;
@@ -2725,7 +2862,7 @@ function main() {
   else runLiveSmoke(args.cli);
 }
 
-module.exports = { runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, checkTraceability, candidateEvidence, entraDeletionReceiptVerified, TRACEABILITY, redact };
+module.exports = { runCommand, runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, checkTraceability, candidateEvidence, entraDeletionReceiptVerified, TRACEABILITY, redact };
 
 if (require.main === module) {
   try {

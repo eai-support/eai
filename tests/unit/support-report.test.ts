@@ -22,7 +22,7 @@ import {
   validateHarnessContext,
   type HarnessContext,
 } from '../../src/lib/support-harness.js';
-import { setActiveProfile } from '../../src/lib/profile.js';
+import { getConfigFilePath, loadProfileConfig, setActiveProfile } from '../../src/lib/profile.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import {
   harnessContextFixture,
@@ -1030,14 +1030,18 @@ describe('local support actions use the trusted configured website', () => {
     const home = await createTestEnvironment();
     contexts.push(home);
     vi.stubEnv('HOME', home.dir);
+    vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+    syncBuiltinESMExports();
     vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://support-env.fixture.invalid' : '');
     if (setting === 'named-profile') {
       setActiveProfile('fixture');
-      await mkdir(join(home.dir, '.eai'), { recursive: true });
+      await mkdir(join(home.dir, '.eai'), { recursive: true, mode: 0o700 });
       await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
         publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
         authClientId: 'fixture', websiteUrl: 'https://support-profile.fixture.invalid',
-      } } }));
+      } } }), { mode: 0o600 });
+      expect(getConfigFilePath()).toBe(join(home.dir, '.eai', 'config.json'));
+      expect(await loadProfileConfig('fixture')).toMatchObject({ websiteUrl: 'https://support-profile.fixture.invalid' });
     }
     const expected = setting === 'default' ? 'https://www.enterpriseaigroup.com'
       : setting === 'environment' ? 'https://support-env.fixture.invalid' : 'https://support-profile.fixture.invalid';
@@ -1098,14 +1102,18 @@ test.each(['environment', 'named-profile'] as const)('explicit decline resolves 
   const home = await createTestEnvironment();
   contexts.push(home);
   vi.stubEnv('HOME', home.dir);
+  vi.spyOn(os, 'homedir').mockReturnValue(home.dir);
+  syncBuiltinESMExports();
   vi.stubEnv('EAI_WEBSITE_URL', setting === 'environment' ? 'https://decline-env.fixture.invalid' : '');
   if (setting === 'named-profile') {
     setActiveProfile('fixture');
-    await mkdir(join(home.dir, '.eai'), { recursive: true });
+    await mkdir(join(home.dir, '.eai'), { recursive: true, mode: 0o700 });
     await writeFile(join(home.dir, '.eai', 'config.json'), JSON.stringify({ profiles: { fixture: {
       publicApiUrl: 'https://api.fixture.invalid', authTenantName: 'fixture', authTenantId: 'fixture',
       authClientId: 'fixture', websiteUrl: 'https://decline-profile.fixture.invalid',
-    } } }));
+    } } }), { mode: 0o600 });
+    expect(getConfigFilePath()).toBe(join(home.dir, '.eai', 'config.json'));
+    expect(await loadProfileConfig('fixture')).toMatchObject({ websiteUrl: 'https://decline-profile.fixture.invalid' });
   }
   const file = createHarnessContextFile();
   const loadTokens = vi.spyOn(auth, 'loadTokens').mockRejectedValue(new Error('auth must not run'));

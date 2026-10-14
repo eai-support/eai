@@ -16,8 +16,8 @@ function cycleReceipt(report) {
   const context = { environment: report.environment, publicApiUrl: report.expectedPublicApi };
   const rotation = report.rotationCycle || {}, deletion = report.deletionCycle || {};
   const registration = report.cleanup?.find(row => row.artifact === 'entra-registration');
-  const rotations = (report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
-  const builds = (report.commands || []).filter(row => row.command === 'npm run build');
+  const rotations = (report.executions || report.commands || []).filter(row => row.command === 'eai provision entra' && row.options?.includes('--rotate-secret'));
+  const builds = (report.executions || report.commands || []).filter(row => row.command === 'npm run build');
   const stepEvidence = cycleStepEvidence(report);
   const ownershipEvidence = cycleOwnershipEvidence(report);
   const stepsVerified = cycleStepsVerified(stepEvidence, { appKey: report.created?.appKey, tenantId: rotation.tenantId,
@@ -161,7 +161,8 @@ function runQualification(options, dependencies = {}) {
             EAI_E2E_TEST_USER_OID: foundation.actors.adminA.oid, EAI_E2E_PARENT_TENANT_ID: foundation.workspaces.a.id,
             EAI_E2E_EXPECTED_PUBLIC_API: foundation.publicApiUrl, EAI_E2E_CLEANUP_PREFLIGHT: options.cleanupPreflight,
             EAI_E2E_BUILD: '1', EAI_E2E_PROVISION_ENTRA: '1', EAI_E2E_ROTATE_ENTRA_SECRET: '1',
-            EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1' }, log: () => {} });
+            EAI_E2E_SYNC_SCHEMA_APPLY: '1', EAI_E2E_REQUIRE_FIRST_EMPTY: '1', EAI_E2E_RECREATE_AFTER_DELETE: '1',
+            EAI_E2E_CANONICAL_CYCLE_COMMANDS: '1' }, log: () => {} });
           requireCondition(ownedReportValid(result, foundation, candidate, currentPreflight),
             'Lifecycle evidence belongs to another candidate, actor, owned scope or deployed cleanup contract.');
         } catch (error) {

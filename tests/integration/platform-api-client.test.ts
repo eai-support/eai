@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { mkdtemp, rm } from 'node:fs/promises'
+import { createRequire } from 'node:module'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, test, vi } from 'vitest'
@@ -8,9 +9,515 @@ vi.mock('../../src/lib/auth.js', () => ({
   getAccessToken: vi.fn(async () => '<fixture-access-token>'),
 }))
 
-import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText } from '../../src/lib/api.js'
+import { INIT_APP_CREATE_REQUEST_TIMEOUT_MS, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, MANAGED_SOURCE_UPLOAD_TIMEOUT_MS, PlatformAPIClient, isChildTenantCreateRequest, isManagedPublicRequestTimeout, parseApiError, readManagedPublicResponseText, withPublicRequestObservation } from '../../src/lib/api.js'
 import { getAccessToken } from '../../src/lib/auth.js'
 import { pollExactOperation, readExactOperation } from '../../src/commands/eai-managed-deploy-operation.js'
+
+describe('QA primary scope follows declared client routes', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient) => Promise<Response>; refuse?: string[] }[] = [
+    { name: 'child creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned', parent: tenant }) },
+    { name: 'root creation', command: 'eai workspace create', invoke: client => client.createTenant({ name: 'Owned', slug: 'owned' }) },
+    { name: 'child bootstrap', command: 'eai workspace bootstrap-admin', invoke: client => client.bootstrapChildTenantAdmin(tenant, 'owned-child', { userOid: 'owned-actor', userEmail: 'owned@example.invalid' }) },
+    { name: 'parent deletion', command: 'eai workspace delete', invoke: client => client.deleteTenant('owned-child', { parentTenantId: tenant, forceHardPurge: true }) },
+    { name: 'direct deletion', command: 'eai workspace delete', invoke: client => client.deleteTenant(tenant) },
+    { name: 'storage inventory', command: 'eai workspace storage list', invoke: client => client.getStorageStatus() },
+    { name: 'storage readiness', command: 'eai workspace storage verify', invoke: client => client.getStorageDoctor() },
+    { name: 'app creation', command: 'eai app create', invoke: client => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: 'owned-app' }), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app inventory', command: 'eai app list', invoke: client => client.listResources('tenant-vertical-enrollment'), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app selection', command: 'eai app select', invoke: client => client.listResources('tenant-vertical-enrollment') },
+    { name: 'app provisioning start', command: 'eai app provision', invoke: client => client.createAppProvisioningJob('owned-app'), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app provisioning observation', command: 'eai app provision', invoke: client => client.getAppProvisioningJob('owned-app', 'owned-operation'), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app deletion', command: 'eai app delete', invoke: client => client.deleteApp(tenant, 'owned-app', { confirmationAppKey: 'owned-app', ownershipManifestHash: 'a'.repeat(64), environments: [] }), refuse: ['eai app auth status', 'eai vertical auth status'] },
+    { name: 'app authorization status', command: 'eai app auth status', invoke: client => client.getTenantAuthorizedApps(tenant) },
+    { name: 'membership inventory', command: 'eai user list', invoke: client => client.listTenantMembers(tenant) },
+    { name: 'role definitions', command: 'eai user roles', invoke: client => client.listTenantRoleDefinitions(tenant) },
+    { name: 'member invitation', command: 'eai user invite', invoke: client => client.inviteTenantMember(tenant, { email: 'owned@example.invalid', role: 'tenant-viewer' }) },
+    { name: 'email role assignment', command: 'eai user role set', invoke: client => client.inviteTenantMember(tenant, { email: 'owned@example.invalid', role: 'tenant-viewer' }) },
+    { name: 'member role update', command: 'eai user role set', invoke: client => client.updateTenantMemberRole(tenant, 'owned-member', { role: 'tenant-viewer' }) },
+    { name: 'index planning', command: 'eai resources indexes-plan', invoke: client => client.planResourceIndexes(['owned-resource']) },
+    { name: 'object type verification', command: 'eai verify', invoke: client => client.getPublishedObjectTypes({ limit: 1 }) },
+    { name: 'schema verification', command: 'eai verify', invoke: client => client.getSchema() },
+    { name: 'doctor identity read', command: 'eai doctor', invoke: client => client.requestPublicApi('/v4/identity/me') },
+    { name: 'Object Type diff inventory', command: 'eai types diff', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type pull inventory', command: 'eai types pull', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type pull schema fallback', command: 'eai types pull', invoke: client => client.getSchema() },
+    { name: 'Object Type seed inventory', command: 'eai types seed', invoke: client => client.getPublishedObjectTypes() },
+    { name: 'Object Type seed readback', command: 'eai types seed', invoke: client => client.getSchema() },
+    { name: 'Object Type seed creation', command: 'eai types seed', invoke: client => client.createObjectType({ name: 'OwnedResource', slug: 'owned-resource' }), refuse: ['eai types diff', 'eai types pull'] },
+    { name: 'Object Type seed update', command: 'eai types seed', invoke: client => client.updateObjectType('owned-definition', { slug: 'owned-resource' }), refuse: ['eai types diff', 'eai types pull'] },
+    { name: 'chat send', command: 'eai chat send', invoke: client => client.sendChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat stream'] },
+    { name: 'chat stream', command: 'eai chat stream', invoke: client => client.streamChat('owned-workflow', 'chat', 'controlled', 'owned-conversation'), refuse: ['eai chat send'] },
+    { name: 'PublicAPI passive bundle request', command: 'eai provision resourceapi-bundle', invoke: client => client.requestPublicApi(`/v4/platform/tenants/${tenant}/resourceapi/passive-bundle`, { method: 'POST', body: { installId: 'owned-install', apply: true } }) },
+    { name: 'workspace storage provisioning', command: 'eai provision storage', invoke: client => client.provisionStorage({ backend: 'all' }) },
+    { name: 'PublicAPI passive refresh request', command: 'eai provision resourceapi-refresh', invoke: client => client.requestPublicApi(`/v4/platform/tenants/${tenant}/resourceapi/passive-refresh`, { method: 'POST', body: { installId: 'owned-install' } }) },
+    { name: 'storage verification inventory', command: 'eai verify storage', invoke: client => client.getResourceStorageStatus() },
+    { name: 'storage verification doctor', command: 'eai verify storage', invoke: client => client.getResourceStorageDoctor() },
+  ]
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))(
+    'accepts actual $name at $gateway and refuses wrong methods', async ({ command, invoke, refuse, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await invoke(new PlatformAPIClient(gateway, tenant))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(observed.tenantId).toBe(tenant)
+      expect(primaryTransportMatches(command, observed)).toBe(true)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(true)
+      const invalidMethod = observed.method === 'GET' ? 'DELETE' : 'HEAD'
+      expect(primaryTransportMatches(command, { ...observed, method: invalidMethod })).toBe(false)
+      for (const candidate of refuse || []) {
+        expect(primaryTransportMatches(candidate, observed)).toBe(false)
+        expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+      }
+      const alias = command.startsWith('eai workspace ') ? command.replace('eai workspace ', 'eai tenant ')
+        : command.startsWith('eai app ') ? command.replace('eai app ', 'eai vertical ') : undefined
+      if (alias) expect(primaryTransportMatches(alias, observed)).toBe(true)
+    })
+  test.each([
+    { command: 'eai workspace create', method: 'POST', path: `/v4/platform/tenants/${tenant}/children-malicious` },
+    { command: 'eai workspace create', method: 'POST', path: `/v4/platform/tenants/${tenant}/children/unexpected` },
+    { command: 'eai workspace bootstrap-admin', method: 'POST', path: `/v4/platform/tenants/${tenant}-foreign/children/child/bootstrap-admin` },
+    { command: 'eai workspace bootstrap-admin', method: 'POST', path: `/v4/platform/tenants/${tenant}/children/child/bootstrap-admin-malicious` },
+    { command: 'eai workspace delete', method: 'POST', path: `/v4/platform/tenants/${tenant}-foreign/delete` },
+    { command: 'eai workspace delete', method: 'DELETE', path: `/v4/platform/tenants/${tenant}-foreign` },
+    { command: 'eai workspace delete', method: 'DELETE', path: `/v4/platform/tenants/${tenant}/children/child/delete-malicious` },
+    { command: 'eai app create', method: 'POST', path: `/v4/platform/tenants/${tenant}/apps-malicious` },
+    { command: 'eai app list', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious` },
+    { command: 'eai app select', method: 'GET', path: `/v4/data/resources/${tenant}/tenant-vertical-enrollment-malicious/id` },
+    { command: 'eai app auth status', method: 'GET', path: `/v4/platform/tenants/${tenant}/authorized-apps-malicious` },
+    { command: 'eai app auth status', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/authorized-apps` },
+    { command: 'eai user list', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/users` },
+    { command: 'eai user roles', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/role-definitions` },
+    { command: 'eai user invite', method: 'POST', path: `/v4/platform/users/foreign/invite` },
+    { command: 'eai resources indexes-plan', method: 'POST', path: '/v4/data/resources/schema/indexes/plan-malicious' },
+    { command: 'eai verify', method: 'GET', path: '/v4/data/resources/object-types-malicious' },
+    { command: 'eai verify', method: 'POST', path: '/v4/data/resources/object-types' },
+  ])('does not qualify undeclared $command route $path', ({ command, method, path }) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
+      transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['/health', '/v4/identity/me'].flatMap(path =>
+    ['POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'].map(method => ({ path, method }))))
+    ('doctor refuses $method on the read-only $path transport', ({ path, method }) => {
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+        tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+      expect(primaryTransportMatches('eai doctor', { ...observed, method: 'GET' })).toBe(true)
+      expect(primaryTransportMatches('eai doctor', observed)).toBe(false)
+      expect(observedScopeVerified({ command: 'eai doctor', executionId, scopeTenantId: tenant,
+        publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+    })
+})
+
+describe('QA self-provisioning uses actual identity route and header namespace', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  afterEach(() => vi.restoreAllMocks())
+  test.each([tenant, 'system', ''].flatMap(namespace => ['https://example.test', 'https://example.test/public'].map(gateway => ({ namespace, gateway }))))(
+    'matches actual provisionMe at $gateway with namespace $namespace without borrowing body scope', async ({ namespace, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      const response = await new PlatformAPIClient(gateway, namespace).provisionMe()
+      const [url, request] = fetchMock.mock.calls[0]
+      const metadata = withPublicRequestObservation({}, response).request as { tenantId: string | null; publicApiUrl: string; proofKind: string }
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, ...metadata,
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(new Headers(request?.headers).get('X-Tenant-Id')).toBe(namespace === tenant ? tenant : null)
+      expect(metadata.tenantId).toBe(namespace === tenant ? tenant : null)
+      expect(JSON.parse(String(request?.body))).toEqual({ tenant_id: namespace })
+      expect(primaryTransportMatches('eai user provision-me', observed)).toBe(true)
+      expect(observedScopeVerified({ command: 'eai user provision-me', executionId, scopeTenantId: tenant,
+        publicApiUrl: gateway, transportObservations: [observed] })).toBe(namespace === tenant)
+      expect(primaryTransportMatches('eai user provision-me', { ...observed, method: 'GET' })).toBe(false)
+    })
+  test.each(['https://example.test', 'https://example.test/public'])(
+    'another user provisioning SDK route cannot qualify provision-me at %s', async gateway => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await new PlatformAPIClient(gateway, tenant).provisionUserToTenant(tenant, 'another-user')
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+        method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(primaryTransportMatches('eai user provision-me', observed)).toBe(false)
+      expect(observedScopeVerified({ command: 'eai user provision-me', executionId, scopeTenantId: tenant,
+        publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+    })
+})
+
+describe('QA provision and deploy require their declared primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified, requiresProtectedScope } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  const appKey = 'owned-app', operationId = 'cli-managed-owned', targetTenant = 'owned-runtime'
+  const routes: { name: string; commands: string[]; invoke: (client: PlatformAPIClient) => Promise<unknown>; response?: Record<string, unknown> }[] = [
+    { name: 'Entra create', commands: ['eai provision entra'], invoke: client => client.provisionEntraApp({ tenantId: tenant, appName: appKey, redirectUris: [] }), response: { client_id: 'owned-client' } },
+    { name: 'Entra rotate', commands: ['eai provision entra'], invoke: client => client.rotateEntraAppSecret({ tenantId: tenant, clientId: 'owned-client' }), response: { client_id: 'owned-client', tenant_id: tenant, client_secret: '<fixture-secret>' } },
+    { name: 'Entra delete', commands: ['eai provision entra'], invoke: client => client.deprovisionEntraApp({ tenantId: tenant, clientId: 'owned-client' }), response: {
+      client_id: 'owned-client', tenant_id: tenant, tenant_deauthorization: { removed: true, already_absent: false },
+      app_registration_found: true, app_registration_deleted: true, app_registration_already_absent: false, app_registration_absence_verified: true,
+    } },
+    { name: 'managed source preparation', commands: ['eai deploy app'], invoke: client => client.prepareCliManagedSource(tenant, appKey, {
+      schemaVersion: 'eai.cli_managed_source_preparation.v1', templateCommitSha: 'a'.repeat(40), bundleSha256: 'sha256:' + 'b'.repeat(64),
+      configHash: 'sha256:' + 'c'.repeat(64), fileCount: 2, totalBytes: 120, githubLinkSessionId: 'owned-link',
+      targetTenantId: targetTenant, environment: 'preview', idempotencyKey: executionId,
+    }) },
+    // Shared prerequisite reads do not prove the Portal handoff or external doctor probes.
+    { name: 'exact managed source read', commands: ['eai deploy app'], invoke: client => client.getCliManagedSourceOperation(tenant, appKey, operationId, targetTenant, 'preview') },
+    { name: 'exact deployment read', commands: ['eai deploy app'], invoke: client => client.getManagedDeploymentOperation(tenant, appKey, operationId, targetTenant) },
+    { name: 'customer source registration', commands: ['eai deploy app'], invoke: client => client.registerSourceUnknownApp(tenant, appKey, { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'connect-existing' }) },
+    { name: 'customer workflow setup', commands: ['eai deploy app'], invoke: client => client.setupSourceUnknownWorkflow(tenant, appKey, { environment: 'preview', targetTenantId: targetTenant }) },
+    { name: 'customer runtime bootstrap', commands: ['eai deploy app'], invoke: client => client.bootstrapSourceUnknownRuntime(tenant, appKey, 'preview', 'source-unknown-owned', targetTenant) },
+    { name: 'customer retry handoff', commands: ['eai deploy app'], invoke: client => client.requestSourceUnknownDeployment(tenant, appKey, { operationId: 'source-unknown-owned', targetTenantId: targetTenant }) },
+  ]
+  const candidates = ['eai provision entra', 'eai provision unknown-action', 'eai deploy app', 'eai deploy doctor',
+    'eai deploy source move', 'eai deploy source unknown-action', 'eai deploy unknown-action', 'eai deploy trigger', 'eai deploy status',
+    'eai deploy setup', 'eai deploy env', 'eai deploy source validate']
+  const gateways = ['https://dev-api.au.myenterprise.ai/public', 'https://test-api.au.myenterprise.ai/public']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => gateways.map(gateway => ({ ...route, gateway }))))(
+    '$name binds the actual SDK method and path at $gateway', async ({ commands, invoke, response, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(response || {})))
+      await invoke(new PlatformAPIClient(gateway, tenant))
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(observed.tenantId).toBe(tenant)
+      for (const command of commands) {
+        expect(primaryTransportMatches(command, observed)).toBe(true)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(true)
+        expect(primaryTransportMatches(command, { ...observed, method: 'HEAD' })).toBe(false)
+      }
+      for (const command of candidates) {
+        const expected = commands.includes(command)
+        expect(primaryTransportMatches(command, observed), `${command} cannot borrow ${request?.method} ${observed.path}`).toBe(expected)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(expected)
+      }
+    })
+  test.each([
+    { name: 'app enrollment', invoke: (client: PlatformAPIClient) => client.createTenantApp(tenant, { appDisplayName: 'Owned', verticalKey: appKey }) },
+    { name: 'actor link creation', invoke: (client: PlatformAPIClient) => client.createCliManagedGithubLinkSession(tenant, appKey, { schemaVersion: 'eai.cli_managed_github_link.v1', targetTenantId: targetTenant, environment: 'preview', idempotencyKey: executionId }) },
+    { name: 'actor link read', invoke: (client: PlatformAPIClient) => client.getCliManagedGithubLinkSession(tenant, appKey, 'owned-link', targetTenant, 'preview') },
+    { name: 'latest deployment pointer', invoke: (client: PlatformAPIClient) => client.getLatestSourceUnknownDeployment(tenant, appKey) },
+    { name: 'schema inventory', invoke: (client: PlatformAPIClient) => client.getSchema() },
+  ])('$name cannot substitute for a primary provision or deploy call', async ({ invoke }) => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await invoke(new PlatformAPIClient(gateway, tenant))
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    for (const command of candidates) {
+      expect(primaryTransportMatches(command, observed)).toBe(false)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+    }
+  })
+  test.each([
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/another-capability' },
+    { command: 'eai provision entra', method: 'GET', path: '/v4/platform/provisioning/entra-apps' },
+    { command: 'eai provision entra', method: 'DELETE', path: '/v4/platform/provisioning/entra-apps' },
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/entra-apps/owned-client' },
+    { command: 'eai provision entra', method: 'POST', path: '/v4/platform/provisioning/entra-apps/owned-client/rotate-secret/extra' },
+    { command: 'eai provision entra', method: 'DELETE', path: '/v4/platform/provisioning/entra-apps/owned-client/rotate-secret' },
+    { command: 'eai deploy app', method: 'POST', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/source-unknown/another-capability` },
+    { command: 'eai deploy app', method: 'GET', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/managed-deployments/operations/${operationId}/extra` },
+    { command: 'eai deploy source move', method: 'GET', path: `/v4/platform/tenants/${tenant}/apps/${appKey}/cli-managed-source/operations/${operationId}/extra` },
+    { command: 'eai deploy doctor', method: 'GET', path: `/v4/platform/tenants/${tenant}-foreign/apps/${appKey}/managed-deployments/operations/${operationId}` },
+  ])('rejects undeclared $command $method $path', ({ command, method, path }) => {
+    const gateway = gateways[0], observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each([
+    { command: 'eai deploy source move', invoke: (client: PlatformAPIClient) => client.getCliManagedSourceOperation(tenant, appKey, operationId, targetTenant, 'preview') },
+    { command: 'eai deploy doctor', invoke: (client: PlatformAPIClient) => client.getManagedDeploymentOperation(tenant, appKey, operationId, targetTenant) },
+  ])('$command cannot qualify external work from its actual prerequisite SDK read', async ({ command, invoke }) => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await invoke(new PlatformAPIClient(gateway, tenant))
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(observed.tenantId).toBe(tenant)
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['system', ''])('Entra body scope cannot replace the actual %s client namespace', async clientTenant => {
+    const gateway = gateways[0], fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ client_id: 'owned-client' })))
+    await new PlatformAPIClient(gateway, clientTenant).provisionEntraApp({ tenantId: tenant, appName: appKey, redirectUris: [] })
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+      tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(observed.tenantId).toBeNull()
+    expect(observedScopeVerified({ command: 'eai provision entra', executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['eai deploy setup', 'eai deploy env', 'eai deploy source validate'])('preserves offline scope exemption for %s', command => {
+    expect(requiresProtectedScope(command)).toBe(false)
+  })
+})
+
+describe('QA app source actions require their declared primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111', executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { action: string; invoke: (client: PlatformAPIClient) => Promise<Response>; equivalent?: string[] }[] = [
+    { action: 'connect-existing', invoke: client => client.registerSourceUnknownApp(tenant, 'owned-app', { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'connect-existing' }), equivalent: ['adopt-observed'] },
+    { action: 'adopt-observed', invoke: client => client.registerSourceUnknownApp(tenant, 'owned-app', { repoOwner: 'controlled', repoName: 'owned', adoptionMode: 'adopted-observed' }), equivalent: ['connect-existing'] },
+    { action: 'workflow-setup', invoke: client => client.setupSourceUnknownWorkflow(tenant, 'owned-app', { environment: 'dev' }) },
+    { action: 'workflow-evidence', invoke: client => client.submitSourceUnknownWorkflowEvidence(tenant, 'owned-app', {
+      operationId: 'source-unknown-owned', nonce: 'controlled-nonce', workflowPath: '.github/workflows/eai-app.yml', workflowBlobSha: 'a'.repeat(40),
+      collectorDigest: 'sha256:' + 'b'.repeat(64), ref: 'refs/heads/main', commitSha: 'a'.repeat(40), configHash: 'b'.repeat(64),
+      artifactDigest: 'sha256:' + 'b'.repeat(64), imageArtifact: { id: 1, name: 'eai-generated-app-image', archiveDigest: 'sha256:' + 'b'.repeat(64) },
+      imageDigest: 'sha256:' + 'b'.repeat(64), schemaProvenance: { templateVersion: 'controlled', baseTemplateSha: 'a'.repeat(40), schemaDigest: 'sha256:' + 'b'.repeat(64), validatorDigest: 'sha256:' + 'b'.repeat(64) },
+      workflowRun: { id: 1, attempt: 1 }, validationSummary: { status: 'passed' },
+    }, 'controlled-oidc-token') },
+    { action: 'deploy-source-unknown', invoke: client => client.requestSourceUnknownDeployment(tenant, 'owned-app', { operationId: 'source-unknown-owned' }) },
+    { action: 'deploy-source-unknown-status', invoke: client => client.getLatestSourceUnknownDeployment(tenant, 'owned-app') },
+  ]
+  const candidates = [...routes.map(row => row.action), 'create', 'delete', 'provision', 'auth status', 'unknown-action']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://dev-api.au.myenterprise.ai/public', 'https://test-api.au.myenterprise.ai/public'].map(gateway => ({ ...route, gateway }))))(
+    '$action uses its actual SDK primary route at $gateway', async ({ action, invoke, equivalent, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      const client = new PlatformAPIClient(gateway, tenant)
+      await invoke(client)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+        tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      for (const candidate of candidates) for (const group of ['app', 'vertical']) {
+        const expected = candidate === action || equivalent?.includes(candidate) === true, command = `eai ${group} ${candidate}`
+        expect(primaryTransportMatches(command, observed), `${command} cannot borrow ${action}`).toBe(expected)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(expected)
+      }
+      const command = 'eai app ' + action
+      expect(primaryTransportMatches(command, { ...observed, method: observed.method === 'GET' ? 'POST' : 'GET' })).toBe(false)
+      fetchMock.mockClear(); await client.listResources('tenant-vertical-enrollment')
+      const [readUrl, readRequest] = fetchMock.mock.calls[0]
+      const auxiliary = { ...observed, method: readRequest?.method || 'GET', path: new URL(String(readUrl)).pathname }
+      expect(primaryTransportMatches(command, auxiliary)).toBe(false)
+      expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [auxiliary] })).toBe(false)
+    })
+})
+
+describe('QA resource operations require their actual route shape', () => {
+  const { primaryTransportMatches, observedScopeVerified, observationValid } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const routes: { command: string; invoke: (client: PlatformAPIClient, type: string, file: string) => Promise<Response>;
+    equivalent?: string[] }[] = [
+    { command: 'eai resources list', invoke: (client, type) => client.listResources(type) },
+    { command: 'eai resources get', invoke: (client, type) => client.getResource(type, 'owned-id') },
+    { command: 'eai resources create', invoke: (client, type) => client.createResource(type, { value: 0 }) },
+    { command: 'eai resources update', invoke: (client, type) => client.updateResource(type, 'owned-id', { value: 0 }, 1) },
+    { command: 'eai resources delete', invoke: (client, type) => client.deleteResource(type, 'owned-id') },
+    { command: 'eai resources batch-create', invoke: (client, type) => client.batchCreateResources(type, [{ data: { value: 0 } }]) },
+    { command: 'eai resources batch-import', invoke: (client, type) => client.batchImportResources(type, [{ data: { value: 0 } }], { projectionMode: 'deferred' }) },
+    { command: 'eai resources batch-update', invoke: (client, type) => client.batchUpdateResources(type, [{ id: 'owned-id', data: { value: 0 }, version: 1 }]) },
+    { command: 'eai resources batch-delete', invoke: (client, type) => client.batchDeleteResources(type, ['owned-id']) },
+    { command: 'eai resources aggregate', invoke: (client, type) => client.aggregateResources(type, { groupBy: ['value'], metrics: { count: { operation: 'count' } } }) },
+    { command: 'eai resources query', invoke: (client, type) => client.queryResources({ object_types: [type], limit: 1 }) },
+    { command: 'eai resources search', invoke: (client, type) => client.searchResources({ query: 'owned', objectTypes: [type] }) },
+    { command: 'eai resources storage status', invoke: client => client.getResourceStorageStatus() },
+    { command: 'eai resources storage doctor', invoke: client => client.getResourceStorageDoctor(), equivalent: ['eai resources doctor'] },
+    { command: 'eai resources doctor', invoke: client => client.getStorageDoctor(), equivalent: ['eai resources storage doctor'] },
+    { command: 'eai resources performance-status', invoke: client => client.getResourceStorageSchemaStatus() },
+    { command: 'eai resources sync-schema', invoke: client => client.syncStorageSchema({ objectTypes: ['owned-resource'] }) },
+    { command: 'eai resources schema', invoke: client => client.getSchema() },
+    { command: 'eai resources indexes-plan', invoke: client => client.planResourceIndexes(['owned-resource']) },
+    { command: 'eai resources cache-refresh', invoke: client => client.refreshResourceCache(['owned-resource'], 'Controlled scope') },
+    { command: 'eai resources file upload', invoke: (client, type, file) => client.uploadResourceFile(type, 'owned-id', 'document', file) },
+    { command: 'eai resources file get', invoke: (client, type) => client.downloadResourceFile(type, 'owned-id', 'document') },
+    { command: 'eai resources file delete', invoke: (client, type) => client.deleteResourceFile(type, 'owned-id', 'document') },
+  ]
+  const candidates = [...routes.map(route => route.command), 'eai resources indexes-apply', 'eai resources unsupported-action']
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].flatMap(gateway =>
+    ['owned-resource', 'OwnedResource'].map(type => ({ ...route, gateway, type })))))
+    ('$command uses its declared operation with $type at $gateway', async ({ command, invoke, equivalent, gateway, type }) => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-resource-route-contract-'))
+      try {
+        const file = join(home, 'owned.txt'); await writeFile(file, 'controlled')
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+        const response = await invoke(new PlatformAPIClient(gateway, tenant), type, file)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [url, request] = fetchMock.mock.calls[0]
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+          tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+          method: request?.method || 'GET', path: new URL(String(url)).pathname }
+        expect(observed.tenantId).toBe(tenant)
+        for (const candidate of candidates) {
+          const expected = candidate === command || equivalent?.includes(candidate) === true
+          expect(primaryTransportMatches(candidate, observed), `${candidate} cannot borrow ${command} evidence`).toBe(expected)
+          expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway,
+            transportObservations: [observed] })).toBe(expected)
+        }
+        if (command === 'eai resources batch-import') {
+          expect(observed.path.endsWith('/owned-resource/batch/import')).toBe(true)
+          expect(JSON.parse(String(request?.body))).toEqual({ items: [{ data: { value: 0 } }], projectionMode: 'deferred' })
+        }
+        const wrongMethod = observed.method === 'GET' ? 'PATCH' : 'HEAD'
+        expect(primaryTransportMatches(command, { ...observed, method: wrongMethod })).toBe(false)
+        if (['create', 'batch-create', 'batch-import', 'delete', 'batch-delete'].includes(command.split(' ')[2])) {
+          const metadata = withPublicRequestObservation({}, response).request as Record<string, unknown>
+          const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, ...metadata, source: 'resource-json' }
+          expect(metadata).toEqual({ publicApiUrl: gateway, tenantId: tenant, proofKind: 'transport-response' })
+          expect(observationValid(responseScope, executionId)).toBe(true)
+          // Exact response scope is supplementary; it cannot replace this request's route receipt.
+          expect(primaryTransportMatches(command, responseScope)).toBe(false)
+          const entry = { command, executionId, scopeTenantId: tenant, publicApiUrl: gateway }
+          expect(observedScopeVerified({ ...entry, transportObservations: [responseScope] })).toBe(false)
+          expect(observedScopeVerified({ ...entry, transportObservations: [observed, responseScope] })).toBe(true)
+          for (const refused of [
+            { ...observed, method: wrongMethod },
+            { ...observed, method: 'GET', path: new URL(gateway).pathname.replace(/\/$/, '') + `/v4/data/resources/${tenant}/project` },
+            { ...observed, executionId: '33333333-3333-4333-8333-333333333333' },
+          ]) expect(observedScopeVerified({ ...entry, transportObservations: [refused, responseScope] })).toBe(false)
+        }
+      } finally { await rm(home, { recursive: true, force: true }) }
+    })
+  test('actual SDK stream output cannot qualify the CLI single-resource get or list command', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+    await new PlatformAPIClient('https://example.test/public', tenant).streamResources('owned-resource')
+    const [url, request] = fetchMock.mock.calls[0]
+    const observed = { publicApiUrl: 'https://example.test/public', tenantId: tenant, method: request?.method || 'GET', path: new URL(String(url)).pathname }
+    expect(primaryTransportMatches('eai resources get', observed)).toBe(false)
+    expect(primaryTransportMatches('eai resources list', observed)).toBe(false)
+  })
+  test.each([
+    ['create', 'POST', '/owned-resource/batch/delete'],
+    ['create', 'POST', '/query'], ['create', 'POST', '/search'],
+    ['create', 'POST', '/storage/provision'], ['create', 'POST', '/operations/repair'],
+    ['create', 'POST', '/metering'], ['create', 'POST', '/%71uery'],
+    ['list', 'GET', '/storage'], ['list', 'GET', '/metering'],
+    ['get', 'GET', '/owned-resource/owned-id/files/document'],
+    ['get', 'GET', '/owned-resource/%73tream'],
+    ['update', 'PATCH', '/owned-resource/owned-id'],
+    ['delete', 'DELETE', '/owned-resource/batch/delete'],
+    ['batch-delete', 'DELETE', '/owned-resource/batch/delete'],
+    ['batch-import', 'POST', '/owned-resource/batch/create'],
+    ['batch-update', 'PUT', '/owned-resource/batch/update'],
+    ['aggregate', 'POST', '/owned-resource/owned-id/actions/aggregate'],
+    ['query', 'POST', '/owned-resource'], ['search', 'GET', '/search'],
+    ['storage status', 'GET', '/storage/doctor'],
+    ['file get', 'GET', '/owned-resource/owned-id/files/document/sas'],
+    ['file delete', 'DELETE', '/owned-resource/owned-id'],
+    ['create', 'POST', '/owned-resource/'], ['create', 'POST', '//owned-resource'],
+    ['get', 'GET', '/owned-resource/'], ['get', 'GET', '/owned-resource/owned%2fid'],
+    ['get', 'GET', '/owned-resource/owned%5cid'],
+    ['get', 'GET', '/owned-resource/%'],
+  ])('refuses mismatched resources %s %s route %s', (action, method, suffix) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: `/public/v4/data/resources/${tenant}${suffix}` }
+    const command = 'eai resources ' + action
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl,
+      transportObservations: [observed] })).toBe(false)
+  })
+})
+
+describe('QA classifier document and workflow actions require their actual primary routes', () => {
+  const { primaryTransportMatches, observedScopeVerified, requiresProtectedScope } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+  const tenant = '11111111-1111-4111-8111-111111111111'
+  const executionId = '22222222-2222-4222-8222-222222222222'
+  const classifier = '/v4/data/documents/content-understanding/classifiers/owned-classifier'
+  const cu = '/v4/data/documents/content-understanding'
+  const workflowTypes = ['shared-workflow-config', 'vertical-product-config', 'shared-ai-profile', 'shared-chatbot-config']
+  const routes: { name: string; command: string; invoke: (client: PlatformAPIClient, file: string) => Promise<unknown>;
+    equivalent?: string[]; processingMode?: string }[] = [
+    { name: 'classifier inventory', command: 'eai classifier list', invoke: client => client.listResources('shared-document-classifier') },
+    { name: 'classifier draft create', command: 'eai classifier save', invoke: client => client.createResource('shared-document-classifier', { classifierKey: 'owned-classifier' }) },
+    { name: 'classifier draft update', command: 'eai classifier save', invoke: client => client.updateResource('shared-document-classifier', 'owned-draft', { classifierKey: 'owned-classifier' }, 1) },
+    ...['publish', 'target', 'disable', 'enable'].map(action => ({ name: 'classifier ' + action, command: 'eai classifier ' + action,
+      invoke: (client: PlatformAPIClient) => client.requestPublicApi(classifier + '/' + (action === 'target' ? 'targets' : action), { method: 'POST', body: { tenantId: tenant } }) })),
+    { name: 'classifier delete', command: 'eai classifier delete', invoke: client => client.requestPublicApi(classifier, { method: 'DELETE', body: { tenantId: tenant, expectedVersion: 1, confirmation: 'owned-classifier' } }) },
+    { name: 'document upload', command: 'eai docs upload', invoke: (client, file) => client.uploadDocument(file, { verticalKey: 'owned-app', workflowKey: 'owned-workflow' }), equivalent: ['eai docs classify'], processingMode: 'full' },
+    { name: 'document classify', command: 'eai docs classify', invoke: (client, file) => client.classifyDocument(file, { verticalKey: 'owned-app', workflowKey: 'owned-workflow' }), equivalent: ['eai docs upload'], processingMode: 'classification' },
+    { name: 'document index', command: 'eai docs index', invoke: client => client.indexDocument('owned-document') },
+    // These inherited CU/read routes use the existing SDK dispatcher here;
+    // their specialized SDK/command routines are owned by the stacked CU tests.
+    { name: 'document job read', command: 'eai docs job', invoke: client => client.requestPublicApi('/v4/data/documents/jobs/owned-job', { method: 'GET' }) },
+    { name: 'document record read', command: 'eai docs get', invoke: client => client.requestPublicApi('/v4/data/documents/records/owned-document', { method: 'GET', params: { storage_target: 'resourceapi' } }) },
+    { name: 'typed CU capabilities', command: 'eai content-understanding capabilities', invoke: client => client.requestPublicApi(cu + '/capabilities', { method: 'GET', params: { tenant_id: tenant } }) },
+    { name: 'typed CU plan', command: 'eai content-understanding plan', invoke: client => client.requestPublicApi(cu + '/configurations/plan', { method: 'POST', body: { tenantId: tenant, manifest: {} } }) },
+    { name: 'typed CU apply', command: 'eai content-understanding apply', invoke: client => client.requestPublicApi(cu + '/configurations/apply', { method: 'POST', body: { tenantId: tenant, manifest: {} } }) },
+    { name: 'typed CU status', command: 'eai content-understanding status', invoke: client => client.requestPublicApi(cu + '/configurations/operations/22222222-2222-4222-8222-222222222223', { method: 'GET', params: { tenant_id: tenant } }) },
+    { name: 'workflow readiness', command: 'eai workflow readiness', invoke: client => client.getBuilderReadiness() },
+    { name: 'workflow status', command: 'eai workflow status', invoke: client => client.getRuntimeWorkflowStatus('owned-workflow') },
+    { name: 'workflow request', command: 'eai workflow request', invoke: client => client.requestRuntimeWorkflow({ workflowKey: 'owned-workflow', reason: 'Controlled route check' }) },
+    ...workflowTypes.flatMap(type => [
+      { name: 'workflow ' + type + ' create', command: 'eai workflow provision', invoke: (client: PlatformAPIClient) => client.createResource(type, { workflowKey: 'owned-workflow' }) },
+      { name: 'workflow ' + type + ' update', command: 'eai workflow provision', invoke: (client: PlatformAPIClient) => client.updateResource(type, 'owned-config', { workflowKey: 'owned-workflow' }, 1) },
+    ]),
+  ]
+  const candidates = [...new Set(routes.map(route => route.command))]
+  afterEach(() => vi.restoreAllMocks())
+  test.each(routes.flatMap(route => ['https://example.test', 'https://example.test/public'].map(gateway => ({ ...route, gateway }))))
+    ('$name binds its actual SDK primary route at $gateway', async ({ command, invoke, equivalent, processingMode, gateway }) => {
+      const directory = await mkdtemp(join(tmpdir(), 'eai-primary-action-'))
+      try {
+        const file = join(directory, 'owned.txt'); await writeFile(file, 'controlled document')
+        const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+        await invoke(new PlatformAPIClient(gateway, tenant), file)
+        expect(fetchMock).toHaveBeenCalledTimes(1)
+        const [url, request] = fetchMock.mock.calls[0]
+        const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway,
+          tenantId: new Headers(request?.headers).get('X-Tenant-Id'), proofKind: 'transport-response',
+          method: request?.method || 'GET', path: new URL(String(url)).pathname }
+        expect(observed.tenantId).toBe(tenant)
+        for (const candidate of candidates) {
+          const expected = candidate === command || equivalent?.includes(candidate) === true
+          expect(primaryTransportMatches(candidate, observed), `${candidate} cannot borrow ${command} evidence`).toBe(expected)
+          expect(observedScopeVerified({ command: candidate, executionId, scopeTenantId: tenant, publicApiUrl: gateway,
+            transportObservations: [observed] })).toBe(expected)
+        }
+        expect(primaryTransportMatches(command, { ...observed, method: 'HEAD' })).toBe(false)
+        if (processingMode) {
+          expect(request?.body).toBeInstanceOf(FormData)
+          expect((request?.body as FormData).get('processing_mode')).toBe(processingMode)
+        }
+      } finally { await rm(directory, { recursive: true, force: true }) }
+    })
+  test.each(workflowTypes.flatMap(type => ['https://example.test', 'https://example.test/public'].map(gateway => ({ type, gateway }))))
+    ('workflow discovery of $type at $gateway is auxiliary to provisioning', async ({ type, gateway }) => {
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'))
+      await new PlatformAPIClient(gateway, tenant).listResources(type)
+      const [url, request] = fetchMock.mock.calls[0]
+      const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: gateway, tenantId: tenant,
+        proofKind: 'transport-response', method: request?.method || 'GET', path: new URL(String(url)).pathname }
+      for (const command of candidates) {
+        expect(primaryTransportMatches(command, observed)).toBe(false)
+        expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: gateway, transportObservations: [observed] })).toBe(false)
+      }
+    })
+  test.each([
+    ['eai classifier list', 'GET', `/v4/data/resources/${tenant}/shared-document-classifier-other`],
+    ['eai classifier delete', 'DELETE', classifier + '/targets'],
+    ['eai docs job', 'GET', '/v4/data/documents/jobs/owned-job/status'],
+    ['eai docs get', 'GET', '/v4/data/documents/records/owned-document/extra'],
+    ['eai content-understanding status', 'GET', cu + '/configurations/operations/22222222-2222-4222-8222-222222222223/extra'],
+    ['eai content-understanding capabilities', 'GET', cu + '/capabilities-other'],
+    ['eai workflow readiness', 'GET', '/v4/integrations/builder/readiness-other'],
+    ['eai workflow status', 'GET', '/v4/workflows/runtime/owned-workflow/status/extra'],
+    ['eai workflow provision', 'PUT', `/v4/data/resources/${tenant}/vertical-product-config/owned-id/actions/extra`],
+    ['eai workflow provision', 'POST', `/v4/data/resources/${tenant}-foreign/shared-workflow-config`],
+  ])('refuses %s %s with undeclared shape %s', (command, method, path) => {
+    const observed = { schemaVersion: 'eai.cli-qa-transport.v1', executionId, publicApiUrl: 'https://example.test/public',
+      tenantId: tenant, proofKind: 'transport-response', method, path: '/public' + path }
+    expect(primaryTransportMatches(command, observed)).toBe(false)
+    expect(observedScopeVerified({ command, executionId, scopeTenantId: tenant, publicApiUrl: observed.publicApiUrl, transportObservations: [observed] })).toBe(false)
+  })
+  test.each(['schema', 'validate'])('local CU %s requires no protected backend and cannot manufacture primary transport', action => {
+    const command = 'eai content-understanding ' + action
+    expect(requiresProtectedScope(command)).toBe(false)
+    expect(primaryTransportMatches(command, { publicApiUrl: 'https://example.test/public', tenantId: tenant,
+      method: 'GET', path: '/public' + cu + '/capabilities' })).toBe(false)
+  })
+})
 
 describe('compiled managed deadline rejection handling', () => {
   test.each(['transport', 'body', 'deadline', 'late-rejection', 'success', 'already-aborted-input', 'already-aborted-body', 'expired-response-body'])
@@ -94,10 +601,142 @@ describe('compiled managed deadline rejection handling', () => {
     })
 })
 
+describe('compiled private QA transport pipe', () => {
+  test('spawnSync drains the actual private pipe while its child emits beyond a pipe capacity', () => {
+    const script = `
+      import { recordQaTransportResponse } from ${JSON.stringify(new URL('../../dist/lib/cli-qa-transport.js', import.meta.url).href)};
+      for (let index = 0; index < 6000; index++) recordQaTransportResponse({ publicApiUrl: 'https://dev-api.au.myenterprise.ai/public',
+        tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response' }, 'GET', '/public/v4/data/resources/11111111-1111-4111-8111-111111111111/project', true);
+      process.stdout.write(JSON.stringify({ emitted: 6000 }));
+    `
+    const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+      encoding: 'utf8', timeout: 10000, maxBuffer: 8 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+      env: { ...process.env, EAI_CLI_QA_TRANSPORT_FD: '3', EAI_CLI_QA_EXECUTION_ID: '22222222-2222-4222-8222-222222222222' },
+    })
+    expect(result.error).toBeUndefined(); expect(result.signal).toBeNull(); expect(result.status).toBe(0)
+    expect(result.stderr).toBe(''); expect(JSON.parse(String(result.stdout))).toEqual({ emitted: 6000 })
+    const pipe = String(result.output[3]); expect(Buffer.byteLength(pipe)).toBeGreaterThan(1024 * 1024)
+    expect(pipe.trim().split('\n')).toHaveLength(6000)
+  })
+  test.each(['enabled', 'absent', 'invalid-uuid', 'regular-file', 'redirected'])(
+    'captures only exact response scope for %s without changing normal API output', async mode => {
+      const home = await mkdtemp(join(tmpdir(), 'eai-qa-pipe-process-'))
+      const fs = await import('node:fs')
+      const file = join(home, 'reserved-regular-file')
+      fs.writeFileSync(file, 'untouched', { mode: 0o600 })
+      const descriptor = mode === 'regular-file' ? fs.openSync(file, 'r+') : undefined
+      try {
+        const script = `
+          import assert from 'node:assert/strict';
+          import { createServer } from 'node:http';
+          import { PlatformAPIClient, withPublicRequestObservation } from ${JSON.stringify(new URL('../../dist/lib/api.js', import.meta.url).href)};
+          const received = [];
+          const server = createServer((request, response) => {
+            received.push({ path: new URL(request.url, 'http://local.invalid').pathname, tenant: request.headers['x-tenant-id'] });
+            if (${JSON.stringify(mode)} === 'redirected' && request.url.includes('/resources/')) {
+              response.writeHead(302, { location: '/redirected' }); response.end();
+            } else { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end('{"id":"owned-row","secret":"private-body"}'); }
+          });
+          await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+          try {
+            const gateway = 'http://127.0.0.1:' + server.address().port;
+            const resource = await new PlatformAPIClient(gateway, '11111111-1111-4111-8111-111111111111').createResource('project', { secret: 'private-request-body' });
+            assert.equal(resource.ok, true); assert.equal((await resource.json()).id, 'owned-row');
+            await new PlatformAPIClient(gateway, 'system').requestPublicApi('/v4/identity/me?ticket=private-query', { method: 'GET' });
+            console.log(JSON.stringify({ normalOutputPreserved: true, received, gateway,
+              request: ${JSON.stringify(mode)} === 'enabled' ? withPublicRequestObservation({}, resource).request : undefined }));
+          } finally { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+        `
+        const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+          encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe', descriptor ?? 'pipe'],
+          env: { ...process.env, HOME: home, USERPROFILE: home, EAI_PROFILE: '', EAI_ACCESS_TOKEN: '<private-header-canary>',
+            EAI_CLI_QA_TRANSPORT_FD: mode === 'absent' ? '' : '3',
+            EAI_CLI_QA_EXECUTION_ID: mode === 'invalid-uuid' ? 'invalid' : '22222222-2222-4222-8222-222222222222' },
+        })
+        expect(result.status).toBe(0); expect(result.signal).toBeNull(); expect(result.stderr).toBe('')
+        const normal = JSON.parse(String(result.stdout)); expect(normal.normalOutputPreserved).toBe(true)
+        const pipe = String(result.output[3] || '')
+        for (const secret of ['private-header-canary', 'private-body', 'private-request-body', 'private-query']) expect(pipe).not.toContain(secret)
+        if (['absent', 'invalid-uuid', 'regular-file'].includes(mode)) expect(pipe).toBe('')
+        else {
+          const observations = pipe.trim().split('\n').map(value => JSON.parse(value))
+          expect(observations).toHaveLength(2)
+          expect(observations[1]).toEqual({ schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222',
+            publicApiUrl: normal.gateway, tenantId: null, proofKind: 'transport-response', method: 'GET', path: '/v4/identity/me' })
+          expect(observations[0]).toEqual(mode === 'redirected'
+            ? { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', proofKind: 'unverified-response' }
+            : { schemaVersion: 'eai.cli-qa-transport.v1', executionId: '22222222-2222-4222-8222-222222222222', publicApiUrl: normal.gateway,
+              tenantId: '11111111-1111-4111-8111-111111111111', proofKind: 'transport-response', method: 'POST', path: '/v4/data/resources/11111111-1111-4111-8111-111111111111/project' })
+          if (mode === 'enabled') {
+            const { primaryTransportMatches, observedScopeVerified } = createRequire(import.meta.url)('../../scripts/cli-qa-execution-scope.cjs')
+            const responseScope = { schemaVersion: 'eai.cli-qa-transport.v1', executionId: observations[0].executionId,
+              ...normal.request, source: 'resource-json' }
+            expect(primaryTransportMatches('eai resources create', responseScope)).toBe(false)
+            expect(observedScopeVerified({ command: 'eai resources create', executionId: observations[0].executionId,
+              scopeTenantId: observations[0].tenantId, publicApiUrl: normal.gateway,
+              transportObservations: [...observations, responseScope] })).toBe(true)
+          }
+        }
+        expect(fs.readFileSync(file, 'utf8')).toBe('untouched')
+      } finally { if (descriptor !== undefined) fs.closeSync(descriptor); await rm(home, { recursive: true, force: true }) }
+    })
+})
+
 describe('PlatformAPIClient', () => {
   afterEach(() => {
     vi.restoreAllMocks()
   })
+
+  test('resource transport observations remain bound to their exact response across concurrent reversed completion', async () => {
+    const pending: Array<{ resolve: (response: Response) => void; url: string; tenant: string | null }> = []
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, options) => new Promise<Response>(resolve => {
+      pending.push({ resolve, url: String(input), tenant: new Headers(options?.headers).get('X-Tenant-Id') })
+    }))
+    const first = new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'first-owned-tenant').createResource('project', {})
+    const second = new PlatformAPIClient('https://dev-api.au.myenterprise.ai/public', 'second-owned-tenant').createResource('project', {})
+    await vi.waitFor(() => expect(pending).toHaveLength(2))
+    const secondResponse = new Response('{}'), firstResponse = new Response('{}')
+    pending[1].resolve(secondResponse); pending[0].resolve(firstResponse)
+    const [a, b] = await Promise.all([first, second])
+    expect(a).toBe(firstResponse); expect(b).toBe(secondResponse)
+    expect(withPublicRequestObservation({ id: 'a', request: { tenantId: 'forged', secret: 'do-not-emit' } }, a).request).toEqual({
+      publicApiUrl: 'https://test-api.au.myenterprise.ai/public', tenantId: 'first-owned-tenant', proofKind: 'transport-response',
+    })
+    expect(withPublicRequestObservation({ id: 'b' }, b).request).toEqual({
+      publicApiUrl: 'https://dev-api.au.myenterprise.ai/public', tenantId: 'second-owned-tenant', proofKind: 'transport-response',
+    })
+    expect(JSON.stringify(withPublicRequestObservation({ id: 'a' }, a))).not.toContain('fixture-access-token')
+    expect(() => withPublicRequestObservation({}, new Response('{}'))).toThrow('exact unredirected')
+  })
+
+  test.each(['https://example.test', 'http://localhost:18000'])(
+    'root gateway %s retains exact response-bound resource scope', async gateway => {
+      const response = new Response('{"id":"owned-resource"}')
+      Object.defineProperty(response, 'url', { value: gateway + '/v4/data/resources/owned-tenant/project' })
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+      const observed = await new PlatformAPIClient(gateway, 'owned-tenant').createResource('project', {})
+      expect(fetchMock).toHaveBeenCalledWith(gateway + '/v4/data/resources/owned-tenant/project', expect.objectContaining({
+        method: 'POST', headers: expect.objectContaining({ 'X-Tenant-Id': 'owned-tenant' }),
+      }))
+      expect(observed).toBe(response)
+      expect(withPublicRequestObservation({ id: 'owned-resource' }, observed).request).toEqual({
+        publicApiUrl: gateway, tenantId: 'owned-tenant', proofKind: 'transport-response',
+      })
+    })
+
+  test.each(['redirected', 'foreign-response-url', 'gateway-query', 'gateway-credentials', 'reused-response'])(
+    'resource response scope cannot be manufactured from %s transport state', async kind => {
+      const response = new Response('{}')
+      if (kind === 'redirected') Object.defineProperty(response, 'redirected', { value: true })
+      if (kind === 'foreign-response-url') Object.defineProperty(response, 'url', { value: 'https://foreign.invalid/result?token=secret' })
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(response)
+      const gateway = kind === 'gateway-query' ? 'https://test-api.au.myenterprise.ai/public?token=secret'
+        : kind === 'gateway-credentials' ? 'https://user:secret@test-api.au.myenterprise.ai/public' : 'https://test-api.au.myenterprise.ai/public'
+      const client = new PlatformAPIClient(gateway, 'owned-tenant')
+      await client.createResource('project', {})
+      if (kind === 'reused-response') await client.createResource('project', {})
+      expect(() => withPublicRequestObservation({ request: { publicApiUrl: gateway, tenantId: 'owned-tenant' } }, response)).toThrow('exact unredirected')
+    })
 
   test('preserves exact tenant filter, stable sorting and bounded deadlines on every type export page', async () => {
     const fetch = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response('{}'))
