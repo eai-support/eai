@@ -14,7 +14,7 @@ interface PublishedPackage {
 }
 
 const publication = createRequire(import.meta.url)('../../scripts/verify-docs-publication.cjs') as {
-  verifyDocsPublication(options: { root: string; readPublished: () => Promise<unknown>; readPublishedTarball?: () => Promise<Buffer>; requestTimeoutMs?: number }): Promise<{ allowed: boolean; reason: string }>;
+  verifyDocsPublication(options: { root: string; readPublished: (timeoutMs: number) => Promise<unknown>; readPublishedTarball?: (url: string, timeoutMs: number) => Promise<Buffer>; requestTimeoutMs?: number; now?: () => number }): Promise<{ allowed: boolean; reason: string }>;
   verifyPreparedSource(root: string): { runtimeFilesVerified: number };
   waitForDocsPublication(options: { release?: boolean; now: () => number; sleep: (ms: number) => Promise<void>; verify: (options: { requestTimeoutMs: number }) => Promise<{ allowed: boolean; reason: string }> }): Promise<{ allowed: boolean; reason: string }>;
 };
@@ -70,6 +70,27 @@ describe('public documentation release qualification', () => {
       expect(await publication.verifyDocsPublication({ root, readPublished: async () => published,
         readPublishedTarball: async () => tampered }))
         .toMatchObject({ allowed: false, reason: 'canonical-publication-does-not-match' });
+    }, gzipSync(tar, { level: 1 }));
+  });
+  test('packument and archive requests share one bounded publication attempt', async () => {
+    const tar = Buffer.from('same release tar bytes'.repeat(500));
+    await fixture(async (root, published) => {
+      const repacked = gzipSync(tar, { level: 9 });
+      published.versions['3.20.0'].dist.shasum = createHash('sha1').update(repacked).digest('hex');
+      published.versions['3.20.0'].dist.integrity =
+        'sha512-' + createHash('sha512').update(repacked).digest('base64');
+      let clock = 0; let archiveTimeout = 0;
+      const options = { root, requestTimeoutMs: 10_000, now: () => clock,
+        readPublished: async (timeoutMs: number) => { expect(timeoutMs).toBe(10_000); clock = 9_000; return published; },
+        readPublishedTarball: async (_url: string, timeoutMs: number) => { archiveTimeout = timeoutMs; return repacked; } };
+      expect(await publication.verifyDocsPublication(options))
+        .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+      expect(archiveTimeout).toBe(1_000);
+      clock = 0; archiveTimeout = 0;
+      expect(await publication.verifyDocsPublication({ ...options,
+        readPublished: async () => { clock = 10_000; return published; } }))
+        .toMatchObject({ allowed: false, reason: 'canonical-publication-unavailable' });
+      expect(archiveTimeout).toBe(0);
     }, gzipSync(tar, { level: 1 }));
   });
   test('npm metadata cannot point the verifier at an unapproved tarball host', async () => {
