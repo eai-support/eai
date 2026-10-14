@@ -5,6 +5,7 @@ import path from 'node:path';
 import { describe, expect, test } from 'vitest';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 
 interface PublishedPackage {
   name: string;
@@ -13,7 +14,7 @@ interface PublishedPackage {
 }
 
 const publication = createRequire(import.meta.url)('../../scripts/verify-docs-publication.cjs') as {
-  verifyDocsPublication(options: { root: string; readPublished: () => Promise<unknown>; requestTimeoutMs?: number }): Promise<{ allowed: boolean; reason: string }>;
+  verifyDocsPublication(options: { root: string; readPublished: () => Promise<unknown>; readPublishedTarball?: () => Promise<Buffer>; requestTimeoutMs?: number }): Promise<{ allowed: boolean; reason: string }>;
   verifyPreparedSource(root: string): { runtimeFilesVerified: number };
   waitForDocsPublication(options: { release?: boolean; now: () => number; sleep: (ms: number) => Promise<void>; verify: (options: { requestTimeoutMs: number }) => Promise<{ allowed: boolean; reason: string }> }): Promise<{ allowed: boolean; reason: string }>;
 };
@@ -22,13 +23,12 @@ const repoRoot = path.resolve(__dirname, '../..');
 const scriptPath = path.join(repoRoot, 'scripts/update-release-doc-metadata.cjs');
 
 describe('public documentation release qualification', () => {
-  async function fixture(run: (root: string, published: PublishedPackage) => Promise<void>): Promise<void> {
+  async function fixture(run: (root: string, published: PublishedPackage) => Promise<void>, archive = Buffer.from('controlled canonical archive')): Promise<void> {
     const root = mkdtempSync(path.join(tmpdir(), 'eai-docs-publication-'));
     const registry = path.join(root, 'docs-site/static/registry');
     try {
       mkdirSync(path.join(registry, '@enterpriseai'), { recursive: true });
       mkdirSync(path.join(registry, '-/@enterpriseai'), { recursive: true });
-      const archive = Buffer.from('controlled canonical archive');
       const entry = { name: '@enterpriseai/cli', version: '3.20.0', dist: {
         tarball: 'https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.0.tgz',
         shasum: createHash('sha1').update(archive).digest('hex'),
@@ -40,7 +40,10 @@ describe('public documentation release qualification', () => {
         writeFileSync(path.join(registry, relative), JSON.stringify(prepared));
       }
       for (const filename of ['cli-3.20.0.tgz', 'cli-latest.tgz']) writeFileSync(path.join(registry, '-/@enterpriseai', filename), archive);
-      await run(root, JSON.parse(JSON.stringify(prepared)));
+      const published = JSON.parse(JSON.stringify(prepared)) as PublishedPackage;
+      published.versions['3.20.0'].dist.tarball =
+        'https://registry.npmjs.org/@enterpriseai/cli/-/cli-3.20.0.tgz';
+      await run(root, published);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 
@@ -48,6 +51,32 @@ describe('public documentation release qualification', () => {
     await fixture(async (root, published) => {
       expect(await publication.verifyDocsPublication({ root, readPublished: async () => published }))
         .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+    });
+  });
+  test('npm recompression permits only the same exact uncompressed tar bytes', async () => {
+    const tar = Buffer.from('same release tar bytes'.repeat(500));
+    await fixture(async (root, published) => {
+      const repacked = gzipSync(tar, { level: 9 });
+      published.versions['3.20.0'].dist.shasum = createHash('sha1').update(repacked).digest('hex');
+      published.versions['3.20.0'].dist.integrity =
+        'sha512-' + createHash('sha512').update(repacked).digest('base64');
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published,
+        readPublishedTarball: async () => repacked }))
+        .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+      const tampered = gzipSync(Buffer.from('changed release tar bytes'.repeat(500)), { level: 9 });
+      published.versions['3.20.0'].dist.shasum = createHash('sha1').update(tampered).digest('hex');
+      published.versions['3.20.0'].dist.integrity =
+        'sha512-' + createHash('sha512').update(tampered).digest('base64');
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published,
+        readPublishedTarball: async () => tampered }))
+        .toMatchObject({ allowed: false, reason: 'canonical-publication-does-not-match' });
+    }, gzipSync(tar, { level: 1 }));
+  });
+  test('npm metadata cannot point the verifier at an unapproved tarball host', async () => {
+    await fixture(async (root, published) => {
+      published.versions['3.20.0'].dist.tarball = 'https://attacker.example/cli-3.20.0.tgz';
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published }))
+        .toMatchObject({ allowed: false, reason: 'canonical-publication-does-not-match' });
     });
   });
   test.each(['missing', 'wrong'])('prepared %s tarball URL refuses before canonical publication access', async kind => {
@@ -64,8 +93,8 @@ describe('public documentation release qualification', () => {
       expect(reads).toBe(0);
     });
   });
-  test.each(['unpublished', 'wrong-name', 'wrong-latest', 'wrong-version', 'wrong-sha1', 'wrong-sha512', 'malformed'])
-    ('%s publication cannot promote the prepared candidate', async kind => {
+  test.each(['unpublished', 'wrong-name', 'wrong-latest', 'wrong-version', 'wrong-sha1', 'wrong-sha512', 'malformed'])(
+    '%s publication cannot promote the prepared candidate', async kind => {
       await fixture(async (root, published) => {
         if (kind === 'unpublished') delete published.versions['3.20.0'];
         if (kind === 'wrong-name') published.name = 'eai-cli';
