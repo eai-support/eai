@@ -304,10 +304,6 @@ fi
 if [[ "$RELEASE_PHASE" == "publish" ]]; then
   TAG_NAME="v$OLD_VERSION"
 
-  section "Waiting for docs/static-registry deployment from main"
-  wait_for_main_docs_run "$(git rev-parse HEAD)"
-  echo "  ✓ Deploy Docs workflow completed"
-
   section "Creating and pushing release tag"
   if remote_tag_exists "$TAG_NAME"; then
     echo "✗ Remote tag $TAG_NAME already exists"
@@ -320,7 +316,7 @@ if [[ "$RELEASE_PHASE" == "publish" ]]; then
 
   section "Waiting for GitHub release workflow"
   wait_for_release_run "$TAG_NAME"
-  echo "  ✓ Release workflow completed"
+  echo "  ✓ Release workflow and qualified Docs publication completed"
 
   section "Verifying public release channels"
   verify_npmjs_latest "$NPM_PACKAGE" "$OLD_VERSION"

@@ -11,6 +11,9 @@ on:
       - "scripts/generate-llms-full.cjs"
       - "scripts/generate-docs-experience-assets.cjs"
       - "scripts/verify-docs-experience-assets.cjs"
+      - "scripts/verify-docs-publication.cjs"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/release.yml"
   push:
     branches: [main]
     paths:
@@ -21,6 +24,16 @@ on:
       - "scripts/generate-llms-full.cjs"
       - "scripts/generate-docs-experience-assets.cjs"
       - "scripts/verify-docs-experience-assets.cjs"
+      - "scripts/verify-docs-publication.cjs"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/release.yml"
+  workflow_call:
+    inputs:
+      publish_github_pages:
+        description: Publish only a qualified canonical release
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       publish_github_pages:
@@ -81,9 +94,38 @@ jobs:
           test -f docs-site/build/docs-search-index.json
           test -f docs-site/build/docs-capabilities.json
 
+  publication:
+    name: Verify canonical package publication
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.publication.outputs.allowed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Require matching published canonical archive
+        id: publication
+        env:
+          REQUIRE_PUBLISHED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if node scripts/verify-docs-publication.cjs; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            if [[ "$REQUIRE_PUBLISHED_RELEASE" == "true" ]]; then
+              echo "::error::Canonical release publication does not match its prepared archive."
+              exit 1
+            fi
+          fi
+
   deploy:
     name: Build & Deploy Docs
-    if: github.event_name != 'pull_request'
+    needs: [validate, publication]
+    if: needs.publication.outputs.allowed == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -152,7 +194,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish_github_pages }}
+        if: ${{ inputs.publish_github_pages && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
         uses: actions/deploy-pages@v5
 
       - name: Mint website docs PR token
