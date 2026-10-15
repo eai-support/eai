@@ -8,7 +8,8 @@ const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '..');
 const NAME = '@enterpriseai/cli';
 const PRIMARY = 'https://registry.npmjs.org/@enterpriseai%2fcli';
-const RELEASE_VISIBILITY_MS = 180000;
+// Accepted npm releases can take several minutes to propagate metadata and archives.
+const RELEASE_VISIBILITY_MS = 600000;
 const RETRY_GAP_MS = 5000;
 const REQUEST_TIMEOUT_MS = 15000;
 const MAX_ARCHIVE_BYTES = 16 * 1024 * 1024;
@@ -71,9 +72,6 @@ async function verifyDocsPublication({ root = ROOT, readPublished = readPublishe
       || entry?.dist?.tarball !== tarball) {
       return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
     }
-    if (entry.dist.shasum === prepared.shasum && entry.dist.integrity === prepared.integrity) {
-      return { allowed: true, reason: 'canonical-publication-matches', version: prepared.version };
-    }
     if ((entry.dist.shasum === prepared.shasum) !== (entry.dist.integrity === prepared.integrity)
       || !/^[a-f0-9]{40}$/.test(entry.dist.shasum)
       || !/^sha512-[A-Za-z0-9+/]{86}==$/.test(entry.dist.integrity)) {
@@ -86,6 +84,9 @@ async function verifyDocsPublication({ root = ROOT, readPublished = readPublishe
       || crypto.createHash('sha1').update(bytes).digest('hex') !== entry.dist.shasum
       || 'sha512-' + crypto.createHash('sha512').update(bytes).digest('base64') !== entry.dist.integrity) {
       return { allowed: false, reason: 'canonical-publication-does-not-match', version: prepared.version };
+    }
+    if (entry.dist.shasum === prepared.shasum && entry.dist.integrity === prepared.integrity) {
+      return { allowed: true, reason: 'canonical-publication-matches', version: prepared.version };
     }
     const preparedTar = gunzipSync(fs.readFileSync(prepared.archive), { maxOutputLength: MAX_TAR_BYTES });
     const publishedTar = gunzipSync(bytes, { maxOutputLength: MAX_TAR_BYTES });

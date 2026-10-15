@@ -23,7 +23,7 @@ const repoRoot = path.resolve(__dirname, '../..');
 const scriptPath = path.join(repoRoot, 'scripts/update-release-doc-metadata.cjs');
 
 describe('public documentation release qualification', () => {
-  async function fixture(run: (root: string, published: PublishedPackage) => Promise<void>, archive = Buffer.from('controlled canonical archive')): Promise<void> {
+  async function fixture(run: (root: string, published: PublishedPackage, archive: Buffer) => Promise<void>, archive = Buffer.from('controlled canonical archive')): Promise<void> {
     const root = mkdtempSync(path.join(tmpdir(), 'eai-docs-publication-'));
     const registry = path.join(root, 'docs-site/static/registry');
     try {
@@ -43,14 +43,40 @@ describe('public documentation release qualification', () => {
       const published = JSON.parse(JSON.stringify(prepared)) as PublishedPackage;
       published.versions['3.20.0'].dist.tarball =
         'https://registry.npmjs.org/@enterpriseai/cli/-/cli-3.20.0.tgz';
-      await run(root, published);
+      await run(root, published, archive);
     } finally { rmSync(root, { recursive: true, force: true }); }
   }
 
   test('matching actual canonical publication permits deployment', async () => {
-    await fixture(async (root, published) => {
-      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published }))
+    await fixture(async (root, published, archive) => {
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published, readPublishedTarball: async () => archive }))
         .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+    });
+  });
+  test('matching canonical metadata cannot promote until matching archive bytes are readable', async () => {
+    await fixture(async (root, published, archive) => {
+      let readable = false; let archiveReads = 0;
+      const options = { root, readPublished: async () => published,
+        readPublishedTarball: async () => {
+          archiveReads++;
+          if (!readable) throw new Error('Canonical archive is not yet available');
+          return archive;
+        },
+      };
+      expect(await publication.verifyDocsPublication(options))
+        .toMatchObject({ allowed: false, reason: 'canonical-publication-unavailable' });
+      expect(archiveReads).toBe(1);
+      readable = true;
+      expect(await publication.verifyDocsPublication(options))
+        .toMatchObject({ allowed: true, reason: 'canonical-publication-matches' });
+      expect(archiveReads).toBe(2);
+    });
+  });
+  test('matching canonical metadata rejects downloaded bytes that do not match its hashes', async () => {
+    await fixture(async (root, published) => {
+      expect(await publication.verifyDocsPublication({ root, readPublished: async () => published,
+        readPublishedTarball: async () => Buffer.from('different canonical bytes') }))
+        .toMatchObject({ allowed: false, reason: 'canonical-publication-does-not-match' });
     });
   });
   test('npm recompression permits only the same exact uncompressed tar bytes', async () => {
@@ -135,21 +161,54 @@ describe('public documentation release qualification', () => {
     });
   });
   test('trusted release waits for pending publication to become exactly visible', async () => {
-    await fixture(async (root, published) => {
+    await fixture(async (root, published, archive) => {
       let clock = 0; let reads = 0; const sleeps: number[] = [];
       const result = await publication.waitForDocsPublication({ release: true, now: () => clock,
         sleep: async ms => { sleeps.push(ms); clock += ms; },
-        verify: options => publication.verifyDocsPublication({ root, ...options, readPublished: async () => ++reads === 1 ? { ...published, 'dist-tags': { latest: '3.19.5' } } : published }),
+        verify: options => publication.verifyDocsPublication({ root, ...options, readPublished: async () => ++reads === 1 ? { ...published, 'dist-tags': { latest: '3.19.5' } } : published,
+          readPublishedTarball: async () => archive }),
       });
       expect(result.allowed).toBe(true); expect(reads).toBe(2); expect(sleeps).toEqual([5000]);
     });
+  });
+  test.each([
+    { archiveVisibleAt: 270_000, allowed: true, finalClock: 270_000 },
+    { archiveVisibleAt: 605_000, allowed: false, finalClock: 600_000 },
+  ])('late canonical metadata and archive visibility at $archiveVisibleAt ms is bounded', async ({ archiveVisibleAt, allowed, finalClock }) => {
+    const tar = Buffer.from('late canonical tar payload'.repeat(500));
+    await fixture(async (root, published) => {
+      // npm can expose metadata before its recompressed canonical archive reaches the CDN.
+      const archive = gzipSync(tar, { level: 9 });
+      published.versions['3.20.0'].dist.shasum = createHash('sha1').update(archive).digest('hex');
+      published.versions['3.20.0'].dist.integrity = 'sha512-' + createHash('sha512').update(archive).digest('base64');
+      let clock = 0; let archiveReads = 0; const timeouts: number[] = [];
+      const result = await publication.waitForDocsPublication({ release: true, now: () => clock,
+        sleep: async ms => { clock += ms; },
+        verify: options => {
+          timeouts.push(options.requestTimeoutMs);
+          return publication.verifyDocsPublication({ root, ...options, now: () => clock,
+            readPublished: async () => clock < 250_000 ? { ...published, 'dist-tags': { latest: '3.19.5' } } : published,
+            readPublishedTarball: async () => {
+              archiveReads++;
+              if (clock < archiveVisibleAt) throw new Error('Canonical archive is still propagating');
+              return archive;
+            },
+          });
+        },
+      });
+      expect(result).toMatchObject({ allowed, reason: allowed ? 'canonical-publication-matches' : 'canonical-publication-unavailable' });
+      expect(clock).toBe(finalClock);
+      expect(archiveReads).toBeGreaterThan(0);
+      expect(timeouts.every(timeout => timeout > 0 && timeout <= 15_000)).toBe(true);
+      if (!allowed) expect(timeouts.at(-1)).toBe(5_000);
+    }, gzipSync(tar, { level: 1 }));
   });
   test.each(['canonical-publication-does-not-match', 'canonical-publication-unavailable'])('perpetual %s denial ends at the trusted release deadline', async reason => {
     let clock = 0; let reads = 0;
     const result = await publication.waitForDocsPublication({ release: true, now: () => clock,
       sleep: async ms => { clock += ms; }, verify: async () => { reads++; return { allowed: false, reason }; },
     });
-    expect(result).toEqual({ allowed: false, reason }); expect(reads).toBe(36); expect(clock).toBe(180000);
+    expect(result).toEqual({ allowed: false, reason }); expect(reads).toBe(120); expect(clock).toBe(600000);
   });
   test('network request timeout fits the remaining release deadline', async () => {
     let clock = 0; const timeouts: number[] = [];
@@ -157,13 +216,13 @@ describe('public documentation release qualification', () => {
       sleep: async ms => { clock += ms + 1000; },
       verify: async ({ requestTimeoutMs }) => { timeouts.push(requestTimeoutMs); clock += requestTimeoutMs; return { allowed: false, reason: 'canonical-publication-unavailable' }; },
     });
-    expect(timeouts.at(-1)).toBe(12000); expect(clock).toBe(180000);
+    expect(timeouts.at(-1)).toBe(12000); expect(clock).toBe(600000);
     expect(timeouts.every(timeout => timeout > 0 && timeout <= 15000)).toBe(true);
   });
   test('an already exhausted release deadline cannot start another network proof', async () => {
     let clockReads = 0; let reads = 0;
     const result = await publication.waitForDocsPublication({ release: true,
-      now: () => clockReads++ === 0 ? 0 : 180000, sleep: async () => {},
+      now: () => clockReads++ === 0 ? 0 : 600000, sleep: async () => {},
       verify: async () => { reads++; return { allowed: true, reason: 'canonical-publication-matches' }; },
     });
     expect(result.allowed).toBe(false); expect(reads).toBe(0);
@@ -319,6 +378,28 @@ describe('release metadata updater', () => {
 });
 
 describe('managed-deployment release documentation', () => {
+  test('generated examples links use the published folder route and preserve nested example routes', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'eai-docs-example-routes-'));
+    try {
+      for (const directory of ['scripts', 'dist', '.tech-docs/examples']) {
+        mkdirSync(path.join(root, directory), { recursive: true });
+      }
+      cpSync(path.join(repoRoot, 'scripts/generate-release-docs.cjs'), path.join(root, 'scripts/generate-release-docs.cjs'));
+      writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '0.0.0' }));
+      writeFileSync(path.join(root, 'dist/index.js'), 'console.log("Controlled CLI help");\n');
+      writeFileSync(path.join(root, '.tech-docs/examples/index.md'), '---\ntitle: Examples\n---\n# Examples\n');
+      writeFileSync(path.join(root, '.tech-docs/examples/task-tracker.md'), '---\ntitle: Task Tracker\n---\n# Task Tracker\n');
+      execFileSync(process.execPath, [path.join(root, 'scripts/generate-release-docs.cjs')], { stdio: 'pipe' });
+      const index = readFileSync(path.join(root, 'docs-site/static/llms.txt'), 'utf8');
+      // Docusaurus publishes examples/index.md as docs/examples.html, not docs/examples/index.html.
+      expect(index).toContain('- [Examples](/eai/docs/examples)');
+      expect(index).not.toContain('/eai/docs/examples/index');
+      expect(index).toContain('- [Task Tracker](/eai/docs/examples/task-tracker)');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('ships app deletion help with its explicit runtime child target', () => {
     for (const filename of ['cli-help.txt', 'llms-full.txt']) {
       const asset = readFileSync(path.join(repoRoot, 'docs-site/static', filename), 'utf8');
