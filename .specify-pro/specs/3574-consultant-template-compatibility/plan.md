@@ -7,7 +7,7 @@
 
 ## 1. Why — business outcome
 
-A consultant using CLI 3.18.4 scaffolded app template v1.0.7 and completed GitHub linking before `deploy app` returned an opaque 409. DEV accepts v1.0.17. The customer must know the mismatch and a safe recovery path *before* OAuth. Success: a controlled test with the old project gives a current/required template message before link creation; old CLIs still receive a stable, safe 409 explanation; the Deploy page does not imply an operation exists when none does.
+A consultant scaffolded app template v1.0.7 with CLI 3.18.4, then used a newer CLI to run `deploy app`: GitHub linking completed before the command returned an opaque 409. The v3.18.4 binary itself has no `deploy app` command, so the reproduction must record the CLI version used for each step. DEV accepts v1.0.17. The customer must know the mismatch and a safe recovery path *before* OAuth. Success: a controlled test with the old project and a current CLI gives a current/required template message before link creation; server responses give supported clients a stable, safe rejection; the Deploy page does not imply an operation exists when none does.
 
 ## 2. Customer journey
 
@@ -69,7 +69,7 @@ sequenceDiagram
 ### Failure paths
 
 - Unauthenticated or wrong-tenant callers receive the existing 401/403/404 behavior without disclosing another app or tenant.
-- An older local template receives a stable `TEMPLATE_VERSION_NOT_APPROVED` code, current and required identifiers, and the upgrade guide before OAuth. The backend keeps this code for old CLIs reaching preparation.
+- An older local template receives a stable `TEMPLATE_VERSION_NOT_APPROVED` code, current and required identifiers, and the upgrade guide before OAuth when the installed CLI implements preflight. The backend keeps the safe code for clients that reach preparation. An already-installed v3.18.4 binary cannot be changed by a server response, and it cannot run `deploy app`; document the minimum supported CLI for this journey rather than claiming retroactive repair.
 - Timeout/5xx or malformed requirement fails closed before GitHub; the CLI names the temporary preflight failure without claiming a version mismatch.
 - If configuration changes between preflight and preparation, admission returns the new requirement in the same client-safe envelope; no operation or repository is created.
 - Exact operation replay/recovery retains its original pin and is not blocked by a newly approved template.
@@ -108,7 +108,7 @@ CLI: old/new/missing manifest, before-link ordering, timeout, malformed/stale re
 
 ### In MVP
 
-**Proposed, not approved:** authorized requirement preflight before GitHub; safe stable fallback 409 for old CLIs; truthful Portal empty state and minimum version; documented, reviewed migration path that does not silently rewrite source; config-pair drift guard; focused owner and deployed-contract tests.
+**Proposed, not approved:** authorized requirement preflight before GitHub; safe stable fallback 409 for supported clients that reach preparation; truthful Portal empty state and minimum supported CLI version; documented, reviewed migration path that does not silently rewrite source; environment-specific config-pair drift guard; focused owner and deployed-contract tests. Explicitly test the two-version reproduction: v3.18.4 scaffolds, a current CLI deploys. Do not claim an already-installed v3.18.4 `deploy app` error can be repaired remotely.
 
 ### Deferred
 
