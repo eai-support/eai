@@ -33,6 +33,7 @@ import {
   managedDeployPollDelayMs,
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
+import { missingCustomerWorkflowScopeAdvice } from '../../src/commands/eai-managed-deploy-github-access.js';
 import { requireRecoverySourceOptions, validateManagedDeployInput } from '../../src/commands/eai-managed-deploy-validation.js';
 import type { ManagedDeployOptions } from '../../src/commands/eai-managed-deploy-contract.js';
 import {
@@ -1401,5 +1402,46 @@ describe('EAI managed deployment helpers', () => {
       id: 123,
       login: 'linked-user',
     })).rejects.toMatchObject({ code: 'GITHUB_ACTOR_MISMATCH' });
+  });
+
+  test('explains the missing scope only for the linked customer using gh HTTPS credentials', async () => {
+    const runner = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'git' && args[0] === 'remote') return 'https://github.com/customer/app.git';
+      if (command === 'git' && args[0] === 'config') return '!/opt/homebrew/bin/gh auth git-credential';
+      if (command === 'gh' && args[0] === 'api') {
+        return 'HTTP/2.0 200 OK\r\nX-Oauth-Scopes: gist, read:org, repo\r\n\r\n{"id":123,"login":"customer"}';
+      }
+      throw new Error('unexpected command');
+    });
+    const advice = await missingCustomerWorkflowScopeAdvice('/app', { id: 123, login: 'customer' }, runner);
+    expect(advice).toContain('gh auth refresh --scopes workflow');
+    expect(advice).toContain('customer');
+    expect(runner).toHaveBeenCalledWith('gh', ['api', '-i', 'user', '--jq', '{id,login}']);
+  });
+
+  test.each([
+    ['SSH remote', 'git@github.com:customer/app.git', '!/opt/homebrew/bin/gh auth git-credential', 'X-Oauth-Scopes: repo'],
+    ['other HTTPS credential', 'https://github.com/customer/app.git', 'osxkeychain', 'X-Oauth-Scopes: repo'],
+    ['scoped OAuth credential', 'https://github.com/customer/app.git', '!gh auth git-credential', 'X-Oauth-Scopes: repo, workflow'],
+    ['GitHub App credential', 'https://github.com/customer/app.git', '!gh auth git-credential', ''],
+  ])('does not demand a gh workflow scope for %s', async (_case, origin, helper, header) => {
+    const runner = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'git' && args[0] === 'remote') return origin;
+      if (command === 'git') return helper;
+      return `HTTP/2.0 200 OK\r\n${header}\r\n\r\n{"id":123,"login":"customer"}`;
+    });
+    await expect(missingCustomerWorkflowScopeAdvice('/app', { id: 123, login: 'customer' }, runner))
+      .resolves.toBeUndefined();
+    if (_case === 'SSH remote') expect(runner).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not offer scope repair for another GitHub CLI actor', async () => {
+    const runner = vi.fn(async (command: string, args: string[]) => {
+      if (command === 'git' && args[0] === 'remote') return 'https://github.com/customer/app.git';
+      if (command === 'git') return '!gh auth git-credential';
+      return 'HTTP/2.0 200 OK\r\nX-Oauth-Scopes: repo\r\n\r\n{"id":999,"login":"another"}';
+    });
+    await expect(missingCustomerWorkflowScopeAdvice('/app', { id: 123, login: 'customer' }, runner))
+      .resolves.toBeUndefined();
   });
 });

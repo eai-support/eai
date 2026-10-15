@@ -258,8 +258,38 @@ describe('public documentation release qualification', () => {
       expect(reads).toBe(0);
     });
   });
-  test('real prepared archive exactly matches all current packaged runtime files', () => {
-    expect(publication.verifyPreparedSource(repoRoot).runtimeFilesVerified).toBeGreaterThan(0);
+  test('an ephemeral archive exactly matches current packaged runtime files and rejects a changed byte', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'eai-current-runtime-'));
+    try {
+      for (const relative of ['dist', 'resources', 'package.json']) {
+        cpSync(path.join(repoRoot, relative), path.join(root, relative), { recursive: true });
+      }
+      const pkg = JSON.parse(readFileSync(path.join(root, 'package.json'), 'utf8'));
+      const registry = path.join(root, 'docs-site/static/registry');
+      const archiveDir = path.join(registry, '-/@enterpriseai');
+      mkdirSync(archiveDir, { recursive: true });
+      const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      const packed = JSON.parse(execFileSync(npm, ['pack', '--ignore-scripts', '--json', '--pack-destination', archiveDir],
+        { cwd: root, encoding: 'utf8', shell: process.platform === 'win32' }))[0].filename as string;
+      const archive = readFileSync(path.join(archiveDir, packed));
+      const entry = { name: pkg.name, version: pkg.version, dist: {
+        tarball: `https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-${pkg.version}.tgz`,
+        shasum: createHash('sha1').update(archive).digest('hex'),
+        integrity: 'sha512-' + createHash('sha512').update(archive).digest('base64'),
+      } };
+      const packument = JSON.stringify({ name: pkg.name, 'dist-tags': { latest: pkg.version }, versions: { [pkg.version]: entry } });
+      mkdirSync(path.join(registry, '@enterpriseai'), { recursive: true });
+      for (const relative of ['@enterpriseai/cli', '@enterpriseai%2fcli', '@enterpriseai%2Fcli', '%40enterpriseai%2Fcli']) {
+        writeFileSync(path.join(registry, relative), packument);
+      }
+      for (const filename of [`cli-${pkg.version}.tgz`, 'cli-latest.tgz']) {
+        writeFileSync(path.join(archiveDir, filename), archive);
+      }
+      expect(publication.verifyPreparedSource(root).runtimeFilesVerified).toBeGreaterThan(0);
+      const binary = path.join(root, 'dist/index.js');
+      writeFileSync(binary, readFileSync(binary, 'utf8') + '\n// changed current runtime\n');
+      expect(() => publication.verifyPreparedSource(root)).toThrow();
+    } finally { rmSync(root, { recursive: true, force: true }); }
   });
   test('current version listing advertises the prepared archive checksum', () => {
     const pkg = JSON.parse(readFileSync(path.join(repoRoot, 'package.json'), 'utf8'));
@@ -270,17 +300,6 @@ describe('public documentation release qualification', () => {
     const listing = readFileSync(path.join(registry, 'index.html'), 'utf8');
     expect(packument.versions[pkg.version].dist.shasum).toBe(shasum);
     expect(listing).toContain(`<td><code title="${shasum}">${shasum.slice(0, 12)}...</code></td>`);
-  });
-  test('a checksummed prepared archive cannot publish different current runtime source', () => {
-    const root = mkdtempSync(path.join(tmpdir(), 'eai-prepared-source-mismatch-'));
-    try {
-      for (const relative of ['dist', 'resources', 'package.json', 'docs-site/static/registry']) {
-        cpSync(path.join(repoRoot, relative), path.join(root, relative), { recursive: true });
-      }
-      const binary = path.join(root, 'dist/index.js');
-      writeFileSync(binary, readFileSync(binary, 'utf8') + '\n// changed current runtime\n');
-      expect(() => publication.verifyPreparedSource(root)).toThrow();
-    } finally { rmSync(root, { recursive: true, force: true }); }
   });
   test('Docs validation remains unconditional and every publication path requires the real proof', () => {
     const docs = readFileSync(path.join(repoRoot, '.github/workflows/docs.yml'), 'utf8');
