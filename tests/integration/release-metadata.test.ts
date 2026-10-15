@@ -319,6 +319,28 @@ describe('release metadata updater', () => {
 });
 
 describe('managed-deployment release documentation', () => {
+  test('generated examples links use the published folder route and preserve nested example routes', () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'eai-docs-example-routes-'));
+    try {
+      for (const directory of ['scripts', 'dist', '.tech-docs/examples']) {
+        mkdirSync(path.join(root, directory), { recursive: true });
+      }
+      cpSync(path.join(repoRoot, 'scripts/generate-release-docs.cjs'), path.join(root, 'scripts/generate-release-docs.cjs'));
+      writeFileSync(path.join(root, 'package.json'), JSON.stringify({ version: '0.0.0' }));
+      writeFileSync(path.join(root, 'dist/index.js'), 'console.log("Controlled CLI help");\n');
+      writeFileSync(path.join(root, '.tech-docs/examples/index.md'), '---\ntitle: Examples\n---\n# Examples\n');
+      writeFileSync(path.join(root, '.tech-docs/examples/task-tracker.md'), '---\ntitle: Task Tracker\n---\n# Task Tracker\n');
+      execFileSync(process.execPath, [path.join(root, 'scripts/generate-release-docs.cjs')], { stdio: 'pipe' });
+      const index = readFileSync(path.join(root, 'docs-site/static/llms.txt'), 'utf8');
+      // Docusaurus publishes examples/index.md as docs/examples.html, not docs/examples/index.html.
+      expect(index).toContain('- [Examples](/eai/docs/examples)');
+      expect(index).not.toContain('/eai/docs/examples/index');
+      expect(index).toContain('- [Task Tracker](/eai/docs/examples/task-tracker)');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   test('ships app deletion help with its explicit runtime child target', () => {
     for (const filename of ['cli-help.txt', 'llms-full.txt']) {
       const asset = readFileSync(path.join(repoRoot, 'docs-site/static', filename), 'utf8');

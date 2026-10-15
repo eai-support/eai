@@ -108,9 +108,10 @@ function readDoc(filename) {
   const raw = fs.readFileSync(absolutePath, "utf-8");
   const { frontmatter, body } = parseFrontmatter(raw);
   const heading = body.match(/^#\s+(.+)$/m)?.[1];
+  const slug = filename.replace(/\.md$/, "");
   return {
     filename,
-    slug: filename.replace(/\.md$/, ""),
+    slug: slug === "examples/index" ? "examples" : slug,
     title: frontmatter.title || heading || filename.replace(/\.md$/, ""),
     body: body
       .replace(/^import Link from ['"]@docusaurus\/Link['"];?\r?\n/gm, "")
