@@ -9,6 +9,8 @@ import {
   EAI_MANAGED_WORKFLOW_PATH,
   requireManagedPublicApiUrl,
 } from "../lib/eai-managed-deploy.js";
+import { startDirectSource, resumeDirectSource } from "./eai-managed-deploy-direct.js";
+import { DirectSourceClient, hasCliManagedSourceReceipt, requireDirectSourcePublicApiUrl } from "../lib/eai-direct-source-client.js";
 import { chooseManagedDeploySource } from "../lib/eai-managed-source.js";
 import {
   verifyCliGithubIdentity,
@@ -48,7 +50,7 @@ export type { VerifiedGitHubActor } from "./eai-managed-deploy-contract.js";
 
 export const eaiManagedDeployCommand = new Command("app")
   .description(
-    "Deploy local app source through EAI-maintained or customer-owned GitHub to TenantInfra",
+    "Deploy local app source directly to EAI or through GitHub",
   )
   .argument("<app-key>", "Existing EAI app key")
   .requiredOption("--target <target>", "Hosting target (eai)")
@@ -63,7 +65,7 @@ export const eaiManagedDeployCommand = new Command("app")
   .option("--repo <owner/name>", "Exact GitHub repository")
   .option(
     "--source <source>",
-    "Source ownership (eai-managed|customer-owned); required without an interactive prompt",
+    "Source mode (direct|eai-managed|customer-owned); defaults to direct without a GitHub link",
   )
   .option(
     "--github-link-session <session-id>",
@@ -106,6 +108,7 @@ export const eaiManagedDeployCommand = new Command("app")
     "after",
     `
 Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source direct
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
@@ -126,6 +129,8 @@ Examples:
         retryOperationId,
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
+      const directResume = Boolean(resumeOperationId && (options.source === "direct" || (!options.source && /^direct-[a-f0-9]{32}$/.test(resumeOperationId))));
+      if (directResume) validateManagedDeployInput(appKeyValue, { ...options, source: "direct" });
       const retryAuthority = retryOperationId
         ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey)
         : undefined;
@@ -134,7 +139,8 @@ Examples:
         tenantId: options.tenantId,
         interactive: false,
         forceRefresh: true,
-        validatePublicApiUrl: requireManagedPublicApiUrl,
+        validatePublicApiUrl: directResume || options.source === "direct" || (!options.source && !options.repo && !recoveryOperationId)
+          ? requireDirectSourcePublicApiUrl : requireManagedPublicApiUrl,
         publicApiUrl: retryAuthority?.publicApiUrl,
         pinPublicApiUrl: Boolean(retryAuthority),
       });
@@ -173,6 +179,11 @@ Examples:
         retryState,
         missingCliSourceRetryAuthority: Boolean(retryOperationId && !retryAuthority),
       };
+
+      if (directResume && resumeOperationId) {
+        await resumeDirectSource(execution, resumeOperationId, command.getOptionValueSource("environment") !== "default");
+        return;
+      }
 
       let recoverySource = options.source;
       if (recoveryOperationId) {
@@ -221,11 +232,22 @@ Examples:
       }
 
       spinner?.stop();
+      const githubLinked = options.source ? undefined : Boolean(
+        options.repo || options.installationId || options.githubLinkSession ||
+        await hasCliManagedSourceReceipt(context.root) ||
+        await new DirectSourceClient(managedClient, context.publicApiUrl, managedScope.tenantId).hasLinkedSource(managedScope)
+      );
       const sourceChoice = await chooseManagedDeploySource({
         source: options.source,
         repo: options.repo,
         format,
+        githubLinked,
       });
+      if (sourceChoice === "direct") {
+        validateManagedDeployInput(appKeyValue, { ...options, source: "direct" });
+        await startDirectSource(execution);
+        return;
+      }
       if (
         sourceChoice === "eai-managed" &&
         (options.repo ||

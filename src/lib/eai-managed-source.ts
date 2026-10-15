@@ -18,8 +18,9 @@ export const CLI_MANAGED_SOURCE_SCHEMA = 'eai.cli_managed_source_bundle.v2';
 export type CliManagedSourceSchema = 'eai.cli_managed_source_bundle.v1' | typeof CLI_MANAGED_SOURCE_SCHEMA;
 export const CLI_MANAGED_SOURCE_RECEIPT_PATH = '.eai/cli-managed-source-receipt.json';
 export const CLI_MANAGED_SOURCE_LIMITS = { maxFiles: 500, maxFileBytes: 2 * 1024 * 1024, maxTotalBytes: 20 * 1024 * 1024 } as const;
-/** Repository ownership is separate from the EAI Azure hosting choice. */
-export type ManagedDeploySource = 'eai-managed' | 'customer-owned';
+/** Repository ownership is separate from the EAI Azure hosting choice; `direct` uploads source to EAI with no repository. */
+export type ManagedDeploySource = 'direct' | 'eai-managed' | 'customer-owned';
+export const MANAGED_DEPLOY_SOURCES: ReadonlySet<string> = new Set<ManagedDeploySource>(['direct', 'eai-managed', 'customer-owned']);
 
 const ROOT_FILES = new Set([
   'package.json', 'package-lock.json', 'eai.config.ts', 'eai.runtime.json', 'next.config.js', 'next.config.mjs', 'next.config.ts',
@@ -433,12 +434,14 @@ export async function writeCliManagedSourceReceipt(projectRoot: string, bundle: 
   return target;
 }
 
-/** Invoke only after the platform verifies GitHub identity for the signed-in EAI actor. */
-export async function chooseManagedDeploySource(options: { source?: string; repo?: string; format: string }, interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY)): Promise<ManagedDeploySource> {
-  if (options.source && !['eai-managed', 'customer-owned'].includes(options.source)) throw new ManagedSourceError('SOURCE_CHOICE_INVALID', 'Choose --source eai-managed or --source customer-owned.');
+/** Without a GitHub link the default is `direct`; a linked app keeps the explicit GitHub-mode choice. */
+export async function chooseManagedDeploySource(options: { source?: string; repo?: string; format: string; githubLinked?: boolean }, interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY)): Promise<ManagedDeploySource> {
+  if (options.source && !MANAGED_DEPLOY_SOURCES.has(options.source)) throw new ManagedSourceError('SOURCE_CHOICE_INVALID', 'Choose --source direct, --source eai-managed or --source customer-owned.');
   if (options.source === 'eai-managed' && options.repo) throw new ManagedSourceError('SOURCE_CHOICE_CONFLICT', 'EAI selects the maintained repository; omit --repo when choosing --source eai-managed.');
+  if (options.source === 'direct' && options.repo) throw new ManagedSourceError('SOURCE_CHOICE_CONFLICT', 'Direct deploy uploads local source to EAI without a repository; omit --repo when choosing --source direct.');
   if (options.source) return options.source as ManagedDeploySource;
-  if (!interactive || options.format === 'json') throw new ManagedSourceError('SOURCE_CHOICE_REQUIRED', 'Choose --source eai-managed for EAI to maintain the repository, or --source customer-owned for your GitHub repository.');
+  if (options.githubLinked === false) return 'direct';
+  if (!interactive || options.format === 'json') throw new ManagedSourceError('SOURCE_CHOICE_REQUIRED', 'Choose --source direct to upload source to EAI, --source eai-managed for EAI to maintain the repository, or --source customer-owned for your GitHub repository.');
   const answer = await inquirer.prompt<{ source: ManagedDeploySource }>([{
     type: 'list', name: 'source', message: 'Who should maintain the app source?',
     choices: [

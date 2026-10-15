@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.5 |
-| Released | 2026-10-14 |
-| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
-| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
+| Version | 3.21.0 |
+| Released | 2026-10-15 |
+| Last Material Change | Direct source deployment with server-side builds (unreleased preparation) |
+| Source Commit | `896afe730ff1a6bbd7d6ba051d04d9a2aa6f5109` |
 
 
 ## Install
@@ -100,7 +100,7 @@ The check uses the same source guard as publication. It reads local files withou
 signing in, publishing, or writing a deployment receipt. The upload includes the
 complete authored app: frontend and backend code, custom runners, tests, scripts,
 assets, documentation and ordinary config files. Executable script permissions
-are bound into the source digest and retained in GitHub. NCB's generation layout
+are bound into the source digest and retained in the uploaded bundle. NCB's generation layout
 does not constrain Installer/CLI source.
 
 Deployment-owned Docker, workflow, platform authentication and tenant-binding
@@ -109,6 +109,33 @@ agent state are excluded. A custom runtime needs an approved runtime contract;
 it cannot be silently replaced by the template runtime. The check reports
 unsupported controls and preserves your changes. A passing source check does
 not prove that the build, deployment or hosted readiness has completed.
+
+## Deploy Directly To EAI
+
+From your app folder, upload the checked source to EAI for a server-side build:
+
+```bash
+eai deploy app <app-key> --target eai --tenant-id <owning-workspace-id> --target-tenant-id <runtime-workspace-id> --source direct --environment dev --wait --format json
+```
+
+Direct deployment does not require Docker or a GitHub repository on your computer.
+EAI builds the uploaded source in its registry, deploys the resulting image, and
+checks runtime readiness. The CLI reports uploaded, building, deploying and ready,
+or a failure reason with the exact operation ID. The Admin Portal's existing
+Launch App page shows the same status and an Open app link from the verified
+active runtime. A failed update keeps the previous active version available.
+
+When no GitHub source link exists, direct is the default for `eai deploy app`.
+Existing links retain their explicit `--source eai-managed` or
+`--source customer-owned` workflow. Repeating unchanged source is idempotent.
+To continue observing an interrupted deployment without uploading again:
+
+```bash
+eai deploy app <app-key> --target eai --tenant-id <owning-workspace-id> --target-tenant-id <runtime-workspace-id> --source direct --resume <operation-id> --wait --format json
+```
+
+A timeout does not establish deployment failure; resume the exact operation.
+A failed build exits nonzero. Fix the reported source failure and deploy again.
 
 ## Object Type Identifiers
 

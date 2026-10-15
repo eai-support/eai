@@ -125,12 +125,33 @@ export function validateManagedDeployInput(
   }
   if (
     options.source &&
-    !["eai-managed", "customer-owned"].includes(options.source)
+    !["direct", "eai-managed", "customer-owned"].includes(options.source)
   ) {
     fail(
       "SOURCE_CHOICE_INVALID",
-      "Choose --source eai-managed or --source customer-owned.",
+      "Choose --source direct, --source eai-managed or --source customer-owned.",
       "Use the source mode recorded by the exact operation.",
+    );
+  }
+  if (options.source === "direct" && options.retry) {
+    fail(
+      "DEPLOY_MODE_CONFLICT",
+      "Direct deploy has no --retry; rerunning the same deploy is idempotent for unchanged source.",
+      "Use --source direct --resume <operation-id> to observe an existing direct operation, or rerun the deploy.",
+    );
+  }
+  if (
+    options.source === "direct" &&
+    (options.repo ||
+      options.installationId ||
+      options.commit ||
+      options.githubLinkSession ||
+      options.branch !== "main")
+  ) {
+    fail(
+      "SOURCE_CHOICE_CONFLICT",
+      "Direct deploy uploads local source to EAI without a GitHub repository, branch or commit.",
+      "Omit --repo, --installation-id, --branch, --commit and --github-link-session for --source direct.",
     );
   }
   if (
@@ -147,7 +168,8 @@ export function validateManagedDeployInput(
     );
   }
   if (
-    ((!options.resume && !options.retry) || options.source === "eai-managed") &&
+    ((!options.resume && !options.retry) || options.source === "eai-managed"
+      || (options.source === "direct" && options.environment !== undefined && options.resume === undefined)) &&
     !MANAGED_DEPLOY_ENVIRONMENTS.has(options.environment)
   ) {
     fail(

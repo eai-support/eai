@@ -235,6 +235,63 @@ describe('eai deploy app --target eai', () => {
     await env.cleanup();
   });
 
+  test.each(['default', 'explicit'])('direct %s deploy uploads the real v2 bundle and returns its ready URL without GitHub', async (mode) => {
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "direct app"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const paths: string[] = [];
+    let uploaded: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input); paths.push(url);
+      if (url.includes('/source-anchor?')) return jsonResponse({}, 404);
+      if (url.endsWith('/source-direct/deploy')) {
+        uploaded = JSON.parse(await (init?.body as Blob).text());
+        return jsonResponse({
+          schemaVersion: 'eai.direct_source_operation.v1', operationId: 'direct-start-1', sourceMode: 'direct', tenantId: TENANT_ID,
+          targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid', status: 'ready',
+          repository: null, bundleSha256: uploaded!.bundleSha256, templateCommitSha: uploaded!.templateCommitSha, configHash: uploaded!.configHash,
+          imageDigest: `registry.test/app@sha256:${'d'.repeat(64)}`, activeUrl: 'https://planning.example.test', deploymentId: 'dep-1', build: null, failure: null,
+          createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+        }, 202);
+      }
+      return identity(input, init);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, ...(mode === 'explicit' ? ['--source', 'direct'] : []), '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(uploaded).toMatchObject({ schemaVersion: 'eai.cli_direct_source_request.v1', bundleSha256: expect.stringMatching(/^sha256:/), bundle: { schemaVersion: 'eai.cli_managed_source_bundle.v2', files: expect.arrayContaining([expect.objectContaining({ path: 'src/app/page.tsx' })]) } });
+    expect(paths.some(path => path.includes('/github-link-sessions'))).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'ready', activeUrl: 'https://planning.example.test', sourceMode: 'direct' });
+  });
+
+  test.each(['explicit', 'inferred'])('direct %s resume reads only its direct operation without GitHub or source upload', async (mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const fetchMock = stubManagedOperation();
+    const fallback = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/source-direct/operations/direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) return jsonResponse({
+        schemaVersion: 'eai.direct_source_operation.v1', operationId: 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'direct',
+        tenantId: TENANT_ID, appKey: 'planning-portal', targetTenantId: TENANT_ID, environment: 'dev', actorId: 'test-user-oid',
+        status: 'ready', repository: null, bundleSha256: `sha256:${'a'.repeat(64)}`, templateCommitSha: 'b'.repeat(40), configHash: `sha256:${'c'.repeat(64)}`,
+        imageDigest: `registry.test/app@sha256:${'d'.repeat(64)}`, deploymentId: 'dep-1', activeUrl: 'https://planning.example.test', failure: null, build: null,
+        createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+      });
+      return fallback(input, init);
+    });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, ...(mode === 'explicit' ? ['--source', 'direct'] : []), '--resume', 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    const paths = fetchMock.mock.calls.map(call => String(call[0]));
+    expect(paths.some(path => path.includes('/source-direct/operations/direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).toBe(true);
+    expect(paths.some(path => path.includes('/github-link-sessions') || path.includes('/managed-deployments/') || path.endsWith('/source-direct/deploy'))).toBe(false);
+  });
+
   test('source move opens only the exact Portal handoff after active source readback', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const sourceOperationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -159,7 +160,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test.each(['apply', 'status'])('JWT-shaped %s operation identities are refused before profile/auth or redaction', command => {
     const invalid = jwtShapedIdentifier;
     const args = command === 'apply' ? applyArgs(['--operation-id', invalid]) : ['status', '--operation-id', invalid, ...scoped];
-    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', 'missing-owned-profile',
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), '--profile', 'missing-owned-profile',
       'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
       env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
     const output = result.stdout.trim() || result.stderr.trim();
@@ -186,7 +187,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       const args = selector === 'prefix' ? ['--profile', '../bad', ...invocation]
         : selector === 'equals' ? ['--profile=../bad', ...invocation]
           : selector === 'trailing' ? [...invocation, '--profile', '../bad'] : invocation;
-      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, ...args],
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), ...args],
         { encoding: 'utf8', timeout: 10000, cwd: directory, env: { ...process.env, HOME: directory, USERPROFILE: directory,
           EAI_ACCESS_TOKEN: '', EAI_PROFILE: selector === 'environment' ? '../bad' : '', EAI_NO_UPDATE_CHECK: '1',
           NO_UPDATE_NOTIFIER: '1', NODE_OPTIONS: `--import=${observer}` } });
@@ -198,7 +199,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test.each(['apply', 'status'])('compiled %s rejects an invalid ID before a malformed profile can echo it or resolve auth', command => {
     const id = jwtShapedIdentifier;
     const args = command === 'apply' ? applyArgs(['--operation-id', id]) : ['status', '--operation-id', id, ...scoped];
-    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', '../bad',
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), '--profile', '../bad',
       'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
       env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
     const output = result.stdout.trim() || result.stderr.trim();
@@ -208,7 +209,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   test.each(['file-value', 'terminator'])('bootstrap retention never treats the %s text as an invoked operation selector', kind => {
     const id = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     const options = kind === 'file-value' ? ['--file', '--operation-id', id] : ['--', '--operation-id', id];
-    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', '../bad',
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), '--profile', '../bad',
       'content-understanding', 'apply', ...options, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
       env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
     const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
@@ -251,7 +252,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
         : scenario === 'record-alias' ? ['docs', 'get', 'doc-one', '--job-id', 'job-one']
           : scenario === 'nested-error' ? ['content-understanding', 'status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']
             : ['content-understanding', 'capabilities'];
-      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, ...args, ...scoped, '--format', 'json'],
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), ...args, ...scoped, '--format', 'json'],
         { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
       const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
       expect(result.signal).toBeNull();
@@ -557,7 +558,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
         }
       }
       const args = command === 'apply' ? applyArgs(['--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa']) : ['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped];
-      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname,
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)),
         ...(stage === 'profile' ? ['--profile', 'missing-owned-profile'] : []), 'content-understanding', ...args, '--format', 'json'],
         { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
       expect(result.status).toBe(1); expect(result.signal).toBeNull();
@@ -595,7 +596,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
     for (const operationId of ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', jwtShapedIdentifier]) {
       const args = command === 'apply' ? applyArgs(['--operation-id', operationId]) : ['status', '--operation-id', operationId, ...scoped];
-      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', profile,
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), '--profile', profile,
         'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
       const output = result.stdout.trim() || result.stderr.trim(), payload = JSON.parse(output);
       expect(result.status).toBe(1); expect(result.signal).toBeNull(); expect(payload).not.toHaveProperty('body');
@@ -612,7 +613,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
   });
   test.each(['apply', 'status'])('compiled %s rejects an invalid ID before a missing profile can resolve auth or expose it', async command => {
     const args = command === 'apply' ? applyArgs(['--operation-id', '../foreign-operation']) : ['status', '--operation-id', '../foreign-operation', ...scoped];
-    const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname, '--profile', 'missing-owned-profile',
+    const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)), '--profile', 'missing-owned-profile',
       'content-understanding', ...args, '--format', 'json'], { encoding: 'utf8', timeout: 10000, cwd: directory,
       env: { ...process.env, HOME: directory, USERPROFILE: directory, EAI_ACCESS_TOKEN: '', EAI_PROFILE: '', EAI_NO_UPDATE_CHECK: '1', NO_UPDATE_NOTIFIER: '1' } });
     expect(result.status).toBe(1); const output = result.stdout.trim() || result.stderr.trim();
@@ -876,7 +877,7 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
           oid:'scope-fixture-actor',upn:'owned@example.invalid',activeTenantId:${JSON.stringify(tenantId)},publicApiUrl:${JSON.stringify(unsafeGateway)}});`],
       { encoding: 'utf8', timeout: 5000, env: childEnv });
       expect(setup.status).toBe(0); expect(setup.stderr).toBe('');
-      const result = spawnSync(process.execPath, [new URL('../../dist/index.js', import.meta.url).pathname,
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../../dist/index.js', import.meta.url)),
         'docs', command, command === 'job' ? 'job-one' : 'doc-one', ...scoped, '--format', 'json'],
       { encoding: 'utf8', timeout: 10000, cwd: directory, env: childEnv });
       const printed = result.stdout.trim() || result.stderr.trim();
