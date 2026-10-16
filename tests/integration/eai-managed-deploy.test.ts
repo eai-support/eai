@@ -384,6 +384,40 @@ describe('eai deploy app --target eai', () => {
     expect(requests.some(url => new URL(url).hostname === 'api.github.com')).toBe(false);
   });
 
+  test('stops an outdated EAI-managed project before the GitHub link step (Issues2025#3574)', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { version: 'v1.0.7', commit: '3af817f688d374b6260dcffcecb53c4bb94675ef' } }));
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      requests.push(url);
+      if (url.includes('/cli-managed-source/template-requirement?')) {
+        return jsonResponse({
+          schemaVersion: 'eai.cli_managed_template_requirement.v1', tenantId: TENANT_ID, appKey: 'planning-portal',
+          requiredTemplateCommitSha: '3162df8dffd36465ef2cec474eee4f8e6285ec3c', requiredTemplateVersion: 'v1.0.17',
+        });
+      }
+      return identity(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'eai-managed', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
+      ok: false,
+      error: {
+        code: 'TEMPLATE_VERSION_NOT_APPROVED',
+        message: 'Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.17 (3162df8).',
+        nextAction: expect.stringContaining('template migration'),
+        details: { currentTemplateCommitSha: '3af817f688d374b6260dcffcecb53c4bb94675ef', requiredTemplateCommitSha: '3162df8dffd36465ef2cec474eee4f8e6285ec3c' },
+      },
+    });
+    expect(requests.find(url => url.includes('/template-requirement?'))).toBe(
+      `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/cli-managed-source/template-requirement?targetTenantId=${TENANT_ID}`,
+    );
+    expect(requests.some(url => url.includes('/github-link-sessions') || url.endsWith('/preparations'))).toBe(false);
+  });
+
   test('rejects an unapproved PublicAPI origin before any authenticated request', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     process.env.BASE_URL_PUBLIC_API = 'https://attacker.example/public';
