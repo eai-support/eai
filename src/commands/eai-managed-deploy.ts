@@ -9,7 +9,7 @@ import {
   EAI_MANAGED_WORKFLOW_PATH,
   requireManagedPublicApiUrl,
 } from "../lib/eai-managed-deploy.js";
-import { startDirectSource, resumeDirectSource } from "./eai-managed-deploy-direct.js";
+import { startDirectSource, resumeDirectSource, retryDirectSource } from "./eai-managed-deploy-direct.js";
 import { DirectSourceClient, hasCliManagedSourceReceipt, requireDirectSourcePublicApiUrl } from "../lib/eai-direct-source-client.js";
 import { chooseManagedDeploySource } from "../lib/eai-managed-source.js";
 import {
@@ -86,7 +86,7 @@ export const eaiManagedDeployCommand = new Command("app")
   )
   .option(
     "--retry <operation-id>",
-    "Retry evidence handoff, resume dispatched work, or start an undispatched operation",
+    "Retry a failed direct operation with unchanged source, or recover GitHub source handoff",
   )
   .option(
     "--wait",
@@ -109,6 +109,7 @@ export const eaiManagedDeployCommand = new Command("app")
     `
 Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source direct
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source direct --retry direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
@@ -130,8 +131,9 @@ Examples:
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
       const directResume = Boolean(resumeOperationId && (options.source === "direct" || (!options.source && /^direct-[a-f0-9]{32}$/.test(resumeOperationId))));
+      const directRetry = Boolean(retryOperationId && options.source === "direct");
       if (directResume) validateManagedDeployInput(appKeyValue, { ...options, source: "direct" });
-      const retryAuthority = retryOperationId
+      const retryAuthority = retryOperationId && !directRetry
         ? await loadManagedRetryAuthority(retryOperationId, options.tenantId, targetTenantId, appKey)
         : undefined;
       const retryState = retryAuthority?.state;
@@ -139,7 +141,7 @@ Examples:
         tenantId: options.tenantId,
         interactive: false,
         forceRefresh: true,
-        validatePublicApiUrl: directResume || options.source === "direct" || (!options.source && !options.repo && !recoveryOperationId)
+        validatePublicApiUrl: directResume || directRetry || options.source === "direct" || (!options.source && !options.repo && !recoveryOperationId)
           ? requireDirectSourcePublicApiUrl : requireManagedPublicApiUrl,
         publicApiUrl: retryAuthority?.publicApiUrl,
         pinPublicApiUrl: Boolean(retryAuthority),
@@ -182,6 +184,10 @@ Examples:
 
       if (directResume && resumeOperationId) {
         await resumeDirectSource(execution, resumeOperationId, command.getOptionValueSource("environment") !== "default");
+        return;
+      }
+      if (directRetry && retryOperationId) {
+        await retryDirectSource(execution, retryOperationId, command.getOptionValueSource("environment") !== "default");
         return;
       }
 

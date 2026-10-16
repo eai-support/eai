@@ -62,6 +62,8 @@ export interface DirectSourceOperation {
   deploymentId: string | null;
   activeUrl: string | null;
   failure: { reason: string; message: string } | null;
+  retryOf: string | null;
+  attempt: 1 | 2 | 3;
   createdAt: string;
   updatedAt: string;
 }
@@ -74,6 +76,8 @@ export interface ExpectedDirectSourceOperation {
   bundleSha256Hex?: string;
   templateCommitSha?: string;
   configHash?: string;
+  retryOf?: string;
+  attempt?: 1 | 2 | 3;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -136,6 +140,13 @@ export function directSourceIdempotencyKey(scope: CliManagedSourceScope, bundleS
   return createHash("sha256")
     .update(`${scope.tenantId}|${scope.appKey}|${scope.targetTenantId}|${scope.environment}|${bundleSha256}`)
     .digest("hex");
+}
+
+/** Contract §14 binds every retry replay to one failed parent and unchanged source. */
+export function directSourceRetryIdempotencyKey(failedOperationId: string, bundleSha256: string): string {
+  if (!isManagedDeploymentIdentifier(failedOperationId)) throw mismatch("retryOf");
+  directSourceBundleSha256Hex(bundleSha256);
+  return createHash("sha256").update(`retry|${failedOperationId}|${bundleSha256}`).digest("hex");
 }
 
 /** Serialize per file so a 20 MiB bundle never becomes one JSON string; the Blob still carries Content-Length. */
@@ -311,6 +322,13 @@ export function validateDirectSourceOperation(
   if (value.status === "ready" && !isValidHttpsUrl(value.activeUrl)) throw mismatch("activeUrl");
   if (value.status !== "ready" && value.activeUrl != null) throw mismatch("activeUrl");
   if (typeof value.imageDigest === "string" && !/^.+@sha256:[a-f0-9]{64}$/.test(value.imageDigest)) throw mismatch("imageDigest");
+  const retryOf = value.retryOf === undefined ? null : value.retryOf;
+  const attempt = value.attempt === undefined ? 1 : value.attempt;
+  if (retryOf !== null && !isManagedDeploymentIdentifier(retryOf)) throw mismatch("retryOf");
+  if (attempt !== 1 && attempt !== 2 && attempt !== 3) throw mismatch("attempt");
+  if ((retryOf === null) !== (attempt === 1)) throw mismatch("attempt");
+  if (expected.retryOf !== undefined && retryOf !== expected.retryOf) throw mismatch("retryOf");
+  if (expected.attempt !== undefined && attempt !== expected.attempt) throw mismatch("attempt");
   let failure: DirectSourceOperation["failure"] = null;
   if (value.status === "failed") {
     if (!isRecord(value.failure) || typeof value.failure.reason !== "string" || !/^[a-z][a-z0-9_-]{0,63}$/.test(value.failure.reason)) throw mismatch("failure");
@@ -338,6 +356,8 @@ export function validateDirectSourceOperation(
     deploymentId: (value.deploymentId as string | null | undefined) ?? null,
     activeUrl: (value.activeUrl as string | null | undefined) ?? null,
     failure,
+    retryOf,
+    attempt,
     createdAt: value.createdAt as string,
     updatedAt: value.updatedAt as string,
   };
@@ -475,6 +495,71 @@ export class DirectSourceClient {
     }
   }
 
+  /** The retry response must identify a distinct child with the next sealed attempt. */
+  async retry(
+    scope: CliManagedSourceScope,
+    failedOperation: DirectSourceOperation,
+    bundle: CliManagedSourceBundle,
+    options: { timeoutMs?: number } = {},
+  ): Promise<DirectSourceOperation> {
+    validateDirectSourceOperation(failedOperation, scope, {
+      bundleSha256Hex: directSourceBundleSha256Hex(bundle.bundleSha256),
+      templateCommitSha: bundle.templateCommitSha,
+      configHash: bundle.configHash,
+    });
+    const expectedAttempt = failedOperation.attempt + 1;
+    if (failedOperation.status !== "failed" || expectedAttempt > 3) throw mismatch("retry parent");
+    const idempotencyKey = directSourceRetryIdempotencyKey(failedOperation.operationId, bundle.bundleSha256);
+    const body = directSourceRequestBody(scope, bundle);
+    const url = this.path(scope, `/operations/${encodeURIComponent(failedOperation.operationId)}/retry`);
+    const expected: ExpectedDirectSourceOperation = {
+      bundleSha256Hex: directSourceBundleSha256Hex(bundle.bundleSha256),
+      templateCommitSha: bundle.templateCommitSha,
+      configHash: bundle.configHash,
+      retryOf: failedOperation.operationId,
+      attempt: expectedAttempt as 2 | 3,
+    };
+    const sleep = this.dependencies.sleep ?? defaultSleep;
+    for (let attempt = 1; ; attempt += 1) {
+      const signal = this.client.managedSourceUploadSignal(options.timeoutMs);
+      let response: Response;
+      try {
+        response = await this.request(url, {
+          method: "POST", body, signal,
+          headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        });
+      } catch (error) {
+        if (error instanceof ManagedSourceError) throw error;
+        throw new ManagedSourceError(
+          "DIRECT_SOURCE_RETRY_UNCERTAIN",
+          `Retry response was lost. Repeat --source direct --retry ${failedOperation.operationId} with unchanged source; the same key reuses its child operation.`,
+        );
+      }
+      if (response.status === 202 || response.status === 200 || response.status === 201) {
+        let text: string;
+        try {
+          text = await awaitManagedRequestDeadline(signal, response.text());
+        } catch {
+          throw new ManagedSourceError("DIRECT_SOURCE_RETRY_UNCERTAIN", `Retry response was lost. Repeat --source direct --retry ${failedOperation.operationId} with unchanged source; the same key reuses its child operation.`);
+        }
+        let parsed: unknown;
+        try { parsed = JSON.parse(text); } catch { throw mismatch("body"); }
+        const child = validateDirectSourceOperation(parsed, scope, expected);
+        if (child.operationId === failedOperation.operationId) throw mismatch("operationId");
+        return child;
+      }
+      const payload = await readErrorPayload(response, signal);
+      if (response.status === 429 && attempt < DIRECT_SOURCE_SUBMIT_ATTEMPTS) {
+        await sleep(retryAfterMs(response) ?? DIRECT_SOURCE_POLL_INTERVAL_MS * attempt);
+        continue;
+      }
+      if (response.status === 409 && payload.code?.startsWith("retry_")) {
+        throw new ManagedSourceError(payload.code.toUpperCase(), `Direct retry was refused (${payload.code}${payload.message ? `: ${payload.message}` : ""}). Inspect the failed operation and keep its source unchanged.`);
+      }
+      throw submitFailure(response.status, payload, scope);
+    }
+  }
+
   /** GET contract §3; 429 and 503 return a wait hint instead of failing a long-running operation. */
   async read(
     scope: DirectSourceScope,
@@ -552,7 +637,7 @@ export async function pollDirectSourceOperation(
   let lastLabel: string | undefined;
   let operation = initial;
   const expected: ExpectedDirectSourceOperation = initial
-    ? { operationId, bundleSha256Hex: initial.bundleSha256.replace(/^sha256:/, ""), templateCommitSha: initial.templateCommitSha, configHash: initial.configHash }
+    ? { operationId, bundleSha256Hex: initial.bundleSha256.replace(/^sha256:/, ""), templateCommitSha: initial.templateCommitSha, configHash: initial.configHash, ...(initial.retryOf ? { retryOf: initial.retryOf, attempt: initial.attempt } : {}) }
     : { operationId };
   const observe = (current: DirectSourceOperation): void => {
     const label = directSourceTransitionLabel(current);

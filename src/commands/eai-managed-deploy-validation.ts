@@ -133,13 +133,6 @@ export function validateManagedDeployInput(
       "Use the source mode recorded by the exact operation.",
     );
   }
-  if (options.source === "direct" && options.retry) {
-    fail(
-      "DEPLOY_MODE_CONFLICT",
-      "Direct deploy has no --retry; rerunning the same deploy is idempotent for unchanged source.",
-      "Use --source direct --resume <operation-id> to observe an existing direct operation, or rerun the deploy.",
-    );
-  }
   if (
     options.source === "direct" &&
     (options.repo ||

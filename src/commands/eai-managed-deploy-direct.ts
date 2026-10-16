@@ -7,6 +7,7 @@ import {
   type DirectSourceScope,
 } from "../lib/eai-direct-source-client.js";
 import { buildCliManagedSourceBundle } from "../lib/eai-managed-source.js";
+import { ManagedSourceError } from "../lib/eai-managed-source.js";
 import * as out from "../lib/output.js";
 import type { ManagedDeployExecutionContext } from "./eai-managed-deploy-contract.js";
 
@@ -22,7 +23,7 @@ function resumeCommand(scope: DirectSourceScope, operation: DirectSourceOperatio
 
 function nextAction(scope: DirectSourceScope, operation: DirectSourceOperation): string {
   if (operation.status === "ready") return `Open ${operation.activeUrl}. Rerun the same deploy after local edits; unchanged source reuses this operation.`;
-  if (operation.status === "failed") return `Fix the reported ${operation.failure?.reason ?? "failure"}, then rerun the same deploy. Quote operation ${operation.operationId} to EAI support if the failure is not in your source.`;
+  if (operation.status === "failed") return `For a transient failure with unchanged source, retry explicitly with --source direct --retry ${operation.operationId}. If you edit the source, start a new deploy. Quote the operation ID to EAI support if needed.`;
   return `Continue observing the exact operation with: ${resumeCommand(scope, operation)}`;
 }
 
@@ -67,6 +68,8 @@ async function observeDirectSource(
       deploymentId: operation.deploymentId,
       activeUrl: operation.activeUrl,
       failure: operation.failure,
+      retryOf: operation.retryOf,
+      attempt: operation.attempt,
       transitions,
       nextAction: action,
     });
@@ -103,4 +106,38 @@ export async function resumeDirectSource(
     : { tenantId: managedScope.tenantId, appKey: managedScope.appKey, targetTenantId: managedScope.targetTenantId, actorId: managedScope.actorId };
   spinner?.stop();
   await observeDirectSource(transport, execution, scope, operationId, undefined);
+}
+
+/** Read the failed parent before any mutation; only its unchanged local source may create a child. */
+export async function retryDirectSource(
+  execution: ManagedDeployExecutionContext,
+  failedOperationId: string,
+  environmentExplicit: boolean,
+): Promise<void> {
+  const { client, managedScope, context, spinner } = execution;
+  const transport = new DirectSourceClient(client, context.publicApiUrl, managedScope.tenantId);
+  const readScope: DirectSourceScope = environmentExplicit
+    ? managedScope
+    : { tenantId: managedScope.tenantId, appKey: managedScope.appKey, targetTenantId: managedScope.targetTenantId, actorId: managedScope.actorId };
+  const readResult = await transport.read(readScope, failedOperationId);
+  if (!readResult.operation) {
+    throw new ManagedSourceError("DIRECT_SOURCE_UNAVAILABLE", `Failed operation ${failedOperationId} could not be confirmed. Retry the same command after the gateway is reachable.`);
+  }
+  const parent = readResult.operation;
+  if (parent.status !== "failed") {
+    throw new ManagedSourceError("RETRY_PARENT_NOT_FAILED", `Direct operation ${failedOperationId} is ${parent.status}; only a terminal failed operation can be retried.`);
+  }
+  if (parent.attempt >= 3) {
+    throw new ManagedSourceError("RETRY_ATTEMPT_LIMIT", `Direct operation ${failedOperationId} is attempt ${parent.attempt}; this chain allows at most three attempts.`);
+  }
+  const { bundle } = await buildCliManagedSourceBundle(context.root);
+  if (bundle.bundleSha256 !== parent.bundleSha256
+    || bundle.templateCommitSha !== parent.templateCommitSha
+    || bundle.configHash !== parent.configHash) {
+    throw new ManagedSourceError("RETRY_SOURCE_MISMATCH", `Local source differs from failed operation ${failedOperationId}. Restore the original bundle to retry, or start a new direct deployment for changed source.`);
+  }
+  const scope = { ...managedScope, environment: parent.environment as typeof managedScope.environment };
+  const child = await transport.retry(scope, parent, bundle, { timeoutMs: execution.timeoutSeconds * 1_000 });
+  spinner?.stop();
+  await observeDirectSource(transport, execution, scope, child.operationId, child);
 }
