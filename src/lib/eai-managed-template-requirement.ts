@@ -46,9 +46,11 @@ export function templateVersionNotApprovedError(
   const bundled = bundledTemplate();
   const cliAlreadyBundlesRequired = bundled?.commit === comparison.requiredTemplateCommitSha;
   const fix = `create a new project with eai create and move your app code into it, or commit an explicit template migration for this project (${TEMPLATE_MIGRATION_DOCS_URL}). Then retry eai deploy app.`;
+  // The required pin may be older than this CLI's bundle (staged rollout), so never assume @latest bundles it.
+  const bundledLabel = bundled?.commit && COMMIT.test(bundled.commit) ? ` (this CLI bundles ${label(bundled.commit, bundled.version)})` : '';
   const nextAction = cliAlreadyBundlesRequired
     ? `This CLI already bundles app template ${required}: ${fix}`
-    : `Update the CLI with npm install -g eai-cli@latest so it bundles app template ${required}, then ${fix}`;
+    : `Install an EAI CLI release that bundles app template ${required}${bundledLabel}, then ${fix}`;
   return new ManagedSourceError(
     TEMPLATE_VERSION_NOT_APPROVED,
     `Your project uses app template ${label(comparison.currentTemplateCommitSha, comparison.currentTemplateVersion)}; this environment requires ${required}.`,

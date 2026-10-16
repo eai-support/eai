@@ -40,7 +40,8 @@ describe('managed source operation errors keep the server reason (Issues2025#357
     }, 409)));
     expect(error.code).toBe('TEMPLATE_VERSION_NOT_APPROVED');
     expect(error.message).toBe('Your project uses app template 3af817f; this environment requires v9.0.0 (fffffff).');
-    expect(error.nextAction).toContain('npm install -g eai-cli@latest so it bundles app template v9.0.0 (fffffff)');
+    expect(error.nextAction).toContain('Install an EAI CLI release that bundles app template v9.0.0 (fffffff) (this CLI bundles v1.0.17 (3162df8))');
+    expect(error.nextAction).not.toContain('@latest');
     expect(error.nextAction).toContain(TEMPLATE_MIGRATION_DOCS_URL);
     expect(error.details).toMatchObject({ httpStatus: 409, currentTemplateCommitSha: OLD, requiredTemplateCommitSha: future, requiredTemplateVersion: 'v9.0.0' });
   });
@@ -52,6 +53,16 @@ describe('managed source operation errors keep the server reason (Issues2025#357
     } }, 409)));
     expect(error.code).toBe('TEMPLATE_VERSION_NOT_APPROVED');
     expect(error.nextAction).toMatch(/^This CLI already bundles app template v1\.0\.17 \(3162df8\): create a new project/);
+  });
+
+  test('an environment pinned older than this CLI is not told to install the latest CLI', async () => {
+    const error = await caught(responseOperation(json({
+      error: 'TEMPLATE_VERSION_NOT_APPROVED',
+      details: { currentTemplateCommitSha: NEW, requiredTemplateCommitSha: OLD, requiredTemplateVersion: 'v1.0.16' },
+    }, 409)));
+    expect(error.message).toBe('Your project uses app template 3162df8; this environment requires v1.0.16 (3af817f).');
+    expect(error.nextAction).toMatch(/^Install an EAI CLI release that bundles app template v1\.0\.16 \(3af817f\) \(this CLI bundles v1\.0\.17 \(3162df8\)\), then create a new project/);
+    expect(error.nextAction).not.toContain('@latest');
   });
 
   test('older or unknown server codes stay readable instead of a bare status', async () => {
