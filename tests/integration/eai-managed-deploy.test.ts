@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { chmod, mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -233,6 +234,132 @@ describe('eai deploy app --target eai', () => {
     process.exitCode = 0;
     process.chdir('/');
     await env.cleanup();
+  });
+
+  test.each(['default', 'explicit'])('direct %s deploy uploads the real v2 bundle and returns its ready URL without GitHub', async (mode) => {
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "direct app"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    const identity = stubManagedOperation().getMockImplementation()!;
+    const paths: string[] = [];
+    let uploaded: Record<string, unknown> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input); paths.push(url);
+      if (url.includes('/source-anchor?')) return jsonResponse({}, 404);
+      if (url.endsWith('/source-direct/deploy')) {
+        uploaded = JSON.parse(await (init?.body as Blob).text());
+        return jsonResponse({
+          schemaVersion: 'eai.direct_source_operation.v1', operationId: 'direct-start-1', sourceMode: 'direct', tenantId: TENANT_ID,
+          targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'preview', actorId: 'test-user-oid', status: 'ready',
+          repository: null, bundleSha256: uploaded!.bundleSha256, templateCommitSha: uploaded!.templateCommitSha, configHash: uploaded!.configHash,
+          imageDigest: `registry.test/app@sha256:${'d'.repeat(64)}`, activeUrl: 'https://planning.example.test', deploymentId: 'dep-1', build: null, failure: null,
+          createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+        }, 202);
+      }
+      return identity(input, init);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, ...(mode === 'explicit' ? ['--source', 'direct'] : []), '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    expect(uploaded).toMatchObject({ schemaVersion: 'eai.cli_direct_source_request.v1', bundleSha256: expect.stringMatching(/^sha256:/), bundle: { schemaVersion: 'eai.cli_managed_source_bundle.v2', files: expect.arrayContaining([expect.objectContaining({ path: 'src/app/page.tsx' })]) } });
+    expect(paths.some(path => path.includes('/github-link-sessions'))).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ status: 'ready', activeUrl: 'https://planning.example.test', sourceMode: 'direct' });
+  });
+
+  test.each(['explicit', 'inferred'])('direct %s resume reads only its direct operation without GitHub or source upload', async (mode) => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const fetchMock = stubManagedOperation();
+    const fallback = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/source-direct/operations/direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa')) return jsonResponse({
+        schemaVersion: 'eai.direct_source_operation.v1', operationId: 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'direct',
+        tenantId: TENANT_ID, appKey: 'planning-portal', targetTenantId: TENANT_ID, environment: 'dev', actorId: 'test-user-oid',
+        status: 'ready', repository: null, bundleSha256: `sha256:${'a'.repeat(64)}`, templateCommitSha: 'b'.repeat(40), configHash: `sha256:${'c'.repeat(64)}`,
+        imageDigest: `registry.test/app@sha256:${'d'.repeat(64)}`, deploymentId: 'dep-1', activeUrl: 'https://planning.example.test', failure: null, build: null,
+        createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+      });
+      return fallback(input, init);
+    });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, ...(mode === 'explicit' ? ['--source', 'direct'] : []), '--resume', 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    const paths = fetchMock.mock.calls.map(call => String(call[0]));
+    expect(paths.some(path => path.includes('/source-direct/operations/direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'))).toBe(true);
+    expect(paths.some(path => path.includes('/github-link-sessions') || path.includes('/managed-deployments/') || path.endsWith('/source-direct/deploy'))).toBe(false);
+  });
+
+  test('explicit direct retry verifies the failed parent and unchanged local bundle before creating one child', async () => {
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "direct retry"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    const { bundle } = await buildCliManagedSourceBundle(projectRoot);
+    const failedId = 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const childId = 'direct-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
+    const parent = {
+      schemaVersion: 'eai.direct_source_operation.v1', operationId: failedId, sourceMode: 'direct',
+      tenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'dev', actorId: 'test-user-oid', status: 'failed',
+      repository: null, bundleSha256: bundle.bundleSha256, templateCommitSha: bundle.templateCommitSha, configHash: bundle.configHash,
+      imageDigest: null, activeUrl: null, deploymentId: null, build: null, failure: { reason: 'acr_unavailable', message: 'Registry unavailable' },
+      retryOf: null, attempt: 1, createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+    };
+    const fallback = stubManagedOperation().getMockImplementation()!;
+    const requests: Array<{ url: string; method: string; body?: Blob; key?: string }> = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push({ url, method: init?.method ?? 'GET', body: init?.body as Blob | undefined, key: new Headers(init?.headers).get('Idempotency-Key') ?? undefined });
+      if (url.endsWith(`/source-direct/operations/${failedId}`)) return jsonResponse(parent);
+      if (url.endsWith(`/source-direct/operations/${failedId}/retry`)) return jsonResponse({ ...parent, operationId: childId, status: 'accepted', failure: null, retryOf: failedId, attempt: 2 }, 202);
+      return fallback(input, init);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'direct', '--retry', failedId, '--no-wait', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(0);
+    const mutation = requests.filter(request => request.method === 'POST');
+    expect(mutation).toHaveLength(1);
+    expect(mutation[0].url).toBe(`${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/source-direct/operations/${failedId}/retry`);
+    expect(mutation[0].key).toBe(createHash('sha256').update(`retry|${failedId}|${bundle.bundleSha256}`).digest('hex'));
+    expect(JSON.parse(await mutation[0].body!.text())).toMatchObject({ schemaVersion: 'eai.cli_direct_source_request.v1', environment: 'dev', bundleSha256: bundle.bundleSha256 });
+    expect(requests.some(request => request.url.includes('/managed-deployments/') || request.url.includes('/github-link-sessions'))).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ operationId: childId, retryOf: failedId, attempt: 2, status: 'accepted' });
+  });
+
+  test('direct retry rejects changed local source before a retry POST', async () => {
+    await mkdir(join(projectRoot, 'src/app'), { recursive: true });
+    await writeFile(join(projectRoot, 'src/app/page.tsx'), 'export default function Page() { return "new bytes"; }');
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    await writeFile(join(projectRoot, '.eai-manifest.json'), JSON.stringify({ template: { commit: 'a'.repeat(40) } }));
+    await exec('git', ['init', '-b', 'main'], { cwd: projectRoot });
+    await exec('git', ['add', '.'], { cwd: projectRoot });
+    await exec('git', ['-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'Initial scaffold from template\n\nCreated by: eai init'], { cwd: projectRoot });
+    const failedId = 'direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const fallback = stubManagedOperation().getMockImplementation()!;
+    const requests: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input);
+      requests.push(`${init?.method ?? 'GET'} ${url}`);
+      if (url.endsWith(`/source-direct/operations/${failedId}`)) return jsonResponse({
+        schemaVersion: 'eai.direct_source_operation.v1', operationId: failedId, sourceMode: 'direct', tenantId: TENANT_ID,
+        targetTenantId: TENANT_ID, appKey: 'planning-portal', environment: 'dev', actorId: 'test-user-oid', status: 'failed',
+        repository: null, bundleSha256: `sha256:${'f'.repeat(64)}`, templateCommitSha: 'a'.repeat(40), configHash: `sha256:${'e'.repeat(64)}`,
+        imageDigest: null, activeUrl: null, deploymentId: null, build: null, failure: { reason: 'build_failed', message: 'Build failed' },
+        retryOf: null, attempt: 1, createdAt: '2026-10-16T00:00:00Z', updatedAt: '2026-10-16T00:00:00Z',
+      });
+      return fallback(input, init);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync(['planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID, '--source', 'direct', '--retry', failedId, '--no-wait', '--format', 'json'], { from: 'user' });
+    expect(process.exitCode).toBe(1);
+    expect(requests.some(request => request.startsWith('POST '))).toBe(false);
+    expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ error: { code: 'RETRY_SOURCE_MISMATCH' } });
   });
 
   test('source move opens only the exact Portal handoff after active source readback', async () => {

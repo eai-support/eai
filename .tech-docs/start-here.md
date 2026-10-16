@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.5** (2026-10-14): Pin parent-owned app deletion to its requested runtime child.
+The current CLI release is **v3.21.0** (2026-10-15): Direct source deployment with server-side builds (unreleased preparation).

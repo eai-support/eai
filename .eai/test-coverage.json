@@ -326,7 +326,8 @@
             "tests/integration/create.test.ts",
             "resources/gofer/**",
             "tests/integration/gofer.test.ts",
-            "src/commands/eai-managed-source-authorize-commit.ts"
+            "src/commands/eai-managed-source-authorize-commit.ts",
+            "src/lib/eai-direct-source-client.ts"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
@@ -348,16 +349,22 @@
             "tests/integration/init.test.ts",
             "tests/integration/linked-sources.test.ts",
             "tests/unit/customer-merged-commit.test.ts",
-            "tests/integration/customer-merged-commit-command.test.ts"
+            "tests/integration/customer-merged-commit-command.test.ts",
+            "tests/unit/eai-direct-source-client.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
+            "publicapi-route-interface",
             "eai-cli",
             "backend"
           ],
           "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/backend/direct-source-operation.spec.ts"
+            },
             {
               "repository": "eai-testing-dev",
               "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"

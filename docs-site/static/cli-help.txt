@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.5
+Package source version: 3.21.0
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -389,8 +389,7 @@ eai deploy app --help
 
 Usage: eai deploy app [options] <app-key>
 
-Deploy local app source through EAI-maintained or customer-owned GitHub to
-TenantInfra
+Deploy local app source directly to EAI or through GitHub
 
 Arguments:
   app-key                             Existing EAI app key
@@ -402,9 +401,9 @@ Options:
   --target-tenant-id <id>             Required exact tenant that receives the
                                       deployed runtime
   --repo <owner/name>                 Exact GitHub repository
-  --source <source>                   Source ownership
-                                      (eai-managed|customer-owned); required
-                                      without an interactive prompt
+  --source <source>                   Source mode
+                                      (direct|eai-managed|customer-owned);
+                                      defaults to direct without a GitHub link
   --github-link-session <session-id>  Resume the exact EAI-account GitHub
                                       browser verification
   --installation-id <id>              Exact EAI GitHub App installation ID
@@ -417,8 +416,9 @@ Options:
   --commit <sha>                      Expected exact 40 character commit SHA
   --resume <operation-id>             Read and wait for one exact existing
                                       operation
-  --retry <operation-id>              Retry evidence handoff, resume dispatched
-                                      work, or start an undispatched operation
+  --retry <operation-id>              Retry a failed direct operation with
+                                      unchanged source, or recover GitHub source
+                                      handoff
   --wait                              Poll the exact operation until it reaches
                                       a terminal status (default: true)
   --no-wait                           Return after dispatch instead of polling
@@ -432,6 +432,8 @@ Options:
   -h, --help                          display help for command
 
 Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source direct
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source direct --retry direct-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
