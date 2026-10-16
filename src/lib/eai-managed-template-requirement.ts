@@ -58,10 +58,8 @@ export function templateVersionNotApprovedError(
 
 function readableServerText(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
-  const text = Array.from(value, character => {
-    const code = character.charCodeAt(0);
-    return code < 32 || code === 127 ? ' ' : character;
-  }).join('').replace(/\s+/g, ' ').trim();
+  // Cc covers C0, DEL and C1 (e.g. U+009B CSI); Cf covers bidi overrides and zero-width characters.
+  const text = value.replace(/[\p{Cc}\p{Cf}]/gu, ' ').replace(/\s+/g, ' ').trim();
   if (!text) return undefined;
   return text.length > MAX_SERVER_MESSAGE_CHARS ? `${text.slice(0, MAX_SERVER_MESSAGE_CHARS - 1)}…` : text;
 }

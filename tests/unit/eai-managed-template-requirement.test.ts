@@ -70,6 +70,12 @@ describe('managed source operation errors keep the server reason (Issues2025#357
     expect(error.message.length).toBeLessThan(500);
   });
 
+  test('C1 controls and bidi/format characters in server text never reach the terminal', async () => {
+    const error = await caught(responseOperation(json({ detail: 'Rejected\u009b31m by\u202e reversed\u2066 text\u200b here.' }, 409)));
+    expect(error.message).toContain('Rejected 31m by reversed text here.');
+    expect(error.message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
+  });
+
   test('non-JSON bodies and nested FastAPI errors still report the status', async () => {
     expect((await caught(responseOperation(new Response('<html>bad gateway</html>', { status: 502 })))).message)
       .toContain('(502)');
