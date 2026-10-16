@@ -4,7 +4,7 @@ Prepared 16 October 2026 (Australia/Sydney). This is a runbook, not executed cus
 
 ## Existing paths and release identity
 
-- Reuse `eai-stack/dev-stack/dev-stack.sh` and the already configured hybrid data target; do not create replacement storage accounts, registries, queues, identities or deployment infrastructure.
+- Reuse the workspace `./dev-stack` entry point (`dev-stack.sh`) and the already configured hybrid data target; do not create replacement storage accounts, registries, queues, identities or deployment infrastructure.
 - Existing default local ports in that script: PublicAPI `http://localhost:8000`, AdminAPI `http://localhost:8010`, Admin Portal `http://localhost:3010`. Treat these as configured defaults, not current health receipts.
 - Reuse the current owner-protected Installer preparation from `workspace-setup/scripts/dev-stack/prepare_installer_clients.py` and its private `installer.env`. It binds `dev-stack-local`, the existing pinned HTTPS PublicAPI tunnel, template, Gofer and local Portal origin. Do not print the environment file, tokens or private config.
 - Use the newly prepared CLI 3.21.0 package, not a previous #3503 staged CLI copy. Canonical tarball: `eai-cli/docs-site/static/registry/-/@enterpriseai/cli-3.21.0.tgz`; prepared SHA1 `45f8569d48ddec275d68e099773539456ec59204` (refresh from final `verify-docs-publication.cjs --prepared-source` receipt if repacked).
@@ -18,6 +18,18 @@ Prepared 16 October 2026 (Australia/Sydney). This is a runbook, not executed cus
 3. Launch the existing prepared Installer with its established private environment. Complete the real customer setup: new project folder, signed-in fresh account, newly created workspace and new application. Record elapsed time, emitted app key, exact runtime tenant ID and the Installer's final acknowledgement. If the prepared Installer bundles an older CLI, root must refresh its preparation against final CLI source through the existing helper before execution; do not call an old prepared client proof current.
 4. In the new project folder, run the packaged CLI with `--profile dev-stack-local whoami --format json`. Verify actor and selected workspace match step 2. If an old profile token is selected, stop and sign out/sign in through the supported customer CLI flow before any write. Do not copy old token files into the journey.
 5. Inspect the generated project binding and app-owned source. Record the exact owner workspace, runtime tenant, app key and template revision. Retain the normal generated runtime/auth controls. Add a harmless visible app-owned marker (for example “Direct deploy sign-off <run-id>”) without changing deployment controls or dependencies.
+
+## Required Installer-first onboarding acceptance
+
+The same fresh-customer journey must also start inside the actual prepared native Installer. Website-first signup alone does not satisfy this path.
+
+1. Record the prepared bundle executable/PID, CLI version and immutable preparation receipt. Complete normal prerequisites, then choose **Create account** on the Installer sign-in screen. The existing `open_signup` command opens the configured normal marketing signup URL in the default browser; local source preparation uses `http://localhost:3000/signup/developer`.
+2. In that browser, complete legitimate human verification, CIAM account creation and workspace provisioning for the approved fresh actor. If the identity already exists, use the provider's existing-account sign-in path; do not create a replacement identity. The signed marketing handoff lasts five minutes. If it expires, renew through the normal marketing signup entry; do not fabricate cookies or extend/bypass verification.
+3. Confirm actual workspace creation and active tenant-admin membership through the normal product response/session. A CIAM identity, HTTP 200 completion page or successful browser sign-in alone is insufficient. If provisioning partially created a workspace before a dependency timeout, stop until the owning API lane confirms its idempotency and exact membership state; do not retry signup with a new identity or workspace name.
+4. Return to the same running Installer and choose **Sign in with browser**. Current source does not automatically deep-link back from marketing signup: this explicit return and second sign-in are the existing supported flow. The Installer invokes the prepared CLI login, waits for its normal loopback OAuth callback, then loads the fresh actor's company workspaces. No password, access token or browser cookie is copied to the Installer.
+5. Prove the selected workspace is the one just provisioned, initialize the fresh app/project, and continue all direct deployment, persistence, failed-update and same-app customer-owned GitHub checks below. Record the callback completion and Installer acknowledgement separately from Portal signup proof.
+
+Current support is source-verified, not customer-accepted. Automatic signup-to-Installer callback/resume is not present and is not claimed. If automatic return becomes a required product behavior, amend the approved plan and review the redirect/auth contract before implementation. The private debug signup bridge is test infrastructure and cannot substitute for this real customer path.
 
 ## Direct source and live access
 
