@@ -27,9 +27,10 @@ export function printFailure(format: string, error: unknown): void {
             : "EAI_MANAGED_DEPLOY_FAILED",
           error instanceof Error ? error.message : String(error),
           error instanceof ManagedSourceError
-            ? error.message
+            ? error.nextAction ?? error.message
             : "Fix the reported problem, then retry the same exact command.",
         );
+  const details = error instanceof ManagedSourceError ? error.details : undefined;
   if (format === "json") {
     out.json({
       ok: false,
@@ -37,6 +38,7 @@ export function printFailure(format: string, error: unknown): void {
         code: failure.code,
         message: failure.message,
         nextAction: failure.nextAction,
+        ...(details ? { details } : {}),
       },
     });
   } else {

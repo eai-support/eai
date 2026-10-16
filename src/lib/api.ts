@@ -2091,6 +2091,15 @@ export class PlatformAPIClient {
     );
   }
 
+  /** Read this environment's approved app template pin; callers must fail open when it is unavailable. */
+  async getCliManagedTemplateRequirement(tenantId: string, appKey: string, targetTenantId: string, timeoutMs?: number): Promise<Response> {
+    if (!isManagedScopeIdentifier(targetTenantId)) throw new Error('Managed source target must be a safe path identifier.');
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/template-requirement?targetTenantId=${encodeURIComponent(targetTenantId)}`,
+      'GET', undefined, { timeoutMs },
+    );
+  }
+
   /** Prepare bounded local source; successful preparation does not mean it has been deployed. */
   async prepareCliManagedSource(tenantId: string, appKey: string, data: CliManagedSourcePreparationRequest): Promise<Response> {
     return this.managedPublicRequest(

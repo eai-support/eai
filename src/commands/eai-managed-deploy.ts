@@ -14,6 +14,7 @@ import {
   verifyCliGithubIdentity,
   type CliManagedSourceScope,
 } from "../lib/eai-managed-source-client.js";
+import { assertProjectTemplateApproved } from "../lib/eai-managed-template-requirement.js";
 import { startCustomerSource } from "./eai-managed-deploy-customer-source.js";
 import {
   DEFAULT_TIMEOUT_SECONDS,
@@ -45,6 +46,8 @@ export {
   verifyGitHubAccess,
 } from "./eai-managed-deploy-github.js";
 export type { VerifiedGitHubActor } from "./eai-managed-deploy-contract.js";
+
+const TEMPLATE_PREFLIGHT_TIMEOUT_MS = 15_000;
 
 export const eaiManagedDeployCommand = new Command("app")
   .description(
@@ -247,6 +250,12 @@ Examples:
           "REPOSITORY_AUTHORITY_REQUIRED",
           "--repo and --installation-id are required for a new EAI deployment.",
           "Connect the repository to the tenant, install the EAI GitHub App, then pass both exact values.",
+        );
+      }
+      if (sourceChoice === "eai-managed") {
+        // Issues2025#3574: name the required template before asking for a GitHub link.
+        await assertProjectTemplateApproved(
+          managedClient, managedScope, context.root, Math.min(timeoutSeconds * 1_000, TEMPLATE_PREFLIGHT_TIMEOUT_MS),
         );
       }
       const link = await verifyCliGithubIdentity(managedClient, managedScope, {

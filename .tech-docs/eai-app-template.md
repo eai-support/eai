@@ -103,6 +103,56 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 | AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
 | Advanced route          | server helper or BFF route     | `eai publicapi <method> /v4/...`                         |
 
+## Move An Existing Project To The Required Template
+
+`eai create` and `eai init` record the bundled app template in
+`.eai-manifest.json` (`template.version` and `template.commit`). Each EAI
+environment approves one template commit for EAI-maintained deploys
+(`eai deploy app ... --source eai-managed`). When your project's commit is not
+the approved one, the CLI stops before the GitHub link step with
+`TEMPLATE_VERSION_NOT_APPROVED`, for example:
+
+```text
+TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.17 (3162df8).
+```
+
+Updating the CLI does not change an existing project, because the template is
+recorded when the project is created. Choose one of these supported paths:
+
+1. **New project (simplest).** Run `npm install -g eai-cli@latest`, create a
+   new project with `eai create`, and move your app code into it.
+2. **Template migration commit.** Keep the project and record the move to the
+   required template in one reviewed commit:
+
+   ```bash
+   npm install -g eai-cli@latest
+   eai template check            # compare the project template with the bundled one
+   # Read the exact required commit from the deploy error (--format json shows
+   # error.details.requiredTemplateCommitSha) or resources/linked-sources.json.
+   # Edit only .eai-manifest.json: set template.commit and template.version to
+   # the required values. Keep template.repo unless EAI gave you a new one.
+   git add .eai-manifest.json
+   git commit -m "chore: migrate app template to <required-version>" \
+     -m "EAI-Template-Migration-From: <current-commit>
+   EAI-Template-Migration-To: <required-commit>
+   EAI-Template-Migration-Repository: <template.repo value>"
+   ```
+
+The migration commit is checked before any source is published. It must:
+
+- change only `.eai-manifest.json`, with exactly one parent;
+- move from the previously verified commit and repository to the new ones;
+- carry each `EAI-Template-Migration-*` trailer exactly once, with the exact
+  40-character commits and the `https://github.com/<owner>/<repo>.git`
+  repository;
+- leave the working copy of `.eai-manifest.json` equal to the committed one.
+
+A project keeps its original `eai init` scaffold commit and can record at most
+eight migrations. The migration changes only the recorded pin. Use
+`eai template check` to review template file changes, and commit any files you
+copy across separately from the migration commit. EAI derives the
+platform-owned files from the approved template when it publishes your source.
+
 ## Related Pages
 
 - [Task Tracker Example](./examples/task-tracker.md)
