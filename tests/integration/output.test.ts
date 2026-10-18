@@ -41,6 +41,35 @@ describe('output redaction', () => {
     expect(printed).toContain('"clientSecret": "[redacted]"');
   });
 
+  test('keeps authorization diagnostics readable while credential headers, tokens and secrets stay redacted', () => {
+    const input = {
+      schemaStatus: { authorizationReadiness: { status: 'ready', checkedAt: '2026-10-16T06:55:50Z' } },
+      record: { metadata: { resourceAuthorization: { mode: 'tenant-owned', ownerAppKey: 'cu-trust-review' } } },
+      headers: {
+        Authorization: 'opaque-auth-header-fixture',
+        'Proxy-Authorization': 'opaque-proxy-header-fixture',
+        'x-ms-authorization-auxiliary': 'opaque-aux-header-fixture',
+      },
+      authorizationCode: 'opaque-auth-code-fixture',
+      accessToken: 'opaque-access-token-fixture',
+      clientSecret: 'opaque-client-secret-fixture',
+      note: 'Authorization: Bearer opaque-bearer-fixture-123',
+    };
+    const expected = {
+      schemaStatus: input.schemaStatus,
+      record: input.record,
+      headers: { Authorization: '[redacted]', 'Proxy-Authorization': '[redacted]', 'x-ms-authorization-auxiliary': '[redacted]' },
+      authorizationCode: '[redacted]',
+      accessToken: '[redacted]',
+      clientSecret: '[redacted]',
+      note: 'Authorization: Bearer [redacted]',
+    };
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(expected);
+    expect(out.redactSensitiveDeep(input)).toEqual(expected);
+  });
+
   test.each(['tenant_deauthorization', 'tenantDeauthorization'])('preserves only safe %s booleans while retaining secret masking', key => {
     const summary = { removed: false, already_absent: true, clientSecret: '<fixture-hidden-summary-secret>', warning: 'Bearer fixture-private-token' };
     const input = { body: { [key]: summary, Authorization: 'Bearer fixture-private-token', tenant_authorization: { secret: '<fixture-hidden-summary-secret>' } } };
