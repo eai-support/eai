@@ -2203,6 +2203,7 @@ async function hydrateEnvFromLoginContext(
 
   if (platformTenantId) {
     patches.EAI_TENANT_ID = platformTenantId;
+    patches.NEXT_PUBLIC_EAI_TENANT_ID = platformTenantId;
     patches[`TENANT_${envKey}_ID`] = platformTenantId;
   }
 
@@ -2477,11 +2478,14 @@ BASE_URL_PUBLIC_API=
 # the platform app entry.
 # EAI_TENANT_ID is the server-side company workspace this app binds to — read by
 # the template in src/app/page.tsx and src/app/api/eai/[[...rest]]/route.ts.
+# NEXT_PUBLIC_EAI_TENANT_ID holds the same workspace ID (not a secret) for browser
+# hooks such as src/hooks/useDocuments.ts; the BFF still enforces the workspace.
 # TENANT_KEYS + TENANT_<KEY>_ID support the multi-tenant config resolver at
 # src/app/api/eai/config/route.ts. Both keys are kept in sync by eai init.
 # =============================================================================
 EAI_PARENT_TENANT_ID=
 EAI_TENANT_ID=
+NEXT_PUBLIC_EAI_TENANT_ID=
 TENANT_KEYS=${opts.name}
 TENANT_${envKey}_ID=
 

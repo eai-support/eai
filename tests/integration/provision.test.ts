@@ -311,6 +311,7 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_ID=app-client');
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-private-local-secret>');
     expect(content).toContain('EAI_TENANT_ID=runtime');
+    expect(content).toContain('NEXT_PUBLIC_EAI_TENANT_ID=runtime');
     expect(parseDotenv(content).ENTRA_SCOPES).toBe('openid fixture_scope#literal');
     expect((await loadEnvFile(env.dir)).ENTRA_SCOPES).toBe('openid fixture_scope#literal');
     if (process.platform !== 'win32') expect((await stat(join(env.dir, '.env.local'))).mode & 0o777).toBe(0o600);
@@ -428,6 +429,7 @@ describe('eai provision entra', () => {
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-new-app-secret>');
     expect(content).toContain('AUTH_URL=http://localhost:3002/my-app');
     expect(content).toContain('EAI_TENANT_ID=runtime');
+    expect(content).toContain('NEXT_PUBLIC_EAI_TENANT_ID=runtime');
     if (process.platform !== 'win32') expect((await stat(join(env.dir, '.env.local'))).mode & 0o777).toBe(0o600);
   });
 
@@ -1392,6 +1394,8 @@ describe('eai provision entra', () => {
     const content = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(content).toContain('ENTRA_CLIENT_ID=client-1');
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-rotated-credential>');
+    expect(content).toContain('EAI_TENANT_ID=test-tenant-id');
+    expect(content).toContain('NEXT_PUBLIC_EAI_TENANT_ID=test-tenant-id');
   });
 
   test.each(['unknown', 'not_issued'])('rotation %s preserves local bytes, dispatches once and exposes only safe diagnostics', async outcome => {
