@@ -253,6 +253,72 @@ describe("eai workflow", () => {
   );
 
   test(
+    "readiness outside an app folder still needs an explicit workspace",
+    { timeout: 10000 },
+    async () => {
+      const outside = await createTestEnvironment();
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        process.chdir(outside.dir);
+        await expect(
+          workflowCommand.parseAsync(["readiness"], { from: "user" }),
+        ).rejects.toThrow("process.exit called");
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(errSpy.mock.calls.flat().join(" ")).toContain("Not in an EAI project");
+      } finally {
+        process.chdir(env.dir);
+        await outside.cleanup();
+      }
+    },
+  );
+
+  test.each([
+    { name: "readiness", args: ["readiness", "--workspace", "test-tenant-id", "--format", "json"], path: "/v4/integrations/builder/readiness" },
+    { name: "status", args: ["status", "strategy-monitor", "--workspace", "test-tenant-id", "--format", "json"], path: "/v4/workflows/runtime/strategy-monitor/status" },
+  ])(
+    "$name runs outside an app folder when the workspace is explicit",
+    { timeout: 10000 },
+    async ({ args, path }) => {
+      const outside = await createTestEnvironment();
+      const originalBaseUrl = process.env.BASE_URL_PUBLIC_API;
+      process.env.BASE_URL_PUBLIC_API = API_BASE;
+      const requests: string[] = [];
+      mockServer.server.use(
+        http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({
+          tenants: [{ id: "test-tenant-id", slug: "test-tenant", displayName: "Test Tenant", roles: ["tenant-admin"] }],
+        })),
+        http.get(`${API_BASE}/v4/platform/tenants/test-tenant-id`, () => HttpResponse.json({
+          id: "test-tenant-id", slug: "test-tenant", displayName: "Test Tenant", parentId: null,
+        })),
+        http.get(`${API_BASE}${path}`, ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json({
+            tenant_id: "test-tenant-id",
+            workflow_key: "strategy-monitor",
+            status: "ready",
+            checks: [],
+          });
+        }),
+      );
+      vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      try {
+        process.chdir(outside.dir);
+        await workflowCommand.parseAsync(args, { from: "user" });
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toContain("test-tenant-id");
+      } finally {
+        process.chdir(env.dir);
+        if (originalBaseUrl === undefined) delete process.env.BASE_URL_PUBLIC_API;
+        else process.env.BASE_URL_PUBLIC_API = originalBaseUrl;
+        await outside.cleanup();
+      }
+    },
+  );
+
+  test(
     "request posts an operator-assisted workflow request",
     { timeout: 10000 },
     async () => {

@@ -435,6 +435,19 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await cu(['plan', '--file', file, ...scoped])).toMatchObject({ ok: false, error: { code: 'CU_CAPABILITY_UNSUPPORTED' } });
     expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled(); expect(process.exitCode).toBe(1);
   });
+  test('only read-only capabilities and status may run outside an app folder', async () => {
+    const contextOptions = () => vi.mocked(resolveCommandContext).mock.calls.at(-1)?.[0];
+    await cu(['capabilities', ...scoped]);
+    expect(contextOptions()).toMatchObject({ tenantId, allowOutsideProject: true });
+    await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
+    expect(contextOptions()).toMatchObject({ tenantId, allowOutsideProject: true });
+    // A saved plan binds the PublicAPI URL that apply later requires; both stay project-bound.
+    await cu(['plan', '--file', file, ...scoped]);
+    expect(contextOptions()).not.toHaveProperty('allowOutsideProject');
+    await cu(applyArgs());
+    expect(contextOptions()).not.toHaveProperty('allowOutsideProject');
+  });
+
   test('capabilities reads the selected tenant with bounded trusted gateway forwarding', async () => {
     expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: readyCapabilities });
     expect(resolveCommandContext).toHaveBeenCalledWith(expect.objectContaining({ tenantId, interactive: false, forceRefresh: true, pinPublicApiUrl: true }));
