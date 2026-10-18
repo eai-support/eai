@@ -765,6 +765,46 @@ describe("eai workflow", () => {
     10000,
   );
 
+  test("provision help marks --stage as required and shows no empty default", () => {
+    const provision = workflowCommand.commands.find((command) => command.name() === "provision");
+    const stage = provision?.options.find((option) => option.long === "--stage");
+    expect(stage?.description).toMatch(/^Required\. /);
+    expect(stage?.defaultValue).toBeUndefined();
+    const help = provision?.helpInformation() ?? "";
+    const stageHelp = help.slice(help.indexOf("--stage <stage>"), help.indexOf("--stage-env"));
+    expect(stageHelp).toContain("Required.");
+    expect(stageHelp).not.toContain("default:");
+  });
+
+  test(
+    "provision without --stage fails before any resource write",
+    async () => {
+      const resourceRequests: string[] = [];
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.server.use(
+        http.all(`${API_BASE}/v4/data/resources/test-tenant-id/:objectType`, ({ request }) => {
+          resourceRequests.push(`${request.method} ${request.url}`);
+          return HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 });
+        }),
+      );
+
+      await expect(
+        workflowCommand.parseAsync(
+          ["provision", "configurator", "--app", "no-code-builder", "--format", "json"],
+          { from: "user" },
+        ),
+      ).rejects.toThrow("process.exit called");
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errSpy.mock.calls.flat().join(" ")).toContain("At least one --stage is required.");
+      expect(resourceRequests).toEqual([]);
+    },
+    10000,
+  );
+
   test("BP001 FL-WORKFLOW-001: rejects stage env mappings that reference unknown stages", () => {
     const stages = [parseStageSpec("intake:Intake", 0)];
 

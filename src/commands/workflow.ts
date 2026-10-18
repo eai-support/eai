@@ -215,7 +215,7 @@ workflowCommand
   .option('--display-name <name>', 'Workflow display name (defaults to humanized workflow key)')
   .option('--usecase <usecase>', 'Workflow usecase namespace', 'generic')
   .option('--scope-key <scopeKey>', 'Explicit workflow scope key (defaults to <usecase>:<workflow-key>)')
-  .option('--stage <stage>', 'Stage id, optionally id:Display Name. Repeat for multiple stages.', collect, [])
+  .option('--stage <stage>', 'Required. Stage id, optionally id:Display Name. Repeat for multiple stages.', collect)
   .option('--stage-env <mapping>', 'Env mapping KEY=stage-id. Repeat for stage env vars.', collect, [])
   .option('--workflow-env-key <key>', 'Env key for the workflow id')
   .option('--bind-ai-runtime', 'Also create shared-ai-profile and shared-chatbot-config records for the stages', false)
