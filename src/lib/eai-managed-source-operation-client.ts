@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from "node:util";
 import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
 import { CLI_MANAGED_SOURCE_LIMITS, ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
+import { managedSourceResponseError } from "./eai-managed-template-requirement.js";
 import type {
   CliManagedSourceOperation,
   CliManagedSourceScope,
@@ -217,12 +218,7 @@ export function classifyCliManagedSourceOperation(
 export async function responseOperation(
   response: Response,
 ): Promise<CliManagedSourceOperation> {
-  if (!response.ok) {
-    throw new ManagedSourceError(
-      "MANAGED_SOURCE_UNAVAILABLE",
-      `Managed source operation is unavailable (${response.status}). Repair the platform operation or app-source access, then retry the exact operation.`,
-    );
-  }
+  if (!response.ok) throw await managedSourceResponseError(response);
   return JSON.parse(await readManagedPublicResponseText(response)) as CliManagedSourceOperation;
 }
 

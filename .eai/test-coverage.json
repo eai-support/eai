@@ -286,7 +286,7 @@
         },
         {
           "id": "eai-cli-managed-tenantinfra-deploy",
-          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate. Explicit deploy source authorize-commit records linked-customer exact-commit consent after provider verification, without uploaded bundle bytes or a GitHub approved-review claim; ordinary bundle publication and source-unknown paths remain unchanged.",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate. Explicit deploy source authorize-commit records linked-customer exact-commit consent after provider verification, without uploaded bundle bytes or a GitHub approved-review claim; ordinary bundle publication and source-unknown paths remain unchanged. EAI-maintained deploys read the approved app template pin through regional PublicAPI before the GitHub link step and stop an outdated project with TEMPLATE_VERSION_NOT_APPROVED (fail open when the read is unavailable); managed-source operation errors print the server code, message and details; CI fails when the bundled template drifts from the checked-in platform-approved pins (Issues2025#3574).",
           "owned_paths": [
             ".eai/test-coverage.json",
             "docs-site/static/cli-help.txt",
@@ -326,13 +326,17 @@
             "tests/integration/create.test.ts",
             "resources/gofer/**",
             "tests/integration/gofer.test.ts",
-            "src/commands/eai-managed-source-authorize-commit.ts"
+            "src/commands/eai-managed-source-authorize-commit.ts",
+            "src/lib/eai-managed-template-requirement.ts",
+            ".eai/platform-approved-app-template.json"
           ],
           "required_repo_tests": [
             "tests/unit/eai-managed-deploy.test.ts",
             "tests/unit/eai-managed-deploy-write.test.ts",
             "tests/unit/eai-managed-source.test.ts",
             "tests/unit/eai-managed-source-client.test.ts",
+            "tests/unit/eai-managed-template-requirement.test.ts",
+            "tests/unit/platform-approved-template.test.ts",
             "tests/integration/platform-api-client.test.ts",
             "tests/integration/eai-managed-deploy.test.ts",
             "tests/integration/vertical.test.ts",
