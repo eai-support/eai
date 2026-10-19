@@ -115,6 +115,23 @@ describe('local support report redaction', () => {
     }
   });
 
+  test('styled authorization keys and quoted credentials use the shared assignment parser', () => {
+    const report = redactSupportText(
+      '\u001b[36mAuthorization\u001b[39m: "opaque-header-fixture with spaces" headers.authorization=Bearer short --authorization "opaque-flag-fixture with spaces" authorizationReadiness=ready',
+    );
+    expect(report).toContain('authorizationReadiness=ready');
+    expect(report).toContain('Bearer [redacted]');
+    for (const secret of ['opaque-header-fixture', 'opaque-flag-fixture', 'with spaces', 'short']) {
+      expect(report).not.toContain(secret);
+    }
+    expect(report).not.toContain('\u001b');
+  });
+
+  test.each(['\u0007', '\u001b\\'])('terminal hyperlinks cannot disguise authorization keys: %j', terminator => {
+    const report = redactSupportText(`Autho\u001b]8;;https://example.invalid${terminator}rization: "opaque-osc-fixture with spaces" authorizationReadiness=ready`);
+    expect(report).toBe('Authorization: [redacted] authorizationReadiness=ready');
+  });
+
   test.each([
     '--api_key', '--connection-string', '--account-key', '--authorization', '--cookie',
   ])('removes whitespace-separated credential flag %s', (flag) => {

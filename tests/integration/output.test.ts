@@ -41,6 +41,63 @@ describe('output redaction', () => {
     expect(printed).toContain('"clientSecret": "[redacted]"');
   });
 
+  test.each([
+    'Authorization: opaque-header-fixture',
+    'headers.authorization=opaque-header-fixture',
+    'Proxy-Authorization: opaque-header-fixture',
+    'x-ms-authorization-auxiliary=opaque-header-fixture',
+    'authorizationCode="opaque-header-fixture with spaces"',
+    '--authorization "opaque-header-fixture with spaces" --format json',
+    '--authorization-header=\'opaque-header-fixture with spaces\'',
+    'Authorization: Bearer opaque-header-fixture',
+    'Authorization: Basic abc',
+    '\u001b[36mAuthorization\u001b[39m: "opaque-header-fixture with spaces"',
+    'Autho\u001b[36mrization: opaque-header-fixture\u001b[39m',
+    'Autho\u001b]8;;https://example.invalid\u0007rization: opaque-header-fixture',
+    'Autho\u001b]8;;https://example.invalid\u001b\\rization: "opaque-header-fixture with spaces"',
+  ])('redacts authorization credentials from text and JSON strings: %s', message => {
+    const redacted = out.redactSensitiveText(message);
+    expect(redacted).toContain('[redacted]');
+    expect(redacted).not.toContain('opaque-header-fixture');
+    expect(redacted).not.toContain('with spaces');
+    expect(redacted).not.toContain('Basic abc');
+    expect(out.redactSensitiveText(redacted)).toBe(redacted);
+    const input = { authorizationReadiness: { message }, resourceAuthorization: [message] };
+    const expected = { authorizationReadiness: { message: redacted }, resourceAuthorization: [redacted] };
+    expect(out.redactSensitiveDeep(input)).toEqual(expected);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(expected);
+  });
+
+  test('preserves authorization diagnostics and ANSI styling while masking styled credential values', () => {
+    const diagnostic = '\u001b[36mauthorizationReadiness=ready resourceAuthorization=tenant-owned\u001b[39m';
+    expect(out.redactSensitiveText(diagnostic)).toBe(diagnostic);
+    expect(out.redactSensitiveText('\u001b[36mAuthorization: \u001b[31mopaque-header-fixture\u001b[39m'))
+      .toBe('\u001b[36mAuthorization: \u001b[31m[redacted]\u001b[39m');
+    expect(out.redactSensitiveText('\u001b]8;;https://example.invalid\u0007authorizationReadiness=ready\u001b]8;;\u0007'))
+      .toBe('authorizationReadiness=ready');
+  });
+
+  test('redacts authorization credentials through error, info and table output', () => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    out.error('Authorization: opaque-error-fixture');
+    out.info('--authorization "opaque-info-fixture with spaces"');
+    out.table([
+      ['\u001b[36mAuthorization\u001b[39m', 'opaque-table-fixture'],
+      ['resourceAuthorization', 'tenant-owned'],
+      ['details', 'headers.authorization="opaque-details-fixture with spaces"'],
+    ]);
+    const printed = [...log.mock.calls, ...error.mock.calls].flat().join('\n');
+    for (const secret of ['opaque-error-fixture', 'opaque-info-fixture', 'opaque-table-fixture', 'opaque-details-fixture', 'with spaces']) {
+      expect(printed).not.toContain(secret);
+    }
+    expect(printed).toContain('resourceAuthorization');
+    expect(printed).toContain('tenant-owned');
+    expect(printed).toContain('\u001b[36mAuthorization\u001b[39m');
+  });
+
   test('keeps authorization diagnostics readable while credential headers, tokens and secrets stay redacted', () => {
     const input = {
       schemaStatus: { authorizationReadiness: { status: 'ready', checkedAt: '2026-10-16T06:55:50Z' } },

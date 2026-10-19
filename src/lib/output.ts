@@ -3,8 +3,9 @@
  */
 
 import chalk from 'chalk';
+import { stripVTControlCharacters } from 'node:util';
 import { recordSupportJsonError } from './support-context.js';
-import { SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
+import { redactAuthorizationText, SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
@@ -49,11 +50,11 @@ const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{
 const URI_CREDENTIAL_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)[^:@\s/]+:[^@\s/]+@/gi;
 
 export function redactSensitiveText(msg: string): string {
-  return msg
+  return redactAuthorizationText(msg
     .replace(AUTH_HEADER_PATTERN, '$1 [redacted]')
     .replace(JWT_PATTERN, '[redacted-jwt]')
     .replace(URI_CREDENTIAL_PATTERN, '$1[redacted]@')
-    .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1[redacted]');
+    .replace(SENSITIVE_ASSIGNMENT_PATTERN, '$1[redacted]'));
 }
 
 function safeTenantDeauthorization(key: string, value: unknown): Record<string, boolean> | undefined {
@@ -199,7 +200,8 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
-    const safeValue = redactSensitiveText(value);
+    const key = stripVTControlCharacters(label).trim().replace(/:$/, '');
+    const safeValue = isSensitiveKey(key) ? '[redacted]' : redactSensitiveText(value);
     if (useColor && !simpleMode) {
       console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
     } else {

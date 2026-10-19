@@ -295,6 +295,7 @@
             "package.json",
             "package-lock.json",
             "resources/deploy/eai-app-template/**",
+            "resources/linked-sources.json",
             "scripts/verify-managed-deploy-producer-pin.cjs",
             "scripts/eai-full-e2e-smoke.cjs",
             "src/commands/deploy.ts",
@@ -398,7 +399,7 @@
         },
         {
           "id": "eai-cli-support-report",
-          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback. Exact-tag bundled producers and real fresh bootstrap preserve one canonical support-on-request contract and bounded original-error guidance without retired section duplication.",
+          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback. Shared authorization credential parsing protects text, tables, nested JSON and styled labels while preserving readiness diagnostics and safe receipt booleans. Exact-tag bundled producers and real fresh bootstrap preserve one canonical support-on-request contract and bounded original-error guidance without retired section duplication.",
           "owned_paths": [
             "src/commands/support.ts",
             "src/lib/support-report.ts",
@@ -433,6 +434,7 @@
             "tests/integration/support.test.ts",
             "tests/integration/support-context.test.ts",
             "tests/unit/support-report.test.ts",
+            "tests/integration/output.test.ts",
             "tests/integration/init.test.ts",
             "tests/integration/create.test.ts",
             "tests/integration/gofer.test.ts",
