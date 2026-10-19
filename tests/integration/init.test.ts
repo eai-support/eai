@@ -808,6 +808,12 @@ describe("eai init", () => {
       "my-app/.env.local",
       "EAI_TENANT_ID=tenant-123",
     );
+    // Template browser hooks (src/hooks/useDocuments.ts) read the public mirror.
+    await expectFileContains(
+      ctx,
+      "my-app/.env.local",
+      "NEXT_PUBLIC_EAI_TENANT_ID=tenant-123",
+    );
     await expectFileContains(
       ctx,
       "my-app/.env.local",
@@ -1450,6 +1456,7 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain("EAI_TENANT_ID=tenant-child");
+      expect(envContent).toContain("NEXT_PUBLIC_EAI_TENANT_ID=tenant-child");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-parent");
       expect(envContent).toContain("TENANT_CHILD_APP_ID=tenant-child");
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -1941,6 +1948,8 @@ void contractType;
       expect(envContent).toContain("ENTRA_TENANT_ID=ciam-guid");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-123");
       expect(envContent).toContain("EAI_TENANT_ID=tenant-prefilled-app");
+      expect(envContent).toContain("NEXT_PUBLIC_EAI_TENANT_ID=tenant-prefilled-app");
+      expect(envContent.match(/^NEXT_PUBLIC_EAI_TENANT_ID=/gm)).toHaveLength(1);
       expect(envContent).toContain(
         "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
       );

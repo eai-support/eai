@@ -204,15 +204,99 @@ export function parseClassifierDraft(value: unknown): ClassifierDraft {
   return parseClassifierRecord(value, false);
 }
 
+/** A failed PublicAPI classifier request, keeping the server error code and step. */
+export class ClassifierRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code?: string,
+    readonly step?: string,
+  ) {
+    super(message);
+    this.name = "ClassifierRequestError";
+  }
+}
+
+function errorStep(bodyText?: string): string | undefined {
+  if (!bodyText) return undefined;
+  try {
+    const body = JSON.parse(bodyText) as unknown;
+    return isRecord(body) && typeof body.step === "string" ? body.step : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function requireJson(
   response: Response,
   operation: string,
 ): Promise<unknown> {
   if (!response.ok) {
     const error = await parseApiError(response);
-    throw new Error(`${operation} failed: ${error.status} ${error.message}`);
+    throw new ClassifierRequestError(
+      `${operation} failed: ${error.status} ${error.message}`,
+      error.status,
+      error.code,
+      errorStep(error.bodyText),
+    );
   }
   return response.json();
+}
+
+/**
+ * Next action for PublicAPI classifier target readiness codes
+ * (PublicAPI classifier_target_readiness.py). Other codes print code and step only.
+ */
+const CLASSIFIER_NEXT_ACTIONS = new Map<string, (target: Partial<ClassifierTargetOptions>) => string>([
+  ["CONTENT_UNDERSTANDING_NOT_ENABLED", () =>
+    "Turn on AI Document Review in Admin Portal workspace settings (AI features), then rerun this command."],
+  ["CLASSIFIER_APP_ENROLLMENT_NOT_READY", (target) =>
+    `Turn on app ${target.app ?? "<app>"} for this workspace in Admin Portal (/platform/verticals). New apps start as draft. Then rerun this command.`],
+  ["CLASSIFIER_APP_ACTIVATION_NOT_READY", (target) =>
+    `Turn on AI Document Review for app ${target.app ?? "<app>"} in Admin Portal workspace settings (AI features), then rerun this command.`],
+  ["CLASSIFIER_WORKFLOW_NOT_READY", (target) =>
+    `Provision the workflow for this app, then rerun this command: eai workflow provision ${target.workflow ?? "<workflow>"} --app ${target.app ?? "<app>"} --stage <stage-id>`],
+  ["CLASSIFIER_TARGET_READINESS_READ_FAILED", () =>
+    "Retry in a few minutes. A recent Object Type publish can take a few minutes to reach every service."],
+]);
+
+function reportClassifierError(error: unknown, options: Partial<ClassifierTargetOptions>): void {
+  const known = error instanceof ClassifierRequestError ? error : undefined;
+  const message = error instanceof Error ? error.message : String(error);
+  const nextAction = known?.code ? CLASSIFIER_NEXT_ACTIONS.get(known.code)?.(options) : undefined;
+  if (normalizeFormat(options) === "json") {
+    out.json({
+      ok: false,
+      ...(known ? { status: known.status } : {}),
+      ...(known?.step ? { step: known.step } : {}),
+      error: {
+        code: known?.code ?? "CLASSIFIER_COMMAND_FAILED",
+        message,
+        ...(nextAction ? { nextAction } : {}),
+      },
+    });
+  } else {
+    out.error([
+      message,
+      ...(known?.code ? [`Code: ${known.code}${known.step ? ` (step: ${known.step})` : ""}`] : []),
+      ...(nextAction ? [`Next: ${nextAction}`] : []),
+    ].join("\n"));
+  }
+  process.exitCode = 1;
+}
+
+/** Report classifier failures as clean CLI errors with exit code 1 instead of stack traces. */
+function classifierAction<A extends unknown[]>(
+  action: (...args: A) => Promise<void>,
+): (...args: A) => Promise<void> {
+  return async (...args) => {
+    try {
+      await action(...args);
+    } catch (error) {
+      // Commander passes the parsed options just before the command itself.
+      reportClassifierError(error, (args.at(-2) ?? {}) as Partial<ClassifierTargetOptions>);
+    }
+  };
 }
 
 function classifierResources(payload: unknown): ClassifierResource[] {
@@ -539,7 +623,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(saveClassifier);
+  .action(classifierAction(saveClassifier));
 
 classifierCommand
   .command("list")
@@ -547,7 +631,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(listClassifiers);
+  .action(classifierAction(listClassifiers));
 
 classifierCommand
   .command("publish <classifier-key>")
@@ -555,7 +639,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(publishClassifier);
+  .action(classifierAction(publishClassifier));
 
 classifierCommand
   .command("target <classifier-key>")
@@ -571,7 +655,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(targetClassifier);
+  .action(classifierAction(targetClassifier));
 
 classifierCommand
   .command("disable <classifier-key>")
@@ -579,7 +663,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(disableClassifier);
+  .action(classifierAction(disableClassifier));
 
 classifierCommand
   .command("enable <classifier-key>")
@@ -587,7 +671,7 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(enableClassifier);
+  .action(classifierAction(enableClassifier));
 
 classifierCommand
   .command("delete <classifier-key>")
@@ -601,4 +685,4 @@ classifierCommand
   .option("--tenant-id <id>", "Target workspace ID")
   .option("--format <format>", "Output format: text or json", "text")
   .option("--json", "Shortcut for --format json")
-  .action(deleteClassifier);
+  .action(classifierAction(deleteClassifier));

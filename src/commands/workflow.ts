@@ -215,7 +215,7 @@ workflowCommand
   .option('--display-name <name>', 'Workflow display name (defaults to humanized workflow key)')
   .option('--usecase <usecase>', 'Workflow usecase namespace', 'generic')
   .option('--scope-key <scopeKey>', 'Explicit workflow scope key (defaults to <usecase>:<workflow-key>)')
-  .option('--stage <stage>', 'Stage id, optionally id:Display Name. Repeat for multiple stages.', collect, [])
+  .option('--stage <stage>', 'Required. Stage id, optionally id:Display Name. Repeat for multiple stages.', collect)
   .option('--stage-env <mapping>', 'Env mapping KEY=stage-id. Repeat for stage env vars.', collect, [])
   .option('--workflow-env-key <key>', 'Env key for the workflow id')
   .option('--bind-ai-runtime', 'Also create shared-ai-profile and shared-chatbot-config records for the stages', false)
@@ -440,10 +440,10 @@ workflowCommand
   .command('readiness')
   .description('Check workspace, plan, and workflow readiness for building an app')
   .argument('[workflow-keys...]', 'Optional public workflow keys to include in readiness checks')
-  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace; required outside an app folder)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .action(async (workflowKeys: string[], options: { tenant?: string; format?: string }) => {
-    const context = await resolveCommandContext({ tenantId: options.tenant });
+    const context = await resolveCommandContext({ tenantId: options.tenant, allowOutsideProject: true });
     const result = await context.client.getBuilderReadiness({
       tenantId: context.tenantId,
       workflowKeys,
@@ -464,10 +464,10 @@ workflowCommand
   .command('status')
   .description('Check whether a workflow key has an executable runtime binding')
   .argument('<workflow-key>', 'Public workflow key, for example strategy-monitor')
-  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace)')
+  .option('--workspace, --tenant <id>', 'Workspace ID to check (defaults to active workspace; required outside an app folder)')
   .option('--format <format>', 'Output format: text or json', 'text')
   .action(async (workflowKey: string, options: { tenant?: string; format?: string }) => {
-    const context = await resolveCommandContext({ tenantId: options.tenant });
+    const context = await resolveCommandContext({ tenantId: options.tenant, allowOutsideProject: true });
     const result = await context.client.getRuntimeWorkflowStatus(workflowKey, context.tenantId)
       .catch(handleWorkflowError);
 

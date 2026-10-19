@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.5. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.6. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -372,6 +372,8 @@ Notes:
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
   - The automatic `eai template check` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
+  - If another package owns the eai command (npm EEXIST), the CLI names it and shows how to remove it.
+  - EAI Setup pins its own CLI copy; `eai update` then explains how to run or install a newer version.
 ```
 
 ## eai doctor --help
@@ -815,7 +817,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.5** (2026-10-14): Pin parent-owned app deletion to its requested runtime child.
+The current CLI release is **v3.20.6** (2026-10-19): Guide EAI Setup updates, allow read-only workspace checks outside app folders, and show classifier error codes.
 
 ---
 
@@ -866,10 +868,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.5 |
-| Released | 2026-10-14 |
-| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
-| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
+| Version | 3.20.6 |
+| Released | 2026-10-19 |
+| Last Material Change | Guide EAI Setup updates, allow read-only workspace checks outside app folders, and show classifier error codes |
+| Source Commit | `680e2772ff0d4840b120ec215e99f9215f493657` |
 
 
 ## Install
@@ -2708,7 +2710,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.5. The same catalog powers human stderr output, JSON output for AI
+v3.20.6. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

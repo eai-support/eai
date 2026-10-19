@@ -1,8 +1,18 @@
-const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|authorization|cookie|credential|connection[_-]?string|private[_-]?key/i;
+const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|connection[_-]?string|private[_-]?key/i;
+
+/**
+ * "Authorization" names a credential only as a header or flag (Authorization,
+ * Proxy-Authorization, X-*-Authorization, --authorization, authorizationHeader,
+ * authorizationCode), optionally under a dotted path, or as an opaque tenant
+ * (de)authorization receipt. Diagnostics such as authorizationReadiness or
+ * resourceAuthorization are not credentials and stay readable.
+ */
+export const SENSITIVE_AUTHORIZATION_KEY =
+  /(?:^|\.)(?:--)?(?:(?:proxy[_-]?|x[_-](?:[a-z0-9]+[_-])*)?authorization(?:[_-]?(?:header|code|auxiliary))?|tenant[_-]?(?:de)?authorization)$/i;
 
 /** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
-  return sensitiveKey.test(key);
+  return sensitiveKey.test(key) || SENSITIVE_AUTHORIZATION_KEY.test(key);
 }
 
 // SECURITY: decode only candidate key spelling for recognition; reviewed text and value boundaries remain literal.

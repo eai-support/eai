@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.5
+Package source version: 3.20.6
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -356,6 +356,8 @@ Notes:
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
   - The automatic `eai template check` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
+  - If another package owns the eai command (npm EEXIST), the CLI names it and shows how to remove it.
+  - EAI Setup pins its own CLI copy; `eai update` then explains how to run or install a newer version.
 
 ---
 

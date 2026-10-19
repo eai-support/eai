@@ -85,6 +85,36 @@ describe('local support report redaction', () => {
     expect(report).toContain('Error includes');
   });
 
+  test('support bundles keep authorization diagnostics but mask credential headers and receipts', () => {
+    const bundle = redactSupportBundle({
+      authorizationReadiness: { status: 'ready' },
+      resourceAuthorization: { mode: 'tenant-owned' },
+      customerAuthorization: { kind: 'authenticated-exact-commit', pullRequestNumber: 7 },
+      headers: { authorization: 'opaque-auth-header-fixture', 'proxy-authorization': 'opaque-proxy-fixture' },
+      tenant_deauthorization: { removed: true, debug: 'opaque-receipt-fixture' },
+      refreshToken: 'opaque-refresh-fixture',
+    });
+    expect(bundle).toEqual({
+      authorizationReadiness: { status: 'ready' },
+      resourceAuthorization: { mode: 'tenant-owned' },
+      customerAuthorization: { kind: 'authenticated-exact-commit', pullRequestNumber: 7 },
+      headers: { authorization: '[redacted]', 'proxy-authorization': '[redacted]' },
+      tenant_deauthorization: '[redacted]',
+      refreshToken: '[redacted]',
+    });
+  });
+
+  test('support text keeps authorization diagnostics but removes header and flag credentials', () => {
+    const report = redactSupportText(
+      'authorizationReadiness=ready Authorization: opaque-header-fixture headers.authorization=opaque-path-fixture --authorization "opaque-flag-fixture" --format json',
+    );
+    expect(report).toContain('authorizationReadiness=ready');
+    expect(report).toContain('--format json');
+    for (const secret of ['opaque-header-fixture', 'opaque-path-fixture', 'opaque-flag-fixture']) {
+      expect(report).not.toContain(secret);
+    }
+  });
+
   test.each([
     '--api_key', '--connection-string', '--account-key', '--authorization', '--cookie',
   ])('removes whitespace-separated credential flag %s', (flag) => {
