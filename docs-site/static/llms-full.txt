@@ -871,7 +871,7 @@ and gofer asset refresh.
 | Version | 3.20.6 |
 | Released | 2026-10-19 |
 | Last Material Change | Fix CU onboarding and ship app template v1.0.20 |
-| Source Commit | `d3bd8f4e9719306f1216dd384edf4748fe7477a1` |
+| Source Commit | `d503dd759925b4a543ad05c854bb09a14fb595e4` |
 
 
 ## Install
