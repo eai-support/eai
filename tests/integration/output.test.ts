@@ -154,6 +154,27 @@ describe('output redaction', () => {
     expect(printed).toContain('ready');
   });
 
+  test.each([
+    { name: 'plain authorization', label: 'Authorization :' },
+    { name: 'styled authorization', label: '\u001b[36mAuthorization\u001b[39m :' },
+    { name: 'padded proxy authorization', label: '  Proxy-Authorization \t:  ' },
+  ])('redacts credential table labels with space before a colon: $name', ({ label }) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    out.table([
+      [label, 'opaque-spaced-table-canary'],
+      ['authorizationReadiness :', 'ready'],
+      ['resourceAuthorization :', 'tenant-owned'],
+    ]);
+    const printed = log.mock.calls.flat().join('\n');
+    expect(printed).not.toContain('opaque-spaced-table-canary');
+    expect(printed).toContain('[redacted]');
+    expect(printed).toContain(label);
+    expect(printed).toContain('authorizationReadiness :');
+    expect(printed).toContain('ready');
+    expect(printed).toContain('resourceAuthorization :');
+    expect(printed).toContain('tenant-owned');
+  });
+
   test('redacts authorization credentials through error, info and table output', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});

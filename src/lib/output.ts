@@ -200,7 +200,7 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
-    const key = normalizeCredentialKey(label).trim().replace(/:$/, '');
+    const key = normalizeCredentialKey(label).trim().replace(/\s*:$/, '');
     const safeValue = isSensitiveKey(key) ? '[redacted]' : redactSensitiveText(value);
     if (useColor && !simpleMode) {
       console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
