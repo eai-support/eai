@@ -576,7 +576,9 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       expect(result.status).toBe(1); expect(result.signal).toBeNull();
       const output = result.stdout.trim() || result.stderr.trim();
       const payload = output.startsWith('{') ? JSON.parse(output) : null;
-      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? 'E001' : stage === 'missing-login' ? 'E101' : 'E102', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+      // Read-only status runs outside an app folder, so its first failure there is the missing login.
+      const projectCode = command === 'status' ? 'E101' : 'E001';
+      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? projectCode : stage === 'missing-login' ? 'E101' : 'E102', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
       expect(payload).not.toHaveProperty('body');
       const dispatched = existsSync(networkLog) ? (await readFile(networkLog, 'utf8')).trim().split('\n') : [];
       expect(dispatched).toEqual(stage === 'membership' ? ['/public/v4/identity/tenants'] : []);
