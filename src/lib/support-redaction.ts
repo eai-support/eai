@@ -1,4 +1,8 @@
+import { stripVTControlCharacters } from 'node:util';
+
 const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|connection[_-]?string|private[_-]?key/i;
+// eslint-disable-next-line no-control-regex -- Keep this cleanup identical before credential matching and final support output.
+const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 /**
  * "Authorization" names a credential only as a header or flag (Authorization,
@@ -12,7 +16,13 @@ export const SENSITIVE_AUTHORIZATION_KEY =
 
 /** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
-  return sensitiveKey.test(key) || SENSITIVE_AUTHORIZATION_KEY.test(key);
+  const normalized = normalizeCredentialKey(key);
+  return sensitiveKey.test(normalized) || SENSITIVE_AUTHORIZATION_KEY.test(normalized);
+}
+
+/** Normalize terminal effects and unsafe controls before recognizing a credential key; retain line breaks and tabs. */
+export function normalizeCredentialKey(key: string): string {
+  return stripVTControlCharacters(key).replace(UNSAFE_CONTROL_PATTERN, '');
 }
 
 // SECURITY: decode only candidate key spelling for recognition; reviewed text and value boundaries remain literal.
@@ -37,7 +47,27 @@ function decodeCredentialKey(key: string): string {
 
 interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number; readonly quotedKeyEnd: number }
 
-function redactCredentialValues(text: string): string {
+function redactCredentialValues(source: string, isSensitiveKey = isSupportSensitiveKey): string {
+  const plainText = normalizeCredentialKey(source);
+  // Retain color styling; other terminal controls cannot hide part of a credential key.
+  // eslint-disable-next-line no-control-regex -- Only SGR styling may survive CLI output redaction.
+  if (plainText !== source.replace(/\u001b\[[0-9;:]*m/g, '')) source = plainText;
+  let text = source;
+  let sourceOffsets: number[] | undefined;
+  if (source.includes('\u001b[')) {
+    const plain: string[] = [];
+    sourceOffsets = [];
+    let copiedUntil = 0;
+    // eslint-disable-next-line no-control-regex -- Parse through styling without letting escape bytes disguise a credential key.
+    for (const control of source.matchAll(/\u001b\[[0-?]*[ -/]*[@-~]/g)) {
+      plain.push(source.slice(copiedUntil, control.index));
+      for (let index = copiedUntil; index < control.index; index++) sourceOffsets.push(index);
+      copiedUntil = control.index + control[0].length;
+    }
+    plain.push(source.slice(copiedUntil));
+    for (let index = copiedUntil; index < source.length; index++) sourceOffsets.push(index);
+    text = plain.join('');
+  }
   const escaped = new Uint8Array(text.length);
   const quoteEnds = new Uint32Array(text.length);
   const closingEnds = new Uint32Array(text.length);
@@ -162,8 +192,14 @@ function redactCredentialValues(text: string): string {
   function cover(start: number, end: number): void {
     if (end > start) { coverage[start]++; coverage[end]--; }
   }
-  for (const { key, start, tokenStart } of fields) {
-    if (!isSupportSensitiveKey(key)) continue;
+  for (const { key, start: fieldStart, tokenStart } of fields) {
+    if (!isSensitiveKey(key)) continue;
+    let start = fieldStart;
+    // Keep the non-secret scheme while masking even short opaque header credentials.
+    const scheme = SENSITIVE_AUTHORIZATION_KEY.test(key)
+      ? /^(?:Bearer|Basic)[ \t]+(?=\S)/i.exec(text.slice(start))
+      : null;
+    if (scheme) start += scheme[0].length;
     const markerLength = text.startsWith('[redacted]', start) ? '[redacted]'.length : text.startsWith('[removed]', start) ? '[removed]'.length : 0;
     const marker = markerLength > 0;
     const markerEnd = start + markerLength;
@@ -190,11 +226,16 @@ function redactCredentialValues(text: string): string {
   for (let index = 0; index <= text.length; index++) {
     const previous = active;
     active += coverage[index];
-    if (!previous && active) parts.push(text.slice(cursor, index), '[redacted]');
-    if (previous && !active) cursor = index;
+    if (!previous && active) parts.push(source.slice(cursor, sourceOffsets?.[index] ?? index), '[redacted]');
+    if (previous && !active) cursor = sourceOffsets ? sourceOffsets[index - 1] + 1 : index;
   }
-  parts.push(text.slice(cursor));
+  parts.push(source.slice(cursor));
   return parts.join('');
+}
+
+/** Share normalized credential boundaries while preserving CLI styling and unrelated diagnostic keys. */
+export function redactCredentialAssignments(text: string, isSensitiveKey = isSupportSensitiveKey): string {
+  return redactCredentialValues(text, isSensitiveKey);
 }
 
 /**
@@ -217,8 +258,7 @@ export function redactSupportText(text: string, sensitiveValues: readonly string
     .replace(/#draft=[^\s"']+/gi, '#draft=[redacted]')
     // eslint-disable-next-line no-control-regex -- Upstream terminal escapes must not execute during report review.
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
-    // eslint-disable-next-line no-control-regex -- Strip upstream terminal controls while retaining readable lines and tabs.
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
+    .replace(UNSAFE_CONTROL_PATTERN, '');
 }
 
 /** Redacts a JSON-compatible tree without mutating it; sensitive-key values become placeholders and strings use text redaction. */

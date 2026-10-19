@@ -104,6 +104,24 @@ describe('local support report redaction', () => {
     });
   });
 
+  test.each([
+    { name: 'controlled authorization', key: 'Authori\u001bzation' },
+    { name: 'styled authorization', key: '\u001b[36mAuthorization\u001b[39m' },
+    { name: 'controlled general credential', key: 'clientSe\u0000cret' },
+    { name: 'styled general credential', key: 'clientSe\u001b[36mcret\u001b[39m' },
+  ])('controlled credential keys stay private in support bundles: $name', ({ key }) => {
+    const input = {
+      nested: [{ [key]: 'opaque-bundle-canary' }],
+      ['authori\u0000zationReadiness']: { status: 'ready' },
+      tenant_deauthorization: { removed: true, debug: 'opaque-receipt-canary' },
+    };
+    expect(redactSupportBundle(input)).toEqual({
+      ...input,
+      nested: [{ [key]: '[redacted]' }],
+      tenant_deauthorization: '[redacted]',
+    });
+  });
+
   test('support text keeps authorization diagnostics but removes header and flag credentials', () => {
     const report = redactSupportText(
       'authorizationReadiness=ready Authorization: opaque-header-fixture headers.authorization=opaque-path-fixture --authorization "opaque-flag-fixture" --format json',
@@ -113,6 +131,34 @@ describe('local support report redaction', () => {
     for (const secret of ['opaque-header-fixture', 'opaque-path-fixture', 'opaque-flag-fixture']) {
       expect(report).not.toContain(secret);
     }
+  });
+
+  test('styled authorization keys and quoted credentials use the shared assignment parser', () => {
+    const report = redactSupportText(
+      '\u001b[36mAuthorization\u001b[39m: "opaque-header-fixture with spaces" headers.authorization=Bearer short --authorization "opaque-flag-fixture with spaces" authorizationReadiness=ready',
+    );
+    expect(report).toContain('authorizationReadiness=ready');
+    expect(report).toContain('Bearer [redacted]');
+    for (const secret of ['opaque-header-fixture', 'opaque-flag-fixture', 'with spaces', 'short']) {
+      expect(report).not.toContain(secret);
+    }
+    expect(report).not.toContain('\u001b');
+  });
+
+  test.each(['\u0007', '\u001b\\'])('terminal hyperlinks cannot disguise authorization keys: %j', terminator => {
+    const report = redactSupportText(`Autho\u001b]8;;https://example.invalid${terminator}rization: "opaque-osc-fixture with spaces" authorizationReadiness=ready`);
+    expect(report).toBe('Authorization: [redacted] authorizationReadiness=ready');
+  });
+
+  test.each([
+    { name: 'NUL', control: '\u0000' },
+    { name: 'CR', control: '\r' },
+    { name: 'DEL', control: '\u007f' },
+  ])('unsafe control $name cannot reveal an authorization key after report cleanup', ({ control }) => {
+    expect(redactSupportText(`Authori${control}zation: 'opaque-control-canary' status=ready`))
+      .toBe('Authorization: [redacted] status=ready');
+    expect(redactSupportText(`authori${control}zationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready`))
+      .toBe('authorizationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready');
   });
 
   test.each([

@@ -4,7 +4,7 @@
 
 import chalk from 'chalk';
 import { recordSupportJsonError } from './support-context.js';
-import { SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
+import { normalizeCredentialKey, redactCredentialAssignments, SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
@@ -41,7 +41,8 @@ const SENSITIVE_KEY_PATTERN =
   /(?:token|secret|password|passwd|pwd|api[_-]?key|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)/i;
 
 function isSensitiveKey(key: string): boolean {
-  return SENSITIVE_KEY_PATTERN.test(key) || SENSITIVE_AUTHORIZATION_KEY.test(key);
+  const normalized = normalizeCredentialKey(key);
+  return SENSITIVE_KEY_PATTERN.test(normalized) || SENSITIVE_AUTHORIZATION_KEY.test(normalized);
 }
 const AUTH_HEADER_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
@@ -49,7 +50,7 @@ const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{
 const URI_CREDENTIAL_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)[^:@\s/]+:[^@\s/]+@/gi;
 
 export function redactSensitiveText(msg: string): string {
-  return msg
+  return redactCredentialAssignments(msg, isSensitiveKey)
     .replace(AUTH_HEADER_PATTERN, '$1 [redacted]')
     .replace(JWT_PATTERN, '[redacted-jwt]')
     .replace(URI_CREDENTIAL_PATTERN, '$1[redacted]@')
@@ -199,7 +200,8 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
-    const safeValue = redactSensitiveText(value);
+    const key = normalizeCredentialKey(label).trim().replace(/\s*:$/, '');
+    const safeValue = isSensitiveKey(key) ? '[redacted]' : redactSensitiveText(value);
     if (useColor && !simpleMode) {
       console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
     } else {

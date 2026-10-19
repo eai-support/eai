@@ -2,7 +2,7 @@
   "schemaVersion": "eai.managed-deploy-producer-pin.v1",
   "repository": "eai-support/eai-app-template",
   "candidate": {
-    "commit": "3162df8dffd36465ef2cec474eee4f8e6285ec3c",
+    "commit": "56db83e5519b63fed0a6f010e52ec2669b1c28fa",
     "workflow": {
       "path": ".github/workflows/eai-app.yml",
       "sha256": "sha256:74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5"
@@ -13,17 +13,17 @@
     },
     "evidenceTest": {
       "path": "tests/source-unknown-deployment-evidence.test.mjs",
-      "sha256": "sha256:75140ba332d49d364f1f2792267aabcc9c50ed7a38a76e6e1702955ebd4e99f7"
+      "sha256": "sha256:245546a3cbf8451cf7b822edcd879225061902763cc034ec068c3e6206585e1e"
     }
   },
   "releaseGate": {
     "status": "released",
-    "tag": "v1.0.17",
-    "commit": "3162df8dffd36465ef2cec474eee4f8e6285ec3c"
+    "tag": "v1.0.20",
+    "commit": "56db83e5519b63fed0a6f010e52ec2669b1c28fa"
   },
   "githubProducerIdentity": {
     "profile": "github-environment-v1",
-    "templateCommitSha": "3162df8dffd36465ef2cec474eee4f8e6285ec3c",
+    "templateCommitSha": "56db83e5519b63fed0a6f010e52ec2669b1c28fa",
     "workflowSha256": "sha256:74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5"
   }
 }

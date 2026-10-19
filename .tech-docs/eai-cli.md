@@ -16,8 +16,8 @@ and gofer asset refresh.
 | --- | --- |
 | Version | 3.20.6 |
 | Released | 2026-10-19 |
-| Last Material Change | Guide EAI Setup updates, allow read-only workspace checks outside app folders, and show classifier error codes |
-| Source Commit | `680e2772ff0d4840b120ec215e99f9215f493657` |
+| Last Material Change | Fix CU onboarding and ship app template v1.0.20 |
+| Source Commit | `d503dd759925b4a543ad05c854bb09a14fb595e4` |
 
 
 ## Install
