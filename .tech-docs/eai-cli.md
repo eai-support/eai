@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.5 |
-| Released | 2026-10-14 |
-| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
-| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
+| Version | 3.20.6 |
+| Released | 2026-10-19 |
+| Last Material Change | Guide EAI Setup updates, allow read-only workspace checks outside app folders, and show classifier error codes |
+| Source Commit | `680e2772ff0d4840b120ec215e99f9215f493657` |
 
 
 ## Install
