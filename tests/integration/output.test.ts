@@ -42,6 +42,47 @@ describe('output redaction', () => {
   });
 
   test.each([
+    { name: 'controlled authorization', key: 'Authori\u001bzation' },
+    { name: 'styled authorization', key: '\u001b[36mAuthorization\u001b[39m' },
+    { name: 'controlled general credential', key: 'clientSe\u0000cret' },
+    { name: 'styled general credential', key: 'clientSe\u001b[36mcret\u001b[39m' },
+  ])('controlled credential keys are masked in JSON: $name', ({ key }) => {
+    const input = {
+      nested: [{ [key]: 'opaque-structured-canary' }],
+      ['authori\u0000zationReadiness']: { status: 'ready' },
+      tenant_deauthorization: { removed: true, already_absent: false, debug: 'omit' },
+    };
+    const expected = {
+      ...input,
+      nested: [{ [key]: '[redacted]' }],
+      tenant_deauthorization: { removed: true, already_absent: false },
+    };
+    expect(out.redactSensitiveDeep(input)).toEqual(expected);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0]))).toEqual(expected);
+  });
+
+  test.each([
+    { name: 'secret', message: 'clientSe\u0000cret=opaque-text-canary status=ready' },
+    { name: 'token', message: 'accessTo\u007fken: opaque-text-canary status=ready' },
+    { name: 'password', message: 'pass\rword="opaque-text-canary with spaces" status=ready' },
+    { name: 'styled secret', message: 'clientSe\u001b[36mcret=opaque-text-canary\u001b[39m status=ready' },
+    { name: 'API key flag', message: '--api_\u0000key "opaque-text-canary with spaces" --format json status=ready' },
+  ])('controlled credential text is normalized before general-key matching: $name', ({ message }) => {
+    const clean = out.redactSensitiveText(message);
+    expect(clean).toContain('[redacted]');
+    expect(clean).toContain('status=ready');
+    expect(clean).not.toContain('opaque-text-canary');
+    expect(clean).not.toContain('with spaces');
+    expect(out.redactSensitiveText(clean)).toBe(clean);
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json({ authorizationReadiness: { message } });
+    expect(JSON.parse(String(write.mock.calls[0]?.[0])))
+      .toEqual({ authorizationReadiness: { message: clean } });
+  });
+
+  test.each([
     'Authorization: opaque-header-fixture',
     'headers.authorization=opaque-header-fixture',
     'Proxy-Authorization: opaque-header-fixture',

@@ -16,7 +16,8 @@ export const SENSITIVE_AUTHORIZATION_KEY =
 
 /** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
-  return sensitiveKey.test(key) || SENSITIVE_AUTHORIZATION_KEY.test(key);
+  const normalized = normalizeCredentialKey(key);
+  return sensitiveKey.test(normalized) || SENSITIVE_AUTHORIZATION_KEY.test(normalized);
 }
 
 /** Normalize terminal effects and unsafe controls before recognizing a credential key; retain line breaks and tabs. */
@@ -232,9 +233,9 @@ function redactCredentialValues(source: string, isSensitiveKey = isSupportSensit
   return parts.join('');
 }
 
-/** Share credential boundaries with support reports while preserving CLI styling and unrelated diagnostic keys. */
-export function redactAuthorizationText(text: string): string {
-  return redactCredentialValues(text, key => SENSITIVE_AUTHORIZATION_KEY.test(key));
+/** Share normalized credential boundaries while preserving CLI styling and unrelated diagnostic keys. */
+export function redactCredentialAssignments(text: string, isSensitiveKey = isSupportSensitiveKey): string {
+  return redactCredentialValues(text, isSensitiveKey);
 }
 
 /**

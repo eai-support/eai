@@ -104,6 +104,24 @@ describe('local support report redaction', () => {
     });
   });
 
+  test.each([
+    { name: 'controlled authorization', key: 'Authori\u001bzation' },
+    { name: 'styled authorization', key: '\u001b[36mAuthorization\u001b[39m' },
+    { name: 'controlled general credential', key: 'clientSe\u0000cret' },
+    { name: 'styled general credential', key: 'clientSe\u001b[36mcret\u001b[39m' },
+  ])('controlled credential keys stay private in support bundles: $name', ({ key }) => {
+    const input = {
+      nested: [{ [key]: 'opaque-bundle-canary' }],
+      ['authori\u0000zationReadiness']: { status: 'ready' },
+      tenant_deauthorization: { removed: true, debug: 'opaque-receipt-canary' },
+    };
+    expect(redactSupportBundle(input)).toEqual({
+      ...input,
+      nested: [{ [key]: '[redacted]' }],
+      tenant_deauthorization: '[redacted]',
+    });
+  });
+
   test('support text keeps authorization diagnostics but removes header and flag credentials', () => {
     const report = redactSupportText(
       'authorizationReadiness=ready Authorization: opaque-header-fixture headers.authorization=opaque-path-fixture --authorization "opaque-flag-fixture" --format json',
