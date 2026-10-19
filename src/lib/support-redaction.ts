@@ -1,6 +1,8 @@
 import { stripVTControlCharacters } from 'node:util';
 
 const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|connection[_-]?string|private[_-]?key/i;
+// eslint-disable-next-line no-control-regex -- Keep this cleanup identical before credential matching and final support output.
+const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
 
 /**
  * "Authorization" names a credential only as a header or flag (Authorization,
@@ -15,6 +17,11 @@ export const SENSITIVE_AUTHORIZATION_KEY =
 /** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
 export function isSupportSensitiveKey(key: string): boolean {
   return sensitiveKey.test(key) || SENSITIVE_AUTHORIZATION_KEY.test(key);
+}
+
+/** Normalize terminal effects and unsafe controls before recognizing a credential key; retain line breaks and tabs. */
+export function normalizeCredentialKey(key: string): string {
+  return stripVTControlCharacters(key).replace(UNSAFE_CONTROL_PATTERN, '');
 }
 
 // SECURITY: decode only candidate key spelling for recognition; reviewed text and value boundaries remain literal.
@@ -40,7 +47,7 @@ function decodeCredentialKey(key: string): string {
 interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number; readonly quotedKeyEnd: number }
 
 function redactCredentialValues(source: string, isSensitiveKey = isSupportSensitiveKey): string {
-  const plainText = stripVTControlCharacters(source);
+  const plainText = normalizeCredentialKey(source);
   // Retain color styling; other terminal controls cannot hide part of a credential key.
   // eslint-disable-next-line no-control-regex -- Only SGR styling may survive CLI output redaction.
   if (plainText !== source.replace(/\u001b\[[0-9;:]*m/g, '')) source = plainText;
@@ -250,8 +257,7 @@ export function redactSupportText(text: string, sensitiveValues: readonly string
     .replace(/#draft=[^\s"']+/gi, '#draft=[redacted]')
     // eslint-disable-next-line no-control-regex -- Upstream terminal escapes must not execute during report review.
     .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
-    // eslint-disable-next-line no-control-regex -- Strip upstream terminal controls while retaining readable lines and tabs.
-    .replace(/[\u0000-\u0008\u000b-\u001f\u007f]/g, '');
+    .replace(UNSAFE_CONTROL_PATTERN, '');
 }
 
 /** Redacts a JSON-compatible tree without mutating it; sensitive-key values become placeholders and strings use text redaction. */

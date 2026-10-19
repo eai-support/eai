@@ -133,6 +133,17 @@ describe('local support report redaction', () => {
   });
 
   test.each([
+    { name: 'NUL', control: '\u0000' },
+    { name: 'CR', control: '\r' },
+    { name: 'DEL', control: '\u007f' },
+  ])('unsafe control $name cannot reveal an authorization key after report cleanup', ({ control }) => {
+    expect(redactSupportText(`Authori${control}zation: 'opaque-control-canary' status=ready`))
+      .toBe('Authorization: [redacted] status=ready');
+    expect(redactSupportText(`authori${control}zationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready`))
+      .toBe('authorizationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready');
+  });
+
+  test.each([
     '--api_key', '--connection-string', '--account-key', '--authorization', '--cookie',
   ])('removes whitespace-separated credential flag %s', (flag) => {
     const report = redactSupportText(`eai command ${flag} "flag-private-fixture" --format json`);

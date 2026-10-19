@@ -79,6 +79,40 @@ describe('output redaction', () => {
       .toBe('authorizationReadiness=ready');
   });
 
+  test.each([
+    { name: 'NUL', control: '\u0000' },
+    { name: 'CR', control: '\r' },
+    { name: 'DEL', control: '\u007f' },
+  ])('unsafe control $name cannot disguise authorization in text or JSON', ({ control }) => {
+    const message = `Authori${control}zation: 'opaque-control-canary' status=ready`;
+    const expected = 'Authorization: [redacted] status=ready';
+    expect(out.redactSensitiveText(message)).toBe(expected);
+    const diagnostic = `authori${control}zationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready`;
+    expect(out.redactSensitiveText(diagnostic))
+      .toBe('authorizationReadiness=ready\tresourceAuthorization=tenant-owned\nstatus=ready');
+    const input = { authorizationReadiness: { message } };
+    expect(out.redactSensitiveDeep(input)).toEqual({ authorizationReadiness: { message: expected } });
+    const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    out.json(input);
+    expect(JSON.parse(String(write.mock.calls[0]?.[0])))
+      .toEqual({ authorizationReadiness: { message: expected } });
+  });
+
+  test.each([
+    { name: 'NUL', control: '\u0000' },
+    { name: 'CR', control: '\r' },
+    { name: 'DEL', control: '\u007f' },
+  ])('unsafe control $name cannot disguise a credential table label', ({ control }) => {
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    out.table([[`Authori${control}zation`, 'opaque-table-control-canary'], ['authorizationReadiness', 'ready']]);
+    const printed = log.mock.calls.flat().join('\n');
+    expect(printed).not.toContain('opaque-table-control-canary');
+    expect(printed).toContain('Authorization');
+    expect(printed).toContain('[redacted]');
+    expect(printed).toContain('authorizationReadiness');
+    expect(printed).toContain('ready');
+  });
+
   test('redacts authorization credentials through error, info and table output', () => {
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});

@@ -3,9 +3,8 @@
  */
 
 import chalk from 'chalk';
-import { stripVTControlCharacters } from 'node:util';
 import { recordSupportJsonError } from './support-context.js';
-import { redactAuthorizationText, SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
+import { normalizeCredentialKey, redactAuthorizationText, SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
@@ -200,7 +199,7 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
-    const key = stripVTControlCharacters(label).trim().replace(/:$/, '');
+    const key = normalizeCredentialKey(label).trim().replace(/:$/, '');
     const safeValue = isSensitiveKey(key) ? '[redacted]' : redactSensitiveText(value);
     if (useColor && !simpleMode) {
       console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
