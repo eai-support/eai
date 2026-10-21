@@ -1348,6 +1348,967 @@
         "mayDeleteData": false,
         "publicSafe": true
       }
+    },
+    {
+      "code": "E251",
+      "reasonCode": "subscription_inactive",
+      "title": "The workspace subscription is not active, so new capabilities cannot be provisioned.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init",
+        "app.create"
+      ],
+      "why": [
+        "The platform checks the workspace subscription status before it allows a capability to be provisioned or enabled.",
+        "Only an active or trialing subscription passes that check; any other status is refused.",
+        "For child workspace creation the check applies to the parent workspace, not the new child.",
+        "The CLI cannot renew or change a subscription, so retrying the same command does not change the result."
+      ],
+      "evidenceToCheck": [
+        "Active workspace in eai whoami, or the parent workspace passed with --parent.",
+        "The HTTP status and code printed with the error.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "Confirm which workspace was the parent or target of the failed command.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Ask a workspace admin to restore an active subscription for the workspace",
+          "purpose": "Billing is managed outside the CLI; the capability check passes again once the subscription is active.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is SUBSCRIPTION_INACTIVE. Retrying does not change the subscription status."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "The workspace should have an active subscription but the platform still reports it as inactive."
+        ],
+        "include": [
+          "active workspace slug",
+          "parent workspace ID if creating a child",
+          "command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E252",
+      "reasonCode": "capability_not_in_plan",
+      "title": "This capability is not included in the workspace plan.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init",
+        "app.create"
+      ],
+      "why": [
+        "The subscription is active, but the workspace plan does not include the feature or add-on the command needs.",
+        "This is a plan limit, not a permissions problem: the signed-in user may already be a workspace admin.",
+        "Creating a child workspace also reports this code when the plan defines no valid child workspace limit.",
+        "The CLI cannot change a workspace plan. If the response includes an upgrade link, a workspace admin can follow it."
+      ],
+      "evidenceToCheck": [
+        "The capability or command named in the error output.",
+        "Active workspace in eai whoami, or the parent workspace passed with --parent.",
+        "Whether the response included an upgrade link."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "Confirm which workspace the failed command ran against.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Ask a workspace admin to add the capability to the workspace plan",
+          "purpose": "Plan changes are made outside the CLI; the command can run once the plan includes the capability.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is CAPABILITY_NOT_IN_PLAN. Retrying does not change the workspace plan."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "The plan should include the capability but the platform still reports it as missing."
+        ],
+        "include": [
+          "active workspace slug",
+          "capability or command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E253",
+      "reasonCode": "tenant_limit_reached",
+      "title": "The parent workspace has reached its child workspace limit.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init"
+      ],
+      "why": [
+        "The workspace plan sets how many child workspaces a parent may have, and the parent has used that allowance.",
+        "The platform checks usage before the new child workspace is created.",
+        "The child workspace create request reports this as TENANT_QUOTA_EXCEEDED; the capability check reports it as tenant_limit_reached.",
+        "Retrying does not free capacity. A workspace admin must remove an unused child workspace or change the plan."
+      ],
+      "evidenceToCheck": [
+        "The parent workspace passed with --parent.",
+        "Existing child workspaces shown by eai workspace list --all --format json.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "List workspaces under the parent to find any that are no longer needed.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Ask a workspace admin to remove an unused child workspace or raise the child workspace limit",
+          "purpose": "The limit comes from the workspace plan and is changed outside this command.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is TENANT_QUOTA_EXCEEDED or tenant_limit_reached. Retrying does not change the limit or usage."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "The parent workspace is below its expected limit but creation is still refused."
+        ],
+        "include": [
+          "parent workspace ID",
+          "active workspace slug",
+          "command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E254",
+      "reasonCode": "tenant_limit_unconfigured",
+      "title": "The plan has no valid child workspace limit configured.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init"
+      ],
+      "why": [
+        "Creating a child workspace requires the parent plan to define a numeric child workspace limit of zero or more.",
+        "This plan has no such limit, or the stored value is not a valid number, so the platform refuses to create a child rather than allow unlimited children.",
+        "Platform-level administrator accounts see this code directly; other accounts see capability_not_in_plan for the same condition.",
+        "The CLI cannot set a plan limit, so the plan configuration must be corrected by platform support."
+      ],
+      "evidenceToCheck": [
+        "The parent workspace passed with --parent.",
+        "The HTTP status and code printed with the error.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is TENANT_LIMIT_UNCONFIGURED. Retrying does not configure the plan limit."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "A child workspace is refused because the parent plan has no valid child workspace limit."
+        ],
+        "include": [
+          "parent workspace ID",
+          "active workspace slug",
+          "command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E255",
+      "reasonCode": "capability_unavailable",
+      "title": "This capability is not available for the workspace.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init",
+        "app.create"
+      ],
+      "why": [
+        "The capability check found no rule that allows this capability for the workspace and operation, so it returned its default denial.",
+        "This differs from capability_not_in_plan, which names a plan gap, and tenant_admin_required, which names a missing role.",
+        "The cause cannot be told from this code alone, so confirm the active workspace and the command first."
+      ],
+      "evidenceToCheck": [
+        "The capability or command named in the error output.",
+        "Active workspace in eai whoami.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "Confirm the intended workspace is visible to the user.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai workspace select <workspace>",
+          "purpose": "Select the workspace the capability should be used in.",
+          "mutates": true,
+          "when": "Run only when the active workspace is not the one you intended."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The intended workspace is selected and the code is still CAPABILITY_UNAVAILABLE."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The intended workspace is selected and the capability is still reported as unavailable."
+        ],
+        "include": [
+          "active workspace slug",
+          "capability or command",
+          "CLI version",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E256",
+      "reasonCode": "child_capacity_unavailable",
+      "title": "Child workspace capacity could not be confirmed.",
+      "category": "platform",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "init"
+      ],
+      "why": [
+        "Before creating a child workspace the platform asks the capability check whether the parent has room for another child.",
+        "That check returned no usable answer, so the platform refused the request instead of guessing.",
+        "This is not a plan limit; a plan limit is reported as TENANT_QUOTA_EXCEEDED.",
+        "The check can fail transiently, so one bounded retry is reasonable."
+      ],
+      "evidenceToCheck": [
+        "HTTP status 503 and the code CHILD_CAPACITY_UNAVAILABLE.",
+        "Whether the same code repeats after a short wait.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active workspace and profile are still correct.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai workspace create --name <name> --slug <slug> --parent <parent-id>",
+          "purpose": "Repeat the child workspace creation once.",
+          "mutates": true,
+          "when": "Run after the backoff in the retry policy; stop if the same code returns."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          15,
+          60
+        ],
+        "stopWhen": [
+          "CHILD_CAPACITY_UNAVAILABLE repeats after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The capacity check keeps failing for the same parent workspace."
+        ],
+        "include": [
+          "request ID",
+          "HTTP status",
+          "CLI version",
+          "parent workspace ID",
+          "command"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E257",
+      "reasonCode": "no_subscription",
+      "title": "The workspace has no active subscription for this billing action.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "billing"
+      ],
+      "why": [
+        "A billing action such as updating, reducing, or cancelling a subscription needs an active subscription recorded for the workspace, and none was found.",
+        "The workspace may never have subscribed, or its subscription may already have ended.",
+        "The CLI cannot create or change a subscription, so retrying the same request does not change the result."
+      ],
+      "evidenceToCheck": [
+        "Active workspace in eai whoami.",
+        "The billing action that was attempted.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Ask a workspace admin to confirm the workspace subscription status",
+          "purpose": "Billing is managed outside the CLI; a workspace admin can confirm whether a subscription exists.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is NO_SUBSCRIPTION. Retrying does not create a subscription."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "The workspace should have an active subscription but the platform reports none."
+        ],
+        "include": [
+          "active workspace slug",
+          "billing action attempted",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E258",
+      "reasonCode": "workspace_plan_billing_unavailable",
+      "title": "Workspace billing could not be verified, so the plan was not changed.",
+      "category": "external_service",
+      "severity": "error",
+      "appliesTo": [
+        "billing"
+      ],
+      "why": [
+        "Before changing a workspace plan the platform confirms the workspace billing records with the billing provider.",
+        "That confirmation failed or returned data that did not match, so the platform stopped and left the plan unchanged.",
+        "The failure can be transient, so one or two bounded retries are reasonable."
+      ],
+      "evidenceToCheck": [
+        "HTTP status 503 and the code WORKSPACE_PLAN_BILLING_UNAVAILABLE.",
+        "Whether the same code repeats after a short wait.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active workspace and profile are still correct.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          30,
+          60
+        ],
+        "stopWhen": [
+          "WORKSPACE_PLAN_BILLING_UNAVAILABLE repeats after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The billing check keeps failing for the same workspace."
+        ],
+        "include": [
+          "request ID",
+          "HTTP status",
+          "CLI version",
+          "active workspace slug",
+          "plan action attempted"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E290",
+      "reasonCode": "app_ownership_manifest_not_found",
+      "title": "No app ownership record was found for this app in the selected workspace.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "app.delete"
+      ],
+      "why": [
+        "App deletion first reads an ownership manifest that lists everything the app owns, and the platform found no ownership registration for this app key under the selected workspace.",
+        "The app key or the workspace may be wrong, the app may be enrolled in a different workspace, or the app and its platform-owned metadata may already have been deleted.",
+        "The request that returns this code deletes nothing."
+      ],
+      "evidenceToCheck": [
+        "The app key passed to eai app delete.",
+        "The --tenant-id value and whether that workspace owns the app enrollment.",
+        "Whether the app appears in eai app list for the owning workspace."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai app list --tenant-id <owning-workspace-id> --format json",
+          "purpose": "List the apps enrolled in the owning workspace and confirm the exact app key.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai app delete <app-key> --tenant-id <owning-workspace-id>",
+          "purpose": "Plan and confirm the deletion from the workspace that owns the app enrollment.",
+          "mutates": true,
+          "deletesData": true,
+          "when": "Run only after eai app list shows the app under that workspace."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The app key is not listed for the owning workspace, or the app was already deleted."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The app is listed for the owning workspace but deletion still reports no ownership record."
+        ],
+        "include": [
+          "app key",
+          "owning workspace ID",
+          "target workspace ID if used",
+          "CLI version",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": true,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E291",
+      "reasonCode": "app_deletion_target_tenant_forbidden",
+      "title": "You do not have workspace admin access to the workspace targeted for app deletion.",
+      "category": "authorization",
+      "severity": "error",
+      "appliesTo": [
+        "app.delete"
+      ],
+      "why": [
+        "eai app delete --target-tenant-id deletes an app from a runtime child workspace owned by the app enrollment workspace given by --tenant-id.",
+        "The platform requires the target to be the --tenant-id workspace itself, or a workspace where the signed-in user is a workspace admin.",
+        "You also need workspace admin access to the --tenant-id workspace. The request that returns this code deletes nothing."
+      ],
+      "evidenceToCheck": [
+        "The --tenant-id and --target-tenant-id values passed to eai app delete.",
+        "Roles returned by eai workspace list --all --format json for both workspaces.",
+        "The signed-in account shown by eai whoami."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm which account the CLI is using.",
+          "mutates": false
+        },
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "Check whether the account is a workspace admin of both the owning and the target workspace.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai app delete <app-key> --tenant-id <owning-workspace-id> --target-tenant-id <runtime-child-id>",
+          "purpose": "Run the deletion with the owning workspace as --tenant-id and the runtime child as the target.",
+          "mutates": true,
+          "deletesData": true,
+          "when": "Use an account that is a workspace admin of both workspaces."
+        },
+        {
+          "command": "Ask a workspace admin of the target workspace to grant your account workspace admin access",
+          "purpose": "A workspace admin must update the membership before the target can be deleted from.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The account is not a workspace admin of the target workspace. Retrying does not change authorization."
+        ]
+      },
+      "escalation": {
+        "audience": "tenant-admin",
+        "neededWhen": [
+          "No workspace admin can grant access to the target workspace."
+        ],
+        "include": [
+          "signed-in email",
+          "owning workspace ID",
+          "target workspace ID",
+          "CLI version",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": true,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E292",
+      "reasonCode": "app_ownership_manifest_unresolved",
+      "title": "The platform cannot prove a single, complete ownership manifest for this app.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "app.delete"
+      ],
+      "why": [
+        "App deletion proceeds only when the platform can list everything the app owns without ambiguity, so it never deletes data it cannot prove belongs to this app.",
+        "APP_OWNERSHIP_MANIFEST_INCOMPLETE: a record needed to build the manifest is missing a required identifier.",
+        "APP_OWNERSHIP_MANIFEST_CONFLICT: two records for the same install disagree about which apps and Object Types it owns.",
+        "APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS: the install that owns the app enrollment could not be narrowed to exactly one.",
+        "APP_OWNERSHIP_OBJECT_TYPE_AMBIGUOUS, APP_OWNERSHIP_OBJECT_TYPE_NOT_FOUND and APP_OWNERSHIP_OBJECT_TYPE_INVALID: an Object Type the manifest relies on has several matches, cannot be found, or is not shaped as expected.",
+        "APP_OWNERSHIP_STORAGE_ROUTE_INVALID: the app enrollment Object Type has no complete storage binding.",
+        "These are platform data problems, so changing local files or repeating eai app delete does not fix them."
+      ],
+      "evidenceToCheck": [
+        "The exact code in the response body.",
+        "The app key and the owning workspace ID.",
+        "Whether eai app delete stopped at its planning step."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai app list --tenant-id <owning-workspace-id> --format json",
+          "purpose": "Confirm the app is enrolled in the workspace you are deleting from.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "Any of these ownership codes is returned. The ownership data must be repaired by platform support before deletion can be planned."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The app must be deleted but the platform cannot resolve its ownership manifest."
+        ],
+        "include": [
+          "app key",
+          "owning workspace ID",
+          "target workspace ID if used",
+          "the exact code",
+          "CLI version",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E293",
+      "reasonCode": "app_ownership_scope_request_invalid",
+      "title": "The app ownership registration request is invalid.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "app.create",
+        "app.provision"
+      ],
+      "why": [
+        "When an app is created or provisioned the platform registers which Object Types the app owns. This request was rejected before any ownership was recorded.",
+        "APP_OWNERSHIP_SCOPE_INVALID_APP_KEY: the app key is not a lowercase identifier of letters, digits and hyphens that starts and ends with a letter or digit.",
+        "APP_OWNERSHIP_SCOPE_INVALID_OBJECT_TYPES: the Object Type list is not a list, or contains a slug that is not a lowercase identifier.",
+        "APP_OWNERSHIP_SCOPE_INVALID_BODY: the request is missing the Object Type list or carries other fields.",
+        "Well-formed input is normally checked before this step, so check the app key and Object Type slugs first and confirm the CLI is current."
+      ],
+      "evidenceToCheck": [
+        "The app key and Object Type slugs used by the failed command.",
+        "The installed CLI version from eai --version.",
+        "The exact code in the response body."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai update --check",
+          "purpose": "Confirm the installed CLI is current.",
+          "mutates": false
+        },
+        {
+          "command": "eai app list --format json",
+          "purpose": "Confirm the app key exactly as it is enrolled.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai update",
+          "purpose": "Install the current CLI before one retry of the failed command.",
+          "mutates": true,
+          "when": "Run when eai update --check reports a newer version."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The same code is returned after the app key and Object Type slugs are canonical and the CLI is current."
+        ]
+      },
+      "escalation": {
+        "audience": "eai-maintainer",
+        "neededWhen": [
+          "The app key and Object Type slugs are canonical and the CLI is current, but the request is still rejected."
+        ],
+        "include": [
+          "app key",
+          "Object Type slugs",
+          "CLI version",
+          "command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E294",
+      "reasonCode": "app_ownership_scope_unsafe",
+      "title": "The platform cannot safely register ownership of this app.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "app.create",
+        "app.provision"
+      ],
+      "why": [
+        "When an app is created or provisioned the platform adds the app and its Object Types to the workspace install record. It refuses when it cannot prove the addition is safe, so it never claims data that belongs to another app.",
+        "APP_OWNERSHIP_SCOPE_INSTALL_NOT_FOUND: the workspace has no active data/schema install to register against. This is a workspace setup gap, like tenant_data_install_no_match.",
+        "APP_OWNERSHIP_SCOPE_INSTALL_INCOMPLETE, APP_OWNERSHIP_SCOPE_INSTALL_AMBIGUOUS and APP_OWNERSHIP_SCOPE_INSTALL_CONFLICT: the workspace install record is missing required identity fields, appears more than once, or disagrees with its stored copy.",
+        "APP_OWNERSHIP_SCOPE_AMBIGUOUS and APP_OWNERSHIP_SCOPE_EXISTING_SCOPE_INVALID: an install already holds more than one scope for this app key, or a scope without a valid app key.",
+        "APP_OWNERSHIP_SCOPE_OBJECT_TYPE_NOT_EXCLUSIVE: a requested Object Type is not published as a workspace-owned type, or does not match exactly one definition.",
+        "APP_OWNERSHIP_SCOPE_OBJECT_TYPE_CONFLICT: a requested Object Type is already owned by a different app in the same workspace.",
+        "Retrying does not change any of these results."
+      ],
+      "evidenceToCheck": [
+        "The exact code in the response body.",
+        "The app key, the workspace ID and the Object Type slugs the app uses.",
+        "Whether eai types diff shows the app Object Types as published."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai verify",
+          "purpose": "Confirm whether the data/schema service can resolve an install for this workspace.",
+          "mutates": false
+        },
+        {
+          "command": "eai types diff",
+          "purpose": "Compare local Object Types with the published workspace state.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "Any of these ownership codes is returned. Retrying does not change the stored install or Object Type state."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The workspace install or Object Type state must be repaired before the app can be registered."
+        ],
+        "include": [
+          "app key",
+          "workspace ID",
+          "the exact code",
+          "CLI version",
+          "command",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E295",
+      "reasonCode": "app_ownership_scope_concurrent_change",
+      "title": "The app ownership record changed while it was being updated.",
+      "category": "app_provisioning",
+      "severity": "warning",
+      "appliesTo": [
+        "app.create",
+        "app.provision"
+      ],
+      "why": [
+        "The platform checks that the workspace install record is unchanged before it writes, so two changes cannot overwrite each other, and another change landed between the read and the write.",
+        "The ownership registration is idempotent, so repeating the same request once the competing change finishes is safe.",
+        "Creating or provisioning more than one app in the same workspace at the same time can cause this."
+      ],
+      "evidenceToCheck": [
+        "Other CLI runs, pipelines or admins changing apps in the same workspace.",
+        "Whether the code repeats after a short wait.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the signed-in user and active workspace.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Re-run the command that returned this code",
+          "purpose": "The ownership registration is idempotent, so a repeat after the competing change finishes is safe.",
+          "mutates": true,
+          "when": "Wait for other app work in the workspace to finish first."
+        }
+      ],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          5,
+          15
+        ],
+        "stopWhen": [
+          "APP_OWNERSHIP_SCOPE_CONCURRENT_CHANGE repeats after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The code repeats although no other app work is running in the workspace."
+        ],
+        "include": [
+          "app key",
+          "workspace ID",
+          "command",
+          "CLI version",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E296",
+      "reasonCode": "app_ownership_scope_failed",
+      "title": "App ownership registration failed unexpectedly.",
+      "category": "platform",
+      "severity": "error",
+      "appliesTo": [
+        "app.create",
+        "app.provision"
+      ],
+      "why": [
+        "The platform returned a server-side failure while registering which Object Types the app owns, and it did not identify a more specific cause.",
+        "Problems with the request itself return their own codes, so this points at the platform rather than at the app key or Object Types you supplied.",
+        "Registration only adds ownership and never removes it, so one later bounded retry is safe."
+      ],
+      "evidenceToCheck": [
+        "HTTP status 500 and the code APP_OWNERSHIP_SCOPE_FAILED.",
+        "Whether the same code repeats after a short wait.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm the active workspace and profile are still correct.",
+          "mutates": false
+        }
+      ],
+      "fixes": [],
+      "retry": {
+        "allowed": true,
+        "maxAttempts": 2,
+        "backoffSeconds": [
+          30,
+          60
+        ],
+        "stopWhen": [
+          "APP_OWNERSHIP_SCOPE_FAILED repeats after bounded retry."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The registration keeps failing for the same app and workspace."
+        ],
+        "include": [
+          "request ID",
+          "HTTP status",
+          "app key",
+          "workspace ID",
+          "CLI version",
+          "command"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
     }
   ]
 }

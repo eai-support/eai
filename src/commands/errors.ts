@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { findGuidanceByCodeOrReason, listErrorGuidance } from '../lib/error-guidance/catalog.js';
+import { findGuidanceByIdentifier, listErrorGuidance } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceExplanation, guidanceToJSON } from '../lib/error-guidance/render.js';
 import * as out from '../lib/output.js';
 
@@ -47,7 +47,7 @@ Notes:
   `)
   .action((value: string, options: { format?: string; json?: boolean }) => {
     const jsonOutput = options.json || options.format === 'json';
-    const entry = findGuidanceByCodeOrReason(value);
+    const entry = findGuidanceByIdentifier(value);
 
     if (!entry) {
       const message = `Unknown EAI error guidance entry: ${value}`;
