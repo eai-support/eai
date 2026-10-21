@@ -1326,6 +1326,41 @@ describe('tenant delete hard purge contract', () => {
   });
 });
 
+describe('workspace info', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'fetchTenantAdminMemberships').mockResolvedValue({
+      publicApiUrl: 'https://api.example.test',
+      tokens: storedTokens({ oid: 'user-oid' }),
+      memberships: [{ id: 'known-tenant', displayName: 'Known Workspace', slug: 'known', isActive: true, roles: ['tenant-admin'] }],
+    });
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+  });
+
+  test('emits a not-found JSON error envelope and exits non-zero for an unknown workspace', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(tenantCommand.parseAsync(['info', 'missing-tenant', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('process.exit 1');
+
+    expect(outputSpy).not.toHaveBeenCalled();
+    expect(parseJsonOutput(errorSpy)).toEqual([{ error: {
+      code: 'E202', message: 'Workspace not found', suggestion: 'Verify the Workspace ID or name and try again', exitCode: 1,
+    } }]);
+  });
+
+  test('still prints the matched workspace as JSON', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync(['info', 'known', '--format', 'json'], { from: 'user' });
+
+    expect(parseJsonOutput(outputSpy)).toEqual([expect.objectContaining({ id: 'known-tenant', slug: 'known' })]);
+  });
+});
+
 describe('PublicAPI URL routing order', () => {
   test('uses named profile PublicAPI URL before environment or tenant routing', async () => {
     process.env.BASE_URL_PUBLIC_API = 'https://env.example.test/public';

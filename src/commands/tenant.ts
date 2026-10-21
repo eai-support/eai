@@ -573,8 +573,12 @@ tenantCommand
       );
 
       if (!tenant) {
-        if (spinner) spinner.fail("404 Not Found");
-        process.exit(1);
+        spinner?.stop();
+        exitWithError(
+          ErrorCode.E202,
+          { resource: "Workspace" },
+          options.format === "json" ? "json" : "text",
+        );
       }
 
       if (options.format === "json") {
