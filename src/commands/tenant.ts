@@ -402,19 +402,18 @@ Examples:
       options.format === "json" ? null : ora("Fetching workspaces...").start();
 
     try {
-      const membershipsResponse =
-        await fetchTenantAdminMemberships(publicApiUrl);
+      const membershipsResponse = await fetchTenantAdminMemberships(
+        publicApiUrl,
+        undefined,
+        { includeAllRoles: Boolean(options.all) },
+      );
       debug("Membership lookup status", "ok");
 
       if (debugEnabled && options.rawUser) {
         debug("Raw membership payload", membershipsResponse);
       }
 
-      const tenants = options.all
-        ? membershipsResponse.memberships.filter(
-            (membership) => membership.isActive !== false,
-          )
-        : membershipsResponse.memberships;
+      const tenants = membershipsResponse.memberships;
       debug(
         options.all
           ? "Workspace entries (all roles, active only)"
@@ -429,7 +428,11 @@ Examples:
         debug,
       });
       const visible = flattenTenantHierarchy(hierarchy.roots);
-      const selectable = visible.filter((tenant) => tenant.directMembership);
+      // `workspace select` accepts only direct tenant-admin memberships, which --all can widen beyond.
+      const selectable = visible.filter(
+        (tenant) =>
+          tenant.directMembership && tenant.roles.includes("tenant-admin"),
+      );
       debug("Tenant hierarchy entries after filtering", visible.length);
 
       if (options.format === "json") {

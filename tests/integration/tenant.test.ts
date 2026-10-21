@@ -42,6 +42,7 @@ import {
   type TenantMembership,
   type TenantEntry,
 } from '../../src/lib/tenant-context.js';
+import { flattenTenantHierarchy } from '../../src/lib/tenant-hierarchy.js';
 
 function createTenantEntry(
   overrides: Partial<TenantEntry> = {},
@@ -461,6 +462,36 @@ describe('tenant list filtering', () => {
       '\tchild - Child Tenant [visible via parent]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('merges the caller memberships into child rows for an explicit parent', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/parent-tenant/children?include_descendants=true&limit=100`) {
+        return new Response(JSON.stringify({ children: [
+          { id: 'member-child', displayName: 'Member Child', slug: 'member-child', parentTenant: { id: 'parent-tenant' } },
+          { id: 'visible-child', displayName: 'Visible Child', slug: 'visible-child', parentTenant: { id: 'parent-tenant' } },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      parentId: 'parent-tenant',
+      memberships: [
+        { id: 'parent-tenant', displayName: 'Parent Tenant', slug: 'parent', isActive: true, roles: ['tenant-admin'] },
+        { id: 'member-child', displayName: 'Member Child', slug: 'member-child', isActive: true, roles: ['tenant-admin'] },
+        { id: 'other-tenant', displayName: 'Other Tenant', slug: 'other', isActive: true, roles: ['tenant-admin'] },
+      ],
+    });
+
+    expect(flattenTenantHierarchy(result.roots).map(({ id, roles, directMembership, parentId }) =>
+      ({ id, roles, directMembership, parentId }))).toEqual([
+      { id: 'parent-tenant', roles: ['tenant-admin'], directMembership: true, parentId: undefined },
+      { id: 'member-child', roles: ['tenant-admin'], directMembership: true, parentId: 'parent-tenant' },
+      { id: 'visible-child', roles: [], directMembership: false, parentId: 'parent-tenant' },
+    ]);
   });
 
   test('normalizes parent tenant metadata from flat membership payloads', () => {
@@ -1358,6 +1389,73 @@ describe('workspace info', () => {
     await tenantCommand.parseAsync(['info', 'known', '--format', 'json'], { from: 'user' });
 
     expect(parseJsonOutput(outputSpy)).toEqual([expect.objectContaining({ id: 'known-tenant', slug: 'known' })]);
+  });
+});
+
+describe('workspace list roles', () => {
+  type ListedWorkspace = { id: string; roles: string[]; directMembership: boolean };
+  type ListPayload = { tenants: ListedWorkspace[]; count: number; selectableCount: number };
+
+  beforeEach(() => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue(DEFAULT_PUBLIC_API_URL);
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(JSON.stringify({ tenants: [
+          { id: 'admin-tenant', displayName: 'Admin Workspace', slug: 'admin', role: 'tenant-admin', isActive: true },
+          { id: 'viewer-tenant', displayName: 'Viewer Workspace', slug: 'viewer', role: 'tenant-viewer', isActive: true },
+          { id: 'inactive-tenant', displayName: 'Inactive Workspace', slug: 'inactive', role: 'tenant-viewer', isActive: false },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/admin-tenant/children?include_descendants=true&limit=100`) {
+        return new Response(JSON.stringify({ children: [
+          { id: 'viewer-tenant', displayName: 'Viewer Workspace', slug: 'viewer', parentTenant: { id: 'admin-tenant' } },
+          { id: 'plain-child', displayName: 'Plain Child', slug: 'plain', parentTenant: { id: 'admin-tenant' } },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
+    }));
+  });
+
+  async function listWorkspaces(args: string[]): Promise<ListPayload> {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await tenantCommand.parseAsync(['list', ...args, '--format', 'json'], { from: 'user' });
+    const [payload] = parseJsonOutput(outputSpy) as ListPayload[];
+    outputSpy.mockRestore();
+    return payload!;
+  }
+
+  const rows = (payload: ListPayload): ListedWorkspace[] =>
+    payload.tenants.map(({ id, roles, directMembership }) => ({ id, roles, directMembership }));
+
+  test('lists only active workspace admin memberships by default', async () => {
+    const payload = await listWorkspaces([]);
+    expect(rows(payload)).toEqual([{ id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true }]);
+    expect(payload).toMatchObject({ count: 1, selectableCount: 1 });
+  });
+
+  test('--all includes active memberships of every role but keeps only admin memberships selectable', async () => {
+    const payload = await listWorkspaces(['--all']);
+    expect(rows(payload)).toEqual([
+      { id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true },
+      { id: 'viewer-tenant', roles: ['tenant-viewer'], directMembership: true },
+    ]);
+    expect(payload).toMatchObject({ count: 2, selectableCount: 1 });
+  });
+
+  test.each([
+    { args: [], viewer: { roles: [], directMembership: false } },
+    { args: ['--all'], viewer: { roles: ['tenant-viewer'], directMembership: true } },
+  ])('--parent $args reports the caller direct membership on child rows', async ({ args, viewer }) => {
+    const payload = await listWorkspaces(['--parent', 'admin-tenant', ...args]);
+    expect(rows(payload)).toEqual([
+      { id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true },
+      { id: 'plain-child', roles: [], directMembership: false },
+      { id: 'viewer-tenant', ...viewer },
+    ]);
+    expect(payload.selectableCount).toBe(1);
   });
 });
 
