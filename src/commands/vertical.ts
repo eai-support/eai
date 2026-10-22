@@ -855,6 +855,28 @@ function fail(message: string, failure?: AppCommandFailure): never {
   process.exit(1);
 }
 
+async function readAppDeletionResponse(
+  request: () => Promise<Response>,
+  format: string,
+  phase: 'plan' | 'delete',
+  onFailure?: () => void,
+): Promise<{ response: Response; payload: unknown }> {
+  let response: Response | undefined;
+  try {
+    response = await request();
+    return { response, payload: await readResponsePayload(response) };
+  } catch {
+    onFailure?.();
+    // SECURITY: Transport exceptions can contain credentials; retain only validated response metadata.
+    fail(phase === 'plan'
+      ? 'Could not prepare app deletion. No deletion request was sent.'
+      : 'App deletion could not be verified. Check the app status before retrying.', {
+      format,
+      diagnostics: response && safePlatformDiagnostics(response.status, undefined, response.headers),
+    });
+  }
+}
+
 async function resolveAppManagementContext(options?: {
   tenantId?: string;
   interactive?: boolean;
@@ -1015,8 +1037,9 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
     const explicitTarget = options.targetTenantId !== undefined;
     const targetTenantId = options.targetTenantId ?? companyTenantId;
 
-    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId);
-    const plan = await readResponsePayload(planResponse);
+    const { response: planResponse, payload: plan } = await readAppDeletionResponse(
+      () => client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId), format, 'plan',
+    );
     if (!planResponse.ok || !isRecord(plan)) {
       fail(
         isRecord(plan) && typeof plan.message === 'string'
@@ -1070,13 +1093,14 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
     }
 
     const spinner = makeSpinner(format, `Deleting app ${appKey}...`);
-    const response = await client.deleteApp(companyTenantId, appKey, {
-      confirmationAppKey: appKey,
-      ownershipManifestHash: manifestHash,
-      environments,
-      ...(explicitTarget ? { targetTenantId } : {}),
-    });
-    const receipt = await readResponsePayload(response);
+    const { response, payload: receipt } = await readAppDeletionResponse(
+      () => client.deleteApp(companyTenantId, appKey, {
+        confirmationAppKey: appKey,
+        ownershipManifestHash: manifestHash,
+        environments,
+        ...(explicitTarget ? { targetTenantId } : {}),
+      }), format, 'delete', () => { spinner?.fail('App deletion failed'); },
+    );
     if (!response.ok || !isRecord(receipt)) {
       spinner?.fail('App deletion failed');
       fail(

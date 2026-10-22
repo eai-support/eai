@@ -601,7 +601,10 @@ describe('eai app', () => {
   const OWNERSHIP_FAILURE_MESSAGE = 'App deletion cannot proceed without an unambiguous ownership manifest.';
   const DELETION_REQUEST_ID = 'd681b292-2bfd-4c50-a8ce-392f642b1816';
 
-  function appDeletionFailureFetch(failing: 'plan' | 'delete'): ReturnType<typeof vi.fn> {
+  function appDeletionFailureFetch(
+    failing: 'plan' | 'delete',
+    transportFailure?: () => Promise<Response>,
+  ): ReturnType<typeof vi.fn> {
     const failure = (status: number, code: string): Response => new Response(
       JSON.stringify({ error: code, message: OWNERSHIP_FAILURE_MESSAGE }),
       { status, headers: { 'Content-Type': 'application/json', 'x-request-id': DELETION_REQUEST_ID } },
@@ -615,12 +618,17 @@ describe('eai app', () => {
         return jsonResponse({ id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', region: 'au' });
       }
       if (url.endsWith('/apps/post-pilot/deletion-plan') && method === 'GET') {
-        return failing === 'plan' ? failure(409, 'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS') : jsonResponse({
+        if (failing === 'plan') {
+          return transportFailure ? transportFailure() : failure(409, 'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS');
+        }
+        return jsonResponse({
           tenantId: COMPANY_TENANT_ID, appKey: 'post-pilot', confirmationRequired: 'post-pilot',
           ownershipManifestHash: 'a'.repeat(64), environments: ['preview', 'dev', 'test', 'prod'],
         });
       }
-      if (url.endsWith('/apps/post-pilot') && method === 'DELETE') return failure(403, 'APP_DELETION_TARGET_TENANT_FORBIDDEN');
+      if (url.endsWith('/apps/post-pilot') && method === 'DELETE') {
+        return transportFailure ? transportFailure() : failure(403, 'APP_DELETION_TARGET_TENANT_FORBIDDEN');
+      }
       throw new Error(`unexpected provider request: ${method} ${url}`);
     });
     vi.stubGlobal('fetch', fetchMock);
@@ -667,6 +675,57 @@ describe('eai app', () => {
     expect(text).toContain(`Server code: ${serverCode}`);
     expect(text).toContain(`Request ID: ${DELETION_REQUEST_ID}`);
     expect(() => JSON.parse(text)).toThrow();
+  });
+
+  test.each((['plan', 'delete'] as const).flatMap(failing =>
+    (['network', 'timeout', 'body'] as const).flatMap(failure =>
+      (['json', 'text'] as const).map(format => ({ failing, failure, format })),
+    ),
+  ))('keeps $failing $failure failures safe in $format output without retrying deletion', async ({ failing, failure, format }) => {
+    await seedLoggedInTenant();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const unsafe = 'sensitive-provider-text https://internal.example/?token=private-value';
+    const fetchMock = appDeletionFailureFetch(failing, async () => {
+      if (failure === 'network') throw new Error(unsafe);
+      if (failure === 'timeout') throw new DOMException(unsafe, 'TimeoutError');
+      return new Response(new ReadableStream({
+        start(controller): void { controller.error(new Error(unsafe)); },
+      }), { status: 200, headers: { 'x-request-id': DELETION_REQUEST_ID } });
+    });
+
+    await expect(appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+      '--confirm', 'post-pilot', '--non-interactive', '--format', format], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+    expect(output).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledTimes(1);
+    const emitted = String(errors.mock.calls[0]?.[0]);
+    const message = failing === 'plan'
+      ? 'Could not prepare app deletion. No deletion request was sent.'
+      : 'App deletion could not be verified. Check the app status before retrying.';
+    if (format === 'json') {
+      expect(JSON.parse(emitted)).toEqual({ error: {
+        code: 'E203', message: `Platform API error: ${message}`, suggestion: expect.any(String), exitCode: 1,
+        ...(failure === 'body' ? { status: 200, requestId: DELETION_REQUEST_ID } : {}),
+      } });
+    } else {
+      expect(emitted).toContain(message);
+      expect(emitted).toContain('Error code: E203');
+      if (failure === 'body') {
+        expect(emitted).toContain('HTTP status: 200');
+        expect(emitted).toContain(`Request ID: ${DELETION_REQUEST_ID}`);
+      } else {
+        expect(emitted).not.toContain('HTTP status:');
+      }
+    }
+    expect(emitted).not.toContain('sensitive-provider-text');
+    expect(emitted).not.toContain('internal.example');
+    expect(emitted).not.toContain('private-value');
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).endsWith('/deletion-plan'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'DELETE')).toHaveLength(failing === 'plan' ? 0 : 1);
   });
 
   test('keeps a non-HTTP app deletion failure in the JSON error envelope', async () => {

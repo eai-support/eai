@@ -1,3 +1,6 @@
+import { appOwnershipScopeGuidance } from './catalog-app-ownership-scope.js';
+import { billingGuidance } from './catalog-billing.js';
+import { capacityGuidance } from './catalog-capacity.js';
 import { appOwnershipGuidance } from './catalog-app-ownership.js';
 import { capabilityGuidance } from './catalog-capability.js';
 import type { ErrorGuidance } from './types.js';
@@ -1286,7 +1289,10 @@ export const errorGuidanceCatalog = [
     ],
   },
   ...capabilityGuidance,
+  ...capacityGuidance,
+  ...billingGuidance,
   ...appOwnershipGuidance,
+  ...appOwnershipScopeGuidance,
 ] satisfies ErrorGuidance[];
 
 export function listErrorGuidance(): ErrorGuidance[] {
