@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.6** (2026-10-19): Fix CU onboarding and ship app template v1.0.20.
+The current CLI release is **v3.20.7** (2026-10-22): Diagnose app deletion failures and explain platform reason codes.

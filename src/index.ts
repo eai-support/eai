@@ -118,7 +118,7 @@ program
       await activateCommandProfile(actionCommand);
     } catch (error) {
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        opts.format === 'json' || opts.json ? 'json' : 'text', retainedOperationId);
+        opts.format === 'json' || opts.json ? 'json' : 'text', { operationId: retainedOperationId });
     }
   });
 
@@ -368,7 +368,7 @@ if (cliArgs.includes('--describe')) {
     } catch (error) {
       const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
+        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', { operationId: retainedOperationId });
     }
   }
   const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));

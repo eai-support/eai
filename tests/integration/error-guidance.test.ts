@@ -1,17 +1,122 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, afterEach, describe, expect, test } from 'vitest';
 import { ErrorCode, formatError, formatErrorJSON } from '../../src/lib/error-codes.js';
-import { findGuidanceByCodeOrReason, listErrorGuidance } from '../../src/lib/error-guidance/catalog.js';
+import {
+  findGuidanceByCodeOrReason,
+  findGuidanceByIdentifier,
+  listErrorGuidance,
+} from '../../src/lib/error-guidance/catalog.js';
 import { validateErrorGuidanceCatalog } from '../../src/lib/error-guidance/validate.js';
 import { findGuidance } from '../../src/lib/error-guidance/match.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
 
+interface AuthzReasonCodeFixture {
+  source: { repository: string; path: string; commit: string };
+  denyReasonCodes: string[];
+  nonErrorReasonCodes: string[];
+}
+
+// Frozen from the Authz capability policy; see the fixture for the source path and commit.
+const authzReasonCodes = JSON.parse(
+  readFileSync(new URL('./fixtures/authz-capability-reason-codes.json', import.meta.url), 'utf8'),
+) as AuthzReasonCodeFixture;
+
+// Frozen 2026-10-22 from Configurator origin/main 0fc9e3d1:
+// app deletion (apps/[appKey]/deletion-metadata/route.ts, services/AppDeletionManifest.ts) and
+// app ownership scope registration (apps/[appKey]/ownership-scope/route.ts, services/AppOwnershipScope.ts).
+const APP_DELETION_OWNERSHIP_CODES = [
+  'APP_DELETION_TARGET_TENANT_FORBIDDEN',
+  'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS',
+  'APP_OWNERSHIP_MANIFEST_CONFLICT',
+  'APP_OWNERSHIP_MANIFEST_INCOMPLETE',
+  'APP_OWNERSHIP_MANIFEST_NOT_FOUND',
+  'APP_OWNERSHIP_OBJECT_TYPE_AMBIGUOUS',
+  'APP_OWNERSHIP_OBJECT_TYPE_INVALID',
+  'APP_OWNERSHIP_OBJECT_TYPE_NOT_FOUND',
+  'APP_OWNERSHIP_STORAGE_ROUTE_INVALID',
+];
+const APP_OWNERSHIP_SCOPE_CODES = [
+  'APP_OWNERSHIP_SCOPE_AMBIGUOUS',
+  'APP_OWNERSHIP_SCOPE_CONCURRENT_CHANGE',
+  'APP_OWNERSHIP_SCOPE_EXISTING_SCOPE_INVALID',
+  'APP_OWNERSHIP_SCOPE_FAILED',
+  'APP_OWNERSHIP_SCOPE_INSTALL_AMBIGUOUS',
+  'APP_OWNERSHIP_SCOPE_INSTALL_CONFLICT',
+  'APP_OWNERSHIP_SCOPE_INSTALL_INCOMPLETE',
+  'APP_OWNERSHIP_SCOPE_INSTALL_NOT_FOUND',
+  'APP_OWNERSHIP_SCOPE_INVALID_APP_KEY',
+  'APP_OWNERSHIP_SCOPE_INVALID_BODY',
+  'APP_OWNERSHIP_SCOPE_INVALID_OBJECT_TYPES',
+  'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_CONFLICT',
+  'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_NOT_EXCLUSIVE',
+];
+
+// Frozen 2026-10-22 from AdminAPI origin/main 1ef71d6a: child capacity check in
+// services/configurator_service.py (require_child_tenant_capacity, which upper-cases the policy
+// reason code and maps tenant_limit_reached to TENANT_QUOTA_EXCEEDED) and billing actions in
+// api/routes/billing.py.
+const ADMIN_API_CODES = [
+  'CHILD_CAPACITY_UNAVAILABLE',
+  'NO_SUBSCRIPTION',
+  'SUBSCRIPTION_INACTIVE',
+  'TENANT_QUOTA_EXCEEDED',
+  'WORKSPACE_PLAN_BILLING_UNAVAILABLE',
+];
+
 describe('error guidance catalog', () => {
   test('all bundled guidance entries are valid and public-safe', () => {
     const issues = validateErrorGuidanceCatalog(listErrorGuidance());
 
     expect(issues).toEqual([]);
+  });
+
+  test('resolves an entry by server code alias regardless of case', () => {
+    for (const value of ['TENANT_ADMIN_REQUIRED', 'tenant_admin_required', ' Tenant-Admin-Required ']) {
+      expect(findGuidanceByIdentifier(value)?.code, value).toBe('E204');
+    }
+    for (const value of ['SUBSCRIPTION_INACTIVE', 'subscription_inactive']) {
+      expect(findGuidanceByIdentifier(value)?.reasonCode, value).toBe('subscription_inactive');
+    }
+  });
+
+  test('identifier lookup still resolves guidance codes and reason codes', () => {
+    expect(findGuidanceByIdentifier('e101')?.reasonCode).toBe('not_logged_in');
+    expect(findGuidanceByIdentifier('not-logged-in')?.code).toBe('E101');
+  });
+
+  test('identifier lookup does not treat message text or unknown values as aliases', () => {
+    expect(findGuidanceByIdentifier('Tenant admin role required')).toBeUndefined();
+    expect(findGuidanceByIdentifier('NOT_A_REAL_SERVER_CODE')).toBeUndefined();
+    expect(findGuidanceByIdentifier('  ')).toBeUndefined();
+  });
+
+  test('catalog validation rejects a server code alias claimed by two entries', () => {
+    const [first] = listErrorGuidance();
+    const claimed = listErrorGuidance().find((entry) => entry.match?.some((matcher) => matcher.serverCode));
+    if (!first || !claimed) throw new Error('Expected catalog entries with a server code alias.');
+    const alias = claimed.match?.find((matcher) => matcher.serverCode)?.serverCode ?? '';
+    const duplicate = {
+      ...first,
+      code: 'E999',
+      reasonCode: 'duplicate_alias_probe',
+      match: [{ serverCode: alias.toLowerCase() }],
+    };
+
+    expect(validateErrorGuidanceCatalog([claimed, duplicate])).toEqual([
+      `E999 claims server code ${alias.toLowerCase()} already used by ${claimed.code}.`,
+    ]);
+  });
+
+  test('catalog validation rejects an alias that shadows another entry code or reason', () => {
+    const [first, second] = listErrorGuidance();
+    if (!first || !second) throw new Error('Expected at least two catalog entries.');
+    const shadowing = { ...second, match: [{ serverCode: first.reasonCode.toUpperCase() }] };
+
+    expect(validateErrorGuidanceCatalog([first, shadowing])).toEqual([
+      `${second.code} server code ${first.reasonCode.toUpperCase()} shadows the code or reason of ${first.code}.`,
+    ]);
   });
 
   test('text errors explain why the error happened and what to try next', () => {
@@ -320,6 +425,120 @@ describe('error guidance catalog', () => {
   });
 });
 
+describe('platform reason code guidance', () => {
+  test('the Authz fixture records its source and a full commit SHA', () => {
+    expect(authzReasonCodes.source.path).toBe('policies/capabilities/evaluate.rego');
+    expect(authzReasonCodes.source.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(authzReasonCodes.denyReasonCodes.length).toBeGreaterThan(0);
+    expect(authzReasonCodes.nonErrorReasonCodes).toEqual(['allowed']);
+  });
+
+  test.each(authzReasonCodes.denyReasonCodes)('Authz capability reason %s has guidance', (reasonCode) => {
+    const guidance = findGuidanceByIdentifier(reasonCode);
+
+    expect(guidance, `${reasonCode} is missing from the error guidance catalog`).toBeDefined();
+    // AdminAPI upper-cases the policy reason code when it denies child workspace creation.
+    expect(findGuidanceByIdentifier(reasonCode.toUpperCase())?.code).toBe(guidance?.code);
+  });
+
+  test('a successful Authz decision is not error guidance', () => {
+    for (const reasonCode of authzReasonCodes.nonErrorReasonCodes) {
+      expect(findGuidanceByIdentifier(reasonCode)).toBeUndefined();
+    }
+  });
+
+  test.each([
+    ...APP_DELETION_OWNERSHIP_CODES,
+    ...APP_OWNERSHIP_SCOPE_CODES,
+    ...ADMIN_API_CODES,
+  ])('server code %s has guidance that runtime matching also finds', (serverCode) => {
+    const guidance = findGuidanceByIdentifier(serverCode);
+
+    expect(guidance, `${serverCode} is missing from the error guidance catalog`).toBeDefined();
+    expect(findGuidance({ serverCode })?.code).toBe(guidance?.code);
+    expect(findGuidance({ message: `${serverCode}: request refused` })?.code).toBe(guidance?.code);
+  });
+
+  test('generic server wording shared by several ownership codes does not pick one entry', () => {
+    // The platform sends these sentences for many different codes, so only the code may select guidance.
+    for (const message of [
+      'App deletion cannot proceed without an unambiguous ownership manifest.',
+      'The requested ownership scope cannot be proven safely.',
+    ]) {
+      expect(findGuidance({ message }), message).toBeUndefined();
+    }
+  });
+
+  test('tenant limit guidance covers the policy code and the AdminAPI quota code', () => {
+    const reached = findGuidanceByIdentifier('tenant_limit_reached');
+
+    expect(findGuidanceByIdentifier('TENANT_QUOTA_EXCEEDED')?.code).toBe(reached?.code);
+    expect(reached?.retry.allowed).toBe(false);
+    expect(reached?.escalation.audience).toBe('tenant-admin');
+  });
+
+  test('subscription guidance does not promise a CLI command that changes billing', () => {
+    for (const value of ['subscription_inactive', 'NO_SUBSCRIPTION', 'workspace_plan_billing_unavailable']) {
+      const guidance = findGuidanceByIdentifier(value);
+
+      expect(guidance?.fixes.filter((fix) => fix.mutates), value).toEqual([]);
+      expect(guidance?.safety.mutatesState, value).toBe(false);
+    }
+    expect(findGuidanceByIdentifier('subscription_inactive')?.retry.allowed).toBe(false);
+  });
+
+  test('billing and capacity checks that could not be confirmed allow only a bounded retry', () => {
+    for (const value of ['CHILD_CAPACITY_UNAVAILABLE', 'WORKSPACE_PLAN_BILLING_UNAVAILABLE']) {
+      const guidance = findGuidanceByIdentifier(value);
+
+      expect(guidance?.retry.allowed, value).toBe(true);
+      expect(guidance?.retry.maxAttempts, value).toBeLessThanOrEqual(3);
+      expect(guidance?.escalation.audience, value).toBe('platform-support');
+    }
+  });
+
+  test('forbidden app deletion target sends the user back to the owning workspace', () => {
+    const guidance = findGuidanceByIdentifier('APP_DELETION_TARGET_TENANT_FORBIDDEN');
+
+    expect(guidance?.category).toBe('authorization');
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.fixes.map((fix) => fix.command)).toEqual(
+      expect.arrayContaining([
+        'eai app delete <app-key> --tenant-id <owning-workspace-id> --target-tenant-id <runtime-child-id>',
+      ]),
+    );
+    expect(guidance?.why.join(' ')).toContain('workspace admin');
+  });
+
+  test('ambiguous or incomplete ownership stops instead of retrying and escalates to support', () => {
+    for (const serverCode of [
+      'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS',
+      'APP_OWNERSHIP_MANIFEST_INCOMPLETE',
+      'APP_OWNERSHIP_SCOPE_INSTALL_AMBIGUOUS',
+    ]) {
+      const guidance = findGuidanceByIdentifier(serverCode);
+
+      expect(guidance?.retry.allowed, serverCode).toBe(false);
+      expect(guidance?.escalation.audience, serverCode).toBe('platform-support');
+      expect(guidance?.fixes.filter((fix) => fix.mutates), serverCode).toEqual([]);
+    }
+  });
+
+  test('only transient ownership scope outcomes are retryable, and only a bounded number of times', () => {
+    const retryable = [...APP_DELETION_OWNERSHIP_CODES, ...APP_OWNERSHIP_SCOPE_CODES].filter(
+      (serverCode) => findGuidanceByIdentifier(serverCode)?.retry.allowed,
+    );
+
+    expect(retryable).toEqual([
+      'APP_OWNERSHIP_SCOPE_CONCURRENT_CHANGE',
+      'APP_OWNERSHIP_SCOPE_FAILED',
+    ]);
+    for (const serverCode of retryable) {
+      expect(findGuidanceByIdentifier(serverCode)?.retry.maxAttempts, serverCode).toBeLessThanOrEqual(3);
+    }
+  });
+});
+
 describe('eai errors command', () => {
   let env: TestEnvironment;
   let ctx: TestContext;
@@ -370,6 +589,49 @@ describe('eai errors command', () => {
         }),
       ]),
     );
+  });
+
+  test.each(['SUBSCRIPTION_INACTIVE', 'subscription_inactive'])(
+    'explains the %s server code in text mode',
+    async (value) => {
+      const result = await runCommand(ctx, `eai errors explain ${value}`);
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('subscription_inactive');
+      expect(result.stdout).toContain('Why this might happen:');
+    },
+  );
+
+  test('explains a server code alias in JSON mode for agents', async () => {
+    const result = await runCommand(ctx, 'eai errors explain TENANT_ADMIN_REQUIRED --format json');
+
+    expect(result.exitCode).toBe(0);
+    const payload = JSON.parse(result.stdout) as {
+      ok: boolean;
+      guidance: { code: string; reasonCode: string };
+    };
+    expect(payload.ok).toBe(true);
+    expect(payload.guidance).toEqual(
+      expect.objectContaining({ code: 'E204', reasonCode: 'permission_denied' }),
+    );
+  });
+
+  test('explains every Authz capability reason code from the frozen fixture', async () => {
+    for (const reasonCode of authzReasonCodes.denyReasonCodes) {
+      const result = await runCommand(ctx, `eai errors explain ${reasonCode} --format json`);
+
+      expect(result.exitCode, reasonCode).toBe(0);
+      expect(JSON.parse(result.stdout).ok, reasonCode).toBe(true);
+    }
+  });
+
+  test('reports an unknown identifier without guessing', async () => {
+    const result = await runCommand(ctx, 'eai errors explain NOT_A_REAL_SERVER_CODE --format json');
+
+    expect(result.exitCode).toBe(1);
+    const payload = JSON.parse(result.stdout) as { ok: boolean; error: { message: string } };
+    expect(payload.ok).toBe(false);
+    expect(payload.error.message).toContain('NOT_A_REAL_SERVER_CODE');
   });
 
   test('lists known guidance in JSON mode', async () => {

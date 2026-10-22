@@ -1,3 +1,4 @@
+import { normalizeGuidanceIdentifier } from './catalog.js';
 import type { ErrorGuidance } from './types.js';
 
 const FORBIDDEN_PUBLIC_TERMS = [
@@ -19,6 +20,40 @@ function allStrings(value: unknown): string[] {
     return Object.values(value as Record<string, unknown>).flatMap(allStrings);
   }
   return [];
+}
+
+function serverCodeAliases(entry: ErrorGuidance): string[] {
+  return (entry.match ?? []).flatMap((matcher) => (matcher.serverCode ? [matcher.serverCode] : []));
+}
+
+/** `errors explain` resolves a server code to one entry, so an alias must have exactly one owner. */
+function validateServerCodeAliases(entries: readonly ErrorGuidance[]): string[] {
+  const issues: string[] = [];
+  const owners = new Map<string, string>();
+
+  for (const entry of entries) {
+    for (const alias of serverCodeAliases(entry)) {
+      const normalized = normalizeGuidanceIdentifier(alias);
+      const owner = owners.get(normalized);
+      if (owner !== undefined && owner !== entry.code) {
+        issues.push(`${entry.code} claims server code ${alias} already used by ${owner}.`);
+        continue;
+      }
+      owners.set(normalized, entry.code);
+
+      const shadowed = entries.find(
+        (other) =>
+          other.code !== entry.code &&
+          (normalizeGuidanceIdentifier(other.code) === normalized ||
+            normalizeGuidanceIdentifier(other.reasonCode) === normalized),
+      );
+      if (shadowed) {
+        issues.push(`${entry.code} server code ${alias} shadows the code or reason of ${shadowed.code}.`);
+      }
+    }
+  }
+
+  return issues;
 }
 
 export function validateErrorGuidanceCatalog(entries: readonly ErrorGuidance[]): string[] {
@@ -61,5 +96,5 @@ export function validateErrorGuidanceCatalog(entries: readonly ErrorGuidance[]):
     }
   }
 
-  return issues;
+  return [...issues, ...validateServerCodeAliases(entries)];
 }

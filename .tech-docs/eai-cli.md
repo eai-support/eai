@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.6 |
-| Released | 2026-10-19 |
-| Last Material Change | Fix CU onboarding and ship app template v1.0.20 |
-| Source Commit | `d503dd759925b4a543ad05c854bb09a14fb595e4` |
+| Version | 3.20.7 |
+| Released | 2026-10-22 |
+| Last Material Change | Diagnose app deletion failures and explain platform reason codes |
+| Source Commit | `d8255c7e5ecfd97d807b27b98dd46782089311f7` |
 
 
 ## Install
