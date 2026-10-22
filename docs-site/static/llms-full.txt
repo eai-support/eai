@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.6. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.7. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -817,7 +817,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.6** (2026-10-19): Fix CU onboarding and ship app template v1.0.20.
+The current CLI release is **v3.20.7** (2026-10-22): Diagnose app deletion failures and explain platform reason codes.
 
 ---
 
@@ -868,10 +868,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.6 |
-| Released | 2026-10-19 |
-| Last Material Change | Fix CU onboarding and ship app template v1.0.20 |
-| Source Commit | `d503dd759925b4a543ad05c854bb09a14fb595e4` |
+| Version | 3.20.7 |
+| Released | 2026-10-22 |
+| Last Material Change | Diagnose app deletion failures and explain platform reason codes |
+| Source Commit | `d8255c7e5ecfd97d807b27b98dd46782089311f7` |
 
 
 ## Install
@@ -2710,7 +2710,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.6. The same catalog powers human stderr output, JSON output for AI
+v3.20.7. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
