@@ -1041,12 +1041,8 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
       () => client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId), format, 'plan',
     );
     if (!planResponse.ok || !isRecord(plan)) {
-      fail(
-        isRecord(plan) && typeof plan.message === 'string'
-          ? plan.message
-          : `Could not prepare app deletion: ${planResponse.status} ${planResponse.statusText}`,
-        { format, diagnostics: safePlatformDiagnostics(planResponse.status, plan, planResponse.headers) },
-      );
+      const diagnostics = safePlatformDiagnostics(planResponse.status, plan, planResponse.headers);
+      fail(formatSafePlatformFailure('App deletion plan', diagnostics), { format, diagnostics });
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
     const environments = plan.environments;
@@ -1103,12 +1099,8 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
     );
     if (!response.ok || !isRecord(receipt)) {
       spinner?.fail('App deletion failed');
-      fail(
-        isRecord(receipt) && typeof receipt.message === 'string'
-          ? receipt.message
-          : `${response.status} ${response.statusText}`,
-        { format, diagnostics: safePlatformDiagnostics(response.status, receipt, response.headers) },
-      );
+      const diagnostics = safePlatformDiagnostics(response.status, receipt, response.headers);
+      fail(formatSafePlatformFailure('App deletion', diagnostics), { format, diagnostics });
     }
     const returnedRuntimeTargets = receipt.runtimeTenantIds;
     if (

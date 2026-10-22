@@ -651,7 +651,7 @@ describe('eai app', () => {
     expect(output).not.toHaveBeenCalled();
     expect(errors).toHaveBeenCalledTimes(1);
     expect(JSON.parse(String(errors.mock.calls[0]?.[0]))).toEqual({ error: {
-      code: 'E203', message: `Platform API error: ${OWNERSHIP_FAILURE_MESSAGE}`, suggestion: expect.any(String),
+      code: 'E203', message: `Platform API error: App deletion${failing === 'plan' ? ' plan' : ''} failed (HTTP ${status}) [${serverCode}]; request ${DELETION_REQUEST_ID}.`, suggestion: expect.any(String),
       exitCode: 1, status, serverCode, requestId: DELETION_REQUEST_ID,
     } });
     expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'DELETE')).toHaveLength(deletes);
@@ -670,11 +670,61 @@ describe('eai app', () => {
       '--confirm', 'post-pilot', '--non-interactive'], { from: 'user' })).rejects.toThrow('fixture-process-exit');
 
     const text = errors.mock.calls.flat().join('\n');
-    expect(text).toContain(OWNERSHIP_FAILURE_MESSAGE);
+    expect(text).toContain(`App deletion${failing === 'plan' ? ' plan' : ''} failed (HTTP ${status}) [${serverCode}]; request ${DELETION_REQUEST_ID}.`);
+    expect(text).not.toContain(OWNERSHIP_FAILURE_MESSAGE);
     expect(text).toContain(`HTTP status: ${status}`);
     expect(text).toContain(`Server code: ${serverCode}`);
     expect(text).toContain(`Request ID: ${DELETION_REQUEST_ID}`);
     expect(() => JSON.parse(text)).toThrow();
+  });
+
+  test.each((['plan', 'delete'] as const).flatMap(failing =>
+    (['plaintext', 'json', 'empty'] as const).flatMap(body =>
+      (['json', 'text'] as const).map(format => ({ failing, body, format })),
+    ),
+  ))('omits opaque $body response messages from $failing failures in $format output', async ({ failing, body, format }) => {
+    await seedLoggedInTenant();
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const exit = vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
+    const opaque = 'unclassified-provider-diagnostic-quartz-iris';
+    const statusPhrase = 'Unclassified Quartz Iris Status';
+    const status = failing === 'plan' ? 409 : 403;
+    const serverCode = failing === 'plan' ? 'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS' : 'APP_DELETION_TARGET_TENANT_FORBIDDEN';
+    const fetchMock = appDeletionFailureFetch(failing, async () => new Response(
+      body === 'json' ? JSON.stringify({ error: serverCode, message: opaque }) : body === 'plaintext' ? opaque : '',
+      { status, statusText: statusPhrase, headers: {
+        'Content-Type': body === 'json' ? 'application/json' : 'text/plain', 'x-request-id': DELETION_REQUEST_ID,
+      } },
+    ));
+
+    await expect(appCommand.parseAsync(['delete', 'post-pilot', '--tenant-id', COMPANY_TENANT_ID,
+      '--confirm', 'post-pilot', '--non-interactive', '--format', format], { from: 'user' }))
+      .rejects.toThrow('fixture-process-exit');
+
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+    expect(output).not.toHaveBeenCalled();
+    expect(errors).toHaveBeenCalledTimes(1);
+    const emitted = String(errors.mock.calls[0]?.[0]);
+    expect(emitted).not.toContain(opaque);
+    expect(emitted).not.toContain(statusPhrase);
+    const message = `App deletion${failing === 'plan' ? ' plan' : ''} failed (HTTP ${status})`
+      + `${body === 'json' ? ` [${serverCode}]` : ''}; request ${DELETION_REQUEST_ID}.`;
+    if (format === 'json') {
+      expect(JSON.parse(emitted)).toEqual({ error: {
+        code: 'E203', message: `Platform API error: ${message}`, suggestion: expect.any(String), exitCode: 1,
+        status, requestId: DELETION_REQUEST_ID, ...(body === 'json' ? { serverCode } : {}),
+      } });
+    } else {
+      expect(emitted).toContain(message);
+      expect(emitted).toContain('Error code: E203');
+      expect(emitted).toContain(`HTTP status: ${status}`);
+      expect(emitted).toContain(`Request ID: ${DELETION_REQUEST_ID}`);
+      if (body === 'json') expect(emitted).toContain(`Server code: ${serverCode}`);
+      else expect(emitted).not.toContain('Server code:');
+    }
+    expect(fetchMock.mock.calls.filter(([input]) => requestUrl(input).endsWith('/deletion-plan'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([, init]) => requestMethod(init) === 'DELETE')).toHaveLength(failing === 'plan' ? 0 : 1);
   });
 
   test.each((['plan', 'delete'] as const).flatMap(failing =>

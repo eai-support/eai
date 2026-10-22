@@ -261,7 +261,7 @@
         },
         {
           "id": "eai-cli-app-delete",
-          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt. Request and response-body failures emit safe E203 JSON/text errors without retrying deletion or exposing transport details.",
+          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt. Request and response-body failures emit safe E203 JSON/text errors without retrying deletion or exposing transport details. HTTP failures discard upstream messages and status text while retaining HTTP status, allowlisted server codes, and validated request IDs.",
           "owned_paths": [
             ".eai/test-coverage.json",
             "src/commands/vertical.ts",
