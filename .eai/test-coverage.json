@@ -358,12 +358,7 @@
             "eai-cli",
             "backend"
           ],
-          "required_deployed_contracts": [
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"
-            }
-          ]
+          "required_deployed_contracts": []
         },
         {
           "id": "eai-cli-static-release-registry",
