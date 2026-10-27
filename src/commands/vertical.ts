@@ -38,7 +38,12 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
-import { safePlatformDiagnostics, formatSafePlatformFailure } from '../lib/platform-diagnostics.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import {
+  safePlatformDiagnostics,
+  formatSafePlatformFailure,
+  type SafePlatformDiagnostics,
+} from '../lib/platform-diagnostics.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 import {
@@ -832,9 +837,44 @@ async function readResponsePayload(res: Response): Promise<unknown> {
   }
 }
 
-function fail(message: string): never {
+/** Output format, stable CLI code (default E203) and allowlisted HTTP diagnostics for an app command failure. */
+interface AppCommandFailure {
+  readonly format: string;
+  readonly code?: ErrorCode;
+  readonly diagnostics?: SafePlatformDiagnostics;
+}
+
+/** Exit an app command; a failure descriptor selects the standard text/JSON error envelope. */
+function fail(message: string, failure?: AppCommandFailure): never {
+  if (failure) {
+    const diagnostics = failure.diagnostics;
+    exitWithError(failure.code ?? ErrorCode.E203, { details: message }, failure.format === 'json' ? 'json' : 'text',
+      diagnostics && { status: diagnostics.status, serverCode: diagnostics.code, requestId: diagnostics.requestId });
+  }
   out.error(message);
   process.exit(1);
+}
+
+async function readAppDeletionResponse(
+  request: () => Promise<Response>,
+  format: string,
+  phase: 'plan' | 'delete',
+  onFailure?: () => void,
+): Promise<{ response: Response; payload: unknown }> {
+  let response: Response | undefined;
+  try {
+    response = await request();
+    return { response, payload: await readResponsePayload(response) };
+  } catch {
+    onFailure?.();
+    // SECURITY: Transport exceptions can contain credentials; retain only validated response metadata.
+    fail(phase === 'plan'
+      ? 'Could not prepare app deletion. No deletion request was sent.'
+      : 'App deletion could not be verified. Check the app status before retrying.', {
+      format,
+      diagnostics: response && safePlatformDiagnostics(response.status, undefined, response.headers),
+    });
+  }
 }
 
 async function resolveAppManagementContext(options?: {
@@ -976,15 +1016,16 @@ The plan and final receipt must match the owner, requested child and exact runti
 Omit --target-tenant-id for the existing same-workspace deletion flow.
 `)
   .action(async (key: string, options) => {
-    const appKey = key.trim();
-    if (!appKey) fail('App key is required.');
     if (options.json) options.format = 'json';
     const format = normalizeFormat(options);
+    const invalidInput: AppCommandFailure = { format, code: ErrorCode.E305 };
+    const appKey = key.trim();
+    if (!appKey) fail('App key is required.', invalidInput);
     if (options.targetTenantId !== undefined) {
       try {
         requireManagedScopeIdentifier(options.targetTenantId, '--target-tenant-id');
       } catch {
-        fail('--target-tenant-id must be a non-empty exact workspace identifier.');
+        fail('--target-tenant-id must be a non-empty exact workspace identifier.', invalidInput);
       }
     }
     const ctx = await resolveAppManagementContext({
@@ -996,14 +1037,12 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
     const explicitTarget = options.targetTenantId !== undefined;
     const targetTenantId = options.targetTenantId ?? companyTenantId;
 
-    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId);
-    const plan = await readResponsePayload(planResponse);
+    const { response: planResponse, payload: plan } = await readAppDeletionResponse(
+      () => client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId), format, 'plan',
+    );
     if (!planResponse.ok || !isRecord(plan)) {
-      fail(
-        isRecord(plan) && typeof plan.message === 'string'
-          ? plan.message
-          : `Could not prepare app deletion: ${planResponse.status} ${planResponse.statusText}`,
-      );
+      const diagnostics = safePlatformDiagnostics(planResponse.status, plan, planResponse.headers);
+      fail(formatSafePlatformFailure('App deletion plan', diagnostics), { format, diagnostics });
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
     const environments = plan.environments;
@@ -1020,7 +1059,7 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
         ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId, targetTenantId)
         : explicitTarget || Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
     ) {
-      fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
+      fail('The platform returned an invalid app deletion ownership plan. No data was deleted.', { format });
     }
 
     const capturedRuntimeTargets = scopedCleanup ? [...runtimeTargets as string[]] : undefined;
@@ -1029,11 +1068,11 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
       try {
         validateNonInteractiveAppDeleteConfirmation(appKey, options.confirm);
       } catch (error) {
-        fail(errMsg(error));
+        fail(errMsg(error), invalidInput);
       }
     } else {
       if (!process.stdin.isTTY) {
-        fail(`Interactive confirmation requires a terminal. Use --confirm ${appKey} --non-interactive.`);
+        fail(`Interactive confirmation requires a terminal. Use --confirm ${appKey} --non-interactive.`, invalidInput);
       }
       out.warn(APP_DELETE_WARNING);
       const { typedAppKey } = await (
@@ -1046,24 +1085,22 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
           validate: (value: unknown) => value === appKey || `Type ${appKey} exactly to continue.`,
         },
       ]);
-      if (typedAppKey !== appKey) fail('App deletion confirmation did not match.');
+      if (typedAppKey !== appKey) fail('App deletion confirmation did not match.', invalidInput);
     }
 
     const spinner = makeSpinner(format, `Deleting app ${appKey}...`);
-    const response = await client.deleteApp(companyTenantId, appKey, {
-      confirmationAppKey: appKey,
-      ownershipManifestHash: manifestHash,
-      environments,
-      ...(explicitTarget ? { targetTenantId } : {}),
-    });
-    const receipt = await readResponsePayload(response);
+    const { response, payload: receipt } = await readAppDeletionResponse(
+      () => client.deleteApp(companyTenantId, appKey, {
+        confirmationAppKey: appKey,
+        ownershipManifestHash: manifestHash,
+        environments,
+        ...(explicitTarget ? { targetTenantId } : {}),
+      }), format, 'delete', () => { spinner?.fail('App deletion failed'); },
+    );
     if (!response.ok || !isRecord(receipt)) {
       spinner?.fail('App deletion failed');
-      fail(
-        isRecord(receipt) && typeof receipt.message === 'string'
-          ? receipt.message
-          : `${response.status} ${response.statusText}`,
-      );
+      const diagnostics = safePlatformDiagnostics(response.status, receipt, response.headers);
+      fail(formatSafePlatformFailure('App deletion', diagnostics), { format, diagnostics });
     }
     const returnedRuntimeTargets = receipt.runtimeTenantIds;
     if (
@@ -1083,7 +1120,7 @@ Omit --target-tenant-id for the existing same-workspace deletion flow.
         : Object.hasOwn(receipt, 'runtimeTenantIds'))
     ) {
       spinner?.fail('App deletion could not be verified');
-      fail('The platform did not return a verified app deletion receipt.');
+      fail('The platform did not return a verified app deletion receipt.', { format });
     }
 
     if (format === 'json') {
