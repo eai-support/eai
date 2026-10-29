@@ -1140,4 +1140,92 @@ describe('managed publication authority and readiness', () => {
     value.deployment.expectedLatestVersion = 4;
     expect(classifyCliManagedSourceOperation(value)).toBe('incomplete');
   });
+
+  // #3502: the build start is the first deploy step PublicAPI gates, so it is where a user most often hits 402 CREDITS_EXHAUSTED.
+  describe('build start refused for exhausted credits', () => {
+    const SENTENCE = 'This workspace has run out of credits. Raise its monthly credits, upgrade, or buy credits in the Portal under Plan and Billing, then retry.';
+    const RETRY_HINT = 'If you were retrying after a lost response, the first deploy may already be running: check it with `eai deploy doctor --operation-id <id>` first.';
+    const GENERIC = 'Managed source operation is unavailable (402). Repair the platform operation or app-source access, then retry the exact operation.';
+    const CREDITS_BODY = {
+      error: 'CREDITS_EXHAUSTED',
+      message: 'This workspace has run out of credits.',
+      billingWorkspaceId: '3f1c2a9e-0d6b-4c55-9a1e-6b7d2f8e4a10',
+      recovery: ['raise_allowance', 'upgrade', 'top_up'],
+    };
+    const refusal = (body: unknown, status = 402): Response => new Response(
+      typeof body === 'string' ? body : JSON.stringify(body),
+      { status, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' } },
+    );
+
+    async function buildStartFailure(body: unknown, status = 402): Promise<unknown> {
+      const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
+      vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(refusal(body, status));
+      const upload = vi.spyOn(globalThis, 'fetch');
+      const error = await submitCliManagedSource(client, scope, session(), bundle, async () => {})
+        .then(() => undefined, caught => caught as unknown);
+      expect(upload).not.toHaveBeenCalled();
+      expect(error).toBeInstanceOf(source.ManagedSourceError);
+      return error;
+    }
+
+    test.each([
+      ['a top-level body', CREDITS_BODY],
+      ['a body wrapped in detail', { detail: CREDITS_BODY }],
+      ['a detail with only the code', { detail: { error: 'CREDITS_EXHAUSTED' } }],
+      ['an empty recovery list', { ...CREDITS_BODY, recovery: [] }],
+    ])('explains %s in plain words', async (_label, body) => {
+      await expect(buildStartFailure(body)).resolves.toMatchObject({
+        code: 'MANAGED_SOURCE_UNAVAILABLE',
+        message: 'This workspace has run out of credits.',
+        nextAction: `${SENTENCE} ${RETRY_HINT}`,
+      });
+    });
+
+    test('prints the sentence and never the raw 402 JSON in text mode', async () => {
+      const failure = await buildStartFailure(CREDITS_BODY);
+      const stdout = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      output.printFailure('text', failure);
+      const printed = [...stdout.mock.calls, ...stderr.mock.calls].map(call => call.join(' ')).join('\n');
+      expect(printed).toContain(SENTENCE);
+      expect(printed).toContain(RETRY_HINT);
+      expect(printed).not.toContain('unavailable (402)');
+      expect(printed).not.toMatch(/[{}]/);
+      expect(printed).not.toContain('billingWorkspaceId');
+      expect(printed).not.toContain(CREDITS_BODY.billingWorkspaceId);
+      process.exitCode = undefined;
+    });
+
+    test('reports only the CLI error envelope in JSON mode', async () => {
+      const failure = await buildStartFailure(CREDITS_BODY);
+      const write = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      output.printFailure('json', failure);
+      const text = write.mock.calls.map(([value]) => String(value)).join('');
+      expect(JSON.parse(text)).toEqual({
+        ok: false,
+        error: { code: 'MANAGED_SOURCE_UNAVAILABLE', message: 'This workspace has run out of credits.', nextAction: `${SENTENCE} ${RETRY_HINT}` },
+      });
+      expect(text).not.toContain('billingWorkspaceId');
+      process.exitCode = undefined;
+    });
+
+    test.each([
+      ['another 402 code', { error: 'PAYMENT_METHOD_REQUIRED', message: 'Add a card.' }, 402],
+      ['a 402 with an unrelated body', { detail: 'Payment Required' }, 402],
+      ['a 402 with an empty body', '', 402],
+      ['a 402 with a body that is not JSON', 'Payment Required', 402],
+      ['a 403 that names the credits code', CREDITS_BODY, 403],
+      ['a 500 that names the credits code', CREDITS_BODY, 500],
+    ])('keeps today\'s message for %s', async (_label, body, status) => {
+      const error = await buildStartFailure(body, status) as source.ManagedSourceError & { nextAction?: string };
+      expect(error.code).toBe('MANAGED_SOURCE_UNAVAILABLE');
+      expect(error.message).toBe(GENERIC.replace('(402)', `(${status})`));
+      expect(error.nextAction).toBeUndefined();
+      const stdout = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      vi.spyOn(console, 'error').mockImplementation(() => undefined);
+      output.printFailure('text', error);
+      expect(stdout.mock.calls.map(call => call.join(' ')).join('\n')).toContain(error.message);
+      process.exitCode = undefined;
+    });
+  });
 });

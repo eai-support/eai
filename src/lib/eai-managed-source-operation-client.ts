@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
+import { PlatformAPIClient, isManagedPublicRequestTimeout, readManagedPublicResponseText } from "./api.js";
+import { CREDITS_EXHAUSTED_MESSAGE, apiErrorCode, creditsExhaustedNextAction } from "./credits-exhausted.js";
 import { CLI_MANAGED_SOURCE_LIMITS, ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type {
@@ -218,12 +219,29 @@ export async function responseOperation(
   response: Response,
 ): Promise<CliManagedSourceOperation> {
   if (!response.ok) {
+    const exhausted = response.status === 402 ? await creditsExhaustedNextActionFrom(response) : undefined;
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UNAVAILABLE",
-      `Managed source operation is unavailable (${response.status}). Repair the platform operation or app-source access, then retry the exact operation.`,
+      exhausted
+        ? CREDITS_EXHAUSTED_MESSAGE
+        : `Managed source operation is unavailable (${response.status}). Repair the platform operation or app-source access, then retry the exact operation.`,
+      exhausted,
     );
   }
   return JSON.parse(await readManagedPublicResponseText(response)) as CliManagedSourceOperation;
+}
+
+/** A 402 whose body is not a readable credits refusal keeps the generic failure; a body deadline still propagates. */
+async function creditsExhaustedNextActionFrom(response: Response): Promise<string | undefined> {
+  try {
+    const body: unknown = JSON.parse(await readManagedPublicResponseText(response));
+    return typeof body === "object" && body !== null && !Array.isArray(body)
+      ? creditsExhaustedNextAction(response.status, apiErrorCode(body as Record<string, unknown>))
+      : undefined;
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) throw error;
+    return undefined;
+  }
 }
 
 /** Poll one publication and return pending review distinctly from deployed readiness. */
