@@ -140,12 +140,39 @@ export function apiMessage(
   return fallback;
 }
 
+/** Stable error code PublicAPI and AdminAPI return in a 402 when a workspace has no credits left. */
+export const CREDITS_EXHAUSTED_ERROR = "CREDITS_EXHAUSTED";
+export const CREDITS_EXHAUSTED_NEXT_ACTION =
+  "This workspace has run out of credits. Raise its monthly credits, upgrade, or buy credits in the Portal under Plan and Billing, then retry.";
+/** PublicAPI gates every deploy start again at zero, so a retry after a lost response can get a 402 for a deploy it already started. */
+export const CREDITS_EXHAUSTED_RETRY_HINT =
+  "If you were retrying after a lost response, the first deploy may already be running: check it with `eai deploy doctor --operation-id <id>` first.";
+
+/** The 402 body is top-level (contracts C5); a `detail`-wrapped body is accepted too. */
+export function apiErrorCode(payload: Record<string, unknown>): string | undefined {
+  if (typeof payload.error === "string") return payload.error;
+  if (isRecord(payload.detail) && typeof payload.detail.error === "string")
+    return payload.detail.error;
+  return undefined;
+}
+
+function creditsExhaustedNextAction(
+  status: number,
+  errorCode: string | undefined,
+): string | undefined {
+  if (status !== 402 || errorCode !== CREDITS_EXHAUSTED_ERROR) return undefined;
+  return `${CREDITS_EXHAUSTED_NEXT_ACTION} ${CREDITS_EXHAUSTED_RETRY_HINT}`;
+}
+
+/** `message` carries the API error code when the caller has one (a 402 `CREDITS_EXHAUSTED`). */
 export function repositoryNextAction(
   status: number,
   message: string,
   tenantId: string,
   repo: string,
 ): string {
+  const exhausted = creditsExhaustedNextAction(status, message);
+  if (exhausted) return exhausted;
   const normalized = message.toLowerCase();
   if (status === 401)
     return "Run `eai login`, confirm the account with `eai whoami`, then retry.";
@@ -173,10 +200,12 @@ export async function requireApiSuccess(
 ): Promise<Record<string, unknown>> {
   const payload = await responsePayload(response);
   if (!response.ok) {
+    // Out of credits is the same answer on every deploy step, so it wins over the caller's own advice.
+    const exhausted = creditsExhaustedNextAction(response.status, apiErrorCode(payload));
     fail(
       code,
       apiMessage(payload, `${response.status} ${response.statusText}`),
-      nextAction(payload, response.status),
+      exhausted ?? nextAction(payload, response.status),
     );
   }
   return payload;
