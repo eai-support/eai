@@ -27,7 +27,7 @@ export function printFailure(format: string, error: unknown): void {
             : "EAI_MANAGED_DEPLOY_FAILED",
           error instanceof Error ? error.message : String(error),
           error instanceof ManagedSourceError
-            ? error.message
+            ? (error.nextAction ?? error.message)
             : "Fix the reported problem, then retry the same exact command.",
         );
   if (format === "json") {
