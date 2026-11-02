@@ -27,6 +27,7 @@ const CONTRACTS = {
   verify: { routes: ['/health', '/v4/identity', '/v4/data/resources', '/v4/ai'], services: ['PublicAPI', 'Authz', 'ResourceAPI', 'AICore'] },
   doctor: { routes: ['/health', '/v4/identity'], services: ['PublicAPI', 'Authz'] },
   publicapi: { routes: ['explicit allowed /v4 path'], services: ['PublicAPI', 'Authz', 'selected route owner'] },
+  kb: { routes: ['/v4/identity/session/resolve', '/v4/data/resources', '/v4/data/knowledge-base/reindex'], services: ['PublicAPI', 'Authz', 'ResourceAPI', 'AICore'] },
   env: { routes: ['Azure CLI appconfig kv', 'Azure CLI keyvault secret'], services: ['Azure CLI', 'App Configuration', 'Key Vault'] },
   login: { routes: ['CIAM PKCE', '/v4/identity'], services: ['CIAM', 'PublicAPI', 'Authz'] },
   whoami: { routes: ['/v4/identity'], services: ['PublicAPI', 'Authz', 'local token cache'] },

@@ -4,6 +4,49 @@
     "eai": {
       "features": [
         {
+          "id": "knowledge-base-upload-index",
+          "description": "Tenant-explicit Knowledge Base uploads resolve a known same-environment regional API, share general filename MIME inference with resource files, enforce the KB-specific AICore extraction type contract before mutation, preserve the existing record/upload/committed-metadata-readback/reindex contract, and retain truthful pending/failed/unknown outcomes without replay or deletion.",
+          "owned_paths": [
+            "src/commands/knowledge-base.ts",
+            "src/commands/resources.ts",
+            "src/commands/publicapi.ts",
+            "src/lib/api.ts",
+            "src/index.ts",
+            "tests/integration/knowledge-base.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "README.md",
+            ".tech-docs/api-reference.md",
+            ".tech-docs/eai-cli.md",
+            "scripts/generate-release-docs.cjs",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "tests/integration/resources.test.ts",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/audit-cli-backend.cjs",
+            "tests/fixtures/kb-extraction-content-types.json",
+            "tests/fixtures/kb-supported-word.docx"
+          ],
+          "required_repo_tests": [
+            "tests/integration/knowledge-base.test.ts",
+            "tests/integration/publicapi.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/docs-classify.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/resources.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/publicapi-v4-only.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "backend"
+          ],
+          "required_deployed_contracts": []
+        },
+        {
           "id": "bounded-content-understanding",
           "description": "Local declarative typed-field validation, exact workspace typed/flat and advanced capability gates, canonical original-operation UUID recovery, safe API/auth errors, and ambiguity-safe camel/snake document job/result reads. Deployed readiness and release publication remain separately gated.",
           "owned_paths": [

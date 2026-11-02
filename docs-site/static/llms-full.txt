@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.7. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.8. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -35,6 +35,32 @@ npm install -g @enterpriseai/cli
 - Template and UI drift are reported by `eai doctor --check-updates` and still require manual review.
 
 # CLI Help
+
+## eai kb upload --help
+
+```text
+Usage: eai kb upload [options] <file>
+
+Upload one shared-kb-article file, verify it is stored, then request KB indexing
+once
+
+Options:
+  --tenant-id <id>        Exact workspace ID; PublicAPI enforces access
+  --title <title>         Knowledge document title (defaults to the filename)
+  --document-type <type>  Knowledge document category (default: "Other")
+  --content-type <mime>   Override the MIME type inferred from the filename
+  --tag <tag>             Knowledge search tag (repeatable) (default: [])
+  --visible-to-children   Allow descendant workspaces to retrieve this document
+                          (default: false)
+  --format <format>       Output format (text|json) (default: "text")
+  -h, --help              display help for command
+
+Supported KB files: PDF, DOCX, XLSX, PPTX, plain text, HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC.
+Markdown, CSV and unknown media types are rejected before record creation.
+This uses the existing KB APIs, separate from docs upload/classification.
+A pending index is not complete. Do not repeat this command after a timeout.
+No failed or uncertain write is retried or deleted automatically.
+```
 
 ## eai content-understanding --help
 
@@ -191,6 +217,8 @@ Commands:
                                drift for the current project
   blocks                       Discover AI-readable EAI UI block manifests
   publicapi                    Call authorized PublicAPI V4 routes directly
+  kb                           Upload tenant Knowledge Base files and index
+                               their content
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
   support [options]            Review a redacted error report and hand it to the
@@ -817,7 +845,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.7** (2026-10-22): Diagnose app deletion failures and explain platform reason codes.
+The current CLI release is **v3.20.8** (2026-11-02): Fix regional Knowledge Base file upload MIME and indexing.
 
 ---
 
@@ -868,10 +896,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.7 |
-| Released | 2026-10-22 |
-| Last Material Change | Diagnose app deletion failures and explain platform reason codes |
-| Source Commit | `d8255c7e5ecfd97d807b27b98dd46782089311f7` |
+| Version | 3.20.8 |
+| Released | 2026-11-02 |
+| Last Material Change | Fix regional Knowledge Base file upload MIME and indexing |
+| Source Commit | `9a71521891571807ecb2ad6e3b1c120a41a946fa` |
 
 
 ## Install
@@ -992,6 +1020,7 @@ construction.
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
+| `eai kb upload`                         | Upload and index one tenant-explicit Knowledge Base file using its resolved regional API. |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
@@ -1026,6 +1055,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
+| Index a Knowledge Base file | `eai kb upload <file> --tenant-id <workspace-id>` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
@@ -2710,7 +2740,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.7. The same catalog powers human stderr output, JSON output for AI
+v3.20.8. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -4600,11 +4630,12 @@ Manage binary file properties on a resource.
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--output <path>` — (`file get`) write to a specific path
+- `--content-type <mime>` — (`file upload`) override the MIME type inferred from the filename; parameters and header newlines are rejected
 - `--force` — (`file delete`) skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload (`application/octet-stream`)
+- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload using the filename's MIME type (unknown extensions use `application/octet-stream`)
 - `GET /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — download
 - `DELETE /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — delete
 
@@ -4850,6 +4881,53 @@ Index a document for RAG (two-step).
 - `POST /v4/data/documents/rag-index` — submit the indexing job
 
 ---
+
+### Knowledge Base Documents
+
+#### `eai kb upload <file> --tenant-id <id>`
+
+Upload and index a document through the existing Admin Portal Knowledge Base
+contract. Select the correct login profile before running the command. The
+workspace must already have a published `shared-kb-article` model and ready
+storage. Session routing must resolve that exact workspace to a supported
+regional HTTPS PublicAPI gateway in the selected environment; unresolved,
+foreign or cross-environment routes stop before upload.
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+**Options**:
+- `--tenant-id <id>` — required exact workspace UUID
+- `--title <title>` — title; defaults to the filename
+- `--document-type <type>` — category; defaults to `Other`
+- `--content-type <mime>` — valid supported KB MIME override; known extensions are inferred
+- `--tag <tag>` — repeatable search tag
+- `--visible-to-children` — explicitly allow descendant workspaces to retrieve this document; false by default
+- `--format <format>` — text or JSON
+
+Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
+unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
+record creation. Invalid MIME syntax and empty files retain distinct safe
+input errors. Generic resource file uploads keep their general MIME behavior.
+
+The command sends each create, raw file upload and KB reindex request once.
+Upload already stores the file link and metadata. An exact resource GET verifies
+the committed file, checksum, media type and metadata before indexing; no
+follow-up resource PUT replaces server-owned upload metadata. The JSON result distinguishes `indexed`, `in_progress`,
+`failed` and `outcome_unknown`, and retains only verified resource, document
+and operation IDs. HTTP 202 is pending, not indexed. A timeout may leave stored
+data; inspect the record and article key in the workspace's regional Knowledge
+Base before uploading again. No request is replayed or compensated by deletion.
+This command does not change `eai docs upload` or Curate document workflows.
+
+**Platform API Endpoints Used**:
+- `POST /v4/identity/session/resolve` — resolve the exact workspace and regional API
+- `POST /v4/data/resources/{tenantId}/shared-kb-article` — create the KB record
+- `POST /v4/data/resources/{tenantId}/shared-kb-article/{id}/files/file?filename=...` — upload the file with its MIME type
+- `GET /v4/data/resources/{tenantId}/shared-kb-article/{id}` — verify the committed file and server-owned metadata
+- `POST /v4/data/knowledge-base/reindex` — request AICore extraction and indexing for that exact record
 
 ### Advanced PublicAPI V4 Commands
 

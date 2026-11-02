@@ -46,6 +46,7 @@ const TOP_LEVEL_COMMANDS = [
   "chat",
   "workflow",
   "docs",
+  "kb",
   "deploy",
   "runtime",
   "verify",
