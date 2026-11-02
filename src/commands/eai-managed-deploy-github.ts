@@ -1,5 +1,6 @@
 export {
   managedDeployPollDelayMs,
+  missingCustomerWorkflowScopeAdvice,
   verifyGitHubAccess,
   verifyLocalSource,
 } from "./eai-managed-deploy-github-access.js";
