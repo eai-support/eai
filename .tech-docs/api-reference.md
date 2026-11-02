@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-10-22T00:03:09.523Z"
-source_commit: "d8255c7e5ecfd97d807b27b98dd46782089311f7"
+generated_at: "2026-11-02T01:35:19.199Z"
+source_commit: "9a71521891571807ecb2ad6e3b1c120a41a946fa"
 ---
 # EAI CLI — API Reference
 
@@ -666,11 +666,12 @@ Manage binary file properties on a resource.
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--output <path>` — (`file get`) write to a specific path
+- `--content-type <mime>` — (`file upload`) override the MIME type inferred from the filename; parameters and header newlines are rejected
 - `--force` — (`file delete`) skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload (`application/octet-stream`)
+- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload using the filename's MIME type (unknown extensions use `application/octet-stream`)
 - `GET /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — download
 - `DELETE /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — delete
 
@@ -916,6 +917,53 @@ Index a document for RAG (two-step).
 - `POST /v4/data/documents/rag-index` — submit the indexing job
 
 ---
+
+### Knowledge Base Documents
+
+#### `eai kb upload <file> --tenant-id <id>`
+
+Upload and index a document through the existing Admin Portal Knowledge Base
+contract. Select the correct login profile before running the command. The
+workspace must already have a published `shared-kb-article` model and ready
+storage. Session routing must resolve that exact workspace to a supported
+regional HTTPS PublicAPI gateway in the selected environment; unresolved,
+foreign or cross-environment routes stop before upload.
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+**Options**:
+- `--tenant-id <id>` — required exact workspace UUID
+- `--title <title>` — title; defaults to the filename
+- `--document-type <type>` — category; defaults to `Other`
+- `--content-type <mime>` — valid supported KB MIME override; known extensions are inferred
+- `--tag <tag>` — repeatable search tag
+- `--visible-to-children` — explicitly allow descendant workspaces to retrieve this document; false by default
+- `--format <format>` — text or JSON
+
+Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
+unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
+record creation. Invalid MIME syntax and empty files retain distinct safe
+input errors. Generic resource file uploads keep their general MIME behavior.
+
+The command sends each create, raw file upload and KB reindex request once.
+Upload already stores the file link and metadata. An exact resource GET verifies
+the committed file, checksum, media type and metadata before indexing; no
+follow-up resource PUT replaces server-owned upload metadata. The JSON result distinguishes `indexed`, `in_progress`,
+`failed` and `outcome_unknown`, and retains only verified resource, document
+and operation IDs. HTTP 202 is pending, not indexed. A timeout may leave stored
+data; inspect the record and article key in the workspace's regional Knowledge
+Base before uploading again. No request is replayed or compensated by deletion.
+This command does not change `eai docs upload` or Curate document workflows.
+
+**Platform API Endpoints Used**:
+- `POST /v4/identity/session/resolve` — resolve the exact workspace and regional API
+- `POST /v4/data/resources/{tenantId}/shared-kb-article` — create the KB record
+- `POST /v4/data/resources/{tenantId}/shared-kb-article/{id}/files/file?filename=...` — upload the file with its MIME type
+- `GET /v4/data/resources/{tenantId}/shared-kb-article/{id}` — verify the committed file and server-owned metadata
+- `POST /v4/data/knowledge-base/reindex` — request AICore extraction and indexing for that exact record
 
 ### Advanced PublicAPI V4 Commands
 

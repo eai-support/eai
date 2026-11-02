@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.7 |
-| Released | 2026-10-22 |
-| Last Material Change | Diagnose app deletion failures and explain platform reason codes |
-| Source Commit | `d8255c7e5ecfd97d807b27b98dd46782089311f7` |
+| Version | 3.20.8 |
+| Released | 2026-11-02 |
+| Last Material Change | Fix regional Knowledge Base file upload MIME and indexing |
+| Source Commit | `9a71521891571807ecb2ad6e3b1c120a41a946fa` |
 
 
 ## Install
@@ -138,6 +138,7 @@ construction.
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
+| `eai kb upload`                         | Upload and index one tenant-explicit Knowledge Base file using its resolved regional API. |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
@@ -172,6 +173,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
+| Index a Knowledge Base file | `eai kb upload <file> --tenant-id <workspace-id>` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |

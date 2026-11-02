@@ -47,6 +47,13 @@
       font-weight: 600;
     }
     .footer { color: #484f58; font-size: 0.75rem; margin-top: 3rem; border-top: 1px solid #21262d; padding-top: 1rem; }
+    @media (max-width: 40rem) {
+      body { padding: 1rem; }
+      table { table-layout: fixed; }
+      th, td { padding: 0.5rem 0.25rem; font-size: 0.75rem; overflow-wrap: anywhere; }
+      th:nth-child(3), td:nth-child(3) { width: 32%; }
+      th:last-child, td:last-child { width: 24%; }
+    }
   </style>
 </head>
 <body>
@@ -82,7 +89,13 @@ npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz</code>
     </thead>
     <tbody>
       <tr>
-        <td><code>3.20.7</code> <span class="badge">latest</span></td>
+        <td><code>3.20.8</code> <span class="badge">latest</span></td>
+        <td>Nov 2, 2026</td>
+        <td><code title="b47814c4788740beccbb563e8915606d33991926">b47814c47887...</code></td>
+        <td><a href="https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.8.tgz" download>Download</a></td>
+      </tr>
+      <tr>
+        <td><code>3.20.7</code></td>
         <td>Oct 22, 2026</td>
         <td><code title="33a561cb84d10f681d96ef4f94afccfbd324fc8c">33a561cb84d1...</code></td>
         <td><a href="https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.7.tgz" download>Download</a></td>
@@ -107,7 +120,7 @@ npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz</code>
       </tr>
       <tr>
         <td><code>3.20.3</code></td>
-        <td>Oct 14, 2026</td>
+        <td>Oct 15, 2026</td>
         <td><code title="180982b364e3fd1b71400f2fe3d2354d225d0757">180982b364e3...</code></td>
         <td><a href="https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.3.tgz" download>Download</a></td>
       </tr>
@@ -140,7 +153,7 @@ npm install -g ./docs-site/static/registry/-/@enterpriseai/cli-latest.tgz</code>
 
   <p class="footer">
     Static npm registry fallback hosted on GitHub Pages.
-    Generated 2026-10-22.
+    Generated 2026-11-02.
   </p>
 </body>
 </html>

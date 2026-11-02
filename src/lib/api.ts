@@ -31,6 +31,7 @@ type ResourceWhere = Record<string, unknown>;
 
 const PUBLIC_AI_PATH = '/v4/ai';
 const PUBLIC_DATA_DOCUMENTS_PATH = '/v4/data/documents';
+const PUBLIC_DATA_KNOWLEDGE_BASE_PATH = '/v4/data/knowledge-base';
 const PUBLIC_DATA_RESOURCES_PATH = '/v4/data/resources';
 const PUBLIC_GEO_PATH = '/v4/geo';
 const PUBLIC_IDENTITY_PATH = '/v4/identity';
@@ -143,6 +144,35 @@ export interface PublicApiRequestOptions {
   method?: PlatformMethod;
   body?: unknown;
   params?: Record<string, unknown>;
+}
+
+/** Resolve file media types for resource and document uploads; never accept header parameters or newlines. */
+export function resolveUploadContentType(filePath: string, contentType?: string): string {
+  if (contentType !== undefined) {
+    if (contentType.length > 255 || !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(contentType)) {
+      throw new Error('Content type must be a MIME type such as application/pdf, without parameters.');
+    }
+    return contentType;
+  }
+  const extension = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
+  const contentTypes: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.gif': 'image/gif',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.txt': 'text/plain',
+    '.webp': 'image/webp',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xml': 'application/xml',
+  };
+  return contentTypes[extension] ?? 'application/octet-stream';
 }
 
 /**
@@ -875,7 +905,10 @@ function normalizePublicApiV4Path(path: string): string {
     throw new Error('Only PublicAPI V4 paths are supported. Start the path with /v4/.');
   }
 
-  const allowed = PUBLIC_API_V4_PATH_PREFIXES.some((prefix) => (
+  const knowledgeBasePath = normalized.split('?')[0];
+  const mountedKnowledgeBasePath = !normalized.includes('#') && ['documents', 'reconcile', 'resolve', 'reindex', 'deindex', 'delete']
+    .some(action => knowledgeBasePath === `${PUBLIC_DATA_KNOWLEDGE_BASE_PATH}/${action}`);
+  const allowed = mountedKnowledgeBasePath || PUBLIC_API_V4_PATH_PREFIXES.some((prefix) => (
     normalized === prefix || normalized.startsWith(`${prefix}/`)
   ));
   if (!allowed) {
@@ -1121,7 +1154,11 @@ export class PlatformAPIClient {
     const observation = Object.freeze({ publicApiUrl: this.baseUrl.replace(/\/$/, ''), tenantId,
       proofKind: 'transport-response' as const });
     // SECURITY: an explicitly authorized private gateway cannot redirect its credentials to another destination.
-    const response = await fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
+    const response = await fetch(url, this.profileAuthorizedGateway
+      ? { ...options, redirect: 'error' }
+      : this.requestOptions.publicRequestRedirect
+        ? { ...options, redirect: options.redirect ?? this.requestOptions.publicRequestRedirect }
+        : options);
     // A redirected, foreign or reused response handle cannot identify this
     // invocation, even if an earlier request once qualified the same handle.
     const observed = safeGateway && !response.redirected && (!response.url || response.url === new URL(url).href)
@@ -1649,13 +1686,15 @@ export class PlatformAPIClient {
     id: string,
     propertyName: string,
     filePath: string,
+    contentType?: string,
   ): Promise<Response> {
+    const mediaType = resolveUploadContentType(filePath, contentType);
     const { readFile } = await import('node:fs/promises');
     const { basename } = await import('node:path');
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const content = await readFile(filePath);
     const h = await this.headers();
-    h['Content-Type'] = 'application/octet-stream';
+    h['Content-Type'] = mediaType;
 
     const filename = encodeURIComponent(basename(filePath));
     return this.fetchPublic(
@@ -1833,25 +1872,7 @@ export class PlatformAPIClient {
   // --------------- Documents ---------------
 
   private inferUploadContentType(filePath: string): string {
-    const extension = filePath.toLowerCase().slice(filePath.lastIndexOf("."));
-    const contentTypes: Record<string, string> = {
-      ".csv": "text/csv",
-      ".doc": "application/msword",
-      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ".gif": "image/gif",
-      ".jpeg": "image/jpeg",
-      ".jpg": "image/jpeg",
-      ".json": "application/json",
-      ".md": "text/markdown",
-      ".pdf": "application/pdf",
-      ".png": "image/png",
-      ".txt": "text/plain",
-      ".webp": "image/webp",
-      ".xls": "application/vnd.ms-excel",
-      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      ".xml": "application/xml",
-    };
-    return contentTypes[extension] ?? "application/octet-stream";
+    return resolveUploadContentType(filePath);
   }
 
   private async uploadDocumentBatch(

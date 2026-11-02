@@ -9,7 +9,7 @@ import { PlatformAPIClient, isChildTenantCreateRequest, parseApiError, type Plat
 import { normalizeFormat, makeSpinner } from '../lib/context.js';
 import { findGuidance } from '../lib/error-guidance/match.js';
 import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl, type PublicApiRequestPolicy } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
 interface PublicApiCommandOptions {
@@ -117,7 +117,8 @@ async function decodeResponseBody(response: Response): Promise<DecodedResponseBo
   return { body: text, bodyKind: 'text' };
 }
 
-async function resolveClient(options: PublicApiCommandOptions): Promise<{
+/** Resolve ordinary explicit workspace context without replacing backend authorization with a local admin test. */
+export async function resolvePublicApiClient(options: { tenantId?: string }, requestPolicy?: PublicApiRequestPolicy): Promise<{
   client: PlatformAPIClient;
   publicApiUrl: string;
   tenantId: string;
@@ -126,7 +127,7 @@ async function resolveClient(options: PublicApiCommandOptions): Promise<{
     throw new Error('--tenant-id must be an exact workspace UUID.');
   }
   const root = await findProjectRoot();
-  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined, requestPolicy);
   // An explicit target is request context, not a local tenant-admin admission.
   // PublicAPI authorizes the selected profile for this exact tenant and route.
   if (options.tenantId !== undefined) {
@@ -157,7 +158,7 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
     const requestPath = normalizePath(path);
     const params = parseQueryParams(options.param);
     const body = await parseRequestBody(options);
-    const { client, publicApiUrl, tenantId } = await resolveClient(options);
+    const { client, publicApiUrl, tenantId } = await resolvePublicApiClient(options);
     const response = await client.requestPublicApi(requestPath, { method, body, params });
 
     if (!response.ok) {

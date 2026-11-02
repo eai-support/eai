@@ -278,6 +278,31 @@ route construction.
 | `eai resources query` | Cross-type query with `--types`, `--where`, and optional `--tenant-id` |
 | `eai resources schema` | Show published Object Types for the workspace (supports `--tenant-id`) |
 
+### Knowledge Base files
+
+Upload one file and request indexing through the same Knowledge Base flow as
+Admin Portal:
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+The command resolves the workspace's regional API using your selected login,
+then creates a `shared-kb-article`, uploads and verifies its server-committed file, and requests KB
+indexing. Supported KB formats are PDF, DOCX, XLSX, PPTX, plain text, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC. Media types are inferred from known
+extensions; use `--content-type` only when it correctly describes the file.
+Markdown, CSV and unknown media types are rejected before record creation. File
+properties uploaded with `eai resources file upload` use the same MIME rules.
+The workspace must already have the published Knowledge Base model and storage.
+
+`status: in_progress` means indexing is pending. A failed or uncertain operation
+may leave a stored record; the result retains verified IDs and the article key.
+Inspect that record in the workspace's regional Knowledge Base before uploading
+again. The command never retries or deletes it automatically. Child visibility
+requires the explicit `--visible-to-children` option. `eai docs upload` keeps its
+existing configured document lifecycle and Curate behavior.
+
 ### Workspaces
 
 | Command | Description |

@@ -215,6 +215,13 @@ function generateVersionListing(packument) {
       font-weight: 600;
     }
     .footer { color: #484f58; font-size: 0.75rem; margin-top: 3rem; border-top: 1px solid #21262d; padding-top: 1rem; }
+    @media (max-width: 40rem) {
+      body { padding: 1rem; }
+      table { table-layout: fixed; }
+      th, td { padding: 0.5rem 0.25rem; font-size: 0.75rem; overflow-wrap: anywhere; }
+      th:nth-child(3), td:nth-child(3) { width: 32%; }
+      th:last-child, td:last-child { width: 24%; }
+    }
   </style>
 </head>
 <body>

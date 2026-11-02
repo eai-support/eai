@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.7** (2026-10-22): Diagnose app deletion failures and explain platform reason codes.
+The current CLI release is **v3.20.8** (2026-11-02): Fix regional Knowledge Base file upload MIME and indexing.

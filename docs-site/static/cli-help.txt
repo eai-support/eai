@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.7
+Package source version: 3.20.8
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -13,6 +13,33 @@ npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.gi
 Persistent static fallback setup:
 npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
+
+eai kb upload --help
+====================
+
+Usage: eai kb upload [options] <file>
+
+Upload one shared-kb-article file, verify it is stored, then request KB indexing
+once
+
+Options:
+  --tenant-id <id>        Exact workspace ID; PublicAPI enforces access
+  --title <title>         Knowledge document title (defaults to the filename)
+  --document-type <type>  Knowledge document category (default: "Other")
+  --content-type <mime>   Override the MIME type inferred from the filename
+  --tag <tag>             Knowledge search tag (repeatable) (default: [])
+  --visible-to-children   Allow descendant workspaces to retrieve this document
+                          (default: false)
+  --format <format>       Output format (text|json) (default: "text")
+  -h, --help              display help for command
+
+Supported KB files: PDF, DOCX, XLSX, PPTX, plain text, HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC.
+Markdown, CSV and unknown media types are rejected before record creation.
+This uses the existing KB APIs, separate from docs upload/classification.
+A pending index is not complete. Do not repeat this command after a timeout.
+No failed or uncertain write is retried or deleted automatically.
+
+---
 
 eai content-understanding --help
 ================================
@@ -173,6 +200,8 @@ Commands:
                                drift for the current project
   blocks                       Discover AI-readable EAI UI block manifests
   publicapi                    Call authorized PublicAPI V4 routes directly
+  kb                           Upload tenant Knowledge Base files and index
+                               their content
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
   support [options]            Review a redacted error report and hand it to the

@@ -1,0 +1,28 @@
+{
+  "schema": "eai.kb-extraction-content-types.v1",
+  "sourceRepository": "enterpriseaigroup/AICore",
+  "sourceVersions": {
+    "3f942e9d0daa73a3ddf5355c0f60a59a9b8038ef": {
+      "path": "src/services/document_extraction_service.py",
+      "sha256": "d808fc12f66dc65958662526f621e789769866087e45b3e1add2be3174349c02"
+    }
+  },
+  "extractableContentTypes": [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/bmp",
+    "image/heic",
+    "image/heif",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/tiff",
+    "text/html"
+  ],
+  "textContentTypes": [
+    "text/plain"
+  ],
+  "scope": "Source contract fixture only; no deployed or provider acceptance."
+}

@@ -1079,6 +1079,7 @@ when the file is a document to process, classify, or index for AI/RAG.
 fileCommand
   .command('upload <type> <id> <property> <path>')
   .description('Upload a file to a resource file property')
+  .option('--content-type <mime>', 'Override the media type inferred from the filename (for example application/pdf)')
   .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1087,7 +1088,7 @@ fileCommand
     options.format = normalizeFormat(options);
 
     const spinner = makeSpinner(options.format, `Uploading ${filePath}...`);
-    const res = await ctx.client.uploadResourceFile(type, id, property, filePath);
+    const res = await ctx.client.uploadResourceFile(type, id, property, filePath, options.contentType);
     if (!res.ok) {
       failCommand(spinner, await formatResponseError(res));
       process.exit(1);
