@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Reuse safe supported-format guidance when an identity-verified KB indexing
+  response explicitly reports an unsupported content type. Keep stored-document
+  warnings and all unknown-error, single-request and no-cleanup behavior.
+
 ## 3.20.8 — prepared
 
 - Preserve PDF, Word and other filename MIME types for resource file uploads,

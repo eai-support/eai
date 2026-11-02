@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.8. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.9. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -845,7 +845,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.8** (2026-11-02): Fix regional Knowledge Base file upload MIME and indexing.
+The current CLI release is **v3.20.9** (2026-11-02): Explain unsupported Knowledge Base indexing types safely.
 
 ---
 
@@ -896,10 +896,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.8 |
+| Version | 3.20.9 |
 | Released | 2026-11-02 |
-| Last Material Change | Fix regional Knowledge Base file upload MIME and indexing |
-| Source Commit | `9a71521891571807ecb2ad6e3b1c120a41a946fa` |
+| Last Material Change | Explain unsupported Knowledge Base indexing types safely |
+| Source Commit | `432da597381b92885492da07d79a31dd8e2115e3` |
 
 
 ## Install
@@ -2740,7 +2740,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.8. The same catalog powers human stderr output, JSON output for AI
+v3.20.9. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -4911,6 +4911,13 @@ PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
 unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
 record creation. Invalid MIME syntax and empty files retain distinct safe
 input errors. Generic resource file uploads keep their general MIME behavior.
+
+An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
+result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format
+help. Its `phase: index` and known record/document IDs distinguish it from a
+pre-upload input rejection. The document may remain stored; the command does
+not repeat the request or delete it. Unknown backend errors keep generic safe
+messages and never expose provider response text.
 
 The command sends each create, raw file upload and KB reindex request once.
 Upload already stores the file link and metadata. An exact resource GET verifies

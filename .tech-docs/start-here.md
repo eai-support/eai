@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.8** (2026-11-02): Fix regional Knowledge Base file upload MIME and indexing.
+The current CLI release is **v3.20.9** (2026-11-02): Explain unsupported Knowledge Base indexing types safely.

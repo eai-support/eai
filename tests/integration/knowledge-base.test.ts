@@ -138,6 +138,17 @@ async function uploadFixture(fault?: string, command = false, kind: 'pdf' | 'doc
       reply = { success: fault !== 'index-failed', status: fault === 'index-pending' ? 'in_progress' : fault === 'index-failed' ? 'failed' : fault === 'index-skipped' ? 'skipped' : 'indexed',
         resourceId: fault === 'index-foreign' ? FOREIGN : RESOURCE, documentId: `kb-${RESOURCE}`, operationId: 'kb-rag-' + 'a'.repeat(32), chunkCount: fault === 'index-empty' ? 0 : 4, error: SENTINEL };
     }
+    if (phase === 'index' && fault?.startsWith('safe-reason-')) {
+      reply.success = false; reply.status = 'failed';
+      reply.error = 'KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE';
+      if (fault === 'safe-reason-unknown') reply.error = SENTINEL;
+      if (fault === 'safe-reason-substring') reply.error += SENTINEL;
+      if (fault === 'safe-reason-case') reply.error = String(reply.error).toLowerCase();
+      if (fault === 'safe-reason-wrong-status') reply.status = 'skipped';
+      if (fault === 'safe-reason-wrong-success') reply.success = 'false';
+      if (fault === 'safe-reason-foreign') reply.resourceId = FOREIGN;
+      if (fault === 'safe-reason-wrong-document') reply.documentId = `kb-${FOREIGN}`;
+    }
     return new Response(JSON.stringify(reply), { status: fault === 'index-pending' && phase === 'index' ? 202 : 200 });
   });
   try {
@@ -212,6 +223,42 @@ describe('real SDK composed Portal KB upload/index sequence', () => {
     const { result } = await uploadFixture(fault);
     expect(result).toMatchObject({ ok: false, status: 'failed', phase: 'index', indexed: false });
     expect(result.error?.code).toBe('KB_INDEX_FAILED');
+  });
+
+  test.each([false, true])('fixed backend unsupported reason reuses safe MIME help after bound index response (command=%s)', async command => {
+    const previousExit = process.exitCode;
+    try {
+      const { result, transcript } = await uploadFixture('safe-reason-known', command);
+      expect(result).toMatchObject({ ok: false, status: 'failed', phase: 'index', httpStatus: 200,
+        resourceId: RESOURCE, documentId: `kb-${RESOURCE}`, operationId: 'kb-rag-' + 'a'.repeat(32), indexed: false });
+      expect(result.error?.code).toBe('KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE');
+      expect(result.error?.message).toContain('PDF, DOCX, XLSX, PPTX');
+      expect(result.error?.message).toContain('may remain stored');
+      expect(result.error?.message).toContain('No request was repeated');
+      expect(JSON.stringify(result)).not.toContain(SENTINEL);
+      expect(transcript.filter(row => row.phase !== 'route').map(row => row.method)).toEqual(['POST', 'POST', 'GET', 'POST']);
+      expect(transcript.filter(row => row.phase === 'index')).toHaveLength(1);
+      expect(transcript.some(row => row.method === 'DELETE')).toBe(false);
+    } finally { process.exitCode = previousExit; }
+  });
+
+  test.each(['unknown', 'substring', 'case', 'wrong-status', 'wrong-success'])('unrecognized backend reason %s remains generic without provider text', async variant => {
+    const { result, transcript } = await uploadFixture(`safe-reason-${variant}`);
+    expect(result).toMatchObject({ ok: false, status: 'failed', phase: 'index', indexed: false });
+    expect(result.error?.code).toBe('KB_INDEX_FAILED');
+    expect(result.error?.message).not.toContain('PDF, DOCX');
+    expect(JSON.stringify(result)).not.toContain(SENTINEL);
+    expect(JSON.stringify(result)).not.toContain('KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE');
+    expect(transcript.filter(row => row.phase === 'index')).toHaveLength(1);
+  });
+
+  test.each(['foreign', 'wrong-document'])('a safe reason cannot override mismatched index identity %s', async variant => {
+    const { result, transcript } = await uploadFixture(`safe-reason-${variant}`);
+    expect(result).toMatchObject({ ok: false, status: 'outcome_unknown', phase: 'index', indexed: false });
+    expect(result.error?.code).toBe('KB_INDEX_RESPONSE_UNVERIFIED');
+    expect(result.error?.message).not.toContain('PDF, DOCX');
+    expect(transcript.filter(row => row.phase === 'index')).toHaveLength(1);
+    expect(transcript.some(row => row.method === 'DELETE')).toBe(false);
   });
 
   test('an explicit workspace mismatch is refused before opening a file or sending a request', async () => {

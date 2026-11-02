@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-11-02T01:35:19.199Z"
-source_commit: "9a71521891571807ecb2ad6e3b1c120a41a946fa"
+generated_at: "2026-11-02T04:36:06.503Z"
+source_commit: "432da597381b92885492da07d79a31dd8e2115e3"
 ---
 # EAI CLI — API Reference
 
@@ -947,6 +947,13 @@ PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
 unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
 record creation. Invalid MIME syntax and empty files retain distinct safe
 input errors. Generic resource file uploads keep their general MIME behavior.
+
+An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
+result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format
+help. Its `phase: index` and known record/document IDs distinguish it from a
+pre-upload input rejection. The document may remain stored; the command does
+not repeat the request or delete it. Unknown backend errors keep generic safe
+messages and never expose provider response text.
 
 The command sends each create, raw file upload and KB reindex request once.
 Upload already stores the file link and metadata. An exact resource GET verifies

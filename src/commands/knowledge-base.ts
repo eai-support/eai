@@ -162,6 +162,8 @@ export async function uploadKnowledgeBaseDocument(
     if (result.httpStatus === 202 && indexed.status === 'in_progress' && indexed.success === true) {
       result.ok = true; result.status = 'in_progress'; return result;
     }
+    if (indexed.success === false && indexed.status === 'failed'
+      && indexed.error === 'KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE') throw new UploadFailure('KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE');
     if (indexed.success !== true || indexed.status !== 'indexed') throw new UploadFailure('KB_INDEX_FAILED');
     requireProof(Number.isSafeInteger(indexed.chunkCount) && Number(indexed.chunkCount) > 0, 'KB_INDEX_RESPONSE_UNVERIFIED');
     result.ok = true; result.status = 'indexed'; result.indexed = true; result.chunkCount = Number(indexed.chunkCount);
@@ -169,7 +171,8 @@ export async function uploadKnowledgeBaseDocument(
     const failure = error instanceof UploadFailure ? error : new UploadFailure(dispatched ? 'KB_UPLOAD_ACK_UNKNOWN' : 'KB_UPLOAD_INPUT_FAILED', dispatched);
     result.status = failure.uncertain ? 'outcome_unknown' : 'failed';
     result.error = { code: failure.code, message: dispatched
-      ? 'The document may remain stored. No request was repeated. Inspect the returned workspace, article key and record before uploading again.'
+      ? (failure.code === 'KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE' ? INPUT_MESSAGES[failure.code] + ' ' : '')
+        + 'The document may remain stored. No request was repeated. Inspect the returned workspace, article key and record before uploading again.'
       : INPUT_MESSAGES[failure.code] || 'The upload could not start. Check the file, workspace and media type.' };
   }
   return result;

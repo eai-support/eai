@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.8 |
+| Version | 3.20.9 |
 | Released | 2026-11-02 |
-| Last Material Change | Fix regional Knowledge Base file upload MIME and indexing |
-| Source Commit | `9a71521891571807ecb2ad6e3b1c120a41a946fa` |
+| Last Material Change | Explain unsupported Knowledge Base indexing types safely |
+| Source Commit | `432da597381b92885492da07d79a31dd8e2115e3` |
 
 
 ## Install
