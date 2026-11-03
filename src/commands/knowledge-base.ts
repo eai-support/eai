@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { basename, extname } from 'node:path';
+import { TextDecoder } from 'node:util';
 import { Command } from 'commander';
 import { PlatformAPIClient, resolveUploadContentType } from '../lib/api.js';
 import { isRecord } from '../lib/utils.js';
@@ -13,24 +14,38 @@ import * as out from '../lib/output.js';
 const OBJECT_TYPE = 'shared-kb-article';
 const UUID = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const REGIONAL_GATEWAY = /^https:\/\/(dev-api|test-api|api)\.(au|ca|eu)\.myenterprise\.ai\/public\/?$/;
-/** KB extraction accepts the current document extraction and plain-text contracts only. */
+/** Canonical KB extraction media types; the Markdown compatibility alias is normalized before validation. */
 export const KNOWLEDGE_BASE_CONTENT_TYPES: readonly string[] = Object.freeze([
   'application/pdf', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'text/html',
-  'image/png', 'image/jpeg', 'image/jpg', 'image/bmp', 'image/tiff', 'image/heif', 'image/heic', 'text/plain',
+  'image/png', 'image/jpeg', 'image/jpg', 'image/bmp', 'image/tiff', 'image/heif', 'image/heic', 'text/plain', 'text/markdown',
 ]);
 const KB_EXTRA_EXTENSION_TYPES: Record<string, string> = {
   '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation', '.html': 'text/html', '.htm': 'text/html',
   '.bmp': 'image/bmp', '.tif': 'image/tiff', '.tiff': 'image/tiff', '.heif': 'image/heif', '.heic': 'image/heic',
 };
-const KB_SUPPORTED_FORMATS = 'PDF, DOCX, XLSX, PPTX, plain text, HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC';
+const KB_MARKDOWN_EXTENSIONS = new Set(['.md', '.markdown']);
+const KB_SUPPORTED_FORMATS = 'PDF, DOCX, XLSX, PPTX, plain text, Markdown (.md/.markdown), HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC';
 const INPUT_MESSAGES: Record<string, string> = {
   KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE: `Knowledge Base uploads support ${KB_SUPPORTED_FORMATS}. Choose a supported file; use --content-type only when it correctly describes the file.`,
   KB_UPLOAD_INVALID_CONTENT_TYPE: 'Content type must be a MIME type such as application/pdf, without parameters or header newlines.',
   KB_UPLOAD_EMPTY_FILE: 'The selected file is empty. No Knowledge Base record was created.',
   KB_UPLOAD_FILE_UNREADABLE: 'The selected file could not be read. No Knowledge Base record was created.',
+  KB_UPLOAD_INVALID_MARKDOWN: 'Markdown files must contain nonempty UTF-8 text. No Knowledge Base record was created.',
 };
+
+/** Resolve canonical KB MIME values without changing generic resource or document upload policies. */
+export function resolveKnowledgeBaseContentType(filePath: string, contentType?: string): string {
+  const extension = extname(filePath).toLowerCase();
+  const markdown = KB_MARKDOWN_EXTENSIONS.has(extension);
+  if (markdown && (contentType === undefined || contentType === '')) return 'text/markdown';
+  const resolved = resolveUploadContentType(filePath, contentType).toLowerCase();
+  if (resolved === 'text/x-markdown'
+    || (markdown && ['application/octet-stream', 'text/plain'].includes(resolved))) return 'text/markdown';
+  return contentType === undefined && resolved === 'application/octet-stream'
+    ? KB_EXTRA_EXTENSION_TYPES[extension] ?? resolved : resolved;
+}
 
 export interface KnowledgeBaseUploadOptions {
   tenantId: string;
@@ -116,15 +131,18 @@ export async function uploadKnowledgeBaseDocument(
     const scope = client.getRequestScope();
     if (!UUID.test(options.tenantId) || scope.tenantId !== options.tenantId) throw new UploadFailure('KB_UPLOAD_TENANT_INVALID');
     let contentType: string;
-    try { contentType = resolveUploadContentType(options.filePath, options.contentType).toLowerCase(); }
+    try { contentType = resolveKnowledgeBaseContentType(options.filePath, options.contentType); }
     catch { throw new UploadFailure('KB_UPLOAD_INVALID_CONTENT_TYPE'); }
-    if (options.contentType === undefined && contentType === 'application/octet-stream') {
-      contentType = KB_EXTRA_EXTENSION_TYPES[extname(options.filePath).toLowerCase()] ?? contentType;
-    }
     if (!KNOWLEDGE_BASE_CONTENT_TYPES.includes(contentType)) throw new UploadFailure('KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE');
     let bytes: Buffer;
     try { bytes = await readFile(options.filePath); } catch { throw new UploadFailure('KB_UPLOAD_FILE_UNREADABLE'); }
     if (!bytes.length) throw new UploadFailure('KB_UPLOAD_EMPTY_FILE');
+    if (contentType === 'text/markdown') {
+      let text: string;
+      try { text = new TextDecoder('utf-8', { fatal: true }).decode(bytes); }
+      catch { throw new UploadFailure('KB_UPLOAD_INVALID_MARKDOWN'); }
+      if (!text.trim()) throw new UploadFailure('KB_UPLOAD_INVALID_MARKDOWN');
+    }
     const title = options.title?.trim() || basename(options.filePath);
     const documentType = options.documentType?.trim() || 'Other';
     const tags = options.tags || [];
@@ -188,7 +206,7 @@ knowledgeBaseCommand.command('upload <file>')
   .option('--tag <tag>', 'Knowledge search tag (repeatable)', (value, previous: string[]) => [...previous, value], [])
   .option('--visible-to-children', 'Allow descendant workspaces to retrieve this document', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
-  .addHelpText('after', `\nSupported KB files: ${KB_SUPPORTED_FORMATS}.\nMarkdown, CSV and unknown media types are rejected before record creation.\nThis uses the existing KB APIs, separate from docs upload/classification.\nA pending index is not complete. Do not repeat this command after a timeout.\nNo failed or uncertain write is retried or deleted automatically.\n`)
+  .addHelpText('after', `\nSupported KB files: ${KB_SUPPORTED_FORMATS}.\nMarkdown uses nonempty UTF-8 text and canonical text/markdown without changing the file.\nCSV, unknown media types and invalid Markdown text are rejected before record creation.\nThis uses the existing KB APIs, separate from docs upload/classification.\nA pending index is not complete. Do not repeat this command after a timeout.\nNo failed or uncertain write is retried or deleted automatically.\n`)
   .action(async (filePath: string, options: KnowledgeBaseUploadOptions & { tag: string[]; format: string }) => {
     const format = normalizeFormat(options);
     let result: KnowledgeBaseUploadResult;

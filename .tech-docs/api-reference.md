@@ -943,10 +943,20 @@ eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --for
 - `--format <format>` — text or JSON
 
 Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
-PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
-unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
-record creation. Invalid MIME syntax and empty files retain distinct safe
-input errors. Generic resource file uploads keep their general MIME behavior.
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text and Markdown.
+Case-insensitive `.md`/`.markdown` filenames use canonical `text/markdown`;
+`text/x-markdown` is normalized to the same value. Empty, octet-stream or
+plain-text MIME fallback is allowed only for a known Markdown filename.
+Original bytes and filename are preserved in the upload, while record metadata,
+upload headers and committed-file verification use the same canonical MIME.
+Markdown must be nonempty strict UTF-8 text; decoding never replaces invalid
+bytes and the CLI does not render or fetch Markdown links/images.
+
+CSV and unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE`;
+invalid/blank Markdown uses `KB_UPLOAD_INVALID_MARKDOWN`, before record creation.
+Invalid MIME syntax and empty files retain their existing distinct safe input
+errors. Generic resource file uploads and configured document/classifier
+policies keep their existing behavior.
 
 An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
 result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format

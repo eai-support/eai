@@ -78,14 +78,17 @@ describe('KB file MIME and mounted PublicAPI route family', () => {
 const RESOURCE = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const FOREIGN = 'bbbbbbbb-cccc-4ddd-8eee-ffffffffffff';
 const SENTINEL = 'private https://secret.invalid/file?sig=must-not-print bearer-sensitive';
+const MARKDOWN_SOURCE = '# Māori Ω𐍈\n\n- first\n\n| Name | Value |\n| --- | --- |\n| café | 2 |\n\n```ts\nconst value = 1;\n```\n[link](https://external.invalid/page)\n![image](https://external.invalid/image.png)\n';
 
 interface Transcript { phase: string; method: string; path: string; url: string; body: unknown; headers: HeadersInit | undefined }
 
-async function uploadFixture(fault?: string, command = false, kind: 'pdf' | 'docx' = 'pdf', outsideProject = false): Promise<{ result: Awaited<ReturnType<typeof uploadKnowledgeBaseDocument>>; transcript: Transcript[]; storedData: Record<string, unknown> }> {
+async function uploadFixture(fault?: string, command = false, kind: 'pdf' | 'docx' | 'md' | 'markdown' = 'pdf', outsideProject = false, contentType?: string): Promise<{ result: Awaited<ReturnType<typeof uploadKnowledgeBaseDocument>>; transcript: Transcript[]; storedData: Record<string, unknown> }> {
   const directory = await mkdtemp(join(tmpdir(), 'eai-kb-flow-'));
-  const name = kind === 'docx' ? 'owned.docx' : 'owned.PDF';
-  const mime = kind === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/pdf';
-  const filePath = join(directory, name); const bytes = kind === 'docx' ? await readFile(new URL('../fixtures/kb-supported-word.docx', import.meta.url)) : Buffer.from('%PDF-source-controlled');
+  const markdown = kind === 'md' || kind === 'markdown';
+  const name = kind === 'docx' ? 'owned.docx' : markdown ? `owned.${kind.toUpperCase()}` : 'owned.PDF';
+  const mime = kind === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : markdown ? 'text/markdown' : 'application/pdf';
+  const filePath = join(directory, name); const bytes = kind === 'docx' ? await readFile(new URL('../fixtures/kb-supported-word.docx', import.meta.url)) : Buffer.from(markdown ? MARKDOWN_SOURCE : '%PDF-source-controlled');
+  const blobRef = `azureblob://owned/${name}`;
   await writeFile(filePath, bytes);
   const { createHash } = await import('node:crypto');
   const checksum = createHash('sha256').update(bytes).digest('hex');
@@ -113,11 +116,11 @@ async function uploadFixture(fault?: string, command = false, kind: 'pdf' | 'doc
       reply = { id: fault === 'create-malformed' ? null : RESOURCE, version: 1, data: createdData };
     } else if (phase === 'upload') {
       expect(init?.body).toEqual(bytes);
-      storedData = { ...storedData, file: 'azureblob://owned/file.pdf', fileMetadata: { file: { filename: name, contentType: mime, size: bytes.length, blobRef: 'azureblob://owned/file.pdf', checksumSha256: checksum, serverOwnedField: 'retained' } } };
+      storedData = { ...storedData, file: blobRef, fileMetadata: { file: { filename: name, contentType: mime, size: bytes.length, blobRef, checksumSha256: checksum, serverOwnedField: 'retained' } } };
       reply = { tenantId: fault === 'upload-foreign' ? FOREIGN : TENANT, resourceId: RESOURCE, objectType: 'shared-kb-article', propertyName: 'file',
         contentType: fault === 'upload-mime' ? 'application/octet-stream' : mime, checksumSha256: fault === 'upload-drift' ? '0'.repeat(64) : checksum,
         filename: fault === 'upload-filename' ? 'foreign.pdf' : name, size: fault === 'upload-size' ? 0 : bytes.length,
-        blobRef: 'azureblob://owned/file.pdf', blobUrl: SENTINEL, version: 2 };
+        blobRef, blobUrl: SENTINEL, version: 2 };
     } else if (phase === 'link') {
       expect(body.version).toBe(2); expect(body.data.articleKey).toBe(createdData.articleKey);
       storedData = body.data;
@@ -157,11 +160,12 @@ async function uploadFixture(fault?: string, command = false, kind: 'pdf' | 'doc
     if (command) {
       const context = outsideProject ? null : vi.spyOn(publicApiModule, 'resolvePublicApiClient').mockResolvedValue({ client, tenantId: TENANT, publicApiUrl: GATEWAY });
       const json = vi.spyOn(output, 'json').mockImplementation(() => {});
-      await knowledgeBaseCommand.parseAsync(['upload', filePath, '--tenant-id', TENANT, '--tag', 'owned-marker', '--format', 'json'], { from: 'user' });
+      await knowledgeBaseCommand.parseAsync(['upload', filePath, '--tenant-id', TENANT, '--tag', 'owned-marker', '--format', 'json',
+        ...(contentType === undefined ? [] : ['--content-type', contentType])], { from: 'user' });
       if (context) expect(context).toHaveBeenCalledWith(expect.objectContaining({ tenantId: TENANT }), { validateUrl: expect.any(Function), redirect: 'error' });
       expect(json).toHaveBeenCalledTimes(1);
       result = json.mock.calls[0][0] as Awaited<ReturnType<typeof uploadKnowledgeBaseDocument>>;
-    } else result = await uploadKnowledgeBaseDocument(client, { tenantId: TENANT, filePath, tags: ['owned-marker'] });
+    } else result = await uploadKnowledgeBaseDocument(client, { tenantId: TENANT, filePath, tags: ['owned-marker'], contentType });
     return { result, transcript, storedData };
   } finally { await rm(directory, { recursive: true, force: true }); }
 }
@@ -177,6 +181,30 @@ describe('real SDK composed Portal KB upload/index sequence', () => {
     expect(transcript.every(x => new Headers(x.headers).get('X-Tenant-Id') === TENANT)).toBe(true);
     expect(transcript.some(x => x.path.includes('/data/documents'))).toBe(false);
     expect(JSON.stringify(result)).not.toContain(SENTINEL);
+  });
+
+  test.each([
+    ['md', undefined, false], ['markdown', undefined, true], ['md', '', false],
+    ['markdown', 'application/octet-stream', false], ['md', 'text/plain', false],
+    ['markdown', 'text/x-markdown', true], ['md', 'TEXT/MARKDOWN', false],
+  ] as const)('Markdown %s with MIME %s preserves exact bytes/name and canonical metadata through index (command=%s)', async (kind, contentType, command) => {
+    const previousExit = process.exitCode;
+    try {
+      const { result, transcript, storedData } = await uploadFixture(undefined, command, kind, false, contentType);
+      expect(result).toMatchObject({ ok: true, indexed: true, status: 'indexed', chunkCount: 4 });
+      const operations = transcript.filter(row => row.phase !== 'route');
+      expect(operations.map(row => row.phase)).toEqual(['create', 'upload', 'verify', 'index']);
+      expect(operations.map(row => row.method)).toEqual(['POST', 'POST', 'GET', 'POST']);
+      expect(operations[1].body).toEqual(Buffer.from(MARKDOWN_SOURCE));
+      expect(operations[1].headers).toMatchObject({ 'Content-Type': 'text/markdown', 'X-Tenant-Id': TENANT });
+      const name = `owned.${kind.toUpperCase()}`;
+      expect(new URL(operations[1].url).searchParams.get('filename')).toBe(name);
+      expect(operations[0].body).toMatchObject({ data: { fileName: name, contentType: 'text/markdown', metadata: { contentType: 'text/markdown' } } });
+      expect(storedData.fileMetadata).toEqual({ file: expect.objectContaining({ filename: name, contentType: 'text/markdown', serverOwnedField: 'retained' }) });
+      expect(operations.some(row => row.method === 'PUT' || row.method === 'DELETE')).toBe(false);
+      expect(JSON.stringify(result)).not.toContain(MARKDOWN_SOURCE);
+      expect(JSON.stringify(result)).not.toContain(SENTINEL);
+    } finally { process.exitCode = previousExit; }
   });
 
   test('server-committed upload metadata is retained without a redundant resource PUT', async () => {
@@ -330,7 +358,7 @@ describe('real SDK composed Portal KB upload/index sequence', () => {
     } finally { process.exitCode = original; }
   });
 
-  test.each(['owned.md', 'owned.csv', 'owned.unknown'])('unsupported KB file %s is refused before create/upload/index', async name => {
+  test.each(['owned.bin', 'owned.csv', 'owned.unknown'])('unsupported KB file %s is refused before create/upload/index', async name => {
     const directory = await mkdtemp(join(tmpdir(), 'eai-kb-unsupported-')); const filePath = join(directory, name);
     await writeFile(filePath, 'synthetic unsupported KB input');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('NO_PROVIDER_ALLOWED'));
@@ -339,6 +367,22 @@ describe('real SDK composed Portal KB upload/index sequence', () => {
       expect(result).toMatchObject({ ok: false, phase: 'prepare', error: { code: 'KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE' } });
       expect(result.error?.message).toContain('PDF'); expect(result.error?.message).toContain('DOCX');
       expect(fetchMock).not.toHaveBeenCalled();
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
+
+  test.each([
+    ['invalid.MD', Buffer.from([0x23, 0x20, 0xff])],
+    ['empty-text.MARKDOWN', Buffer.from(' \n\t')],
+  ] as const)('invalid Markdown %s is rejected before create/upload/index without returning content', async (name, bytes) => {
+    const directory = await mkdtemp(join(tmpdir(), 'eai-kb-markdown-invalid-')); const filePath = join(directory, name);
+    await writeFile(filePath, bytes);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('NO_PROVIDER_ALLOWED'));
+    try {
+      const result = await uploadKnowledgeBaseDocument(new PlatformAPIClient(GATEWAY, TENANT), { tenantId: TENANT, filePath });
+      expect(result).toMatchObject({ ok: false, phase: 'prepare', resourceId: null, error: { code: 'KB_UPLOAD_INVALID_MARKDOWN' } });
+      expect(result.error?.message).toContain('nonempty UTF-8');
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(JSON.stringify(result)).not.toContain(filePath);
     } finally { await rm(directory, { recursive: true, force: true }); }
   });
 
@@ -361,7 +405,9 @@ describe('real SDK composed Portal KB upload/index sequence', () => {
 
   test('KB MIME contract equals the immutable AICore source fixture, while generic resource uploads stay general', async () => {
     const fixture = JSON.parse(await readFile(new URL('../fixtures/kb-extraction-content-types.json', import.meta.url), 'utf8'));
-    expect([...KNOWLEDGE_BASE_CONTENT_TYPES].sort()).toEqual([...fixture.extractableContentTypes, ...fixture.textContentTypes].sort());
+    const canonicalTypes = [...fixture.extractableContentTypes, ...fixture.textContentTypes]
+      .map((type: string) => type === 'text/x-markdown' ? 'text/markdown' : type);
+    expect([...KNOWLEDGE_BASE_CONTENT_TYPES].sort()).toEqual([...new Set(canonicalTypes)].sort());
     const directory = await mkdtemp(join(tmpdir(), 'eai-generic-md-')); const filePath = join(directory, 'owned.md'); await writeFile(filePath, 'synthetic markdown');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('{}'));
     try {
