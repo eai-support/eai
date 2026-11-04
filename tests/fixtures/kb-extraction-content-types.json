@@ -2,9 +2,9 @@
   "schema": "eai.kb-extraction-content-types.v1",
   "sourceRepository": "enterpriseaigroup/AICore",
   "sourceVersions": {
-    "3f942e9d0daa73a3ddf5355c0f60a59a9b8038ef": {
+    "4579589abac987955d3d9c8bf006b11ce76cb7bc": {
       "path": "src/services/document_extraction_service.py",
-      "sha256": "d808fc12f66dc65958662526f621e789769866087e45b3e1add2be3174349c02"
+      "sha256": "1b05728c78ef95159b10f71bf96d10aa6c6f1719f51d3ed3d6649abfb049fa50"
     }
   },
   "extractableContentTypes": [
@@ -22,7 +22,9 @@
     "text/html"
   ],
   "textContentTypes": [
-    "text/plain"
+    "text/markdown",
+    "text/plain",
+    "text/x-markdown"
   ],
-  "scope": "Source contract fixture only; no deployed or provider acceptance."
+  "scope": "Genuine committed backend source contract only; client normalizes text/x-markdown to canonical text/markdown. No deployed or provider acceptance."
 }

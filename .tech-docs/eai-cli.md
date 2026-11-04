@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.8 |
+| Version | 3.20.9 |
 | Released | 2026-11-02 |
-| Last Material Change | Fix regional Knowledge Base file upload MIME and indexing |
-| Source Commit | `9a71521891571807ecb2ad6e3b1c120a41a946fa` |
+| Last Material Change | Explain unsupported Knowledge Base indexing types safely |
+| Source Commit | `432da597381b92885492da07d79a31dd8e2115e3` |
 
 
 ## Install
@@ -177,6 +177,14 @@ Prefer product-shaped commands before `eai publicapi`:
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+`eai kb upload` accepts nonempty UTF-8 `.md`/`.markdown` files, including
+uppercase extensions. It preserves the original filename and bytes and sends
+canonical `text/markdown` in the record, upload and verification flow. The
+`text/x-markdown` alias is normalized; empty/octet/plain MIME fallback is
+limited to known Markdown filenames. It does not render or fetch links/images.
+General resource uploads and configured document/classifier behavior remain
+unchanged. See [the KB upload reference](api-reference.md#eai-kb-upload-file---tenant-id-id).
 
 For protected POSIX qualification, named `eai init <name> --skip-prompts` can
 optionally pair `--binding-receipt <absolute-path>` with

@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-11-02T01:35:19.199Z"
-source_commit: "9a71521891571807ecb2ad6e3b1c120a41a946fa"
+generated_at: "2026-11-02T04:36:06.503Z"
+source_commit: "432da597381b92885492da07d79a31dd8e2115e3"
 ---
 # EAI CLI — API Reference
 
@@ -943,10 +943,27 @@ eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --for
 - `--format <format>` — text or JSON
 
 Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
-PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text. Markdown, CSV and
-unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` before
-record creation. Invalid MIME syntax and empty files retain distinct safe
-input errors. Generic resource file uploads keep their general MIME behavior.
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text and Markdown.
+Case-insensitive `.md`/`.markdown` filenames use canonical `text/markdown`;
+`text/x-markdown` is normalized to the same value. Empty, octet-stream or
+plain-text MIME fallback is allowed only for a known Markdown filename.
+Original bytes and filename are preserved in the upload, while record metadata,
+upload headers and committed-file verification use the same canonical MIME.
+Markdown must be nonempty strict UTF-8 text; decoding never replaces invalid
+bytes and the CLI does not render or fetch Markdown links/images.
+
+CSV and unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE`;
+invalid/blank Markdown uses `KB_UPLOAD_INVALID_MARKDOWN`, before record creation.
+Invalid MIME syntax and empty files retain their existing distinct safe input
+errors. Generic resource file uploads and configured document/classifier
+policies keep their existing behavior.
+
+An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
+result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format
+help. Its `phase: index` and known record/document IDs distinguish it from a
+pre-upload input rejection. The document may remain stored; the command does
+not repeat the request or delete it. Unknown backend errors keep generic safe
+messages and never expose provider response text.
 
 The command sends each create, raw file upload and KB reindex request once.
 Upload already stores the file link and metadata. An exact resource GET verifies

@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.8
+Package source version: 3.20.9
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -33,8 +33,9 @@ Options:
   --format <format>       Output format (text|json) (default: "text")
   -h, --help              display help for command
 
-Supported KB files: PDF, DOCX, XLSX, PPTX, plain text, HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC.
-Markdown, CSV and unknown media types are rejected before record creation.
+Supported KB files: PDF, DOCX, XLSX, PPTX, plain text, Markdown (.md/.markdown), HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC.
+Markdown uses nonempty UTF-8 text and canonical text/markdown without changing the file.
+CSV, unknown media types and invalid Markdown text are rejected before record creation.
 This uses the existing KB APIs, separate from docs upload/classification.
 A pending index is not complete. Do not repeat this command after a timeout.
 No failed or uncertain write is retried or deleted automatically.

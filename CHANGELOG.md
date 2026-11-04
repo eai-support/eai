@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+- Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
+  `text/markdown` headers and metadata. Normalize the compatibility alias and
+  limit empty/octet/plain MIME fallback to Markdown filenames. Preserve bytes,
+  filenames and existing upload/readback/index custody; keep generic resource,
+  configured document and typed-CU policies unchanged.
+
+- Reuse safe supported-format guidance when an identity-verified KB indexing
+  response explicitly reports an unsupported content type. Keep stored-document
+  warnings and all unknown-error, single-request and no-cleanup behavior.
+
 ## 3.20.8 — prepared
 
 - Preserve PDF, Word and other filename MIME types for resource file uploads,

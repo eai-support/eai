@@ -289,11 +289,15 @@ eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --for
 
 The command resolves the workspace's regional API using your selected login,
 then creates a `shared-kb-article`, uploads and verifies its server-committed file, and requests KB
-indexing. Supported KB formats are PDF, DOCX, XLSX, PPTX, plain text, HTML,
+indexing. Supported KB formats are PDF, DOCX, XLSX, PPTX, plain text, Markdown, HTML,
 PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC. Media types are inferred from known
 extensions; use `--content-type` only when it correctly describes the file.
-Markdown, CSV and unknown media types are rejected before record creation. File
-properties uploaded with `eai resources file upload` use the same MIME rules.
+Markdown `.md`/`.markdown` filenames are case-insensitive and use canonical
+`text/markdown`; the compatibility alias `text/x-markdown` is normalized.
+Empty/octet-stream/plain-text MIME fallback is limited to known Markdown
+filenames. The original file bytes and filename stay intact. Invalid or blank
+UTF-8 Markdown, CSV and unknown media types are rejected before record creation.
+Generic `eai resources file upload` keeps its existing MIME behavior.
 The workspace must already have the published Knowledge Base model and storage.
 
 `status: in_progress` means indexing is pending. A failed or uncertain operation

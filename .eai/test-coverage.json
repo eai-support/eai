@@ -5,7 +5,7 @@
       "features": [
         {
           "id": "knowledge-base-upload-index",
-          "description": "Tenant-explicit Knowledge Base uploads resolve a known same-environment regional API, share general filename MIME inference with resource files, enforce the KB-specific AICore extraction type contract before mutation, preserve the existing record/upload/committed-metadata-readback/reindex contract, and retain truthful pending/failed/unknown outcomes without replay or deletion.",
+          "description": "Tenant-explicit Knowledge Base uploads resolve a known same-environment regional API, share general filename MIME inference with resource files, enforce the KB-specific AICore extraction type contract before mutation, preserve the existing record/upload/committed-metadata-readback/reindex contract, and retain truthful pending/failed/unknown outcomes without replay or deletion. Exact identity-bound unsupported-type results reuse the existing fixed MIME guidance without exposing provider text or retrying. Markdown .md/.markdown filenames use canonical text/markdown, filename-limited empty/octet/plain fallback and explicit alias normalization; strict nonempty UTF-8 preflight preserves original bytes and file metadata without changing general resource/document or typed-CU policies.",
           "owned_paths": [
             "src/commands/knowledge-base.ts",
             "src/commands/resources.ts",
@@ -23,7 +23,9 @@
             ".tech-docs/full-e2e-smoke-traceability.md",
             "scripts/audit-cli-backend.cjs",
             "tests/fixtures/kb-extraction-content-types.json",
-            "tests/fixtures/kb-supported-word.docx"
+            "tests/fixtures/kb-supported-word.docx",
+            "tests/unit/knowledge-base-content-type.test.ts",
+            ".eai/srp-acceptance.json"
           ],
           "required_repo_tests": [
             "tests/integration/knowledge-base.test.ts",
@@ -35,7 +37,8 @@
             "tests/integration/resources.test.ts",
             "tests/integration/full-e2e-smoke.test.ts",
             "tests/integration/cli-backend-audit.test.ts",
-            "tests/integration/publicapi-v4-only.test.ts"
+            "tests/integration/publicapi-v4-only.test.ts",
+            "tests/unit/knowledge-base-content-type.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
