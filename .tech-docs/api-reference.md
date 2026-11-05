@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-11-02T04:36:06.503Z"
-source_commit: "432da597381b92885492da07d79a31dd8e2115e3"
+generated_at: "2026-11-05T02:17:50.218Z"
+source_commit: "70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea"
 ---
 # EAI CLI — API Reference
 
@@ -94,6 +94,7 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
+- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`

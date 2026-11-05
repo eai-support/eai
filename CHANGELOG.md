@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Add `eai login --switch-account`, which sends `prompt=select_account` on
+  the authorize request so the browser shows its account picker instead of
+  reusing the session it already holds. EAI Setup runs `eai logout` and then
+  this command for its Use a different account action. Prepared as 3.20.10.
+
 - Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
   `text/markdown` headers and metadata. Normalize the compatibility alias and
   limit empty/octet/plain MIME fallback to Markdown filenames. Preserve bytes,

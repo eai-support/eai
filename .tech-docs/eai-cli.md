@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.9 |
-| Released | 2026-11-02 |
-| Last Material Change | Explain unsupported Knowledge Base indexing types safely |
-| Source Commit | `432da597381b92885492da07d79a31dd8e2115e3` |
+| Version | 3.20.10 |
+| Released | 2026-11-05 |
+| Last Material Change | Add eai login --switch-account for EAI Setup account switching |
+| Source Commit | `70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea` |
 
 
 ## Install
