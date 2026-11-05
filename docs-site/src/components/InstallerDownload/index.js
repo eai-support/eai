@@ -9,11 +9,6 @@ const installers = {
     file: "eai-setup-macos-arm64.dmg",
     detail: "Apple Silicon",
   },
-  "macos-x64": {
-    label: "macOS Intel",
-    file: "eai-setup-macos-x64.dmg",
-    detail: "Intel",
-  },
   "windows-arm64": {
     label: "Windows ARM64",
     file: "eai-setup-windows-arm64.exe",
@@ -24,17 +19,12 @@ const installers = {
     file: "eai-setup-windows-x64.exe",
     detail: "x64",
   },
-  "linux-arm64": {
-    label: "Ubuntu/Debian ARM64",
-    file: "eai-setup-ubuntu-arm64.deb",
-    detail: "ARM64",
-  },
-  "linux-x64": {
-    label: "Ubuntu/Debian x64",
-    file: "eai-setup-ubuntu-amd64.deb",
-    detail: "x64",
-  },
 };
+
+// EAI Setup is no longer built for Intel Macs or Linux, so those computers are
+// told which platforms it supports instead of being offered a package.
+const unsupported = "unsupported";
+const availability = "EAI Setup is available for macOS on Apple Silicon and Windows (x64 and ARM64).";
 
 function architectureFrom(value = "") {
   const architecture = value.toLowerCase();
@@ -63,10 +53,10 @@ async function detectInstaller() {
   const architecture = architectureFrom(highEntropy.architecture || navigator.userAgent);
 
   if (/win/i.test(platform)) return architecture === "arm64" ? "windows-arm64" : "windows-x64";
-  if (/linux/i.test(platform)) return architecture === "arm64" ? "linux-arm64" : "linux-x64";
+  if (/linux/i.test(platform)) return unsupported;
   if (/mac/i.test(platform)) {
     if (architecture === "arm64" || appleSiliconFromWebGL()) return "macos-arm64";
-    if (architecture === "x64" && !appleSiliconFromWebGL()) return "macos-x64";
+    if (architecture === "x64" && !appleSiliconFromWebGL()) return unsupported;
     return null;
   }
   return null;
@@ -78,7 +68,6 @@ function installerUrl(installer) {
 
 export default function InstallerDownload() {
   const [recommended, setRecommended] = useState(undefined);
-  const [macChoice, setMacChoice] = useState(null);
 
   useEffect(() => {
     let active = true;
@@ -88,8 +77,8 @@ export default function InstallerDownload() {
     return () => { active = false; };
   }, []);
 
-  const selection = macChoice || recommended;
-  const installer = selection ? installers[selection] : null;
+  const installer = recommended ? installers[recommended] : null;
+  const listsEveryInstaller = recommended === null || recommended === unsupported;
 
   return <section className={styles.downloadPanel} aria-live="polite">
     <p className={styles.eyebrow}>Recommended for this computer</p>
@@ -99,21 +88,22 @@ export default function InstallerDownload() {
       <a className={styles.downloadButton} href={installerUrl(installer)}>Download now</a>
       <p className={styles.status}>We detected {installer.label}. Open the downloaded file to begin setup.</p>
     </>}
-    {recommended === null && !macChoice && <>
+    {listsEveryInstaller && <>
       <h2>Choose an installer</h2>
-      <p className={styles.status}>We could not identify a supported operating system and processor. Select a package below.</p>
+      <p className={styles.status}>{recommended === null ? `We could not identify a supported operating system and processor. ${availability}` : availability}</p>
       <div className={styles.choiceButtons}>
-        <button type="button" onClick={() => setMacChoice("macos-arm64")}>macOS Apple Silicon</button>
-        <button type="button" onClick={() => setMacChoice("macos-x64")}>macOS Intel</button>
+        {Object.entries(installers).map(([key, item]) =>
+          <a key={key} href={installerUrl(item)}>{item.label}</a>,
+        )}
       </div>
     </>}
-    <details className={styles.alternatives}>
+    {!listsEveryInstaller && <details className={styles.alternatives}>
       <summary>Download a version</summary>
       <ul>
-        {Object.entries(installers).filter(([key]) => key !== selection).map(([key, item]) =>
+        {Object.entries(installers).filter(([key]) => key !== recommended).map(([key, item]) =>
           <li key={key}><a href={installerUrl(item)}>{item.label}</a></li>,
         )}
       </ul>
-    </details>
+    </details>}
   </section>;
 }
