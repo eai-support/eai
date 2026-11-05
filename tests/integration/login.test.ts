@@ -1230,6 +1230,94 @@ describe('eai login command: Portal, --company, --direct and the save prompt', (
     expect(`${result.stdout}\n${result.stderr}`).not.toContain('Opening');
   });
 
+  describe('with the PROD company app constant pinned (stubbed)', () => {
+    const PINNED_PROD_COMPANY_CLIENT = '00000000-0000-4000-8000-0000000000d1';
+    const PROD_DIRECTORY = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26';
+
+    beforeEach(() => {
+      vi.doMock('../../src/lib/profile.js', async (original) => ({
+        ...await original<typeof import('../../src/lib/profile.js')>(),
+        DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID: PINNED_PROD_COMPANY_CLIENT,
+      }));
+      vi.resetModules();
+    });
+
+    afterEach(() => {
+      vi.doUnmock('../../src/lib/profile.js');
+    });
+
+    async function stubCompanyLogin(): Promise<ReturnType<typeof vi.spyOn>> {
+      const auth = await import('../../src/lib/auth.js');
+      return vi.spyOn(auth, 'companyLogin').mockImplementation(async (tenantName, tenantId, clientId) => ({
+        tokens: {
+          accessToken: createJwt({ email: 'student@school.example.test' }), expiresAt: Date.now() + 600_000,
+          tenantName, tenantId, clientId,
+        },
+        signedInEmail: 'student@school.example.test',
+      }));
+    }
+
+    test('--company with the default PROD scope uses the pinned PROD company app', async () => {
+      const company = await stubCompanyLogin();
+
+      const { exitCode } = await runLogin(['--company']);
+
+      expect(exitCode).toBeUndefined();
+      expect(company).toHaveBeenCalledWith('enterpriseaiplatform', PROD_DIRECTORY, PINNED_PROD_COMPANY_CLIENT,
+        expect.any(String), expect.any(Object));
+    });
+
+    test('--company with an overridden --scope does not use the PROD company app', async () => {
+      const company = await stubCompanyLogin();
+
+      const { exitCode, output } = await runLogin(['--company', '--scope', 'openid profile email offline_access']);
+
+      expect(exitCode).toBe(1);
+      expect(output).toContain("Company sign-in isn't set up for this environment yet.");
+      expect(company).not.toHaveBeenCalled();
+    });
+
+    test('--company with an overridden --scope still uses an explicit EAI_CLI_COMPANY_CLIENT_ID', async () => {
+      vi.stubEnv('EAI_CLI_COMPANY_CLIENT_ID', FIXTURE_COMPANY_CLIENT_ID);
+      const company = await stubCompanyLogin();
+
+      const { exitCode } = await runLogin(['--company', '--scope', 'openid profile email offline_access']);
+
+      expect(exitCode).toBeUndefined();
+      expect(company).toHaveBeenCalledWith('enterpriseaiplatform', PROD_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID,
+        'openid profile email offline_access', expect.any(Object));
+    });
+
+    test('--tenant-* flags still turn the PROD company app off', async () => {
+      const company = await stubCompanyLogin();
+
+      const { exitCode, output } = await runLogin(['--company', '--tenant-name', 'enterpriseaiplatform', '--tenant-id', PROD_DIRECTORY]);
+
+      expect(exitCode).toBe(1);
+      expect(output).toContain("Company sign-in isn't set up for this environment yet.");
+      expect(company).not.toHaveBeenCalled();
+    });
+
+    test('the Portal path offers the PROD company app only for the default PROD scope', async () => {
+      const auth = await import('../../src/lib/auth.js');
+      const portal = vi.spyOn(auth, 'portalLogin').mockImplementation(async (tenantName, tenantId) => ({
+        tokens: {
+          accessToken: createJwt({ email: 'person@example.test' }), expiresAt: Date.now() + 600_000,
+          tenantName, tenantId, clientId: 'd704bde5-fe36-44ff-9a26-221d53772dd0',
+        },
+        signedInEmail: 'person@example.test',
+        typedEmail: 'person@example.test',
+      }));
+
+      await runLogin([]);
+      await runLogin(['--scope', 'openid profile email offline_access']);
+
+      expect(portal).toHaveBeenCalledTimes(2);
+      expect(portal.mock.calls[0][3]).toMatchObject({ companyClientId: PINNED_PROD_COMPANY_CLIENT });
+      expect(portal.mock.calls[1][3]).toMatchObject({ companyClientId: undefined });
+    });
+  });
+
   test('--company and --direct together are refused', async () => {
     const { exitCode, output } = await runLogin(['--company', '--direct']);
     expect(exitCode).toBe(1);

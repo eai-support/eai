@@ -1467,8 +1467,11 @@ export async function ensureCreateAuthentication(options: { direct?: boolean } =
   const configIssue = validateResolvedAuthConfig(resolvedConfig);
   if (configIssue) throw new Error(configIssue);
 
+  // `eai create` takes no directory or scope overrides, so the plan uses the resolved values it signs in with.
   const plan = planSignIn(resolvedConfig, {
+    tenantName: resolvedConfig.tenantName,
     tenantId: resolvedConfig.tenantId,
+    scope: resolvedConfig.authScope,
     direct: options.direct,
   });
   const { tokens, confirmed } = await runSignIn(plan, {

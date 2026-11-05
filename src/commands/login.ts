@@ -108,7 +108,9 @@ What happens next:
     try {
       callbackPort = parseCallbackPort(options.callbackPort);
       plan = planSignIn(resolvedConfig, {
+        tenantName,
         tenantId,
+        scope,
         company: options.company,
         direct: options.direct,
         tenantFlagsGiven: Boolean(options.tenantName || options.tenantId),

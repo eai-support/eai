@@ -33,8 +33,12 @@ export type SignInPlan =
   | { readonly mode: 'direct'; readonly portalUnknown: boolean };
 
 export interface SignInPlanRequest {
+  /** The effective sign-in directory name (after `--tenant-name`). */
+  readonly tenantName: string;
   /** The effective sign-in directory ID (after `--tenant-id`). */
   readonly tenantId: string;
+  /** The effective OAuth scope the sign-in will request (after `--scope`). */
+  readonly scope: string;
   readonly company?: boolean;
   readonly direct?: boolean;
   /** True when `--tenant-name` or `--tenant-id` was given: the PROD company default never applies then. */
@@ -45,10 +49,16 @@ export interface SignInPlanRequest {
  * Choose the sign-in. The Portal is chosen by sign-in directory ID, never by
  * region. Throws COMPANY_SIGN_IN_NOT_SET_UP for `--company` without a company
  * app, and a settings error for an invalid EAI_CLI_COMPANY_CLIENT_ID.
+ *
+ * INVARIANT: the company app is resolved against the directory and scope the
+ * sign-in will actually use, so a `--scope` other than the default PROD scope
+ * turns the PROD company default off, as `--tenant-*` does (the same public
+ * PROD target rule as validateResolvedAuthConfig).
  */
 export function planSignIn(config: ResolvedAuthConfig, request: SignInPlanRequest): SignInPlan {
+  const effective = { ...config, tenantName: request.tenantName, tenantId: request.tenantId, authScope: request.scope };
   const resolveCompany = (): string | undefined =>
-    resolveCompanyClient(config, { tenantFlagsGiven: request.tenantFlagsGiven })?.clientId;
+    resolveCompanyClient(effective, { tenantFlagsGiven: request.tenantFlagsGiven })?.clientId;
 
   if (request.company) {
     const companyClientId = resolveCompany();
