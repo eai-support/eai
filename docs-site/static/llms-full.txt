@@ -726,6 +726,7 @@ sign-in yourself.
 
 ## Download EAI Setup
 
+EAI Setup is available for macOS on Apple Silicon and Windows (x64 and ARM64).
 Each download is a published release asset, not a temporary GitHub Actions
 artifact. Check the [release notes](https://github.com/eai-support/eai-installer/releases/latest)
 for current support and signing information.
@@ -754,8 +755,9 @@ You approve operating-system permissions and browser sign-in yourself.
 
 ## Use Manual CLI Setup Instead
 
-Use the manual route when you work in CI, have a managed developer computer, or
-want to control each terminal command. See [Manual and Managed Setup](./manual-and-managed-setup.md).
+Use the manual route when you work in CI, have a managed developer computer,
+use a computer EAI Setup does not support, or want to control each terminal
+command. See [Manual and Managed Setup](./manual-and-managed-setup.md).
 
 ---
 
@@ -768,7 +770,7 @@ Choose the route that matches your situation. Do not complete every route.
 ## Set Up This Computer
 
 **Recommended for most people.** Use [EAI Setup](./installer-setup.md) on a new
-Windows, macOS, or Ubuntu/Debian computer.
+Windows computer (x64 or ARM64) or a new Mac with Apple Silicon.
 
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
@@ -906,9 +908,9 @@ and gofer asset refresh.
 ## Install
 
 For a new desktop computer, use [EAI Setup](./installer-setup.md) first. It is
-the standard guided path for Windows, macOS, and Ubuntu/Debian users. It
-prepares prerequisites, installs the CLI, opens browser sign-in, creates the
-project, and installs its dependencies.
+the standard guided path for Windows (x64 and ARM64) and Apple Silicon Mac
+users. It prepares prerequisites, installs the CLI, opens browser sign-in,
+creates the project, and installs its dependencies.
 
 Use the commands below for CI, managed developer environments, or manual setup.
 

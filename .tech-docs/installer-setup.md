@@ -11,6 +11,7 @@ sign-in yourself.
 
 ## Download EAI Setup
 
+EAI Setup is available for macOS on Apple Silicon and Windows (x64 and ARM64).
 Each download is a published release asset, not a temporary GitHub Actions
 artifact. Check the [release notes](https://github.com/eai-support/eai-installer/releases/latest)
 for current support and signing information.
@@ -39,5 +40,6 @@ You approve operating-system permissions and browser sign-in yourself.
 
 ## Use Manual CLI Setup Instead
 
-Use the manual route when you work in CI, have a managed developer computer, or
-want to control each terminal command. See [Manual and Managed Setup](./manual-and-managed-setup.md).
+Use the manual route when you work in CI, have a managed developer computer,
+use a computer EAI Setup does not support, or want to control each terminal
+command. See [Manual and Managed Setup](./manual-and-managed-setup.md).
