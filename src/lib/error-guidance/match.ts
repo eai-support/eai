@@ -197,3 +197,12 @@ export function findGuidance(input: GuidanceLookupInput): ErrorGuidance | undefi
   const tailored = tailorResourceMutationGuidance(guidance, input.operation);
   return tailorTenantAppAuthorizationGuidance(tailored, input.operation);
 }
+
+/**
+ * E297 for PublicAPI's 502 FEDERATED_ROUTE_NOT_ENABLED (a company sign-in
+ * account on a route not yet open to it), for commands such as `eai chat`
+ * and `eai docs upload` that otherwise print only the raw HTTP failure.
+ */
+export function findCompanySignInRouteGuidance(status: number, body: string): ErrorGuidance | undefined {
+  return status === 502 && body.includes('FEDERATED_ROUTE_NOT_ENABLED') ? findGuidanceByCode('E297') : undefined;
+}

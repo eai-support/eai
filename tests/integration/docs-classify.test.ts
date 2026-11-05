@@ -309,6 +309,33 @@ describe('PlatformAPIClient.classifyDocument', () => {
     });
   });
 
+  test.each(['text', 'json'])('upload explains a company sign-in refusal (502 FEDERATED_ROUTE_NOT_ENABLED) in %s output', async (format) => {
+    const project = await createTestProject(env.dir, { name: 'app', hasEnvFile: true, hasObjectTypes: true });
+    process.chdir(project);
+    const filePath = join(env.dir, 'refused.pdf');
+    await writeFile(filePath, 'pdf-bytes');
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => { errors.push(parts.map(String).join(' ')); });
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    mockServer.server.use(http.post('https://test-api.example.com/v4/data/documents/upload', () => HttpResponse.json({
+      detail: { error: 'FEDERATED_ROUTE_NOT_ENABLED', message: 'This action is not available for company sign-in yet' },
+    }, { status: 502 })));
+
+    await docsCommand.parseAsync(['upload', filePath, '--tenant-id', 'tenant-one', '--vertical-key', 'business-docs',
+      '--workflow-key', 'trust-review', '--format', format], { from: 'user' });
+
+    expect(process.exitCode).toBe(1);
+    if (format === 'json') {
+      const result = JSON.parse(output.mock.calls.flat().join(''));
+      expect(result).toMatchObject({ ok: false, status: 502, guidance: { code: 'E297' } });
+    } else {
+      const text = errors.join('\n');
+      expect(text).toContain("This command isn't available for company sign-in accounts yet.");
+      expect(text).toContain('E297');
+    }
+  });
+
   test.each(['classify', 'upload'])('%s reports the standalone server verdict without inventing a job or retry', async (command) => {
     const project = await createTestProject(env.dir, { name: 'app', hasEnvFile: true, hasObjectTypes: true });
     process.chdir(project);

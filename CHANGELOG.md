@@ -23,7 +23,7 @@
   state, keeps waiting after a mismatch, and sends `no-store` and
   `no-referrer` on every response.
 - Explain PublicAPI's 502 `FEDERATED_ROUTE_NOT_ENABLED` for company sign-in
-  accounts (`E297`).
+  accounts (`E297`), including in `eai chat` and `eai docs upload`.
 - `eai create`'s inline sign-in uses the same routing as `eai login`: the
   Admin Portal step by default, `eai create --direct` or
   `EAI_LOGIN_VIA_PORTAL=false` for the direct flow, and the same account check.

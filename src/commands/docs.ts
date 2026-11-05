@@ -12,6 +12,8 @@ import { isRecord } from '../lib/utils.js';
 import { ContentUnderstandingError } from '../lib/content-understanding-manifest.js';
 import { readContentUnderstandingResponse, requireWaitTimeout } from '../lib/content-understanding-client.js';
 import { configureDocumentTypeCommand } from './document-type-config.js';
+import { findCompanySignInRouteGuidance } from '../lib/error-guidance/match.js';
+import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
 
 interface DocumentCommandOptions extends DocumentUploadContext {
   tenantId?: string;
@@ -219,12 +221,25 @@ addUploadOptions(docsCommand
       const res = await client.uploadDocument(file, options);
 
       if (!res.ok) {
+        // A company sign-in account may not upload yet: explain E297 beside the server's error.
+        const guidance = findCompanySignInRouteGuidance(res.status, await res.clone().text().catch(() => ''));
         if (options.format === 'json') {
-          out.json({ ok: false, status: res.status, error: { message: await readResponseError(res) } });
+          out.json({
+            ok: false, status: res.status, error: { message: await readResponseError(res) },
+            ...(guidance ? { guidance: guidanceToJSON(guidance) } : {}),
+          });
           process.exitCode = 1;
           return;
         }
-        throw new Error(await readResponseError(res));
+        const message = await readResponseError(res);
+        if (guidance) {
+          if (spinner) spinner.fail(message);
+          else out.error(message);
+          console.error(`\n${formatGuidanceText(guidance)}`);
+          process.exitCode = 1;
+          return;
+        }
+        throw new Error(message);
       }
 
       const data = await res.json() as BatchJobResponse;
