@@ -31,15 +31,18 @@ export const loginCommand = new Command('login')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
   .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
+  .option('--switch-account', 'Ask the browser which account to use, even when it is already signed in')
   .addHelpText('after', `
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
   $ eai login --callback-port 3476
+  $ eai login --switch-account
   $ eai whoami
 
 What happens next:
   - The CLI opens your browser to sign you in.
+  - With --switch-account, the browser shows its account picker instead of reusing the signed-in session.
   - With --callback-port, the CLI still uses localhost and listens on that exact port.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
   - If you only have one workspace admin membership, it becomes active automatically.
@@ -82,6 +85,7 @@ What happens next:
         scope,
         {
           callbackPort,
+          prompt: options.switchAccount ? 'select_account' : undefined,
           onAuthorizeUrl: callbackPort === undefined
             ? undefined
             : (url) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`),

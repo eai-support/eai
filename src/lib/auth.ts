@@ -87,6 +87,12 @@ interface CallbackServer {
 export interface BrowserLoginOptions {
   callbackPort?: number;
   onAuthorizeUrl?: (url: string) => void;
+  /**
+   * OpenID Connect `prompt` value. `select_account` interrupts single sign-on
+   * and shows the account picker, so a browser already signed in to the wrong
+   * account cannot be taken silently.
+   */
+  prompt?: 'select_account';
 }
 
 export interface ResolvedAuthConfig {
@@ -658,6 +664,7 @@ export async function browserLogin(
     authorizeUrl.searchParams.set('state', state);
     authorizeUrl.searchParams.set('code_challenge', codeChallenge);
     authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+    if (options.prompt) authorizeUrl.searchParams.set('prompt', options.prompt);
     options.onAuthorizeUrl?.(authorizeUrl.toString());
 
     try {

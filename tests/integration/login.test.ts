@@ -121,6 +121,7 @@ describe('eai login', () => {
     expect(result.stdout).toContain('Authenticate with Entra CIAM');
     expect(result.stdout).toContain('sign-in directory');
     expect(result.stdout).toContain('--callback-port');
+    expect(result.stdout).toContain('--switch-account');
     expect(result.stdout).not.toContain('--client-id');
     expect(result.stdout).not.toContain('--redirect-uri');
     expect(result.stdout).not.toContain('ENTRA_CLIENT_ID');
@@ -308,6 +309,41 @@ describe('eai login', () => {
 
     expect(tokens.upn).toBe('fallback@example.com');
     expect(tokens.oid).toBe('oid-456');
+
+    restoreHome();
+    await rm(tempHome, { recursive: true, force: true });
+  });
+
+  test('browserLogin asks for an account choice only when told to switch accounts', async () => {
+    const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
+    const restoreHome = setTestHome(tempHome);
+    const prompts: Array<string | null> = [];
+
+    mockBrowserLauncher(async (authUrl) => {
+      prompts.push(authUrl.searchParams.get('prompt'));
+      const redirect = new URL(authUrl.searchParams.get('redirect_uri') || '');
+      redirect.searchParams.set('code', 'test-auth-code');
+      redirect.searchParams.set('state', authUrl.searchParams.get('state') || '');
+      await completeBrowserCallback(redirect.toString());
+    });
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      return new Response(JSON.stringify({
+        access_token: createJwt({ preferred_username: 'browser@example.com', oid: 'oid-123' }),
+        refresh_token: '<fixture-refresh-token>',
+        expires_in: 3600,
+        token_type: 'Bearer',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }));
+
+    vi.resetModules();
+    const { browserLogin } = await import('../../src/lib/auth.js');
+    const scope = 'openid profile email offline_access';
+
+    await browserLogin('profile-dev-tenant', 'dev-tenant-id', 'client-id-123', scope);
+    await browserLogin('profile-dev-tenant', 'dev-tenant-id', 'client-id-123', scope, { prompt: 'select_account' });
+
+    expect(prompts).toEqual([null, 'select_account']);
 
     restoreHome();
     await rm(tempHome, { recursive: true, force: true });

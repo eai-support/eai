@@ -94,6 +94,7 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
+- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`

@@ -215,6 +215,10 @@ OAuth callback; it just pins the port instead of choosing a random one. That
 keeps the public Entra app registration unchanged while allowing your local
 machine to tunnel the callback into the Codespace.
 
+If your browser is already signed in to the wrong account, run
+`eai logout` and then `eai login --switch-account`: the browser shows its
+account picker instead of reusing the existing session.
+
 ### Environment
 
 | Command | Description |
