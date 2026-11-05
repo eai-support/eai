@@ -37,6 +37,9 @@
   refuses before the backend runs, so any method is resent; other statuses
   are not retried. Each wait prints one line on stderr, so JSON output is
   unchanged, and `eai types seed` schema polling stops instead of polling on.
+  The `eai dev` and `eai verify` reachability probe waits the same way, and
+  regional routing reports the busy error instead of falling back to another
+  region.
 
 - Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
   `text/markdown` headers and metadata. Normalize the compatibility alias and

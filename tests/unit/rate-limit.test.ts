@@ -1,8 +1,11 @@
+import { tmpdir } from 'node:os';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
+const authFixture = vi.hoisted(() => ({ tokens: null as Record<string, unknown> | null }));
 vi.mock('../../src/lib/auth.js', async (original) => ({
   ...await original<typeof import('../../src/lib/auth.js')>(),
   getAccessToken: vi.fn(async () => '<fixture-access-value>'),
+  loadTokens: vi.fn(async () => authFixture.tokens),
 }));
 
 import {
@@ -14,7 +17,9 @@ import {
   parseRetryAfterMs,
   rateLimitBackoffMs,
 } from '../../src/lib/rate-limit.js';
-import { PlatformAPIClient } from '../../src/lib/api.js';
+import { PlatformAPIClient, probePublicApiReachability } from '../../src/lib/api.js';
+import { DEFAULT_PUBLIC_API_URL, resolvePublicApiUrl } from '../../src/lib/tenant-context.js';
+import { setActiveProfile } from '../../src/lib/profile.js';
 
 function limited(retryAfter?: string): Response {
   return new Response('{"statusCode":429,"message":"Rate limit is exceeded."}', {
@@ -253,5 +258,88 @@ describe('types seed polling and rate limits', () => {
     })).rejects.toThrow(PUBLIC_API_RATE_LIMITED_MESSAGE);
     expect(client.getResourceStorageSchemaStatus).toHaveBeenCalledTimes(1);
     expect(client.getSchema).not.toHaveBeenCalled();
+  });
+});
+
+describe('rate limits on routing and the reachability probe', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-11-05T01:00:00.000Z'));
+    for (const key of ['BASE_URL_PUBLIC_API', 'ROUTING_BOOTSTRAP_PUBLIC_API_URL', 'EAI_ACCESS_TOKEN']) vi.stubEnv(key, undefined);
+    setActiveProfile('default');
+    vi.spyOn(process, 'cwd').mockReturnValue(tmpdir());
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+  });
+
+  afterEach(() => {
+    authFixture.tokens = null;
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+
+  test('the reachability probe backs off on 429 with its own timeout on each attempt', async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(limited('2'))
+      .mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = probePublicApiReachability('https://example.test/public', 5000);
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const response = await settle(pending, 1);
+
+    expect(response.status).toBe(200);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const [first, second] = fetchMock.mock.calls.map(([, init]) => init?.signal);
+    expect(first).toBeInstanceOf(AbortSignal);
+    expect(second).toBeInstanceOf(AbortSignal);
+    expect(second).not.toBe(first);
+  });
+
+  test('the reachability probe stops with the busy error after the retries', async () => {
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => limited('1')));
+
+    await expect(settle(probePublicApiReachability('https://example.test/public', 5000), 4000))
+      .rejects.toBeInstanceOf(PublicApiRateLimitedError);
+  });
+
+  test('routing raises the rate-limit error from the tenant-management lookup instead of falling back', async () => {
+    authFixture.tokens = {
+      accessToken: '<fixture-access-value>', expiresAt: Date.now() + 600_000,
+      tenantName: 'fixture', tenantId: 'fixture', clientId: 'fixture', activeTenantId: 'tenant-1',
+    };
+    const fetchMock = vi.fn<typeof fetch>(async () => limited('1'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = resolvePublicApiUrl();
+    // Routing reads local files before its first request; start the clock once it is waiting.
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await expect(settle(pending, 4000)).rejects.toThrow(PUBLIC_API_RATE_LIMITED_MESSAGE);
+    // Only the tenant-management read ran (first try plus 4 retries); the session lookup never started.
+    expect(fetchMock).toHaveBeenCalledTimes(RATE_LIMIT_MAX_RETRIES + 1);
+    expect(fetchMock.mock.calls.every(([url]) => String(url).includes('/tenants/tenant-1'))).toBe(true);
+  });
+
+  test('routing raises the rate-limit error from the session lookup instead of using the default region', async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => limited('1'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const pending = resolvePublicApiUrl();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await expect(settle(pending, 4000)).rejects.toBeInstanceOf(PublicApiRateLimitedError);
+    expect(fetchMock).toHaveBeenCalledTimes(RATE_LIMIT_MAX_RETRIES + 1);
+    expect(fetchMock.mock.calls.every(([url]) => String(url).endsWith('/v4/identity/session/resolve'))).toBe(true);
+  });
+
+  test('an ordinary routing failure still falls back to the default region', async () => {
+    authFixture.tokens = {
+      accessToken: '<fixture-access-value>', expiresAt: Date.now() + 600_000,
+      tenantName: 'fixture', tenantId: 'fixture', clientId: 'fixture', activeTenantId: 'tenant-1',
+    };
+    vi.stubGlobal('fetch', vi.fn<typeof fetch>(async () => new Response('{}', { status: 503 })));
+
+    expect(await resolvePublicApiUrl()).toBe(DEFAULT_PUBLIC_API_URL);
   });
 });
