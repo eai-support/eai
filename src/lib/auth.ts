@@ -26,7 +26,13 @@ import {
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID,
 } from './profile.js';
-import { isExpectedCallbackHost, isGuid } from './company-sign-in.js';
+import {
+  PORTAL_ROUTE_PATH,
+  buildPortalLoginUrl,
+  isExpectedCallbackHost,
+  isGuid,
+  parsePortalRoute,
+} from './company-sign-in.js';
 
 function getTokensFile(profile = getActiveProfile()): string {
   return getProfileTokensFile(profile);
@@ -85,18 +91,32 @@ export interface BrowserLoginOptions {
    * OpenID Connect `prompt` value for the direct path. `select_account`
    * interrupts single sign-on and shows the account picker, so a browser
    * already signed in to the wrong account cannot be taken silently. The
-   * `--company` path always sends `prompt=login` instead.
+   * Portal and `--company` paths always send `prompt=login` instead.
    */
   prompt?: 'select_account';
   /** How long to wait for the browser; five minutes unless a test shortens it. */
   timeoutMs?: number;
 }
 
-/** A finished `--company` sign-in, before the caller decides whether to save it. */
+/** A finished Portal or `--company` sign-in, before the caller decides whether to save it. */
 export interface SignInResult {
   readonly tokens: StoredTokens;
   /** The token's `email` claim (access token, then ID token), for the account confirmation only. */
   readonly signedInEmail?: string;
+  /** The email typed on the Portal page (its `login_hint`); absent for `--company`. */
+  readonly typedEmail?: string;
+}
+
+/** Options for plain `eai login` through the Admin Portal routing page. */
+export interface PortalLoginOptions extends Omit<BrowserLoginOptions, 'prompt'> {
+  /** The sign-in directory's AU Admin Portal origin (or a profile `portalUrl` override). */
+  readonly portalUrl: string;
+  /** The ordinary CLI app, used when the Portal routes `kind=standard`. */
+  readonly standardClientId: string;
+  /** The CLI company sign-in app; a `kind=company` route fails when it is not set up. */
+  readonly companyClientId?: string;
+  /** Called once with the Portal link so the caller can print it. */
+  readonly onPortalUrl?: (url: string) => void;
 }
 
 export interface ResolvedAuthConfig {
@@ -108,6 +128,8 @@ export interface ResolvedAuthConfig {
   clientIdSource: 'default-prod' | 'runtime-env' | 'profile';
   /** A named profile's company sign-in client (GUID-validated when the profile is read). */
   authCompanyClientId?: string;
+  /** A named profile's Admin Portal override for `eai login`. */
+  portalUrl?: string;
 }
 
 /** Where `eai login --company` found the company sign-in app for this sign-in directory. */
@@ -126,6 +148,10 @@ export interface CompanyClientOptions {
 
 /** Shown when no company sign-in app resolves for the active sign-in directory. */
 export const COMPANY_SIGN_IN_NOT_SET_UP = "Company sign-in isn't set up for this environment yet.";
+
+/** Shown when the Portal path times out; there is no Portal reachability precheck. */
+export const PORTAL_SIGN_IN_TIMEOUT =
+  "Couldn't finish the Portal sign-in. Try `eai login --company` (school or company accounts) or `eai login --direct`.";
 
 function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
   return createHash('sha256').update(source).digest();
@@ -238,6 +264,7 @@ export async function resolveAuthConfig(
       source: 'profile',
       clientIdSource: 'profile',
       ...(config.authCompanyClientId ? { authCompanyClientId: config.authCompanyClientId } : {}),
+      ...(config.portalUrl ? { portalUrl: config.portalUrl } : {}),
     };
   }
 
@@ -595,11 +622,26 @@ interface PendingAuthorization {
   readonly state: string;
   readonly codeVerifier: string;
   readonly codeChallenge: string;
+  /** The email typed on the Portal page, compared with the token's email claim before saving. */
+  readonly loginHint?: string;
 }
 
 interface BrowserLoginResult {
   readonly code: string;
   readonly authorization: PendingAuthorization;
+}
+
+/** What the Portal routing hop decided for one `/eai/route` request. */
+type RouteDecision =
+  | { readonly outcome: 'authorize'; readonly authorization: PendingAuthorization; readonly authorizeUrl: string }
+  | { readonly outcome: 'refuse' }
+  | { readonly outcome: 'fail'; readonly message: string };
+
+interface CallbackServerOptions extends BrowserLoginOptions {
+  /** Portal path only: decides each `/eai/route` request. Without it that path is a 404. */
+  readonly route?: (params: URLSearchParams, redirectUri: string) => RouteDecision;
+  /** Replaces the default timeout message. */
+  readonly timeoutMessage?: string;
 }
 
 interface CallbackServer {
@@ -622,10 +664,20 @@ const HARDENED_HEADERS = {
 
 /*
  * The CLI's local callback server (Issues2025#3458, plan §7). The CLI always
- * does the OAuth itself.
+ * does the OAuth itself; the Portal only picks which app and hints to use and
+ * never sees a code, a verifier or a token.
  *
  * eai login --company:   new auth state A + PKCE → open authorize(company app, A, S256, prompt=login)
+ * eai login (Portal):    new route state R → open portal/login/cli?port=PORT&state=R
  *
+ * GET /eai/route?state=R&kind=K&login_hint=E[&domain_hint=H]      (Portal path only)
+ *   ├─ Host header not localhost:PORT ............ 400, keep waiting
+ *   ├─ state != current route state R ........... 400 "doesn't match", keep waiting
+ *   ├─ kind not in {company, standard} .......... 400, keep waiting
+ *   ├─ hint formats invalid ..................... 400, keep waiting
+ *   ├─ kind=company and no company app for dir .. error page, exit 1
+ *   └─ ok: new auth state A + new PKCE (a re-route after a typo replaces both)
+ *          → 302 authorize(client, A, S256, login_hint, prompt=login, [domain_hint])
  * GET /?code&state=A           (or ?error&state=A)
  *   ├─ Host header not localhost:PORT ............ 400, keep waiting
  *   ├─ state != current auth state A ............ 400, keep waiting (an error without A is ignored)
@@ -639,7 +691,7 @@ const HARDENED_HEADERS = {
  */
 async function startBrowserCallbackServer(
   timeoutMs: number,
-  options: BrowserLoginOptions = {},
+  options: CallbackServerOptions = {},
 ): Promise<CallbackServer> {
   const server = createServer();
   let closed = false;
@@ -656,7 +708,7 @@ async function startBrowserCallbackServer(
     resolveResult = resolve;
     rejectResult = reject;
   });
-  // The wait can end (an error callback, a timeout) while the
+  // The wait can end (an error callback, a failed route, a timeout) while the
   // caller is still opening the browser; the caller awaits it right after.
   waitForResult.catch(() => undefined);
 
@@ -704,6 +756,25 @@ async function startBrowserCallbackServer(
     }
 
     const reqUrl = new URL(req.url || '/', `http://localhost:${boundPort}`);
+
+    // The Portal reaches /eai/route by a JavaScript navigation, or a 303
+    // without JavaScript; either way it is a plain GET with the same query.
+    if (reqUrl.pathname === PORTAL_ROUTE_PATH && options.route) {
+      const decision = options.route(reqUrl.searchParams, `http://localhost:${boundPort}`);
+      if (decision.outcome === 'refuse') {
+        reply(400, CALLBACK_MISMATCH);
+        return;
+      }
+      if (decision.outcome === 'fail') {
+        reply(400, `${decision.message} Return to the terminal.`);
+        settle({ error: new Error(decision.message) });
+        return;
+      }
+      current = decision.authorization;
+      reply(302, 'Continuing to sign-in.', { Location: decision.authorizeUrl });
+      return;
+    }
+
     if (reqUrl.pathname !== '/') {
       reply(404, 'Not found.');
       return;
@@ -764,12 +835,12 @@ async function startBrowserCallbackServer(
 
   timer = setTimeout(() => {
     settle({
-      error: new Error(
+      error: new Error(options.timeoutMessage ?? (
         callbackPort === 0
           ? 'Timed out waiting for browser authentication callback.'
           : `Timed out waiting for browser authentication callback on localhost:${callbackPort}. ` +
-            codespacesForwardHint(callbackPort),
-      ),
+            codespacesForwardHint(callbackPort)
+      )),
     });
   }, timeoutMs);
 
@@ -795,18 +866,21 @@ function authorityFor(tenantName: string, tenantId: string): string {
   return `https://${tenantName}.ciamlogin.com/${tenantId}`;
 }
 
-function newAuthorization(clientId: string, stateBytes: number): PendingAuthorization {
+function newAuthorization(clientId: string, stateBytes: number, loginHint?: string): PendingAuthorization {
   const { codeVerifier, codeChallenge } = generatePkce();
   return {
     clientId,
     state: base64UrlEncode(randomBytes(stateBytes)),
     codeVerifier,
     codeChallenge,
+    ...(loginHint ? { loginHint } : {}),
   };
 }
 
 interface AuthorizeExtras {
   readonly prompt?: 'login' | 'select_account';
+  readonly loginHint?: string;
+  readonly domainHint?: string;
 }
 
 function buildAuthorizeUrl(
@@ -825,6 +899,8 @@ function buildAuthorizeUrl(
   authorizeUrl.searchParams.set('state', authorization.state);
   authorizeUrl.searchParams.set('code_challenge', authorization.codeChallenge);
   authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+  if (extras.loginHint) authorizeUrl.searchParams.set('login_hint', extras.loginHint);
+  if (extras.domainHint) authorizeUrl.searchParams.set('domain_hint', extras.domainHint);
   if (extras.prompt) authorizeUrl.searchParams.set('prompt', extras.prompt);
   return authorizeUrl.toString();
 }
@@ -874,6 +950,7 @@ async function finishSignIn(
   return {
     tokens: buildStoredTokens(token, tenantId, tenantName, result.authorization.clientId, scope),
     ...(signedInEmail ? { signedInEmail } : {}),
+    ...(result.authorization.loginHint ? { typedEmail: result.authorization.loginHint } : {}),
   };
 }
 
@@ -952,6 +1029,66 @@ export async function companyLogin(
     stateBytes: 32,
     prompt: 'login',
   });
+}
+
+/**
+ * Plain `eai login`: open the Portal's `/login/cli` page with a fresh route
+ * state, then let the Portal's `/eai/route` redirect pick the app. The link is
+ * always printed through `onPortalUrl`, and there is no reachability precheck:
+ * if the Portal never routes back, the wait ends with PORTAL_SIGN_IN_TIMEOUT.
+ */
+export async function portalLogin(
+  tenantName: string,
+  tenantId: string,
+  scope: string,
+  options: PortalLoginOptions,
+): Promise<SignInResult> {
+  const authority = authorityFor(tenantName, tenantId);
+  const routeState = base64UrlEncode(randomBytes(32));
+
+  const route = (params: URLSearchParams, redirectUri: string): RouteDecision => {
+    const parsed = parsePortalRoute(params, routeState);
+    if (!parsed) return { outcome: 'refuse' };
+    const clientId = parsed.kind === 'company' ? options.companyClientId : options.standardClientId;
+    if (!clientId) return { outcome: 'fail', message: COMPANY_SIGN_IN_NOT_SET_UP };
+    // Each valid route replaces the auth state and PKCE, so the last route wins.
+    const authorization = newAuthorization(clientId, 32, parsed.loginHint);
+    return {
+      outcome: 'authorize',
+      authorization,
+      authorizeUrl: buildAuthorizeUrl(authority, authorization, redirectUri, scope, {
+        prompt: 'login',
+        loginHint: parsed.loginHint,
+        domainHint: parsed.kind === 'company' ? parsed.domainHint : undefined,
+      }),
+    };
+  };
+
+  const callbackServer = await startBrowserCallbackServer(options.timeoutMs ?? 300_000, {
+    ...options,
+    route,
+    timeoutMessage: options.callbackPort === undefined
+      ? PORTAL_SIGN_IN_TIMEOUT
+      : `${PORTAL_SIGN_IN_TIMEOUT} ${codespacesForwardHint(options.callbackPort)}`,
+  });
+  try {
+    const portalLoginUrl = buildPortalLoginUrl(options.portalUrl, callbackServer.port, routeState);
+    options.onPortalUrl?.(portalLoginUrl);
+
+    try {
+      await openBrowser(portalLoginUrl);
+    } catch (err) {
+      // The link is printed, so keep waiting for the person to open it.
+      if (!options.onPortalUrl) {
+        throw new Error(`Failed to open browser automatically. Open this URL manually: ${portalLoginUrl}`, { cause: err });
+      }
+    }
+
+    const result = await callbackServer.waitForResult;
+    return await finishSignIn(authority, tenantId, tenantName, scope, callbackServer.redirectUri, result);
+  } finally {
+    await callbackServer.close();
+  }
 }
 
 /**

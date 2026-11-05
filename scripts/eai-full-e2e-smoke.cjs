@@ -541,7 +541,7 @@ const OPTION_DECISIONS = {
   'eai login': {
     '--switch-account': 'Interrupts single sign-on so the browser shows its account picker; the dedicated test profile signs in once and must not be asked to choose an account.',
     '--company': 'Browser-only company sign-in with prompt=login; repo login tests cover the company app request, callback hardening and the save prompt, and each environment is proven by hand with a company test account.',
-    '--direct': 'Keeps the direct browser PKCE sign-in the dedicated test profile already validates; repo login tests cover it.',
+    '--direct': 'Keeps the direct browser PKCE sign-in the dedicated test profile already validates; repo login tests cover that it skips the Admin Portal step.',
   },
   'eai kb upload': {
     '--tenant-id': 'Owning tests require exact workspace scope and same-environment regional session routing before mutation.',

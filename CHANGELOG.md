@@ -2,26 +2,31 @@
 
 ## Unreleased
 
-- Add `eai login --company` for school and company accounts. It signs in with
-  the sign-in directory's CLI company sign-in app (the profile's
-  `authCompanyClientId`, then `EAI_CLI_COMPANY_CLIENT_ID`, then a production
-  default for the public production directory only), uses `prompt=login`, and
-  shows the signed-in account before saving. `eai login --direct` keeps the
-  ordinary flow. Logins with the company sign-in app pass the stored login
-  check, and refresh keeps using that app.
-- The production company sign-in app ID is intentionally unset until that app
-  exists, so production `eai login --company` reports that company sign-in
-  isn't set up yet.
+- Add `eai login --switch-account`, which sends `prompt=select_account` on
+  the authorize request so the browser shows its account picker instead of
+  reusing the session it already holds. EAI Setup runs `eai logout` and then
+  this command for its Use a different account action. Prepared as 3.20.10.
+- `eai login` opens the sign-in directory's AU Admin Portal page first, chosen
+  by directory and never by region. School and company emails go straight to
+  their own sign-in; other emails get the ordinary sign-in page with the email
+  filled in. The CLI still builds the sign-in request itself with fresh state
+  and PKCE. `eai login --company` opens the company sign-in page directly, and
+  `eai login --direct` (or `EAI_LOGIN_VIA_PORTAL=false`) keeps the earlier flow.
+  Directories without a known Portal use the direct flow. `--switch-account`
+  applies to the direct flow; the Portal and `--company` flows always ask for
+  a fresh sign-in.
+- Portal and `--company` sign-ins use `prompt=login` and show the signed-in
+  account before saving; a token email that differs from the typed email is
+  saved only after `y`. Logins with the company sign-in app pass the stored
+  login check, and refresh keeps using that app.
 - The local callback answers only `localhost:<port>` requests with the current
   state, keeps waiting after a mismatch, and sends `no-store` and
   `no-referrer` on every response.
 - Explain PublicAPI's 502 `FEDERATED_ROUTE_NOT_ENABLED` for company sign-in
   accounts (`E297`).
-
-- Add `eai login --switch-account`, which sends `prompt=select_account` on
-  the authorize request so the browser shows its account picker instead of
-  reusing the session it already holds. EAI Setup runs `eai logout` and then
-  this command for its Use a different account action. Prepared as 3.20.10.
+- The production company sign-in app ID is intentionally unset until that app
+  exists, so production `eai login --company` reports that company sign-in
+  isn't set up yet.
 
 - Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
   `text/markdown` headers and metadata. Normalize the compatibility alias and

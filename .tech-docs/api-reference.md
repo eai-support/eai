@@ -93,20 +93,21 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-name <name>` — CIAM tenant name
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
-- `--callback-port <port>` — localhost port to listen on for the callback server
-- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
-- `--company` — sign in with a school or company account through the sign-in directory's company sign-in app
-- `--direct` — open the ordinary sign-in page directly, as earlier versions did
+- `--callback-port <port>` — localhost port to listen on for the callback server, used for both the Admin Portal step and the sign-in callback
+- `--company` — sign in with a school or company account on the company sign-in page directly, without the Admin Portal step
+- `--direct` — skip the Admin Portal step and open the ordinary sign-in page (`EAI_LOGIN_VIA_PORTAL=false` does the same)
+- `--switch-account` — with the direct sign-in, send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session (the Admin Portal and `--company` sign-ins always send `prompt=login`)
 
 **What it does**:
-1. Generates PKCE `code_verifier` / `code_challenge`
-2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback, using a fixed port when `--callback-port` is supplied. `--company` uses the company sign-in app with `prompt=login`
-3. Exchanges the authorization code for tokens with the app that started the request. After a `--company` sign-in it shows the signed-in account and asks `Save this login? [Y/n]`
-4. Saves the tokens to `~/.eai/tokens.json`
+1. Listens on a localhost callback, using a fixed port when `--callback-port` is supplied
+2. Plain `eai login`: opens (and prints) the sign-in directory's Admin Portal page `/login/cli?port=<port>&state=<route state>`. After you type your email there, the Portal sends the browser back to `http://localhost:<port>/eai/route` with the sign-in kind and email hint only. The CLI checks the route state, then builds the authorization request itself with a new state, PKCE (`S256`), `login_hint`, `prompt=login` and, for school or company accounts, `domain_hint`. A sign-in directory without a known Admin Portal uses the direct flow.
+3. `--company`: opens the company sign-in app's authorization request directly with PKCE (`S256`) and `prompt=login`. `--direct`: opens the ordinary authorization request with PKCE, as earlier versions did.
+4. Exchanges the authorization code for tokens with the app that started the request. After a Portal or `--company` sign-in it shows the signed-in account and asks before saving when the token's email differs from the typed email (`[y/N]`), or, with nothing typed, `[Y/n]`
+5. Saves the tokens to `~/.eai/tokens.json`
 
 The local callback answers only requests for `localhost:<port>` that carry the current state, and sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer` on every response.
 
-**External endpoint**: Entra CIAM `POST /oauth2/v2.0/token` (token exchange) — not a platform API call
+**External endpoints**: the Admin Portal `/login/cli` page (browser only; it never sees a code, verifier or token) and Entra CIAM `POST /oauth2/v2.0/token` (token exchange) — not platform API calls
 
 ---
 

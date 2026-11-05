@@ -19,7 +19,7 @@ import { homedir } from 'node:os';
 import type { Command, OptionValues } from 'commander';
 import { parse as parseEnv } from 'dotenv';
 import { findProjectRoot } from './config.js';
-import { isGuid } from './company-sign-in.js';
+import { isGuid, normalizePortalUrl } from './company-sign-in.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -33,8 +33,10 @@ export interface ProfileConfig {
   readonly authScope?: string;
   /** SECURITY: authorizes one HTTPS managed endpoint, exactly matching this profile's publicApiUrl. */
   readonly managedDeploymentApiUrl?: string;
-  /** Optional client ID (a GUID) of this sign-in directory's CLI company sign-in app, used by `eai login --company`. */
+  /** Optional client ID (a GUID) of this sign-in directory's CLI company sign-in app, used by `eai login --company` and the Portal's company routes. */
   readonly authCompanyClientId?: string;
+  /** Optional Admin Portal origin for `eai login`: https, or http://localhost / http://127.0.0.1 for local Portal development. */
+  readonly portalUrl?: string;
 }
 
 interface ProfilesFile {
@@ -317,7 +319,8 @@ export function captureProfileConfig(name: string): ProfileConfig | null {
     || !(config[key as keyof ProfileConfig] as string).trim())
     || (config.authScope !== undefined && typeof config.authScope !== 'string')
     || (config.managedDeploymentApiUrl !== undefined && typeof config.managedDeploymentApiUrl !== 'string')
-    || (config.authCompanyClientId !== undefined && !isGuid(config.authCompanyClientId))) {
+    || (config.authCompanyClientId !== undefined && !isGuid(config.authCompanyClientId))
+    || (config.portalUrl !== undefined && !isValidPortalOverride(config.portalUrl))) {
     throw new Error('Local profile settings contain an invalid public auth/API configuration.');
   }
   if (process.platform === 'win32' && config.managedDeploymentApiUrl !== undefined) {
@@ -326,6 +329,16 @@ export function captureProfileConfig(name: string): ProfileConfig | null {
   const snapshot = Object.freeze({ ...config });
   capturedProfiles.set(key, snapshot);
   return snapshot;
+}
+
+function isValidPortalOverride(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    normalizePortalUrl(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const MAX_PROFILE_BYTES = 64 * 1024;
@@ -426,7 +439,7 @@ export async function saveProfileConfig(name: string, config: ProfileConfig): Pr
       throw new Error('Local profile settings contain an invalid profile; refusing to overwrite.');
     }
     const knownFields = new Set(['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId', 'authScope', 'managedDeploymentApiUrl',
-      'authCompanyClientId']);
+      'authCompanyClientId', 'portalUrl']);
     const preserved = Object.fromEntries(Object.entries(prior ?? {}).filter(([key]) => !knownFields.has(key)));
     const output = JSON.stringify({ ...file, profiles: { ...file.profiles, [name]: { ...preserved, ...config } } }, null, 2) + '\n';
     if (Buffer.byteLength(output) > MAX_PROFILE_BYTES) throw new Error('Profile settings exceed 64 KiB.');

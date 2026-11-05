@@ -1,8 +1,10 @@
 /**
  * eai login — authenticate with Entra CIAM via browser auth (PKCE).
  *
- * `--company` signs in with the sign-in directory's CLI company sign-in app;
- * `--direct` (and plain `eai login`) keeps the original direct flow.
+ * Plain `eai login` goes through the sign-in directory's Admin Portal page,
+ * which routes school and company emails to their own sign-in. `--company`
+ * opens the company sign-in page directly, and `--direct` (or
+ * EAI_LOGIN_VIA_PORTAL=false) keeps the original direct flow.
  */
 
 import { Command } from 'commander';
@@ -13,6 +15,7 @@ import {
   companyLogin,
   COMPANY_SIGN_IN_NOT_SET_UP,
   getActiveAuthConfigMismatch,
+  portalLogin,
   resolveAuthConfig,
   resolveCompanyClient,
   storeTokens,
@@ -24,6 +27,8 @@ import {
   askYesNo,
   canPromptInTerminal,
   describeLoginConfirmation,
+  isPortalLoginDisabled,
+  resolvePortalUrl,
 } from '../lib/company-sign-in.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
@@ -50,12 +55,14 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * D2/OV3: before a `--company` login is saved, show whose account it is. With
- * no terminal to answer in, the default answer (yes) applies.
+ * D2/OV3: before a Portal or `--company` login is saved, show whose account
+ * it is. A matching typed email saves without asking; with no terminal to
+ * answer in, the default answer applies (yes for --company, no on a mismatch).
  */
 async function confirmSignedInAccount(result: SignInResult): Promise<boolean> {
   const confirmation = describeLoginConfirmation({
     signedInEmail: result.signedInEmail,
+    typedEmail: result.typedEmail,
     displayIdentity: result.tokens.upn,
   });
   if (!confirmation) return true;
@@ -68,15 +75,15 @@ async function confirmSignedInAccount(result: SignInResult): Promise<boolean> {
   return askYesNo(confirmation.question, confirmation.defaultYes);
 }
 
-/** `eai login`: browser PKCE sign-in (the direct flow, or `--company`), then active workspace resolution. */
+/** `eai login`: browser PKCE sign-in (through the Admin Portal routing page, `--company` or `--direct`), then active workspace resolution. */
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
   .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
-  .option('--company', 'Sign in with a school or company account on the company sign-in page')
-  .option('--direct', 'Open the ordinary sign-in page directly, as earlier CLI versions did')
+  .option('--company', 'Sign in with a school or company account on the company sign-in page, without the Admin Portal step')
+  .option('--direct', 'Skip the Admin Portal step and open the ordinary sign-in page, as earlier CLI versions did')
   .option('--switch-account', 'With the direct sign-in, ask the browser which account to use, even when it is already signed in')
   .addHelpText('after', `
 Examples:
@@ -89,12 +96,15 @@ Examples:
   $ eai whoami
 
 What happens next:
-  - The CLI opens your browser to the ordinary sign-in page.
-  - --company opens the company sign-in page instead (school or company accounts) and always asks for your password.
-    The CLI then shows the signed-in account and asks before saving the login.
-  - --direct opens the ordinary sign-in page, as earlier CLI versions did.
+  - The CLI opens your sign-in directory's Admin Portal page and also prints its link. Type your email:
+    school and company accounts go straight to their own sign-in, other accounts to the ordinary sign-in page.
+  - --company opens the company sign-in page directly, without the Portal step (school or company accounts).
+  - --direct, or EAI_LOGIN_VIA_PORTAL=false, skips the Portal step and opens the ordinary sign-in page.
   - With --switch-account, the direct sign-in shows the browser's account picker instead of reusing the signed-in session.
-  - With --callback-port, the CLI still uses localhost and listens on that exact port.
+    The Portal and --company sign-ins always ask you to sign in again.
+  - After a Portal or --company sign-in, the CLI shows the signed-in account. If it differs from the email you
+    typed, it asks before saving the login.
+  - With --callback-port, the CLI still uses localhost and listens on that exact port for both the Portal step and the sign-in callback.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
   - If you only have one workspace admin membership, it becomes active automatically.
   - If you have more than one, run 'eai workspace select' to choose the workspace to work with.
@@ -124,11 +134,18 @@ What happens next:
       process.exit(1);
     }
 
+    // The Portal is chosen by sign-in directory ID (never by region); --company,
+    // --direct, EAI_LOGIN_VIA_PORTAL=false and unknown directories skip it.
+    const portalWanted = !options.company && !options.direct && !isPortalLoginDisabled();
     let callbackPort: number | undefined;
     let companyClientId: string | undefined;
+    let portalUrl: string | null = null;
     try {
       callbackPort = parseCallbackPort(options.callbackPort);
-      if (options.company) {
+      if (portalWanted) {
+        portalUrl = resolvePortalUrl(tenantId, resolvedConfig.portalUrl);
+      }
+      if (options.company || portalUrl) {
         const tenantFlagsGiven = Boolean(options.tenantName || options.tenantId);
         companyClientId = resolveCompanyClient(resolvedConfig, { tenantFlagsGiven })?.clientId;
       }
@@ -146,6 +163,9 @@ What happens next:
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
     out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
+    if (portalWanted && !portalUrl) {
+      out.info('No Admin Portal sign-in page is known for this sign-in directory, so the CLI opens the ordinary sign-in page directly.');
+    }
 
     const showAuthorizeUrl = callbackPort === undefined
       ? undefined
@@ -159,6 +179,17 @@ What happens next:
         const result = await companyLogin(tenantName, tenantId, companyClientId, scope, {
           callbackPort,
           onAuthorizeUrl: showAuthorizeUrl,
+        });
+        tokens = result.tokens;
+        confirmed = await confirmSignedInAccount(result);
+      } else if (portalUrl) {
+        out.info('Opening the Admin Portal in your browser. Type your email there to choose how you sign in.');
+        const result = await portalLogin(tenantName, tenantId, scope, {
+          portalUrl,
+          standardClientId: clientId,
+          companyClientId,
+          callbackPort,
+          onPortalUrl: (url) => out.info(`If your browser doesn't open, go to: ${chalk.cyan(url)}`),
         });
         tokens = result.tokens;
         confirmed = await confirmSignedInAccount(result);
