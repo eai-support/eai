@@ -36,6 +36,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E244` | `tenant_data_install_no_match` | workspace data/schema setup is not fully provisioned. |
 | `E251` | `subscription_inactive` | The workspace subscription is not active, so new capabilities cannot be provisioned. |
 | `E252` | `capability_not_in_plan` | This capability is not included in the workspace plan. |
+| `E297` | `company_sign_in_route_not_enabled` | This command isn't available for company sign-in accounts yet. |
 | `E253` | `tenant_limit_reached` | The parent workspace has reached its child workspace limit. |
 | `E254` | `tenant_limit_unconfigured` | The plan has no valid child workspace limit configured. |
 | `E255` | `capability_unavailable` | This capability is not available for the workspace. |
@@ -766,6 +767,40 @@ None.
 - active workspace slug
 - capability or command
 - request ID if present
+
+## E297: This command isn't available for company sign-in accounts yet.
+
+| Field | Value |
+| --- | --- |
+| Reason | `company_sign_in_route_not_enabled` |
+| Category | `capability` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- You are signed in with a school or company account. The platform supports only some commands for these accounts so far.
+- The platform refused this command for company sign-in accounts before running it, so nothing was changed.
+- Retrying, or signing in again with the same account, does not change the result.
+
+### Diagnostics
+
+- `eai whoami` (read-only) — Confirm which account the CLI is signed in with.
+
+### Fixes
+
+- `eai login --direct` (changes state) — Sign in with an ordinary EAI account instead, if you have one for this workspace. Use only when an ordinary account is an option for you; it is a different account from your school or company one.
+
+### Stop Conditions
+
+- The code is FEDERATED_ROUTE_NOT_ENABLED. Retrying does not change which commands company sign-in accounts can use.
+
+### Escalation Evidence
+
+- command
+- HTTP status
+- server code
+- request ID if present
+- CLI version
 
 ## E253: The parent workspace has reached its child workspace limit.
 

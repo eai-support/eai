@@ -95,11 +95,16 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
 - `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
+- `--company` — sign in with a school or company account through the sign-in directory's company sign-in app
+- `--direct` — open the ordinary sign-in page directly, as earlier versions did
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`
-2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback, using a fixed port when `--callback-port` is supplied
-3. Exchanges the authorization code for tokens and saves them to `~/.eai/tokens.json`
+2. Opens the browser to the Entra CIAM authorization endpoint and listens on a localhost callback, using a fixed port when `--callback-port` is supplied. `--company` uses the company sign-in app with `prompt=login`
+3. Exchanges the authorization code for tokens with the app that started the request. After a `--company` sign-in it shows the signed-in account and asks `Save this login? [Y/n]`
+4. Saves the tokens to `~/.eai/tokens.json`
+
+The local callback answers only requests for `localhost:<port>` that carry the current state, and sends `Cache-Control: no-store` and `Referrer-Policy: no-referrer` on every response.
 
 **External endpoint**: Entra CIAM `POST /oauth2/v2.0/token` (token exchange) — not a platform API call
 

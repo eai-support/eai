@@ -1,10 +1,30 @@
 /**
  * eai login — authenticate with Entra CIAM via browser auth (PKCE).
+ *
+ * `--company` signs in with the sign-in directory's CLI company sign-in app;
+ * `--direct` (and plain `eai login`) keeps the original direct flow.
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig, getActiveAuthConfigMismatch } from '../lib/auth.js';
+import {
+  browserLogin,
+  clearTokens,
+  companyLogin,
+  COMPANY_SIGN_IN_NOT_SET_UP,
+  getActiveAuthConfigMismatch,
+  resolveAuthConfig,
+  resolveCompanyClient,
+  storeTokens,
+  validateResolvedAuthConfig,
+  type SignInResult,
+  type StoredTokens,
+} from '../lib/auth.js';
+import {
+  askYesNo,
+  canPromptInTerminal,
+  describeLoginConfirmation,
+} from '../lib/company-sign-in.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
   buildPublicApiEnvSyncNotice,
@@ -25,25 +45,55 @@ function parseCallbackPort(value: string | undefined): number | undefined {
   return port;
 }
 
-/** `eai login`: browser PKCE sign-in against the configured Entra CIAM directory, then active workspace resolution. */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/**
+ * D2/OV3: before a `--company` login is saved, show whose account it is. With
+ * no terminal to answer in, the default answer (yes) applies.
+ */
+async function confirmSignedInAccount(result: SignInResult): Promise<boolean> {
+  const confirmation = describeLoginConfirmation({
+    signedInEmail: result.signedInEmail,
+    displayIdentity: result.tokens.upn,
+  });
+  if (!confirmation) return true;
+
+  if (!canPromptInTerminal()) {
+    out.info(`${confirmation.question} No terminal to answer in, so using the default: ${confirmation.defaultYes ? 'yes' : 'no'}.`);
+    return confirmation.defaultYes;
+  }
+  out.blank();
+  return askYesNo(confirmation.question, confirmation.defaultYes);
+}
+
+/** `eai login`: browser PKCE sign-in (the direct flow, or `--company`), then active workspace resolution. */
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
   .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
-  .option('--switch-account', 'Ask the browser which account to use, even when it is already signed in')
+  .option('--company', 'Sign in with a school or company account on the company sign-in page')
+  .option('--direct', 'Open the ordinary sign-in page directly, as earlier CLI versions did')
+  .option('--switch-account', 'With the direct sign-in, ask the browser which account to use, even when it is already signed in')
   .addHelpText('after', `
 Examples:
   $ eai login
+  $ eai login --company
+  $ eai login --direct
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
   $ eai login --callback-port 3476
-  $ eai login --switch-account
+  $ eai login --direct --switch-account
   $ eai whoami
 
 What happens next:
-  - The CLI opens your browser to sign you in.
-  - With --switch-account, the browser shows its account picker instead of reusing the signed-in session.
+  - The CLI opens your browser to the ordinary sign-in page.
+  - --company opens the company sign-in page instead (school or company accounts) and always asks for your password.
+    The CLI then shows the signed-in account and asks before saving the login.
+  - --direct opens the ordinary sign-in page, as earlier CLI versions did.
+  - With --switch-account, the direct sign-in shows the browser's account picker instead of reusing the signed-in session.
   - With --callback-port, the CLI still uses localhost and listens on that exact port.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
   - If you only have one workspace admin membership, it becomes active automatically.
@@ -58,6 +108,10 @@ What happens next:
       out.error(configIssue);
       process.exit(1);
     }
+    if (options.company && options.direct) {
+      out.error('Use either --company or --direct, not both.');
+      process.exit(1);
+    }
 
     // Resolve auth config: command flags → runtime/profile config → public defaults
     const tenantName = options.tenantName || resolvedConfig.tenantName;
@@ -70,29 +124,70 @@ What happens next:
       process.exit(1);
     }
 
+    let callbackPort: number | undefined;
+    let companyClientId: string | undefined;
+    try {
+      callbackPort = parseCallbackPort(options.callbackPort);
+      if (options.company) {
+        const tenantFlagsGiven = Boolean(options.tenantName || options.tenantId);
+        companyClientId = resolveCompanyClient(resolvedConfig, { tenantFlagsGiven })?.clientId;
+      }
+    } catch (err) {
+      out.error(`Login failed: ${errorMessage(err)}`);
+      process.exit(1);
+    }
+    if (options.company && !companyClientId) {
+      out.error(COMPANY_SIGN_IN_NOT_SET_UP);
+      process.exit(1);
+    }
+
     out.heading('Authenticating with Entra CIAM');
     if (profile !== 'default') {
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
     out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
-    out.info('Opening your browser to complete sign-in...');
+
+    const showAuthorizeUrl = callbackPort === undefined
+      ? undefined
+      : (url: string) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`);
+
+    let tokens: StoredTokens;
+    let confirmed = true;
+    try {
+      if (options.company && companyClientId) {
+        out.info('Opening your browser to the company sign-in page...');
+        const result = await companyLogin(tenantName, tenantId, companyClientId, scope, {
+          callbackPort,
+          onAuthorizeUrl: showAuthorizeUrl,
+        });
+        tokens = result.tokens;
+        confirmed = await confirmSignedInAccount(result);
+      } else {
+        out.info('Opening your browser to complete sign-in...');
+        tokens = await browserLogin(
+          tenantName,
+          tenantId,
+          clientId,
+          scope,
+          {
+            callbackPort,
+            prompt: options.switchAccount ? 'select_account' : undefined,
+            onAuthorizeUrl: showAuthorizeUrl,
+          },
+        );
+      }
+    } catch (err) {
+      out.error(`Login failed: ${errorMessage(err)}`);
+      process.exit(1);
+    }
+
+    if (!confirmed) {
+      // The tokens were never written, so discarding them leaves any earlier login untouched.
+      out.error('Login not saved. Run `eai login` again and sign in with the account you meant to use.');
+      process.exit(1);
+    }
 
     try {
-      const callbackPort = parseCallbackPort(options.callbackPort);
-      const tokens = await browserLogin(
-        tenantName,
-        tenantId,
-        clientId,
-        scope,
-        {
-          callbackPort,
-          prompt: options.switchAccount ? 'select_account' : undefined,
-          onAuthorizeUrl: callbackPort === undefined
-            ? undefined
-            : (url) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`),
-        },
-      );
-
       // Store bare tokens now so the cache is populated for the tenant resolution call
       await storeTokens(tokens);
 
@@ -119,11 +214,11 @@ What happens next:
           out.success(notice.message);
         }
       } catch (selectionError) {
-        out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
+        out.warn(errorMessage(selectionError));
         out.info(`Run ${chalk.cyan('eai workspace select')} after login to choose the workspace to work with.`);
       }
     } catch (err) {
-      out.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`);
+      out.error(`Login failed: ${errorMessage(err)}`);
       process.exit(1);
     }
   });

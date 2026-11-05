@@ -187,6 +187,8 @@ a different repository or a local template path.
 | Command | Description |
 |---------|-------------|
 | `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost callback) |
+| `eai login --company` | Sign in with a school or company account on the company sign-in page; always asks for your password |
+| `eai login --direct` | Open the ordinary sign-in page directly, as earlier CLI versions did |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
@@ -197,6 +199,10 @@ a different repository or a local template path.
 | `eai user roles` | List workspace role definitions available for user invitation |
 | `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
 | `eai user provision-me` | Provision yourself to the active workspace or a specified workspace |
+
+After an `eai login --company` sign-in, the CLI shows the signed-in account
+and asks `Save this login? [Y/n]` before saving it; answer `n` to discard the
+login and sign in again with the right account.
 
 Codespaces and other remote dev environments can keep the standard localhost
 callback by forwarding a fixed callback port from the Codespace to your local

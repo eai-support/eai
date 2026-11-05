@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- Add `eai login --company` for school and company accounts. It signs in with
+  the sign-in directory's CLI company sign-in app (the profile's
+  `authCompanyClientId`, then `EAI_CLI_COMPANY_CLIENT_ID`, then a production
+  default for the public production directory only), uses `prompt=login`, and
+  shows the signed-in account before saving. `eai login --direct` keeps the
+  ordinary flow. Logins with the company sign-in app pass the stored login
+  check, and refresh keeps using that app.
+- The production company sign-in app ID is intentionally unset until that app
+  exists, so production `eai login --company` reports that company sign-in
+  isn't set up yet.
+- The local callback answers only `localhost:<port>` requests with the current
+  state, keeps waiting after a mismatch, and sends `no-store` and
+  `no-referrer` on every response.
+- Explain PublicAPI's 502 `FEDERATED_ROUTE_NOT_ENABLED` for company sign-in
+  accounts (`E297`).
+
 - Add `eai login --switch-account`, which sends `prompt=select_account` on
   the authorize request so the browser shows its account picker instead of
   reusing the session it already holds. EAI Setup runs `eai logout` and then

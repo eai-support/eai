@@ -1481,6 +1481,69 @@
       }
     },
     {
+      "code": "E297",
+      "reasonCode": "company_sign_in_route_not_enabled",
+      "title": "This command isn't available for company sign-in accounts yet.",
+      "category": "capability",
+      "severity": "error",
+      "appliesTo": [
+        "chat",
+        "docs.upload",
+        "user.provision-me",
+        "workspace.create"
+      ],
+      "why": [
+        "You are signed in with a school or company account. The platform supports only some commands for these accounts so far.",
+        "The platform refused this command for company sign-in accounts before running it, so nothing was changed.",
+        "Retrying, or signing in again with the same account, does not change the result."
+      ],
+      "evidenceToCheck": [
+        "The signed-in account shown by eai whoami.",
+        "The HTTP status (502) and the code FEDERATED_ROUTE_NOT_ENABLED printed with the error.",
+        "Request ID, if the server returned one."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai whoami",
+          "purpose": "Confirm which account the CLI is signed in with.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai login --direct",
+          "purpose": "Sign in with an ordinary EAI account instead, if you have one for this workspace.",
+          "mutates": true,
+          "when": "Use only when an ordinary account is an option for you; it is a different account from your school or company one."
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The code is FEDERATED_ROUTE_NOT_ENABLED. Retrying does not change which commands company sign-in accounts can use."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "You need this command with a school or company sign-in account."
+        ],
+        "include": [
+          "command",
+          "HTTP status",
+          "server code",
+          "request ID if present",
+          "CLI version"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
       "code": "E253",
       "reasonCode": "tenant_limit_reached",
       "title": "The parent workspace has reached its child workspace limit.",

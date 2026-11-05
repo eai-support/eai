@@ -15,6 +15,8 @@ const ERROR_CODES = new Set([
   'APP_OWNERSHIP_SCOPE_INVALID_APP_KEY', 'APP_OWNERSHIP_SCOPE_INVALID_BODY', 'APP_OWNERSHIP_SCOPE_INVALID_OBJECT_TYPES',
   'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_CONFLICT', 'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_NOT_EXCLUSIVE',
   'APP_OWNERSHIP_STORAGE_ROUTE_INVALID', 'APP_DELETION_TARGET_TENANT_FORBIDDEN',
+  // A company sign-in account called a route not yet open to it.
+  'FEDERATED_ROUTE_NOT_ENABLED',
 ]);
 const ROTATION_REASONS = new Set(['concurrency_conflict', 'throttled', 'registration_not_found',
   'provider_rejected', 'provider_unavailable', 'deadline_exceeded', 'outcome_unknown']);

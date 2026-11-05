@@ -269,6 +269,7 @@
             "tests/unit/cloud-env.test.ts",
             "tests/unit/env-command.test.ts",
             "tests/unit/profile-context.test.ts",
+            "tests/unit/company-sign-in.test.ts",
             "tests/unit/schema-builder.test.ts",
             "tests/unit/test-token-isolation.test.ts",
             "tests/unit/object-type-export.test.ts",

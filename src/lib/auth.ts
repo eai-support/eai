@@ -24,7 +24,9 @@ import {
   DEFAULT_PROD_AUTH_TENANT_NAME,
   DEFAULT_PROD_AUTH_TENANT_ID,
   DEFAULT_PROD_AUTH_CLIENT_ID,
+  DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID,
 } from './profile.js';
+import { isExpectedCallbackHost, isGuid } from './company-sign-in.js';
 
 function getTokensFile(profile = getActiveProfile()): string {
   return getProfileTokensFile(profile);
@@ -66,11 +68,8 @@ interface TokenResponse {
   refresh_token?: string;
   expires_in: number;
   token_type: string;
-}
-
-interface BrowserLoginResult {
-  code: string;
-  state: string;
+  /** Read only for the account confirmation; never stored. */
+  id_token?: string;
 }
 
 interface PkceValues {
@@ -78,22 +77,26 @@ interface PkceValues {
   codeChallenge: string;
 }
 
-interface CallbackServer {
-  redirectUri: string;
-  waitForResult: Promise<BrowserLoginResult>;
-  close: () => Promise<void>;
-}
-
-/** Knobs for the browser PKCE sign-in: a fixed callback port and an OpenID prompt override. */
+/** Knobs for the browser PKCE sign-in: a fixed callback port, an OpenID prompt override and the wait. */
 export interface BrowserLoginOptions {
   callbackPort?: number;
   onAuthorizeUrl?: (url: string) => void;
   /**
-   * OpenID Connect `prompt` value. `select_account` interrupts single sign-on
-   * and shows the account picker, so a browser already signed in to the wrong
-   * account cannot be taken silently.
+   * OpenID Connect `prompt` value for the direct path. `select_account`
+   * interrupts single sign-on and shows the account picker, so a browser
+   * already signed in to the wrong account cannot be taken silently. The
+   * `--company` path always sends `prompt=login` instead.
    */
   prompt?: 'select_account';
+  /** How long to wait for the browser; five minutes unless a test shortens it. */
+  timeoutMs?: number;
+}
+
+/** A finished `--company` sign-in, before the caller decides whether to save it. */
+export interface SignInResult {
+  readonly tokens: StoredTokens;
+  /** The token's `email` claim (access token, then ID token), for the account confirmation only. */
+  readonly signedInEmail?: string;
 }
 
 export interface ResolvedAuthConfig {
@@ -103,7 +106,26 @@ export interface ResolvedAuthConfig {
   authScope: string;
   source: 'default-prod' | 'runtime-env' | 'profile';
   clientIdSource: 'default-prod' | 'runtime-env' | 'profile';
+  /** A named profile's company sign-in client (GUID-validated when the profile is read). */
+  authCompanyClientId?: string;
 }
+
+/** Where `eai login --company` found the company sign-in app for this sign-in directory. */
+export interface CompanyClientResolution {
+  readonly clientId: string;
+  readonly source: 'profile' | 'runtime-env' | 'default-prod';
+}
+
+export interface CompanyClientOptions {
+  /** True when `--tenant-name` or `--tenant-id` was given: the PROD default never applies then. */
+  readonly tenantFlagsGiven?: boolean;
+  readonly env?: Record<string, string | undefined>;
+  /** Test seam; defaults to DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID, which stays unset until the PROD app is pinned. */
+  readonly prodDefaultClientId?: string;
+}
+
+/** Shown when no company sign-in app resolves for the active sign-in directory. */
+export const COMPANY_SIGN_IN_NOT_SET_UP = "Company sign-in isn't set up for this environment yet.";
 
 function getEncryptionKey(source = getEncryptionKeySource()): Buffer {
   return createHash('sha256').update(source).digest();
@@ -215,6 +237,7 @@ export async function resolveAuthConfig(
       authScope: normalizeAuthScope(config.authScope || DEFAULT_AUTH_SCOPE),
       source: 'profile',
       clientIdSource: 'profile',
+      ...(config.authCompanyClientId ? { authCompanyClientId: config.authCompanyClientId } : {}),
     };
   }
 
@@ -264,6 +287,47 @@ export function validateResolvedAuthConfig(config: ResolvedAuthConfig): string |
   return null;
 }
 
+/** The public PROD sign-in target exactly: the same bundle validateResolvedAuthConfig treats as the defaults. */
+function isPublicProdAuthTarget(config: Pick<ResolvedAuthConfig, 'tenantName' | 'tenantId' | 'authScope'>): boolean {
+  return config.tenantName === DEFAULT_PROD_AUTH_TENANT_NAME
+    && config.tenantId === DEFAULT_PROD_AUTH_TENANT_ID
+    && config.authScope === DEFAULT_PROD_AUTH_SCOPE;
+}
+
+/**
+ * Resolve the CLI company sign-in app for the active sign-in directory, in
+ * order: the profile's `authCompanyClientId`, then `EAI_CLI_COMPANY_CLIENT_ID`,
+ * then the PROD constant. Returns `null` when none applies.
+ *
+ * INVARIANT: like validateResolvedAuthConfig, the PROD constant is used only
+ * for the public PROD target (directory, name and scope) and never with
+ * `--tenant-*` flags, so a PROD app ID is never sent to another directory.
+ */
+export function resolveCompanyClient(
+  config: Pick<ResolvedAuthConfig, 'tenantName' | 'tenantId' | 'authScope' | 'authCompanyClientId'>,
+  options: CompanyClientOptions = {},
+): CompanyClientResolution | null {
+  if (config.authCompanyClientId) {
+    return { clientId: config.authCompanyClientId, source: 'profile' };
+  }
+
+  const fromEnv = normalizeEnvValue((options.env ?? process.env).EAI_CLI_COMPANY_CLIENT_ID);
+  if (fromEnv) {
+    if (!isGuid(fromEnv)) {
+      throw new Error('EAI_CLI_COMPANY_CLIENT_ID must be the company sign-in app\'s client ID (a GUID).');
+    }
+    return { clientId: fromEnv, source: 'runtime-env' };
+  }
+
+  const prodDefault = Object.hasOwn(options, 'prodDefaultClientId')
+    ? options.prodDefaultClientId
+    : DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID;
+  if (prodDefault && !options.tenantFlagsGiven && isPublicProdAuthTarget(config)) {
+    return { clientId: prodDefault, source: 'default-prod' };
+  }
+  return null;
+}
+
 export async function getActiveAuthConfigMismatch(
   tokens?: StoredTokens,
   projectRoot?: string,
@@ -286,8 +350,18 @@ export async function getActiveAuthConfigMismatch(
   if (currentTokens.tenantName !== authConfig.tenantName) {
     mismatches.push(`authority tenant ${currentTokens.tenantName} != ${authConfig.tenantName}`);
   }
-  if (currentTokens.clientId !== authConfig.clientId) {
-    mismatches.push(`client id ${currentTokens.clientId} != ${authConfig.clientId}`);
+  // A login is valid with this directory's ordinary CLI app or its company
+  // sign-in app; any other stored client is still a mismatch.
+  let companyClientId: string | undefined;
+  try {
+    companyClientId = resolveCompanyClient(authConfig)?.clientId;
+  } catch {
+    companyClientId = undefined;
+  }
+  if (currentTokens.clientId !== authConfig.clientId && currentTokens.clientId !== companyClientId) {
+    mismatches.push(companyClientId
+      ? `client id ${currentTokens.clientId} is neither ${authConfig.clientId} nor the company sign-in client ${companyClientId}`
+      : `client id ${currentTokens.clientId} != ${authConfig.clientId}`);
   }
 
   const tokenAudience = parseJwtClaim(currentTokens.accessToken, 'aud');
@@ -515,6 +589,54 @@ async function openBrowser(url: string): Promise<void> {
   });
 }
 
+/** One authorize request the CLI waits on: its app, state and PKCE verifier. */
+interface PendingAuthorization {
+  readonly clientId: string;
+  readonly state: string;
+  readonly codeVerifier: string;
+  readonly codeChallenge: string;
+}
+
+interface BrowserLoginResult {
+  readonly code: string;
+  readonly authorization: PendingAuthorization;
+}
+
+interface CallbackServer {
+  readonly port: number;
+  readonly redirectUri: string;
+  readonly waitForResult: Promise<BrowserLoginResult>;
+  /** Accept this authorize request on `/` (direct and --company set it before opening the browser). */
+  expect: (authorization: PendingAuthorization) => void;
+  close: () => Promise<void>;
+}
+
+const CALLBACK_MISMATCH = "This sign-in doesn't match the CLI that started it.";
+
+// Sent on every local response: the pages and the URLs (which carry a code,
+// state or email) must not be cached or leak through a Referer header.
+const HARDENED_HEADERS = {
+  'Cache-Control': 'no-store',
+  'Referrer-Policy': 'no-referrer',
+} as const;
+
+/*
+ * The CLI's local callback server (Issues2025#3458, plan §7). The CLI always
+ * does the OAuth itself.
+ *
+ * eai login --company:   new auth state A + PKCE → open authorize(company app, A, S256, prompt=login)
+ *
+ * GET /?code&state=A           (or ?error&state=A)
+ *   ├─ Host header not localhost:PORT ............ 400, keep waiting
+ *   ├─ state != current auth state A ............ 400, keep waiting (an error without A is ignored)
+ *   └─ ok → redeem with that client + verifier
+ *          → email claim == typed email (case-insensitive)? store
+ *            : terminal "Signed in as X (typed Y). Save? [y/N]" → y: store / n: discard, exit 1
+ * Every response: Cache-Control: no-store, Referrer-Policy: no-referrer
+ *
+ * The direct path (`eai login --direct`, browserLogin) uses the same server
+ * with one auth state and today's authorize request.
+ */
 async function startBrowserCallbackServer(
   timeoutMs: number,
   options: BrowserLoginOptions = {},
@@ -523,6 +645,8 @@ async function startBrowserCallbackServer(
   let closed = false;
   let settled = false;
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let current: PendingAuthorization | undefined;
+  let boundPort = 0;
   const callbackPort = resolveCallbackPort(options);
 
   let resolveResult!: (value: BrowserLoginResult) => void;
@@ -532,6 +656,9 @@ async function startBrowserCallbackServer(
     resolveResult = resolve;
     rejectResult = reject;
   });
+  // The wait can end (an error callback, a timeout) while the
+  // caller is still opening the browser; the caller awaits it right after.
+  waitForResult.catch(() => undefined);
 
   const close = async (): Promise<void> => {
     if (closed) return;
@@ -549,39 +676,62 @@ async function startBrowserCallbackServer(
     }).catch(() => undefined);
   };
 
+  const settle = (outcome: { result: BrowserLoginResult } | { error: Error }): void => {
+    if (settled) return;
+    settled = true;
+    if ('result' in outcome) resolveResult(outcome.result);
+    else rejectResult(outcome.error);
+    void close();
+  };
+
   server.on('request', (req, res) => {
-    const baseUrl = 'http://localhost';
-    const reqUrl = new URL(req.url || '/', baseUrl);
-    const code = reqUrl.searchParams.get('code');
-    const state = reqUrl.searchParams.get('state');
+    const reply = (status: number, body: string, headers: Record<string, string> = {}): void => {
+      res.writeHead(status, { ...HARDENED_HEADERS, 'Content-Type': 'text/plain; charset=utf-8', ...headers });
+      res.end(body);
+    };
+
+    if (settled) {
+      reply(410, 'This sign-in has already finished. Return to the terminal.');
+      return;
+    }
+    if (!isExpectedCallbackHost(req.headers.host, boundPort)) {
+      reply(400, CALLBACK_MISMATCH);
+      return;
+    }
+    if (req.method !== 'GET') {
+      reply(405, 'Only GET is supported.', { Allow: 'GET' });
+      return;
+    }
+
+    const reqUrl = new URL(req.url || '/', `http://localhost:${boundPort}`);
+    if (reqUrl.pathname !== '/') {
+      reply(404, 'Not found.');
+      return;
+    }
+
+    const states = reqUrl.searchParams.getAll('state');
+    if (!current || states.length !== 1 || states[0] !== current.state) {
+      // Includes an `error` without the current auth state: it is ignored.
+      reply(400, CALLBACK_MISMATCH);
+      return;
+    }
+
     const error = reqUrl.searchParams.get('error');
-    const errorDescription = reqUrl.searchParams.get('error_description');
-
     if (error) {
-      res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Login failed. Return to the terminal.');
-      if (!settled) {
-        settled = true;
-        rejectResult(new Error(`Authorization failed: ${error} — ${errorDescription || 'no description'}`));
-        void close();
-      }
+      const errorDescription = reqUrl.searchParams.get('error_description');
+      reply(200, 'Login failed. Return to the terminal.');
+      settle({ error: new Error(`Authorization failed: ${error} — ${errorDescription || 'no description'}`) });
       return;
     }
 
-    if (!code || !state) {
-      res.writeHead(400, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end('Missing code/state in callback. Please retry login.');
+    const code = reqUrl.searchParams.get('code');
+    if (!code) {
+      reply(400, 'Missing code in callback. Please retry login.');
       return;
     }
 
-    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8' });
-    res.end('Login successful. Return to the terminal.');
-
-    if (!settled) {
-      settled = true;
-      resolveResult({ code, state });
-      void close();
-    }
+    reply(200, 'Login successful. Return to the terminal.');
+    settle({ result: { code, authorization: current } });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -610,38 +760,166 @@ async function startBrowserCallbackServer(
     await close();
     throw new Error('Unable to determine local callback port.');
   }
+  boundPort = (address as AddressInfo).port;
 
   timer = setTimeout(() => {
-    if (!settled) {
-      settled = true;
-      rejectResult(new Error(
+    settle({
+      error: new Error(
         callbackPort === 0
           ? 'Timed out waiting for browser authentication callback.'
           : `Timed out waiting for browser authentication callback on localhost:${callbackPort}. ` +
-            `If you are in Codespaces, make sure \`gh codespace ports forward ${callbackPort}:${callbackPort}\` ` +
-            'is still running on your local machine.',
-      ));
-      void close();
-    }
+            codespacesForwardHint(callbackPort),
+      ),
+    });
   }, timeoutMs);
 
   server.on('error', err => {
-    if (!settled) {
-      settled = true;
-      rejectResult(err instanceof Error ? err : new Error(String(err)));
-      void close();
-    }
+    settle({ error: err instanceof Error ? err : new Error(String(err)) });
   });
 
   return {
-    redirectUri: `http://localhost:${(address as AddressInfo).port}`,
+    port: boundPort,
+    redirectUri: `http://localhost:${boundPort}`,
     waitForResult,
+    expect: (authorization) => { current = authorization; },
     close,
   };
 }
 
+function codespacesForwardHint(callbackPort: number): string {
+  return `If you are in Codespaces, make sure \`gh codespace ports forward ${callbackPort}:${callbackPort}\` ` +
+    'is still running on your local machine.';
+}
+
+function authorityFor(tenantName: string, tenantId: string): string {
+  return `https://${tenantName}.ciamlogin.com/${tenantId}`;
+}
+
+function newAuthorization(clientId: string, stateBytes: number): PendingAuthorization {
+  const { codeVerifier, codeChallenge } = generatePkce();
+  return {
+    clientId,
+    state: base64UrlEncode(randomBytes(stateBytes)),
+    codeVerifier,
+    codeChallenge,
+  };
+}
+
+interface AuthorizeExtras {
+  readonly prompt?: 'login' | 'select_account';
+}
+
+function buildAuthorizeUrl(
+  authority: string,
+  authorization: PendingAuthorization,
+  redirectUri: string,
+  scope: string,
+  extras: AuthorizeExtras = {},
+): string {
+  const authorizeUrl = new URL(`${authority}/oauth2/v2.0/authorize`);
+  authorizeUrl.searchParams.set('client_id', authorization.clientId);
+  authorizeUrl.searchParams.set('response_type', 'code');
+  authorizeUrl.searchParams.set('redirect_uri', redirectUri);
+  authorizeUrl.searchParams.set('response_mode', 'query');
+  authorizeUrl.searchParams.set('scope', scope);
+  authorizeUrl.searchParams.set('state', authorization.state);
+  authorizeUrl.searchParams.set('code_challenge', authorization.codeChallenge);
+  authorizeUrl.searchParams.set('code_challenge_method', 'S256');
+  if (extras.prompt) authorizeUrl.searchParams.set('prompt', extras.prompt);
+  return authorizeUrl.toString();
+}
+
+/** The `email` claim for the account confirmation: access token first, then the ID token from the same response. */
+function readEmailClaim(token: TokenResponse): string | undefined {
+  for (const jwt of [token.access_token, token.id_token]) {
+    if (!jwt) continue;
+    const email: unknown = parseJwtClaim(jwt, 'email');
+    if (typeof email === 'string' && email.trim()) return email.trim();
+  }
+  return undefined;
+}
+
+/** Redeem the code with the client and verifier of the authorize request that produced it. */
+async function finishSignIn(
+  authority: string,
+  tenantId: string,
+  tenantName: string,
+  scope: string,
+  redirectUri: string,
+  result: BrowserLoginResult,
+): Promise<SignInResult> {
+  const tokenRes = await fetch(`${authority}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: result.authorization.clientId,
+      grant_type: 'authorization_code',
+      code: result.code,
+      redirect_uri: redirectUri,
+      code_verifier: result.authorization.codeVerifier,
+      scope,
+    }),
+  });
+
+  const tokenData = await tokenRes.json();
+  if (!tokenRes.ok) {
+    const error = tokenData?.error || 'token_exchange_failed';
+    const description = tokenData?.error_description || 'No description provided';
+    throw new Error(`Token exchange failed: ${error} — ${description}`);
+  }
+
+  const token = tokenData as TokenResponse;
+  const signedInEmail = readEmailClaim(token);
+  // Return tokens without writing — caller writes once after confirming the account and resolving tenant context
+  return {
+    tokens: buildStoredTokens(token, tenantId, tenantName, result.authorization.clientId, scope),
+    ...(signedInEmail ? { signedInEmail } : {}),
+  };
+}
+
+async function signInWithAuthorizeRequest(
+  tenantName: string,
+  tenantId: string,
+  clientId: string,
+  scope: string,
+  options: BrowserLoginOptions,
+  mode: { readonly stateBytes: number; readonly prompt?: 'login' | 'select_account' },
+): Promise<SignInResult> {
+  const authority = authorityFor(tenantName, tenantId);
+  const callbackServer = await startBrowserCallbackServer(options.timeoutMs ?? 300_000, options);
+  try {
+    const authorization = newAuthorization(clientId, mode.stateBytes);
+    callbackServer.expect(authorization);
+    const authorizeUrl = buildAuthorizeUrl(authority, authorization, callbackServer.redirectUri, scope, { prompt: mode.prompt });
+    options.onAuthorizeUrl?.(authorizeUrl);
+
+    try {
+      await openBrowser(authorizeUrl);
+    } catch (err) {
+      // The caller has already shown the URL. Keep the callback server alive
+      // for remote terminals, such as Codespaces, where automatic browser
+      // opening may fail but the user can paste the URL into a local browser.
+      if (!options.onAuthorizeUrl) {
+        throw new Error(
+          `Failed to open browser automatically. Open this URL manually: ${authorizeUrl}`,
+          { cause: err },
+        );
+      }
+    }
+
+    const result = await callbackServer.waitForResult;
+    return await finishSignIn(authority, tenantId, tenantName, scope, callbackServer.redirectUri, result);
+  } finally {
+    await callbackServer.close();
+  }
+}
+
 /**
  * Initiate browser-based authorization code flow with PKCE for Entra CIAM.
+ *
+ * This is the direct path (`eai login --direct`): today's authorize request
+ * with the directory's ordinary CLI app and no Portal; `prompt` is sent only
+ * for `--switch-account`.
  */
 export async function browserLogin(
   tenantName: string,
@@ -650,68 +928,30 @@ export async function browserLogin(
   scope: string,
   options: BrowserLoginOptions = {},
 ): Promise<StoredTokens> {
-  const authority = `https://${tenantName}.ciamlogin.com/${tenantId}`;
-  const state = base64UrlEncode(randomBytes(16));
-  const { codeVerifier, codeChallenge } = generatePkce();
+  const { tokens } = await signInWithAuthorizeRequest(tenantName, tenantId, clientId, scope, options, {
+    stateBytes: 16,
+    prompt: options.prompt,
+  });
+  return tokens;
+}
 
-  const callbackServer = await startBrowserCallbackServer(300_000, options);
-  try {
-    const authorizeUrl = new URL(`${authority}/oauth2/v2.0/authorize`);
-    authorizeUrl.searchParams.set('client_id', clientId);
-    authorizeUrl.searchParams.set('response_type', 'code');
-    authorizeUrl.searchParams.set('redirect_uri', callbackServer.redirectUri);
-    authorizeUrl.searchParams.set('response_mode', 'query');
-    authorizeUrl.searchParams.set('scope', scope);
-    authorizeUrl.searchParams.set('state', state);
-    authorizeUrl.searchParams.set('code_challenge', codeChallenge);
-    authorizeUrl.searchParams.set('code_challenge_method', 'S256');
-    if (options.prompt) authorizeUrl.searchParams.set('prompt', options.prompt);
-    options.onAuthorizeUrl?.(authorizeUrl.toString());
-
-    try {
-      await openBrowser(authorizeUrl.toString());
-    } catch (err) {
-      // The caller has already shown the URL. Keep the callback server alive
-      // for remote terminals, such as Codespaces, where automatic browser
-      // opening may fail but the user can paste the URL into a local browser.
-      if (!options.onAuthorizeUrl) {
-        throw new Error(
-          `Failed to open browser automatically. Open this URL manually: ${authorizeUrl.toString()}`,
-          { cause: err },
-        );
-      }
-    }
-
-    const result = await callbackServer.waitForResult;
-    if (result.state !== state) {
-      throw new Error('State mismatch in authentication callback. Please retry login.');
-    }
-
-    const tokenRes = await fetch(`${authority}/oauth2/v2.0/token`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: clientId,
-        grant_type: 'authorization_code',
-        code: result.code,
-        redirect_uri: callbackServer.redirectUri,
-        code_verifier: codeVerifier,
-        scope,
-      }),
-    });
-
-    const tokenData = await tokenRes.json();
-    if (!tokenRes.ok) {
-      const error = tokenData?.error || 'token_exchange_failed';
-      const description = tokenData?.error_description || 'No description provided';
-      throw new Error(`Token exchange failed: ${error} — ${description}`);
-    }
-
-    // Return tokens without writing — caller writes once after tenant context is resolved
-    return buildStoredTokens(tokenData as TokenResponse, tenantId, tenantName, clientId, scope);
-  } finally {
-    await callbackServer.close();
-  }
+/**
+ * `eai login --company`: open the company sign-in app's authorize request
+ * directly (no Portal), with PKCE S256 and `prompt=login` so a shared school
+ * device always asks for the password. The caller confirms the account and
+ * stores the tokens with the company client ID, which refresh then reuses.
+ */
+export async function companyLogin(
+  tenantName: string,
+  tenantId: string,
+  companyClientId: string,
+  scope: string,
+  options: Omit<BrowserLoginOptions, 'prompt'> = {},
+): Promise<SignInResult> {
+  return signInWithAuthorizeRequest(tenantName, tenantId, companyClientId, scope, options, {
+    stateBytes: 32,
+    prompt: 'login',
+  });
 }
 
 /**

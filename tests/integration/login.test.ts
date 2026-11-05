@@ -1,7 +1,10 @@
 import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { EventEmitter } from 'node:events';
+import { createHash } from 'node:crypto';
+import type { IncomingHttpHeaders } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { Command } from 'commander';
 import { describe, expect, test, vi, beforeEach, afterEach } from 'vitest';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -17,6 +20,79 @@ const EXAMPLE_AUTH_TENANT_NAME = 'example-ciam';
 const EXAMPLE_AUTH_TENANT_ID = '00000000-0000-4000-8000-000000000001';
 const EXAMPLE_PUBLIC_API_SCOPE = 'api://00000000-0000-4000-8000-000000000002/.default';
 const EXAMPLE_CLI_CLIENT_ID = '00000000-0000-4000-8000-000000000003';
+
+const DEV_DIRECTORY = '50808ce0-f31b-4fd0-9861-74b83b8c112a';
+const DEV_DIRECTORY_NAME = 'fixture-dev';
+const FIXTURE_SCOPE = `openid profile email offline_access ${EXAMPLE_PUBLIC_API_SCOPE}`;
+const FIXTURE_COMPANY_CLIENT_ID = '00000000-0000-4000-8000-0000000000c1';
+const BASE64URL_43 = /^[A-Za-z0-9_-]{43}$/;
+
+interface HttpResult {
+  status: number;
+  headers: IncomingHttpHeaders;
+  body: string;
+}
+
+/** A browser-like GET; `headers.host` overrides the Host header for DNS-rebinding probes. */
+async function httpGet(url: string, headers: Record<string, string> = {}): Promise<HttpResult> {
+  const { request } = await import('node:http');
+
+  return new Promise<HttpResult>((resolve, reject) => {
+    const req = request(url, { method: 'GET', headers }, (response) => {
+      let body = '';
+      response.setEncoding('utf8');
+      response.on('data', (chunk: string) => { body += chunk; });
+      response.on('end', () => resolve({ status: response.statusCode ?? 0, headers: response.headers, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+/** What External ID's 302 back to the CLI would look like for an authorize request. */
+function authorizeCallbackUrl(authorizeUrl: URL, values: Record<string, string> = {}): string {
+  const callback = new URL(authorizeUrl.searchParams.get('redirect_uri') || '');
+  callback.searchParams.set('code', 'fixture-auth-code');
+  callback.searchParams.set('state', authorizeUrl.searchParams.get('state') || '');
+  for (const [key, value] of Object.entries(values)) callback.searchParams.set(key, value);
+  return callback.toString();
+}
+
+function tokenResponse(claims: Record<string, string>, extra: Record<string, string> = {}): Response {
+  return new Response(JSON.stringify({
+    access_token: createJwt(claims),
+    refresh_token: '<fixture-refresh-token>',
+    expires_in: 3600,
+    token_type: 'Bearer',
+    ...extra,
+  }), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function pkceChallenge(verifier: string): string {
+  return createHash('sha256').update(verifier).digest('base64url');
+}
+
+function expectHardenedHeaders(result: HttpResult): void {
+  expect(result.headers['cache-control']).toBe('no-store');
+  expect(result.headers['referrer-policy']).toBe('no-referrer');
+}
+
+function useDevDirectoryEnv(): void {
+  vi.stubEnv('EAI_AUTH_TENANT_NAME', DEV_DIRECTORY_NAME);
+  vi.stubEnv('EAI_AUTH_TENANT_ID', DEV_DIRECTORY);
+  vi.stubEnv('EAI_AUTH_SCOPE', FIXTURE_SCOPE);
+  vi.stubEnv('EAI_CLI_CLIENT_ID', EXAMPLE_CLI_CLIENT_ID);
+  vi.stubEnv('EAI_CLI_COMPANY_CLIENT_ID', FIXTURE_COMPANY_CLIENT_ID);
+}
+
+class ExitCalled extends Error {
+  constructor(readonly code: number) {
+    super(`process.exit(${code})`);
+  }
+}
 
 async function completeBrowserCallback(url: string): Promise<void> {
   const { get } = await import('node:http');
@@ -109,6 +185,7 @@ describe('eai login', () => {
   afterEach(async () => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
     vi.doUnmock('node:child_process');
     await env.cleanup();
     restoreTestHome();
@@ -122,6 +199,8 @@ describe('eai login', () => {
     expect(result.stdout).toContain('sign-in directory');
     expect(result.stdout).toContain('--callback-port');
     expect(result.stdout).toContain('--switch-account');
+    expect(result.stdout).toContain('--company');
+    expect(result.stdout).toContain('--direct');
     expect(result.stdout).not.toContain('--client-id');
     expect(result.stdout).not.toContain('--redirect-uri');
     expect(result.stdout).not.toContain('ENTRA_CLIENT_ID');
@@ -349,7 +428,7 @@ describe('eai login', () => {
     await rm(tempHome, { recursive: true, force: true });
   });
 
-  test('eai login --switch-account maps the flag to the account picker and plain login does not', async () => {
+  test('eai login --direct --switch-account maps the flag to the account picker and --direct alone does not', async () => {
     const received: Array<{ prompt?: string; callbackPort?: number }> = [];
     vi.doMock('../../src/lib/auth.js', async () => {
       const actual = await vi.importActual<typeof import('../../src/lib/auth.js')>('../../src/lib/auth.js');
@@ -369,6 +448,8 @@ describe('eai login', () => {
           };
         }),
         storeTokens: vi.fn(async () => undefined),
+        // The direct path only: the --company flow must not start here.
+        companyLogin: vi.fn(async () => { throw new Error('Company sign-in must not run in this test'); }),
       };
     });
     vi.doMock('../../src/lib/profile.js', async () => {
@@ -387,7 +468,7 @@ describe('eai login', () => {
 
     try {
       // A fresh command per case: commander keeps parsed option values on the instance.
-      for (const args of [['--switch-account'], [], ['--switch-account', '--callback-port', '3478']]) {
+      for (const args of [['--direct', '--switch-account'], ['--direct'], ['--direct', '--switch-account', '--callback-port', '3478']]) {
         vi.resetModules();
         const { loginCommand } = await import('../../src/commands/login.js');
         await loginCommand.parseAsync(args, { from: 'user' });
@@ -612,4 +693,345 @@ describe('eai login', () => {
     restoreHome();
     await rm(tempHome, { recursive: true, force: true });
   });
+});
+
+describe('eai login --company and the hardened callback server', () => {
+  let env: TestEnvironment;
+  let restoreTestHome: () => void;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment();
+    restoreTestHome = setTestHome(env.dir);
+    for (const key of ['EAI_AUTH_TENANT_NAME', 'EAI_AUTH_TENANT_ID', 'EAI_AUTH_SCOPE', 'EAI_PUBLIC_API_SCOPE',
+      'EAI_CLI_CLIENT_ID', 'EAI_AUTH_CLIENT_ID', 'EAI_CLI_COMPANY_CLIENT_ID', 'EAI_LOGIN_VIA_PORTAL']) vi.stubEnv(key, undefined);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.doUnmock('node:child_process');
+    await env.cleanup();
+    restoreTestHome();
+  });
+
+  test('--company opens the company app with PKCE S256 and prompt=login, and no Portal or hints', async () => {
+    let authorizeUrl: URL | undefined;
+    mockBrowserLauncher(async (url) => {
+      authorizeUrl = url;
+      await completeBrowserCallback(authorizeCallbackUrl(url));
+    });
+    const tokenFetch = vi.fn(async (_url: unknown, _init?: RequestInit) => tokenResponse({
+      email: 'student@school.example.test', preferred_username: 'student@school.example.test', oid: 'oid-company',
+    }));
+    vi.stubGlobal('fetch', tokenFetch);
+
+    vi.resetModules();
+    const { companyLogin } = await import('../../src/lib/auth.js');
+    const result = await companyLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID, FIXTURE_SCOPE);
+
+    expect(`${authorizeUrl?.origin}${authorizeUrl?.pathname}`)
+      .toBe(`https://${DEV_DIRECTORY_NAME}.ciamlogin.com/${DEV_DIRECTORY}/oauth2/v2.0/authorize`);
+    const params = authorizeUrl!.searchParams;
+    expect(params.get('client_id')).toBe(FIXTURE_COMPANY_CLIENT_ID);
+    expect(params.get('response_type')).toBe('code');
+    expect(params.get('response_mode')).toBe('query');
+    expect(params.get('scope')).toBe(FIXTURE_SCOPE);
+    expect(params.get('prompt')).toBe('login');
+    expect(params.get('code_challenge_method')).toBe('S256');
+    expect(params.get('state')).toMatch(BASE64URL_43);
+    expect(params.get('code_challenge')).toMatch(BASE64URL_43);
+    expect(params.has('login_hint')).toBe(false);
+    expect(params.has('domain_hint')).toBe(false);
+
+    expect(tokenFetch).toHaveBeenCalledTimes(1);
+    const body = tokenFetch.mock.calls[0][1]?.body as URLSearchParams;
+    expect(body.get('client_id')).toBe(FIXTURE_COMPANY_CLIENT_ID);
+    expect(pkceChallenge(body.get('code_verifier') || '')).toBe(params.get('code_challenge'));
+    expect(body.get('redirect_uri')).toBe(params.get('redirect_uri'));
+
+    expect(result.tokens.clientId).toBe(FIXTURE_COMPANY_CLIENT_ID);
+    expect(result.tokens.oid).toBe('oid-company');
+    expect(result.signedInEmail).toBe('student@school.example.test');
+    expect(result.typedEmail).toBeUndefined();
+  });
+
+  test('the email check reads the ID token when the access token has no email claim', async () => {
+    mockBrowserLauncher(async (url) => completeBrowserCallback(authorizeCallbackUrl(url)));
+    vi.stubGlobal('fetch', vi.fn(async () => tokenResponse(
+      { preferred_username: 'display-name@example.test', oid: 'oid-company' },
+      { id_token: createJwt({ email: 'student@school.example.test' }) },
+    )));
+
+    vi.resetModules();
+    const { companyLogin } = await import('../../src/lib/auth.js');
+    const result = await companyLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID, FIXTURE_SCOPE);
+
+    expect(result.signedInEmail).toBe('student@school.example.test');
+    // The ID token is only read, never stored.
+    expect(JSON.stringify(result.tokens)).not.toContain(createJwt({ email: 'student@school.example.test' }));
+  });
+
+  test('the stored company client is the one refresh uses', async () => {
+    const refreshed = createJwt({ email: 'student@school.example.test', oid: 'oid-company' });
+    const refreshFetch = vi.fn(async (_url: unknown, _init?: RequestInit) => tokenResponse({ email: 'student@school.example.test' }));
+    refreshFetch.mockImplementationOnce(async () => new Response(JSON.stringify({
+      access_token: refreshed, refresh_token: '<fixture-updated-refresh-value>', expires_in: 3600, token_type: 'Bearer',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    vi.stubGlobal('fetch', refreshFetch);
+
+    vi.resetModules();
+    const { getAccessToken, storeTokens } = await import('../../src/lib/auth.js');
+    await storeTokens({
+      accessToken: '<fixture-expired-access-value>',
+      refreshToken: '<fixture-refresh-token>',
+      expiresAt: Date.now() - 1000,
+      tenantId: DEV_DIRECTORY,
+      tenantName: DEV_DIRECTORY_NAME,
+      clientId: FIXTURE_COMPANY_CLIENT_ID,
+      authScope: FIXTURE_SCOPE,
+    });
+
+    expect(await getAccessToken()).toBe(refreshed);
+    const body = refreshFetch.mock.calls[0][1]?.body as URLSearchParams;
+    expect(body.get('grant_type')).toBe('refresh_token');
+    expect(body.get('client_id')).toBe(FIXTURE_COMPANY_CLIENT_ID);
+  });
+
+  test('a bad Host, a wrong or missing state, an error without the state and other paths get refused, and the wait continues', async () => {
+    const responses: HttpResult[] = [];
+    mockBrowserLauncher(async (url) => {
+      const callback = new URL(authorizeCallbackUrl(url));
+      const port = callback.port;
+      const withState = (state: string | null, extra: Record<string, string> = {}): string => {
+        const probe = new URL(`http://localhost:${port}/`);
+        if (state !== null) probe.searchParams.set('state', state);
+        for (const [key, value] of Object.entries(extra)) probe.searchParams.set(key, value);
+        return probe.toString();
+      };
+      responses.push(await httpGet(callback.toString(), { host: `attacker.example.test:${port}` }));
+      responses.push(await httpGet(callback.toString(), { host: `127.0.0.1:${port}` }));
+      responses.push(await httpGet(withState('not-the-auth-state', { code: 'stolen-code' })));
+      responses.push(await httpGet(withState(null, { code: 'stolen-code' })));
+      responses.push(await httpGet(withState(null, { error: 'access_denied' })));
+      responses.push(await httpGet(withState('not-the-auth-state', { error: 'access_denied' })));
+      responses.push(await httpGet(`http://localhost:${port}/favicon.ico`));
+      responses.push(await httpGet(callback.toString()));
+    });
+    const tokenFetch = vi.fn(async () => tokenResponse({ email: 'student@school.example.test' }));
+    vi.stubGlobal('fetch', tokenFetch);
+
+    vi.resetModules();
+    const { companyLogin } = await import('../../src/lib/auth.js');
+    const result = await companyLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID, FIXTURE_SCOPE);
+
+    expect(responses.map((response) => response.status)).toEqual([400, 400, 400, 400, 400, 400, 404, 200]);
+    for (const response of responses) expectHardenedHeaders(response);
+    expect(responses[2].body).toContain("doesn't match the CLI that started it");
+    expect(tokenFetch).toHaveBeenCalledTimes(1);
+    expect(result.tokens.clientId).toBe(FIXTURE_COMPANY_CLIENT_ID);
+  });
+
+  test('an error callback with the matching state ends the sign-in', async () => {
+    mockBrowserLauncher(async (url) => {
+      const callback = new URL(authorizeCallbackUrl(url));
+      callback.searchParams.delete('code');
+      callback.searchParams.set('error', 'access_denied');
+      callback.searchParams.set('error_description', 'The user cancelled');
+      expectHardenedHeaders(await httpGet(callback.toString()));
+    });
+    const tokenFetch = vi.fn();
+    vi.stubGlobal('fetch', tokenFetch);
+
+    vi.resetModules();
+    const { companyLogin } = await import('../../src/lib/auth.js');
+
+    await expect(companyLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID, FIXTURE_SCOPE))
+      .rejects.toThrow('Authorization failed: access_denied');
+    expect(tokenFetch).not.toHaveBeenCalled();
+  });
+
+  test('--company works on a fixed --callback-port (Codespaces)', async () => {
+    const callbackPort = 3481;
+    mockBrowserLauncher(async (url) => {
+      expect(url.searchParams.get('redirect_uri')).toBe(`http://localhost:${callbackPort}`);
+      await completeBrowserCallback(authorizeCallbackUrl(url));
+    });
+    const tokenFetch = vi.fn(async (_url: unknown, _init?: RequestInit) => tokenResponse({ email: 'student@school.example.test' }));
+    vi.stubGlobal('fetch', tokenFetch);
+
+    vi.resetModules();
+    const { companyLogin } = await import('../../src/lib/auth.js');
+    const result = await companyLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, FIXTURE_COMPANY_CLIENT_ID, FIXTURE_SCOPE, { callbackPort });
+
+    expect((tokenFetch.mock.calls[0][1]?.body as URLSearchParams).get('redirect_uri')).toBe(`http://localhost:${callbackPort}`);
+    expect(result.tokens.clientId).toBe(FIXTURE_COMPANY_CLIENT_ID);
+  });
+
+  test('the direct path keeps its authorize request and the hardened callback', async () => {
+    let authorizeUrl: URL | undefined;
+    const responses: HttpResult[] = [];
+    mockBrowserLauncher(async (url) => {
+      authorizeUrl = url;
+      const callback = new URL(authorizeCallbackUrl(url));
+      responses.push(await httpGet(callback.toString(), { host: `attacker.example.test:${callback.port}` }));
+      responses.push(await httpGet(callback.toString()));
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => tokenResponse({ preferred_username: 'browser@example.com' })));
+
+    vi.resetModules();
+    const { browserLogin } = await import('../../src/lib/auth.js');
+    const tokens = await browserLogin(DEV_DIRECTORY_NAME, DEV_DIRECTORY, EXAMPLE_CLI_CLIENT_ID, FIXTURE_SCOPE);
+
+    expect([...authorizeUrl!.searchParams.keys()]).toEqual([
+      'client_id', 'response_type', 'redirect_uri', 'response_mode', 'scope', 'state', 'code_challenge', 'code_challenge_method',
+    ]);
+    expect(responses.map((response) => response.status)).toEqual([400, 200]);
+    expect(tokens.clientId).toBe(EXAMPLE_CLI_CLIENT_ID);
+  });
+});
+
+describe('eai login command: --company, --direct and the save prompt', () => {
+  let env: TestEnvironment;
+  let restoreTestHome: () => void;
+
+  beforeEach(async () => {
+    env = await createTestEnvironment();
+    restoreTestHome = setTestHome(env.dir);
+    for (const key of ['EAI_AUTH_TENANT_NAME', 'EAI_AUTH_TENANT_ID', 'EAI_AUTH_SCOPE', 'EAI_PUBLIC_API_SCOPE',
+      'EAI_CLI_CLIENT_ID', 'EAI_AUTH_CLIENT_ID', 'EAI_CLI_COMPANY_CLIENT_ID', 'EAI_LOGIN_VIA_PORTAL',
+      'BASE_URL_PUBLIC_API', 'ROUTING_BOOTSTRAP_PUBLIC_API_URL', 'EAI_ACCESS_TOKEN']) vi.stubEnv(key, undefined);
+    vi.resetModules();
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+    vi.doUnmock('node:child_process');
+    await env.cleanup();
+    restoreTestHome();
+  });
+
+  /** Runs the mounted login command in-process; workspace discovery is stubbed so only sign-in is exercised. */
+  async function runLogin(args: string[], answers: { interactive?: boolean; answer?: boolean } = {}): Promise<{
+    exitCode?: number;
+    output: string;
+    auth: typeof import('../../src/lib/auth.js');
+    asked: string[];
+  }> {
+    const lines: string[] = [];
+    const capture = (...parts: unknown[]): void => { lines.push(parts.map(String).join(' ')); };
+    vi.spyOn(console, 'log').mockImplementation(capture);
+    vi.spyOn(console, 'error').mockImplementation(capture);
+    vi.spyOn(console, 'warn').mockImplementation(capture);
+    vi.spyOn(process, 'cwd').mockReturnValue(env.dir);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new ExitCalled(code ?? 0); }) as never);
+
+    const auth = await import('../../src/lib/auth.js');
+    const companySignIn = await import('../../src/lib/company-sign-in.js');
+    const tenantContext = await import('../../src/lib/tenant-context.js');
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockRejectedValue(new Error('fixture: workspace lookup skipped'));
+    vi.spyOn(companySignIn, 'canPromptInTerminal').mockReturnValue(answers.interactive ?? false);
+    const asked: string[] = [];
+    vi.spyOn(companySignIn, 'askYesNo').mockImplementation(async (question: string) => {
+      asked.push(question);
+      return answers.answer ?? false;
+    });
+
+    const { loginCommand } = await import('../../src/commands/login.js');
+    const root = new Command('eai');
+    root.exitOverride();
+    root.addCommand(loginCommand);
+    let exitCode: number | undefined;
+    try {
+      await root.parseAsync(['login', ...args], { from: 'user' });
+    } catch (error) {
+      if (!(error instanceof ExitCalled)) throw error;
+      exitCode = error.code;
+    }
+    return { exitCode, output: lines.join('\n'), auth, asked };
+  }
+
+  test('--company without a company app for this environment exits 1 before opening a browser', async () => {
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        HOME: env.dir, USERPROFILE: env.dir, EAI_PROFILE: '', EAI_CLI_COMPANY_CLIENT_ID: '', EAI_AUTH_TENANT_NAME: '',
+        EAI_AUTH_TENANT_ID: '', EAI_AUTH_SCOPE: '', EAI_PUBLIC_API_SCOPE: '', EAI_CLI_CLIENT_ID: '', EAI_AUTH_CLIENT_ID: '',
+      },
+      prompts: [],
+    };
+    const result = await runCommand(ctx, 'eai login --company');
+
+    expect(result.exitCode).toBe(1);
+    expect(`${result.stdout}\n${result.stderr}`).toContain("Company sign-in isn't set up for this environment yet.");
+    expect(`${result.stdout}\n${result.stderr}`).not.toContain('Opening');
+  });
+
+  test('--company and --direct together are refused', async () => {
+    const { exitCode, output } = await runLogin(['--company', '--direct']);
+    expect(exitCode).toBe(1);
+    expect(output).toContain('Use either --company or --direct');
+  });
+
+  test('--company with no terminal saves with the default yes and stores the company client', async () => {
+    useDevDirectoryEnv();
+    mockBrowserLauncher(async (url) => {
+      expect(url.searchParams.get('client_id')).toBe(FIXTURE_COMPANY_CLIENT_ID);
+      expect(url.searchParams.get('prompt')).toBe('login');
+      await completeBrowserCallback(authorizeCallbackUrl(url));
+    });
+    vi.stubGlobal('fetch', vi.fn(async () => tokenResponse({
+      email: 'student@school.example.test', aud: EXAMPLE_PUBLIC_API_SCOPE.replace('/.default', ''),
+    })));
+
+    const { exitCode, output, auth, asked } = await runLogin(['--company']);
+
+    expect(exitCode).toBeUndefined();
+    expect(asked).toEqual([]);
+    expect(output).toContain('Signed in as student@school.example.test. Save this login? [Y/n]');
+    expect(output).toContain('using the default: yes');
+    expect((await auth.loadTokens())?.clientId).toBe(FIXTURE_COMPANY_CLIENT_ID);
+    // The stored-login check accepted the company client, so workspace discovery ran next.
+    expect(output).toContain('fixture: workspace lookup skipped');
+    expect(output).not.toContain('Stored CLI login does not match');
+  });
+
+  test('--company answered n discards the tokens and exits 1', async () => {
+    useDevDirectoryEnv();
+    mockBrowserLauncher(async (url) => completeBrowserCallback(authorizeCallbackUrl(url)));
+    vi.stubGlobal('fetch', vi.fn(async () => tokenResponse({ email: 'someone-else@school.example.test' })));
+
+    const { exitCode, output, auth, asked } = await runLogin(['--company'], { interactive: true, answer: false });
+
+    expect(exitCode).toBe(1);
+    expect(asked).toEqual(['Signed in as someone-else@school.example.test. Save this login? [Y/n]']);
+    expect(output).toContain('Login not saved');
+    expect(await auth.loadTokens()).toBeNull();
+  });
+
+  test.each([
+    ['--direct', ['--direct']],
+    ['plain eai login', []],
+  ])('%s keeps today\'s direct sign-in with the ordinary app', async (_name, args) => {
+    const auth = await import('../../src/lib/auth.js');
+    const direct = vi.spyOn(auth, 'browserLogin').mockResolvedValue({
+      accessToken: createJwt({ preferred_username: 'person@example.test' }), expiresAt: Date.now() + 600_000,
+      tenantName: 'enterpriseaiplatform', tenantId: 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26', clientId: 'direct-client',
+    });
+    const company = vi.spyOn(auth, 'companyLogin');
+
+    const { exitCode, output } = await runLogin(args);
+
+    expect(exitCode).toBeUndefined();
+    expect(direct).toHaveBeenCalledWith(
+      'enterpriseaiplatform', 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26', 'd704bde5-fe36-44ff-9a26-221d53772dd0',
+      expect.any(String), expect.any(Object),
+    );
+    expect(company).not.toHaveBeenCalled();
+    expect(output).not.toContain('Save this login?');
+  });
+
 });
