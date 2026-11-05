@@ -1,4 +1,5 @@
-import { beforeEach, describe, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import inquirer from "inquirer";
 
 const resolveActiveTenantContext = vi.hoisted(() => vi.fn());
 vi.mock("../../src/lib/tenant-context.js", async (importOriginal) => ({
@@ -7,6 +8,8 @@ vi.mock("../../src/lib/tenant-context.js", async (importOriginal) => ({
 }));
 
 import {
+  createCommand,
+  ensureCreateAuthentication,
   buildCreateCompletionSummary,
   resolveCreateCompletionPublicApiUrl,
   buildForwardedInitArgs,
@@ -18,6 +21,8 @@ import {
 } from "../../src/commands/init.js";
 
 import { setActiveProfile } from "../../src/lib/profile.js";
+import * as auth from "../../src/lib/auth.js";
+import { createTestEnvironment, type TestEnvironment } from "../helpers/test-env.js";
 
 const baseOptions: CreateCommandOptions = {
   from: "https://github.com/eai-support/eai-app-template.git",
@@ -246,5 +251,111 @@ describe("template install trust boundary", () => {
     ).toBe(true);
     expect(canRunTemplateScripts("./local-template", false)).toBe(false);
     expect(canRunTemplateScripts("./local-template", true)).toBe(true);
+  });
+});
+
+describe("eai create inline sign-in", () => {
+  const PROD_DIRECTORY = "f3035369-5c1a-45f7-8ca5-5cb0ad291d26";
+  const PROD_CLIENT = "d704bde5-fe36-44ff-9a26-221d53772dd0";
+  let environment: TestEnvironment;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
+
+  function fixtureTokens(): auth.StoredTokens {
+    return {
+      accessToken: "<fixture-access-value>",
+      expiresAt: Date.now() + 600_000,
+      tenantName: "enterpriseaiplatform",
+      tenantId: PROD_DIRECTORY,
+      clientId: PROD_CLIENT,
+      upn: "person@example.test",
+    };
+  }
+
+  beforeEach(async () => {
+    environment = await createTestEnvironment();
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
+    process.env.HOME = environment.dir;
+    process.env.USERPROFILE = environment.dir;
+    for (const key of ["EAI_ACCESS_TOKEN", "EAI_LOGIN_VIA_PORTAL", "EAI_AUTH_TENANT_NAME", "EAI_AUTH_TENANT_ID",
+      "EAI_AUTH_SCOPE", "EAI_PUBLIC_API_SCOPE", "EAI_CLI_CLIENT_ID", "EAI_AUTH_CLIENT_ID", "EAI_CLI_COMPANY_CLIENT_ID"]) {
+      vi.stubEnv(key, undefined);
+    }
+    setActiveProfile("default");
+    vi.spyOn(process, "cwd").mockReturnValue(environment.dir);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    vi.spyOn(inquirer, "prompt").mockResolvedValue({ proceed: true } as never);
+  });
+
+  afterEach(async () => {
+    await auth.clearTokens();
+    vi.restoreAllMocks();
+    vi.unstubAllEnvs();
+    if (originalHome === undefined) delete process.env.HOME; else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE; else process.env.USERPROFILE = originalUserProfile;
+    await environment.cleanup();
+  });
+
+  test("goes through the Admin Portal by default, like plain eai login", async () => {
+    // Every browser flow is replaced, so no test opens a real browser.
+    const portal = vi.spyOn(auth, "portalLogin").mockResolvedValue({
+      tokens: fixtureTokens(),
+      signedInEmail: "Person@Example.Test",
+      typedEmail: "person@example.test",
+    });
+    const direct = vi.spyOn(auth, "browserLogin").mockRejectedValue(new Error("direct sign-in must not run"));
+
+    await ensureCreateAuthentication();
+
+    expect(portal).toHaveBeenCalledWith("enterpriseaiplatform", PROD_DIRECTORY, expect.any(String), expect.objectContaining({
+      portalUrl: "https://admin-portal.myenterprise.ai",
+      standardClientId: PROD_CLIENT,
+    }));
+    expect(direct).not.toHaveBeenCalled();
+    expect((await auth.loadTokens())?.clientId).toBe(PROD_CLIENT);
+  });
+
+  test.each([
+    ["--direct", { direct: true }, {}],
+    ["EAI_LOGIN_VIA_PORTAL=false", {}, { EAI_LOGIN_VIA_PORTAL: "false" }],
+  ])("%s keeps the direct sign-in", async (_name, options, env) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    const portal = vi.spyOn(auth, "portalLogin").mockRejectedValue(new Error("Portal sign-in must not run"));
+    const direct = vi.spyOn(auth, "browserLogin").mockResolvedValue(fixtureTokens());
+
+    await ensureCreateAuthentication(options);
+
+    expect(direct).toHaveBeenCalledWith("enterpriseaiplatform", PROD_DIRECTORY, PROD_CLIENT, expect.any(String), expect.any(Object));
+    expect(portal).not.toHaveBeenCalled();
+    expect((await auth.loadTokens())?.clientId).toBe(PROD_CLIENT);
+  });
+
+  test("a signed-in email that differs from the typed one is not saved without a yes", async () => {
+    vi.spyOn(auth, "portalLogin").mockResolvedValue({
+      tokens: fixtureTokens(),
+      signedInEmail: "someone-else@example.test",
+      typedEmail: "person@example.test",
+    });
+    vi.spyOn(auth, "browserLogin").mockRejectedValue(new Error("direct sign-in must not run"));
+
+    // No terminal under test, so the default answer (no) applies.
+    await expect(ensureCreateAuthentication()).rejects.toThrow("Login not saved.");
+    expect(await auth.loadTokens()).toBeNull();
+  });
+
+  test("an existing login is reused without opening a browser", async () => {
+    await auth.storeTokens(fixtureTokens());
+    const portal = vi.spyOn(auth, "portalLogin");
+    const direct = vi.spyOn(auth, "browserLogin");
+
+    await ensureCreateAuthentication();
+
+    expect(portal).not.toHaveBeenCalled();
+    expect(direct).not.toHaveBeenCalled();
+  });
+
+  test("eai create accepts --direct for its inline sign-in", () => {
+    expect(createCommand.options.map((option) => option.long)).toContain("--direct");
   });
 });

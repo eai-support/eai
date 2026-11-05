@@ -629,6 +629,7 @@ const OPTION_DECISIONS = {
     '--app-key': 'Existing-app binding is forwarded to init and covered by the create argument contract; guided release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
+    '--direct': 'Inline sign-in routing is covered by focused create tests with stubbed browser flows; guided release smoke uses help only to avoid browser auth.',
   },
   'eai dev': {
     '--turbo': 'Default dev server mode; release smoke documents it but does not start a long-running server.',

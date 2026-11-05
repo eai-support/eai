@@ -10,26 +10,14 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
 import {
-  browserLogin,
   clearTokens,
-  companyLogin,
   COMPANY_SIGN_IN_NOT_SET_UP,
   getActiveAuthConfigMismatch,
-  portalLogin,
   resolveAuthConfig,
-  resolveCompanyClient,
   storeTokens,
   validateResolvedAuthConfig,
-  type SignInResult,
-  type StoredTokens,
 } from '../lib/auth.js';
-import {
-  askYesNo,
-  canPromptInTerminal,
-  describeLoginConfirmation,
-  isPortalLoginDisabled,
-  resolvePortalUrl,
-} from '../lib/company-sign-in.js';
+import { LOGIN_NOT_SAVED, planSignIn, runSignIn, type SignInOutcome, type SignInPlan } from '../lib/sign-in-flow.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
   buildPublicApiEnvSyncNotice,
@@ -52,27 +40,6 @@ function parseCallbackPort(value: string | undefined): number | undefined {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-/**
- * D2/OV3: before a Portal or `--company` login is saved, show whose account
- * it is. A matching typed email saves without asking; with no terminal to
- * answer in, the default answer applies (yes for --company, no on a mismatch).
- */
-async function confirmSignedInAccount(result: SignInResult): Promise<boolean> {
-  const confirmation = describeLoginConfirmation({
-    signedInEmail: result.signedInEmail,
-    typedEmail: result.typedEmail,
-    displayIdentity: result.tokens.upn,
-  });
-  if (!confirmation) return true;
-
-  if (!canPromptInTerminal()) {
-    out.info(`${confirmation.question} No terminal to answer in, so using the default: ${confirmation.defaultYes ? 'yes' : 'no'}.`);
-    return confirmation.defaultYes;
-  }
-  out.blank();
-  return askYesNo(confirmation.question, confirmation.defaultYes);
 }
 
 /** `eai login`: browser PKCE sign-in (through the Admin Portal routing page, `--company` or `--direct`), then active workspace resolution. */
@@ -136,25 +103,19 @@ What happens next:
 
     // The Portal is chosen by sign-in directory ID (never by region); --company,
     // --direct, EAI_LOGIN_VIA_PORTAL=false and unknown directories skip it.
-    const portalWanted = !options.company && !options.direct && !isPortalLoginDisabled();
     let callbackPort: number | undefined;
-    let companyClientId: string | undefined;
-    let portalUrl: string | null = null;
+    let plan: SignInPlan;
     try {
       callbackPort = parseCallbackPort(options.callbackPort);
-      if (portalWanted) {
-        portalUrl = resolvePortalUrl(tenantId, resolvedConfig.portalUrl);
-      }
-      if (options.company || portalUrl) {
-        const tenantFlagsGiven = Boolean(options.tenantName || options.tenantId);
-        companyClientId = resolveCompanyClient(resolvedConfig, { tenantFlagsGiven })?.clientId;
-      }
+      plan = planSignIn(resolvedConfig, {
+        tenantId,
+        company: options.company,
+        direct: options.direct,
+        tenantFlagsGiven: Boolean(options.tenantName || options.tenantId),
+      });
     } catch (err) {
-      out.error(`Login failed: ${errorMessage(err)}`);
-      process.exit(1);
-    }
-    if (options.company && !companyClientId) {
-      out.error(COMPANY_SIGN_IN_NOT_SET_UP);
+      const message = errorMessage(err);
+      out.error(message === COMPANY_SIGN_IN_NOT_SET_UP ? message : `Login failed: ${message}`);
       process.exit(1);
     }
 
@@ -163,60 +124,29 @@ What happens next:
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
     out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
-    if (portalWanted && !portalUrl) {
-      out.info('No Admin Portal sign-in page is known for this sign-in directory, so the CLI opens the ordinary sign-in page directly.');
-    }
 
-    const showAuthorizeUrl = callbackPort === undefined
-      ? undefined
-      : (url: string) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`);
-
-    let tokens: StoredTokens;
-    let confirmed = true;
+    let outcome: SignInOutcome;
     try {
-      if (options.company && companyClientId) {
-        out.info('Opening your browser to the company sign-in page...');
-        const result = await companyLogin(tenantName, tenantId, companyClientId, scope, {
-          callbackPort,
-          onAuthorizeUrl: showAuthorizeUrl,
-        });
-        tokens = result.tokens;
-        confirmed = await confirmSignedInAccount(result);
-      } else if (portalUrl) {
-        out.info('Opening the Admin Portal in your browser. Type your email there to choose how you sign in.');
-        const result = await portalLogin(tenantName, tenantId, scope, {
-          portalUrl,
-          standardClientId: clientId,
-          companyClientId,
-          callbackPort,
-          onPortalUrl: (url) => out.info(`If your browser doesn't open, go to: ${chalk.cyan(url)}`),
-        });
-        tokens = result.tokens;
-        confirmed = await confirmSignedInAccount(result);
-      } else {
-        out.info('Opening your browser to complete sign-in...');
-        tokens = await browserLogin(
-          tenantName,
-          tenantId,
-          clientId,
-          scope,
-          {
-            callbackPort,
-            prompt: options.switchAccount ? 'select_account' : undefined,
-            onAuthorizeUrl: showAuthorizeUrl,
-          },
-        );
-      }
+      outcome = await runSignIn(plan, {
+        tenantName,
+        tenantId,
+        clientId,
+        scope,
+        callbackPort,
+        switchAccount: options.switchAccount,
+        info: (message) => out.info(message),
+      });
     } catch (err) {
       out.error(`Login failed: ${errorMessage(err)}`);
       process.exit(1);
     }
 
-    if (!confirmed) {
+    if (!outcome.confirmed) {
       // The tokens were never written, so discarding them leaves any earlier login untouched.
-      out.error('Login not saved. Run `eai login` again and sign in with the account you meant to use.');
+      out.error(LOGIN_NOT_SAVED);
       process.exit(1);
     }
+    const { tokens } = outcome;
 
     try {
       // Store bare tokens now so the cache is populated for the tenant resolution call

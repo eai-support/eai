@@ -33,13 +33,13 @@ import * as out from "../lib/output.js";
 import { installGoferResources } from "../lib/gofer-installer.js";
 import { applyGoferRefresh, planGoferRefresh } from "../lib/gofer-refresh.js";
 import {
-  browserLogin,
   isAuthenticated,
   loadTokens,
   resolveAuthConfig,
   storeTokens,
   validateResolvedAuthConfig,
 } from "../lib/auth.js";
+import { LOGIN_NOT_SAVED, planSignIn, runSignIn } from "../lib/sign-in-flow.js";
 import {
   publicApiUrlForHomeRegion,
   resolveActiveTenantContext,
@@ -1057,6 +1057,8 @@ export interface CreateCommandOptions {
   templateVersion?: string;
   tool?: string;
   splash?: boolean;
+  /** Inline sign-in skips the Admin Portal step, as `eai login --direct` does. */
+  direct?: boolean;
 }
 
 interface CreateOnboardingAnswers {
@@ -1135,12 +1137,16 @@ export const createCommand = new Command("create")
     "AI tool to prepare for: codex, claude, vscode, grok, or antigravity",
   )
   .option("--no-splash", "Skip the interactive EAI wordmark")
+  .option(
+    "--direct",
+    "Sign in on the ordinary sign-in page without the Admin Portal step, as eai login --direct does",
+  )
   .addHelpText(
     "after",
     `
 Guided setup:
   1. Check Git, Node.js, and npm
-  2. Sign in with the browser and choose the signup workspace
+  2. Sign in with the browser (through the Admin Portal page, as eai login does) and choose the signup workspace
   3. Confirm the project name and folder
   4. Create the app with Gofer AI CLI assets
   5. Check builder readiness and hand off to /0_business_scenario
@@ -1180,7 +1186,7 @@ async function runCreateFlow(
     await runCreatePreflight();
     const answers = await promptCreateOnboarding(nameArg, options);
     showCreateSection("Sign in to EAI");
-    await ensureCreateAuthentication();
+    await ensureCreateAuthentication({ direct: options.direct });
 
     showCreateSection("Choose your EAI workspace");
     const bootstrapPublicApiUrl = await resolvePublicApiUrl();
@@ -1430,7 +1436,13 @@ async function promptCreateOnboarding(
   };
 }
 
-async function ensureCreateAuthentication(): Promise<void> {
+/**
+ * Inline sign-in for `eai create` when no login is stored. It uses the same
+ * routing as plain `eai login` (Issues2025#3458): the Admin Portal step by
+ * default, the direct flow for `--direct`, EAI_LOGIN_VIA_PORTAL=false or a
+ * directory without a known Portal, and the same account check before saving.
+ */
+export async function ensureCreateAuthentication(options: { direct?: boolean } = {}): Promise<void> {
   if (await isAuthenticated()) {
     out.nestedSuccess("EAI login is already active");
     return;
@@ -1455,13 +1467,19 @@ async function ensureCreateAuthentication(): Promise<void> {
   const configIssue = validateResolvedAuthConfig(resolvedConfig);
   if (configIssue) throw new Error(configIssue);
 
-  out.nestedInfo("Opening your browser to complete EAI sign-in...");
-  const tokens = await browserLogin(
-    resolvedConfig.tenantName,
-    resolvedConfig.tenantId,
-    resolvedConfig.clientId,
-    resolvedConfig.authScope,
-  );
+  const plan = planSignIn(resolvedConfig, {
+    tenantId: resolvedConfig.tenantId,
+    direct: options.direct,
+  });
+  const { tokens, confirmed } = await runSignIn(plan, {
+    tenantName: resolvedConfig.tenantName,
+    tenantId: resolvedConfig.tenantId,
+    clientId: resolvedConfig.clientId,
+    scope: resolvedConfig.authScope,
+    info: (message) => out.nestedInfo(message),
+  });
+  // The tokens were never written, so a declined account leaves no login behind.
+  if (!confirmed) throw new Error(LOGIN_NOT_SAVED);
   await storeTokens(tokens);
   out.nestedSuccess(`Authenticated as ${chalk.bold(tokens.upn || "user")}`);
 }

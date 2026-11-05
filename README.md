@@ -200,6 +200,9 @@ a different repository or a local template path.
 | `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
 | `eai user provision-me` | Provision yourself to the active workspace or a specified workspace |
 
+`eai create` signs you in the same way when no login is stored; use
+`eai create --direct` to skip the Admin Portal step there.
+
 After a Portal or `--company` sign-in, the CLI shows the signed-in account
 before it saves the login. If the account's email differs from the email you
 typed on the Portal page, it asks `Save this login? [y/N]`; answer `n` to

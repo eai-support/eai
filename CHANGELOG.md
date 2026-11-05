@@ -24,6 +24,9 @@
   `no-referrer` on every response.
 - Explain PublicAPI's 502 `FEDERATED_ROUTE_NOT_ENABLED` for company sign-in
   accounts (`E297`).
+- `eai create`'s inline sign-in uses the same routing as `eai login`: the
+  Admin Portal step by default, `eai create --direct` or
+  `EAI_LOGIN_VIA_PORTAL=false` for the direct flow, and the same account check.
 - The production company sign-in app ID is intentionally unset until that app
   exists, so production `eai login --company` reports that company sign-in
   isn't set up yet.
