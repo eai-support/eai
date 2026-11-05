@@ -555,6 +555,23 @@
               "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
             }
           ]
+        },
+        {
+          "id": "eai-cli-login-switch-account",
+          "description": "eai login --switch-account sends prompt=select_account on the Entra authorize request so the browser shows its account picker instead of silently reusing the signed-in session; the default sign-in, the PKCE and state checks and token storage are unchanged. EAI Setup runs eai logout and then this command for its Use a different account action.",
+          "owned_paths": [
+            "src/commands/login.ts",
+            "src/lib/auth.ts",
+            "tests/integration/login.test.ts",
+            "README.md",
+            ".tech-docs/api-reference.md"
+          ],
+          "required_repo_tests": [
+            "tests/integration/login.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ]
         }
       ]
     }
