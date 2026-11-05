@@ -9,6 +9,7 @@ import {
 import { PlatformAPIClient } from "./api.js";
 import { isRecord } from "./utils.js";
 import { getActiveProfile, loadProfileConfig } from "./profile.js";
+import { fetchWithRateLimitRetry } from "./rate-limit.js";
 import {
   buildTenantHierarchy,
   loadTenantHierarchy,
@@ -341,7 +342,7 @@ async function resolveRegionalPublicApiUrlFromSession(
   const accessToken = await getAccessToken();
   if (!accessToken) return null;
   try {
-    const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
+    const response = await fetchWithRateLimitRetry(() => fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -352,7 +353,7 @@ async function resolveRegionalPublicApiUrlFromSession(
         requestedTenantId: requestedTenantId || undefined,
       }),
       ...(policy?.redirect ? { redirect: policy.redirect } : {}),
-    });
+    }));
     if (!response.ok) return null;
 
     const payload = (await response.json()) as SessionResolveResponse;

@@ -28,6 +28,7 @@ The v4 surface is grouped by domain prefix:
 
 - **Base URL**: Configured via `BASE_URL_PUBLIC_API` environment variable or profile
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
+- **Rate limits**: on HTTP 429 the CLI waits and resends the same request, for any method: it honours `Retry-After` (seconds or an HTTP date, at most 30 s per wait), otherwise uses exponential backoff with jitter, retries at most 4 times within about 90 s, and prints each wait on stderr. Then it stops with "PublicAPI is busy (rate limited). Wait a minute and try again." Other statuses are not retried.
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
 > **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access. The local CLI selector `EAI_PROFILE` is excluded from cloud synchronization.

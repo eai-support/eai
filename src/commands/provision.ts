@@ -24,6 +24,7 @@ import { formatGuidanceText } from '../lib/error-guidance/render.js';
 import { acknowledgedSelectedAppBinding } from '../lib/init-app-binding.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
 import { createLocalAppCredential, LocalAppCredentialError } from '../lib/local-app-credential.js';
+import { fetchWithRateLimitRetry, PublicApiRateLimitedError } from '../lib/rate-limit.js';
 
 interface ScopedEntraOptions {
   companyTenant?: string;
@@ -307,6 +308,19 @@ async function formatProvisionResponseError(response: Response): Promise<string>
     return `Storage provisioning failed: ${response.status} ${response.statusText}${message ? ` — ${message}` : ''}`;
   } catch {
     return `Storage provisioning failed: ${response.status} ${response.statusText} — ${text.slice(0, 300)}`;
+  }
+}
+
+/** A direct PublicAPI POST that waits out gateway 429s like the shared client, then exits with the busy message. */
+async function postToPublicApi(url: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetchWithRateLimitRetry(() => fetch(url, init));
+  } catch (err) {
+    if (err instanceof PublicApiRateLimitedError) {
+      out.error(err.message);
+      process.exit(1);
+    }
+    throw err;
   }
 }
 
@@ -766,7 +780,7 @@ Notes:
       process.exit(1);
     }
 
-    const response = await fetch(
+    const response = await postToPublicApi(
       `${publicApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-refresh`,
       {
         method: 'POST',
@@ -1124,7 +1138,7 @@ Notes:
         body.objectTypes = objectTypes;
       }
 
-      const response = await fetch(
+      const response = await postToPublicApi(
         `${publicApiUrl}/v4/platform/tenants/${encodeURIComponent(tenantId)}/resourceapi/passive-bundle`,
         {
           method: 'POST',

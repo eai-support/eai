@@ -27,6 +27,13 @@
 - The production company sign-in app ID is intentionally unset until that app
   exists, so production `eai login --company` reports that company sign-in
   isn't set up yet.
+- Wait out PublicAPI's HTTP 429 in every command: honour `Retry-After`
+  (seconds or an HTTP date, capped at 30 s), otherwise back off exponentially
+  with full jitter; at most 4 retries within about 90 s, then stop with
+  "PublicAPI is busy (rate limited). Wait a minute and try again." The gateway
+  refuses before the backend runs, so any method is resent; other statuses
+  are not retried. Each wait prints one line on stderr, so JSON output is
+  unchanged, and `eai types seed` schema polling stops instead of polling on.
 
 - Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
   `text/markdown` headers and metadata. Normalize the compatibility alias and
