@@ -349,6 +349,57 @@ describe('eai login', () => {
     await rm(tempHome, { recursive: true, force: true });
   });
 
+  test('eai login --switch-account maps the flag to the account picker and plain login does not', async () => {
+    const prompts: Array<string | undefined> = [];
+    vi.doMock('../../src/lib/auth.js', async () => {
+      const actual = await vi.importActual<typeof import('../../src/lib/auth.js')>('../../src/lib/auth.js');
+      return {
+        ...actual,
+        browserLogin: vi.fn(async (tenantName: string, tenantId: string, clientId: string, _scope: string, options: { prompt?: string } = {}) => {
+          prompts.push(options.prompt);
+          return {
+            accessToken: createJwt({ preferred_username: 'browser@example.com', oid: 'oid-123' }),
+            refreshToken: '<fixture-refresh-token>',
+            expiresAt: Date.now() + 3_600_000,
+            tenantId,
+            tenantName,
+            clientId,
+            upn: 'browser@example.com',
+            oid: 'oid-123',
+          };
+        }),
+        storeTokens: vi.fn(async () => undefined),
+      };
+    });
+    vi.doMock('../../src/lib/profile.js', async () => {
+      const actual = await vi.importActual<typeof import('../../src/lib/profile.js')>('../../src/lib/profile.js');
+      return { ...actual, assertActiveProfileApiCoherence: vi.fn(async () => undefined) };
+    });
+    vi.doMock('../../src/lib/tenant-context.js', async () => {
+      const actual = await vi.importActual<typeof import('../../src/lib/tenant-context.js')>('../../src/lib/tenant-context.js');
+      return {
+        ...actual,
+        resolvePublicApiUrl: vi.fn(async () => 'https://test-api.example.com'),
+        resolveActiveTenantContext: vi.fn(async () => ({ activeTenant: { displayName: 'Tenant 123', slug: 'tenant-123' }, publicApiEnvSync: null })),
+        buildPublicApiEnvSyncNotice: vi.fn(() => null),
+      };
+    });
+
+    try {
+      // A fresh command per case: commander keeps parsed option values on the instance.
+      for (const args of [['--switch-account'], []]) {
+        vi.resetModules();
+        const { loginCommand } = await import('../../src/commands/login.js');
+        await loginCommand.parseAsync(args, { from: 'user' });
+      }
+      expect(prompts).toEqual(['select_account', undefined]);
+    } finally {
+      vi.doUnmock('../../src/lib/auth.js');
+      vi.doUnmock('../../src/lib/profile.js');
+      vi.doUnmock('../../src/lib/tenant-context.js');
+    }
+  });
+
   test('browserLogin supports fixed localhost callback ports', async () => {
     const tempHome = await mkdtemp(join(tmpdir(), 'eai-auth-home-'));
     const restoreHome = setTestHome(tempHome);
