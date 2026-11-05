@@ -538,6 +538,9 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai login': {
+    '--switch-account': 'Interrupts single sign-on so the browser shows its account picker; the dedicated test profile signs in once and must not be asked to choose an account.',
+  },
   'eai kb upload': {
     '--tenant-id': 'Owning tests require exact workspace scope and same-environment regional session routing before mutation.',
     '--title': 'Optional KB title is forwarded through the existing Portal resource contract; no live KB mutation in this runner.',

@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.9. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.10. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -846,7 +846,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.9** (2026-11-02): Explain unsupported Knowledge Base indexing types safely.
+The current CLI release is **v3.20.10** (2026-11-05): Add eai login --switch-account for EAI Setup account switching.
 
 ---
 
@@ -897,10 +897,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.9 |
-| Released | 2026-11-02 |
-| Last Material Change | Explain unsupported Knowledge Base indexing types safely |
-| Source Commit | `432da597381b92885492da07d79a31dd8e2115e3` |
+| Version | 3.20.10 |
+| Released | 2026-11-05 |
+| Last Material Change | Add eai login --switch-account for EAI Setup account switching |
+| Source Commit | `70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea` |
 
 
 ## Install
@@ -2749,7 +2749,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.9. The same catalog powers human stderr output, JSON output for AI
+v3.20.10. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -4067,6 +4067,7 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
+- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`

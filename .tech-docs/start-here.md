@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.9** (2026-11-02): Explain unsupported Knowledge Base indexing types safely.
+The current CLI release is **v3.20.10** (2026-11-05): Add eai login --switch-account for EAI Setup account switching.
