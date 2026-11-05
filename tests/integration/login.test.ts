@@ -350,13 +350,13 @@ describe('eai login', () => {
   });
 
   test('eai login --switch-account maps the flag to the account picker and plain login does not', async () => {
-    const prompts: Array<string | undefined> = [];
+    const received: Array<{ prompt?: string; callbackPort?: number }> = [];
     vi.doMock('../../src/lib/auth.js', async () => {
       const actual = await vi.importActual<typeof import('../../src/lib/auth.js')>('../../src/lib/auth.js');
       return {
         ...actual,
-        browserLogin: vi.fn(async (tenantName: string, tenantId: string, clientId: string, _scope: string, options: { prompt?: string } = {}) => {
-          prompts.push(options.prompt);
+        browserLogin: vi.fn(async (tenantName: string, tenantId: string, clientId: string, _scope: string, options: { prompt?: string; callbackPort?: number } = {}) => {
+          received.push({ prompt: options.prompt, callbackPort: options.callbackPort });
           return {
             accessToken: createJwt({ preferred_username: 'browser@example.com', oid: 'oid-123' }),
             refreshToken: '<fixture-refresh-token>',
@@ -387,12 +387,16 @@ describe('eai login', () => {
 
     try {
       // A fresh command per case: commander keeps parsed option values on the instance.
-      for (const args of [['--switch-account'], []]) {
+      for (const args of [['--switch-account'], [], ['--switch-account', '--callback-port', '3478']]) {
         vi.resetModules();
         const { loginCommand } = await import('../../src/commands/login.js');
         await loginCommand.parseAsync(args, { from: 'user' });
       }
-      expect(prompts).toEqual(['select_account', undefined]);
+      expect(received).toEqual([
+        { prompt: 'select_account', callbackPort: undefined },
+        { prompt: undefined, callbackPort: undefined },
+        { prompt: 'select_account', callbackPort: 3478 },
+      ]);
     } finally {
       vi.doUnmock('../../src/lib/auth.js');
       vi.doUnmock('../../src/lib/profile.js');

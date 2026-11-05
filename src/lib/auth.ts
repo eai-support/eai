@@ -84,6 +84,7 @@ interface CallbackServer {
   close: () => Promise<void>;
 }
 
+/** Knobs for the browser PKCE sign-in: a fixed callback port and an OpenID prompt override. */
 export interface BrowserLoginOptions {
   callbackPort?: number;
   onAuthorizeUrl?: (url: string) => void;

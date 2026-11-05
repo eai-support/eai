@@ -25,6 +25,7 @@ function parseCallbackPort(value: string | undefined): number | undefined {
   return port;
 }
 
+/** `eai login`: browser PKCE sign-in against the configured Entra CIAM directory, then active workspace resolution. */
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
