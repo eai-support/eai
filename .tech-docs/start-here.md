@@ -10,7 +10,7 @@ Choose the route that matches your situation. Do not complete every route.
 ## Set Up This Computer
 
 **Recommended for most people.** Use [EAI Setup](./installer-setup.md) on a new
-Windows, macOS, or Ubuntu/Debian computer.
+Windows computer (x64 or ARM64) or a new Mac with Apple Silicon.
 
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
