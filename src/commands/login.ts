@@ -1,10 +1,23 @@
 /**
  * eai login — authenticate with Entra CIAM via browser auth (PKCE).
+ *
+ * Plain `eai login` goes through the sign-in directory's Admin Portal page,
+ * which routes school and company emails to their own sign-in. `--company`
+ * opens the company sign-in page directly, and `--direct` (or
+ * EAI_LOGIN_VIA_PORTAL=false) keeps the original direct flow.
  */
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig, getActiveAuthConfigMismatch } from '../lib/auth.js';
+import {
+  clearTokens,
+  COMPANY_SIGN_IN_NOT_SET_UP,
+  getActiveAuthConfigMismatch,
+  resolveAuthConfig,
+  storeTokens,
+  validateResolvedAuthConfig,
+} from '../lib/auth.js';
+import { LOGIN_NOT_SAVED, planSignIn, runSignIn, type SignInOutcome, type SignInPlan } from '../lib/sign-in-flow.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
   buildPublicApiEnvSyncNotice,
@@ -25,26 +38,40 @@ function parseCallbackPort(value: string | undefined): number | undefined {
   return port;
 }
 
-/** `eai login`: browser PKCE sign-in against the configured Entra CIAM directory, then active workspace resolution. */
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+/** `eai login`: browser PKCE sign-in (through the Admin Portal routing page, `--company` or `--direct`), then active workspace resolution. */
 export const loginCommand = new Command('login')
   .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
   .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
-  .option('--switch-account', 'Ask the browser which account to use, even when it is already signed in')
+  .option('--company', 'Sign in with a school or company account on the company sign-in page, without the Admin Portal step')
+  .option('--direct', 'Skip the Admin Portal step and open the ordinary sign-in page, as earlier CLI versions did')
+  .option('--switch-account', 'With the direct sign-in, ask the browser which account to use, even when it is already signed in')
   .addHelpText('after', `
 Examples:
   $ eai login
+  $ eai login --company
+  $ eai login --direct
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
   $ eai login --callback-port 3476
-  $ eai login --switch-account
+  $ eai login --direct --switch-account
   $ eai whoami
 
 What happens next:
-  - The CLI opens your browser to sign you in.
-  - With --switch-account, the browser shows its account picker instead of reusing the signed-in session.
-  - With --callback-port, the CLI still uses localhost and listens on that exact port.
+  - The CLI opens your sign-in directory's Admin Portal page and also prints its link. Type your email:
+    school and company accounts go straight to their own sign-in, other accounts to the ordinary sign-in page.
+  - --company opens the company sign-in page directly, without the Portal step (school or company accounts).
+  - --direct, or EAI_LOGIN_VIA_PORTAL=false, skips the Portal step and opens the ordinary sign-in page.
+  - With --switch-account, the direct sign-in shows the browser's account picker instead of reusing the signed-in session.
+    The Portal and --company sign-ins always ask you to sign in again.
+  - After a Portal or --company sign-in, the CLI shows the signed-in account. If it differs from the email you
+    typed, it asks before saving the login.
+  - With --callback-port, the CLI still uses localhost and listens on that exact port for both the Portal step and the sign-in callback.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
   - If you only have one workspace admin membership, it becomes active automatically.
   - If you have more than one, run 'eai workspace select' to choose the workspace to work with.
@@ -56,6 +83,10 @@ What happens next:
     const configIssue = validateResolvedAuthConfig(resolvedConfig);
     if (configIssue) {
       out.error(configIssue);
+      process.exit(1);
+    }
+    if (options.company && options.direct) {
+      out.error('Use either --company or --direct, not both.');
       process.exit(1);
     }
 
@@ -70,29 +101,56 @@ What happens next:
       process.exit(1);
     }
 
+    // The Portal is chosen by sign-in directory ID (never by region); --company,
+    // --direct, EAI_LOGIN_VIA_PORTAL=false and unknown directories skip it.
+    let callbackPort: number | undefined;
+    let plan: SignInPlan;
+    try {
+      callbackPort = parseCallbackPort(options.callbackPort);
+      plan = planSignIn(resolvedConfig, {
+        tenantName,
+        tenantId,
+        scope,
+        company: options.company,
+        direct: options.direct,
+        tenantFlagsGiven: Boolean(options.tenantName || options.tenantId),
+      });
+    } catch (err) {
+      const message = errorMessage(err);
+      out.error(message === COMPANY_SIGN_IN_NOT_SET_UP ? message : `Login failed: ${message}`);
+      process.exit(1);
+    }
+
     out.heading('Authenticating with Entra CIAM');
     if (profile !== 'default') {
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
     out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
-    out.info('Opening your browser to complete sign-in...');
 
+    let outcome: SignInOutcome;
     try {
-      const callbackPort = parseCallbackPort(options.callbackPort);
-      const tokens = await browserLogin(
+      outcome = await runSignIn(plan, {
         tenantName,
         tenantId,
         clientId,
         scope,
-        {
-          callbackPort,
-          prompt: options.switchAccount ? 'select_account' : undefined,
-          onAuthorizeUrl: callbackPort === undefined
-            ? undefined
-            : (url) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`),
-        },
-      );
+        callbackPort,
+        switchAccount: options.switchAccount,
+        info: (message) => out.info(message),
+      });
+    } catch (err) {
+      out.error(`Login failed: ${errorMessage(err)}`);
+      process.exit(1);
+    }
 
+    if (!outcome.confirmed) {
+      // The tokens were never written, so discarding them leaves any earlier login untouched.
+      out.error(LOGIN_NOT_SAVED);
+      process.exit(1);
+    }
+    const { tokens } = outcome;
+
+    try {
       // Store bare tokens now so the cache is populated for the tenant resolution call
       await storeTokens(tokens);
 
@@ -119,11 +177,11 @@ What happens next:
           out.success(notice.message);
         }
       } catch (selectionError) {
-        out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
+        out.warn(errorMessage(selectionError));
         out.info(`Run ${chalk.cyan('eai workspace select')} after login to choose the workspace to work with.`);
       }
     } catch (err) {
-      out.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`);
+      out.error(`Login failed: ${errorMessage(err)}`);
       process.exit(1);
     }
   });

@@ -6,6 +6,40 @@
   the authorize request so the browser shows its account picker instead of
   reusing the session it already holds. EAI Setup runs `eai logout` and then
   this command for its Use a different account action. Prepared as 3.20.10.
+- `eai login` opens the sign-in directory's AU Admin Portal page first, chosen
+  by directory and never by region. School and company emails go straight to
+  their own sign-in; other emails get the ordinary sign-in page with the email
+  filled in. The CLI still builds the sign-in request itself with fresh state
+  and PKCE. `eai login --company` opens the company sign-in page directly, and
+  `eai login --direct` (or `EAI_LOGIN_VIA_PORTAL=false`) keeps the earlier flow.
+  Directories without a known Portal use the direct flow. `--switch-account`
+  applies to the direct flow; the Portal and `--company` flows always ask for
+  a fresh sign-in.
+- Portal and `--company` sign-ins use `prompt=login` and show the signed-in
+  account before saving; a token email that differs from the typed email is
+  saved only after `y`. Logins with the company sign-in app pass the stored
+  login check, and refresh keeps using that app.
+- The local callback answers only `localhost:<port>` requests with the current
+  state, keeps waiting after a mismatch, and sends `no-store` and
+  `no-referrer` on every response.
+- Explain PublicAPI's 502 `FEDERATED_ROUTE_NOT_ENABLED` for company sign-in
+  accounts (`E297`), including in `eai chat` and `eai docs upload`.
+- `eai create`'s inline sign-in uses the same routing as `eai login`: the
+  Admin Portal step by default, `eai create --direct` or
+  `EAI_LOGIN_VIA_PORTAL=false` for the direct flow, and the same account check.
+- The production company sign-in app ID is intentionally unset until that app
+  exists, so production `eai login --company` reports that company sign-in
+  isn't set up yet.
+- Wait out PublicAPI's HTTP 429 in every command: honour `Retry-After`
+  (seconds or an HTTP date, capped at 30 s), otherwise back off exponentially
+  with full jitter; at most 4 retries within about 90 s, then stop with
+  "PublicAPI is busy (rate limited). Wait a minute and try again." The gateway
+  refuses before the backend runs, so any method is resent; other statuses
+  are not retried. Each wait prints one line on stderr, so JSON output is
+  unchanged, and `eai types seed` schema polling stops instead of polling on.
+  The `eai dev` and `eai verify` reachability probe waits the same way, and
+  regional routing reports the busy error instead of falling back to another
+  region.
 
 - Support nonempty UTF-8 Markdown KB files (`.md`/`.markdown`) with canonical
   `text/markdown` headers and metadata. Normalize the compatibility alias and

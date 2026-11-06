@@ -186,7 +186,9 @@ a different repository or a local template path.
 
 | Command | Description |
 |---------|-------------|
-| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost callback) |
+| `eai login` | Authenticate with Entra CIAM (browser-based PKCE flow with localhost callback). Opens your sign-in directory's Admin Portal page first: type your email, and school or company accounts go straight to their own sign-in |
+| `eai login --company` | Sign in with a school or company account on the company sign-in page directly, without the Admin Portal step |
+| `eai login --direct` | Skip the Admin Portal step and open the ordinary sign-in page, as earlier CLI versions did (`EAI_LOGIN_VIA_PORTAL=false` does the same) |
 | `eai logout` | Clear stored tokens |
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
@@ -197,6 +199,16 @@ a different repository or a local template path.
 | `eai user roles` | List workspace role definitions available for user invitation |
 | `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
 | `eai user provision-me` | Provision yourself to the active workspace or a specified workspace |
+
+`eai create` signs you in the same way when no login is stored; use
+`eai create --direct` to skip the Admin Portal step there.
+
+After a Portal or `--company` sign-in, the CLI shows the signed-in account
+before it saves the login. If the account's email differs from the email you
+typed on the Portal page, it asks `Save this login? [y/N]`; answer `n` to
+discard the login and sign in again with the right account. If the Portal
+sign-in doesn't finish within five minutes, use `eai login --company` (school or
+company accounts) or `eai login --direct`.
 
 Codespaces and other remote dev environments can keep the standard localhost
 callback by forwarding a fixed callback port from the Codespace to your local
@@ -213,11 +225,14 @@ eai login --callback-port 3476
 `eai login --callback-port <port>` still uses `http://localhost:<port>` for the
 OAuth callback; it just pins the port instead of choosing a random one. That
 keeps the public Entra app registration unchanged while allowing your local
-machine to tunnel the callback into the Codespace.
+machine to tunnel the callback into the Codespace. The Admin Portal step returns
+to the same forwarded port, so both hops of `eai login` use it.
 
 If your browser is already signed in to the wrong account, run
-`eai logout` and then `eai login --switch-account`: the browser shows its
-account picker instead of reusing the existing session.
+`eai logout` and then `eai login`: the Admin Portal and `--company` sign-ins
+always ask you to sign in again. With `eai login --direct`, add
+`--switch-account` so the browser shows its account picker instead of reusing
+the existing session.
 
 ### Environment
 

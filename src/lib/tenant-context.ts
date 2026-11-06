@@ -9,6 +9,7 @@ import {
 import { PlatformAPIClient } from "./api.js";
 import { isRecord } from "./utils.js";
 import { getActiveProfile, loadProfileConfig } from "./profile.js";
+import { fetchWithRateLimitRetry, PublicApiRateLimitedError } from "./rate-limit.js";
 import {
   buildTenantHierarchy,
   loadTenantHierarchy,
@@ -341,7 +342,7 @@ async function resolveRegionalPublicApiUrlFromSession(
   const accessToken = await getAccessToken();
   if (!accessToken) return null;
   try {
-    const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
+    const response = await fetchWithRateLimitRetry(() => fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -352,13 +353,16 @@ async function resolveRegionalPublicApiUrlFromSession(
         requestedTenantId: requestedTenantId || undefined,
       }),
       ...(policy?.redirect ? { redirect: policy.redirect } : {}),
-    });
+    }));
     if (!response.ok) return null;
 
     const payload = (await response.json()) as SessionResolveResponse;
     if (payload.status !== "resolved") return null;
     return normalizeTrustedSessionPublicApiUrl(payload.apiBaseUrl);
-  } catch {
+  } catch (error) {
+    // A gateway that is still rate limiting after the retries says nothing
+    // about the region; falling back would route to the wrong one.
+    if (error instanceof PublicApiRateLimitedError) throw error;
     return null;
   }
 }
@@ -400,7 +404,8 @@ async function resolveRegionalPublicApiUrlFromTenantManagement(
           : hqCountryCode,
     });
     return regionalUrl;
-  } catch {
+  } catch (error) {
+    if (error instanceof PublicApiRateLimitedError) throw error;
     return null;
   }
 }

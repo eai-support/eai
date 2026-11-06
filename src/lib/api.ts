@@ -18,6 +18,7 @@ import { toObjectTypeSlug } from './utils.js';
 import { isCanonicalObjectTypeSlug } from './object-type-identifiers.js';
 import { safePlatformDiagnostics, type SafeRotationFailure } from './platform-diagnostics.js';
 import type { ContentUnderstandingManifest } from './content-understanding-manifest.js';
+import { fetchWithRateLimitRetry, isReplayableBody } from './rate-limit.js';
 
 export type PlatformMethod = 'GET' | 'POST' | 'PATCH' | 'PUT' | 'DELETE';
 /** Sanitized authority from the exact bearer and gateway used by an opted-in init request. */
@@ -99,13 +100,18 @@ export async function readManagedPublicResponseText(response: Response): Promise
   }
 }
 
+/**
+ * GET the PublicAPI health route (`eai dev`, `eai verify`). A gateway 429 is
+ * waited out like every other PublicAPI call; each attempt keeps its own
+ * `timeoutMs`, and the shared retry budget bounds the waits between them.
+ */
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
   const authorized = captureProfileConfig(getActiveProfile())?.managedDeploymentApiUrl !== undefined;
   const endpoint = authorized ? requireManagedPublicApiUrl(baseUrl) : baseUrl;
-  return fetch(`${endpoint}${PUBLIC_API_REACHABILITY_PATH}`, {
+  return fetchWithRateLimitRetry(() => fetch(`${endpoint}${PUBLIC_API_REACHABILITY_PATH}`, {
     signal: AbortSignal.timeout(timeoutMs),
     ...(authorized ? { redirect: 'error' as const } : {}),
-  });
+  }));
 }
 
 /** Stable public error code for index apply, rejected before authentication or network dispatch. */
@@ -1154,11 +1160,17 @@ export class PlatformAPIClient {
     const observation = Object.freeze({ publicApiUrl: this.baseUrl.replace(/\/$/, ''), tenantId,
       proofKind: 'transport-response' as const });
     // SECURITY: an explicitly authorized private gateway cannot redirect its credentials to another destination.
-    const response = await fetch(url, this.profileAuthorizedGateway
+    const init: RequestInit = this.profileAuthorizedGateway
       ? { ...options, redirect: 'error' }
       : this.requestOptions.publicRequestRedirect
         ? { ...options, redirect: options.redirect ?? this.requestOptions.publicRequestRedirect }
-        : options);
+        : options;
+    // Every PublicAPI call waits out a gateway 429 here, so commands and their
+    // polling loops share one bounded backoff (src/lib/rate-limit.ts).
+    const response = await fetchWithRateLimitRetry(() => fetch(url, init), {
+      signal: init.signal,
+      replayable: isReplayableBody(init.body),
+    });
     // A redirected, foreign or reused response handle cannot identify this
     // invocation, even if an earlier request once qualified the same handle.
     const observed = safeGateway && !response.redirected && (!response.url || response.url === new URL(url).href)

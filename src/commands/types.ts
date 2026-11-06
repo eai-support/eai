@@ -27,6 +27,7 @@ import { isRecord, toObjectTypeSlug } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
 import { readConsistentObjectTypes } from "../lib/object-type-export.js";
+import { PublicApiRateLimitedError } from "../lib/rate-limit.js";
 
 export interface TenantResolution {
   tenantId?: string;
@@ -1712,6 +1713,9 @@ export async function waitForResourceApiSchemaVisibility(
         }
       }
     } catch (err) {
+      // The client already waited out the gateway's 429s for this read;
+      // polling on would only queue more refused requests.
+      if (err instanceof PublicApiRateLimitedError) throw err;
       lastError = err instanceof Error ? err.message : String(err);
     }
 

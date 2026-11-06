@@ -540,6 +540,8 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 const OPTION_DECISIONS = {
   'eai login': {
     '--switch-account': 'Interrupts single sign-on so the browser shows its account picker; the dedicated test profile signs in once and must not be asked to choose an account.',
+    '--company': 'Browser-only company sign-in with prompt=login; repo login tests cover the company app request, callback hardening and the save prompt, and each environment is proven by hand with a company test account.',
+    '--direct': 'Keeps the direct browser PKCE sign-in the dedicated test profile already validates; repo login tests cover that it skips the Admin Portal step.',
   },
   'eai kb upload': {
     '--tenant-id': 'Owning tests require exact workspace scope and same-environment regional session routing before mutation.',
@@ -627,6 +629,7 @@ const OPTION_DECISIONS = {
     '--app-key': 'Existing-app binding is forwarded to init and covered by the create argument contract; guided release smoke keeps the default create-new-app path to avoid changing tenant state.',
     '--no-splash': 'Interactive branding opt-out; smoke runs remain non-interactive and do not require the terminal wordmark.',
     '--no-install': 'Dependency installation is covered by init integration tests; guided release smoke uses help only to avoid cloning or browser auth.',
+    '--direct': 'Inline sign-in routing is covered by focused create tests with stubbed browser flows; guided release smoke uses help only to avoid browser auth.',
   },
   'eai dev': {
     '--turbo': 'Default dev server mode; release smoke documents it but does not start a long-running server.',

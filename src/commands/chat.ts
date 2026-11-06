@@ -8,8 +8,16 @@ import chalk from 'chalk';
 import { resolveCommandContext } from '../lib/context.js';
 import * as out from '../lib/output.js';
 import { safePlatformDiagnostics, formatSafePlatformFailure } from '../lib/platform-diagnostics.js';
+import { findCompanySignInRouteGuidance } from '../lib/error-guidance/match.js';
+import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
 class ChatStreamError extends Error {}
+
+/** Explain a company sign-in refusal (E297) after the raw HTTP failure. */
+function printCompanySignInRouteGuidance(status: number, body: string): void {
+  const guidance = findCompanySignInRouteGuidance(status, body);
+  if (guidance) console.error(`\n${formatGuidanceText(guidance)}`);
+}
 
 async function printChatStream(body: ReadableStream<Uint8Array>): Promise<void> {
   const reader = body.getReader();
@@ -138,6 +146,7 @@ chatCommand
         out.error(`${res.status} ${res.statusText}`);
         const body = await res.text();
         out.error(body);
+        printCompanySignInRouteGuidance(res.status, body);
         process.exit(1);
       }
 
@@ -175,6 +184,7 @@ chatCommand
 
       if (!res.ok) {
         out.error(`${res.status} ${res.statusText}`);
+        printCompanySignInRouteGuidance(res.status, await res.text().catch(() => ''));
         process.exit(1);
       }
 

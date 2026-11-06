@@ -400,6 +400,33 @@ describe('chat command conversations and streaming', () => {
     expect(consoleLog.mock.calls.flat().join('\n')).not.toContain('Stream complete');
   });
 
+  test.each(['send', 'stream'])('NP004 CHAT-CMD-003: %s explains a company sign-in refusal (502 FEDERATED_ROUTE_NOT_ENABLED)', async (command) => {
+    const refusal = { detail: { error: 'FEDERATED_ROUTE_NOT_ENABLED', message: 'This action is not available for company sign-in yet' } };
+    vi.stubGlobal('fetch', createChatFetchMock(jsonResponse(refusal, 502)));
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => { errors.push(parts.map(String).join(' ')); });
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new Error(`exit ${code}`); }) as never);
+
+    await expect(chatCommand.parseAsync([command, 'Hello', '--workflow', 'workflow-1'], { from: 'user' }))
+      .rejects.toThrow('exit 1');
+
+    const output = errors.join('\n');
+    expect(output).toContain("This command isn't available for company sign-in accounts yet.");
+    expect(output).toContain('E297');
+  });
+
+  test('NP005 CHAT-CMD-003: other 502 failures do not claim a company sign-in refusal', async () => {
+    vi.stubGlobal('fetch', createChatFetchMock(jsonResponse({ detail: 'upstream unavailable' }, 502)));
+    const errors: string[] = [];
+    vi.spyOn(console, 'error').mockImplementation((...parts: unknown[]) => { errors.push(parts.map(String).join(' ')); });
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: number) => { throw new Error(`exit ${code}`); }) as never);
+
+    await expect(chatCommand.parseAsync(['send', 'Hello', '--workflow', 'workflow-1'], { from: 'user' })).rejects.toThrow('exit 1');
+    expect(errors.join('\n')).not.toContain('E297');
+  });
+
   test('BP001 CHAT-CMD-001: chat help does not expose retired thread options', () => {
     const help = [
       chatCommand.helpInformation(),

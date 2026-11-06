@@ -8,6 +8,8 @@ import {
 } from '../../src/lib/error-guidance/catalog.js';
 import { validateErrorGuidanceCatalog } from '../../src/lib/error-guidance/validate.js';
 import { findGuidance } from '../../src/lib/error-guidance/match.js';
+import { extractServerErrorContext } from '../../src/lib/api.js';
+import { safePlatformDiagnostics } from '../../src/lib/platform-diagnostics.js';
 import { runCommand } from '../helpers/action-dsl.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
@@ -467,6 +469,31 @@ describe('platform reason code guidance', () => {
     ]) {
       expect(findGuidance({ message }), message).toBeUndefined();
     }
+  });
+
+  test('a company sign-in account refused by a route gets company sign-in guidance', async () => {
+    // PublicAPI's federated refusal body (federated_identity.federated_error), frozen 5 Nov 2026.
+    const body = {
+      detail: { error: 'FEDERATED_ROUTE_NOT_ENABLED', message: 'This action is not available for company sign-in yet' },
+    };
+    const guidance = findGuidance({ status: 502, serverCode: 'FEDERATED_ROUTE_NOT_ENABLED' });
+
+    expect(guidance?.title).toBe("This command isn't available for company sign-in accounts yet.");
+    expect(findGuidanceByIdentifier('FEDERATED_ROUTE_NOT_ENABLED')?.code).toBe(guidance?.code);
+    expect(guidance?.retry.allowed).toBe(false);
+    expect(guidance?.safety.mutatesState).toBe(false);
+
+    const context = await extractServerErrorContext(new Response(JSON.stringify(body), { status: 502 }));
+    expect(findGuidance({
+      operation: 'user provision-me',
+      status: 502,
+      serverCode: context.serverCode,
+      message: context.serverMessage || context.rawBody,
+    })?.code).toBe(guidance?.code);
+    expect(findGuidance({ status: 502, message: JSON.stringify(body) })?.code).toBe(guidance?.code);
+
+    const safe = safePlatformDiagnostics(502, body);
+    expect(safe.code).toBe('FEDERATED_ROUTE_NOT_ENABLED');
   });
 
   test('tenant limit guidance covers the policy code and the AdminAPI quota code', () => {

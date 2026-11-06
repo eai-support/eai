@@ -19,6 +19,7 @@ import { homedir } from 'node:os';
 import type { Command, OptionValues } from 'commander';
 import { parse as parseEnv } from 'dotenv';
 import { findProjectRoot } from './config.js';
+import { isGuid, normalizePortalUrl } from './company-sign-in.js';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,10 @@ export interface ProfileConfig {
   readonly authScope?: string;
   /** SECURITY: authorizes one HTTPS managed endpoint, exactly matching this profile's publicApiUrl. */
   readonly managedDeploymentApiUrl?: string;
+  /** Optional client ID (a GUID) of this sign-in directory's CLI company sign-in app, used by `eai login --company` and the Portal's company routes. */
+  readonly authCompanyClientId?: string;
+  /** Optional Admin Portal origin for `eai login`: https, or http://localhost / http://127.0.0.1 for local Portal development. */
+  readonly portalUrl?: string;
 }
 
 interface ProfilesFile {
@@ -313,7 +318,9 @@ export function captureProfileConfig(name: string): ProfileConfig | null {
   if (['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId'].some((key) => typeof config[key as keyof ProfileConfig] !== 'string'
     || !(config[key as keyof ProfileConfig] as string).trim())
     || (config.authScope !== undefined && typeof config.authScope !== 'string')
-    || (config.managedDeploymentApiUrl !== undefined && typeof config.managedDeploymentApiUrl !== 'string')) {
+    || (config.managedDeploymentApiUrl !== undefined && typeof config.managedDeploymentApiUrl !== 'string')
+    || (config.authCompanyClientId !== undefined && !isGuid(config.authCompanyClientId))
+    || (config.portalUrl !== undefined && !isValidPortalOverride(config.portalUrl))) {
     throw new Error('Local profile settings contain an invalid public auth/API configuration.');
   }
   if (process.platform === 'win32' && config.managedDeploymentApiUrl !== undefined) {
@@ -322,6 +329,16 @@ export function captureProfileConfig(name: string): ProfileConfig | null {
   const snapshot = Object.freeze({ ...config });
   capturedProfiles.set(key, snapshot);
   return snapshot;
+}
+
+function isValidPortalOverride(value: unknown): boolean {
+  if (typeof value !== 'string') return false;
+  try {
+    normalizePortalUrl(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 const MAX_PROFILE_BYTES = 64 * 1024;
@@ -421,7 +438,8 @@ export async function saveProfileConfig(name: string, config: ProfileConfig): Pr
     if (prior !== undefined && (!prior || typeof prior !== 'object' || Array.isArray(prior))) {
       throw new Error('Local profile settings contain an invalid profile; refusing to overwrite.');
     }
-    const knownFields = new Set(['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId', 'authScope', 'managedDeploymentApiUrl']);
+    const knownFields = new Set(['publicApiUrl', 'authTenantName', 'authTenantId', 'authClientId', 'authScope', 'managedDeploymentApiUrl',
+      'authCompanyClientId', 'portalUrl']);
     const preserved = Object.fromEntries(Object.entries(prior ?? {}).filter(([key]) => !knownFields.has(key)));
     const output = JSON.stringify({ ...file, profiles: { ...file.profiles, [name]: { ...preserved, ...config } } }, null, 2) + '\n';
     if (Buffer.byteLength(output) > MAX_PROFILE_BYTES) throw new Error('Profile settings exceed 64 KiB.');
@@ -462,6 +480,14 @@ export const DEFAULT_PROD_AUTH_TENANT_ID = 'f3035369-5c1a-45f7-8ca5-5cb0ad291d26
 
 /** Public production CLI client ID for the default profile. */
 export const DEFAULT_PROD_AUTH_CLIENT_ID = 'd704bde5-fe36-44ff-9a26-221d53772dd0';
+
+/**
+ * Public production CLI company sign-in client ID, used only for the PROD
+ * sign-in directory with no `--tenant-*` flags (see resolveCompanyClient).
+ * Intentionally unset until the PROD app exists and is pinned in Infra2025;
+ * until then PROD company sign-in reports that it isn't set up.
+ */
+export const DEFAULT_PROD_AUTH_COMPANY_CLIENT_ID: string | undefined = undefined;
 
 /** Production PublicAPI delegated scope required for default-profile API calls. */
 export const PROD_PUBLIC_API_SCOPE = 'api://833fc5ab-f1c9-4c60-b344-64e366f241cc/access_token';
