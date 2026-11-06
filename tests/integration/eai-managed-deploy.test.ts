@@ -1150,6 +1150,55 @@ fi
     expect(process.exitCode).toBe(0);
   });
 
+  test.each([
+    ['top-level body', (body: Record<string, unknown>) => body],
+    ['detail-wrapped body', (body: Record<string, unknown>) => ({ detail: body })],
+  ])('explains an exhausted-credits 402 on the retry handoff in words, not raw JSON (%s)', async (_label, shape) => {
+    // #3502: PublicAPI answers 402 CREDITS_EXHAUSTED at zero credits, even when the first call was accepted.
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
+    const state = customerRetryState({ targetTenantId: 'runtime-child' });
+    await saveManagedDeployState(state);
+    const creditsBody = {
+      error: 'CREDITS_EXHAUSTED',
+      message: 'This workspace has run out of credits.',
+      billingWorkspaceId: '3f1c2a9e-0d6b-4c55-9a1e-6b7d2f8e4a10',
+      recovery: [],
+    };
+    const identityImpl = stubManagedOperation().getMockImplementation()!;
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.includes('/managed-deployments/operations/')) return jsonResponse({
+        appScopeTenantId: TENANT_ID, targetTenantId: 'runtime-child', appKey: state.appKey,
+        operationId: state.operationId, environment: state.environment, sourceMode: 'source-unknown',
+        sourceStatus: 'handoff_pending', status: 'handoff_pending',
+        setup: customerOperationSetup(state, { status: 'issued' }),
+        evidence: { status: 'accepted' },
+      });
+      if (url.endsWith('/source-unknown/deploy')) return new Response(JSON.stringify(shape(creditsBody)), {
+        status: 402, headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+      });
+      if (url.includes('/cli-managed-source/github-link-sessions/')) return jsonResponse(linkedGitHubSession('verified', 'runtime-child'));
+      return identityImpl(input);
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      state.appKey, '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', 'runtime-child',
+      '--retry', state.operationId, '--no-wait', '--format', 'json',
+    ], { from: 'user' });
+
+    const printed = output.mock.calls.map(([value]) => String(value)).join('');
+    const result = JSON.parse(printed) as { ok: boolean; error: { code: string; message: string; nextAction: string } };
+    expect(result.ok).toBe(false);
+    expect(result.error.code).toBe('DEPLOYMENT_HANDOFF_FAILED');
+    expect(result.error.message).toBe('This workspace has run out of credits.');
+    expect(result.error.nextAction.startsWith(
+      'This workspace has run out of credits. Raise its monthly credits, upgrade, or buy credits in the Portal under Plan and Billing, then retry.',
+    )).toBe(true);
+    expect(printed).not.toContain('billingWorkspaceId');
+    expect(printed).not.toContain('"recovery"');
+    expect(process.exitCode).toBe(1);
+  });
+
   test.each(['handoff', 'poll', 'github-link', 'accepted-github-link'] as const)('rejects redirect responses from the protected retry authority during %s', async (boundary) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state = customerRetryState({ targetTenantId: 'runtime-child' });

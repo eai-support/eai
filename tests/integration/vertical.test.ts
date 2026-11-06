@@ -5,6 +5,7 @@ import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env
 import type { TestContext } from '../helpers/setup-dsl.js';
 import { cleanupTestTokens, workingDirectoryIs } from '../helpers/setup-dsl.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
+import { CREDITS_EXHAUSTED_NEXT_ACTION, creditsExhaustedNextAction } from '../../src/lib/credits-exhausted.js';
 import {
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_TENANT_ID,
@@ -2510,6 +2511,84 @@ describe('eai app', () => {
         method: 'GET',
       }),
     );
+  });
+
+  describe('deploy-source-unknown refusal output (#3502)', () => {
+    async function runDeploySourceUnknownRefused(status: number, body: unknown): Promise<string> {
+      await seedLoggedInTenant();
+      const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+        const url = requestUrl(input);
+        const method = requestMethod(init);
+        if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
+          return jsonResponse({
+            tenants: [{
+              id: COMPANY_TENANT_ID,
+              displayName: 'Builder Workspace',
+              slug: 'builder-workspace',
+              isActive: true,
+              roles: ['tenant-admin'],
+            }],
+          });
+        }
+        if (
+          url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deploy`
+          && method === 'POST'
+        ) {
+          return typeof body === 'string'
+            ? new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
+            : jsonResponse(body, status);
+        }
+        return jsonResponse({ message: `Unhandled request: ${method} ${url}` }, 500);
+      });
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(appCommand.parseAsync([
+        'deploy-source-unknown', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+        '--operation-id', 'source-unknown-op', '--skip-validate',
+      ], { from: 'user' })).rejects.toThrow('process.exit unexpectedly called');
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/planning-portal/source-unknown/deploy`,
+        expect.objectContaining({ method: 'POST' }),
+      );
+      return vi.mocked(console.error).mock.calls.map((call) => call.join(' ')).join('\n');
+    }
+
+    const creditsBody = {
+      error: 'CREDITS_EXHAUSTED',
+      message: 'This workspace has run out of credits.',
+      billingWorkspaceId: 'billing-workspace-1',
+      recovery: { portalPath: '/plan-and-billing' },
+    };
+
+    test.each([
+      ['a top-level error code', creditsBody],
+      ['an error code under detail', { detail: creditsBody }],
+      ['a code with no message or recovery', { error: 'CREDITS_EXHAUSTED' }],
+    ])('prints the shared credits sentence, not raw JSON, for a 402 CREDITS_EXHAUSTED with %s', async (_label, body) => {
+      const printed = await runDeploySourceUnknownRefused(402, body);
+
+      expect(printed).toContain(CREDITS_EXHAUSTED_NEXT_ACTION);
+      expect(printed).toContain(creditsExhaustedNextAction(402, 'CREDITS_EXHAUSTED'));
+      expect(printed).toContain('Plan and Billing');
+      expect(printed).not.toContain('{');
+      expect(printed).not.toContain('billing-workspace-1');
+      expect(printed).not.toContain('portalPath');
+    });
+
+    test.each([
+      ['a 402 with another error code', 402, { error: 'PLAN_LIMIT_REACHED', message: 'Plan limit reached for this workspace.' }, 'Plan limit reached for this workspace.'],
+      ['a 402 with no error code', 402, { message: 'Payment required.' }, 'Payment required.'],
+      ['a plain-text 402', 402, 'Payment required upstream.', 'Payment required upstream.'],
+      ['a 500 that carries the credits code', 500, { error: 'CREDITS_EXHAUSTED', message: 'Something broke on the server.' }, 'Something broke on the server.'],
+    ])('keeps the server message for %s', async (_label, status, body, message) => {
+      const printed = await runDeploySourceUnknownRefused(status, body);
+
+      expect(printed).toMatch(new RegExp(`${message.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`));
+      expect(printed).not.toContain('Plan and Billing');
+      expect(printed).not.toContain('run out of credits');
+      expect(printed).not.toContain('eai deploy doctor');
+    });
   });
 
   test('BC002 rejects incomplete schema provenance before registration', () => {

@@ -34,7 +34,13 @@ import {
   verifyGitHubAccess,
 } from '../../src/commands/eai-managed-deploy.js';
 import { requireRecoverySourceOptions, validateManagedDeployInput } from '../../src/commands/eai-managed-deploy-validation.js';
-import type { ManagedDeployOptions } from '../../src/commands/eai-managed-deploy-contract.js';
+import {
+  ManagedDeployFailure,
+  repositoryNextAction,
+  requireApiSuccess,
+  type ManagedDeployOptions,
+} from '../../src/commands/eai-managed-deploy-contract.js';
+import { printFailure } from '../../src/commands/eai-managed-deploy-output.js';
 import {
   MAX_SOURCE_UNKNOWN_EVIDENCE_BYTES,
   readSourceUnknownEvidenceFile,
@@ -1407,5 +1413,135 @@ describe('EAI managed deployment helpers', () => {
       id: 123,
       login: 'linked-user',
     })).rejects.toMatchObject({ code: 'GITHUB_ACTOR_MISMATCH' });
+  });
+});
+
+describe('EAI managed deployment out-of-credits guidance', () => {
+  // #3502: PublicAPI answers 402 CREDITS_EXHAUSTED at zero credits. The CLI must say so in words.
+  const SENTENCE = 'This workspace has run out of credits. Raise its monthly credits, upgrade, or buy credits in the Portal under Plan and Billing, then retry.';
+  const RETRY_HINT = 'If you were retrying after a lost response, the first deploy may already be running: check it with `eai deploy doctor --operation-id <id>` first.';
+  const TENANT = 'tenant-1';
+  const REPO = 'enterprise/planning-portal';
+  const ADMIN_BODY = {
+    error: 'CREDITS_EXHAUSTED',
+    message: 'This workspace has run out of credits.',
+    billingWorkspaceId: '3f1c2a9e-0d6b-4c55-9a1e-6b7d2f8e4a10',
+    recovery: ['raise_allowance', 'upgrade', 'top_up'],
+  };
+
+  function creditsResponse(body: unknown, status = 402): Response {
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+    });
+  }
+
+  async function failureFrom(response: Response): Promise<ManagedDeployFailure> {
+    const error = await requireApiSuccess(
+      response,
+      'DEPLOYMENT_HANDOFF_FAILED',
+      () => 'caller-specific next action',
+    ).then(() => undefined, caught => caught as unknown);
+    expect(error).toBeInstanceOf(ManagedDeployFailure);
+    return error as ManagedDeployFailure;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    process.exitCode = undefined;
+  });
+
+  test('repositoryNextAction explains an exhausted-credits 402 in plain words', () => {
+    const action = repositoryNextAction(402, 'CREDITS_EXHAUSTED', TENANT, REPO);
+    expect(action.startsWith(SENTENCE)).toBe(true);
+    expect(action).toBe(`${SENTENCE} ${RETRY_HINT}`);
+  });
+
+  test.each([
+    [403, 'CREDITS_EXHAUSTED'],
+    [402, 'SOMETHING_ELSE'],
+    [402, ''],
+  ])('repositoryNextAction keeps its other answers for %s %s', (status, message) => {
+    expect(repositoryNextAction(status, message, TENANT, REPO)).not.toContain('run out of credits');
+  });
+
+  test('a top-level 402 body gives the exhausted-credits sentence ahead of the caller next action', async () => {
+    const failure = await failureFrom(creditsResponse(ADMIN_BODY));
+    expect(failure.code).toBe('DEPLOYMENT_HANDOFF_FAILED');
+    expect(failure.message).toBe('This workspace has run out of credits.');
+    expect(failure.nextAction.startsWith(SENTENCE)).toBe(true);
+    expect(failure.nextAction).toBe(`${SENTENCE} ${RETRY_HINT}`);
+  });
+
+  test('a 402 body wrapped in detail gives the same sentence', async () => {
+    const failure = await failureFrom(creditsResponse({ detail: ADMIN_BODY }));
+    expect(failure.message).toBe('This workspace has run out of credits.');
+    expect(failure.nextAction).toBe(`${SENTENCE} ${RETRY_HINT}`);
+  });
+
+  test('a detail body with only the error code still gives the sentence', async () => {
+    const failure = await failureFrom(creditsResponse({ detail: { error: 'CREDITS_EXHAUSTED' } }));
+    expect(failure.nextAction.startsWith(SENTENCE)).toBe(true);
+  });
+
+  test('an empty recovery list (caller is not a billing admin) still prints the sentence', async () => {
+    const failure = await failureFrom(creditsResponse({ ...ADMIN_BODY, recovery: [] }));
+    expect(failure.nextAction.startsWith(SENTENCE)).toBe(true);
+  });
+
+  test('a missing recovery list still prints the sentence', async () => {
+    const { recovery: _omitted, ...withoutRecovery } = ADMIN_BODY;
+    const failure = await failureFrom(creditsResponse(withoutRecovery));
+    expect(failure.nextAction.startsWith(SENTENCE)).toBe(true);
+  });
+
+  test.each([
+    ['another 402 error code', 402, { error: 'PAYMENT_METHOD_REQUIRED', message: 'Add a card.' }],
+    ['a 403 that names the credits code', 403, ADMIN_BODY],
+    ['a 500 that names the credits code', 500, ADMIN_BODY],
+    ['a 402 with a plain-text body', 402, 'Payment Required'],
+  ])('%s keeps the caller next action', async (_label, status, body) => {
+    const response = typeof body === 'string'
+      ? new Response(body, { status, headers: { 'Content-Type': 'text/plain' } })
+      : creditsResponse(body, status);
+    const failure = await failureFrom(response);
+    expect(failure.nextAction).toBe('caller-specific next action');
+  });
+
+  test('a successful response is returned untouched', async () => {
+    await expect(requireApiSuccess(creditsResponse({ status: 'queued' }, 202), 'X', () => 'unused'))
+      .resolves.toEqual({ status: 'queued' });
+  });
+
+  test('the CLI never prints the raw 402 JSON in text mode', async () => {
+    const failure = await failureFrom(creditsResponse(ADMIN_BODY));
+    const stdout = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const stderr = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    printFailure('text', failure);
+    const printed = [...stdout.mock.calls, ...stderr.mock.calls].map(call => call.join(' ')).join('\n');
+    expect(printed).toContain('This workspace has run out of credits.');
+    expect(printed).toContain('Raise its monthly credits, upgrade, or buy credits in the Portal under Plan and Billing, then retry.');
+    expect(printed).not.toMatch(/[{}]/);
+    expect(printed).not.toContain('billingWorkspaceId');
+    expect(printed).not.toContain('CREDITS_EXHAUSTED');
+    expect(printed).not.toContain(ADMIN_BODY.billingWorkspaceId);
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('the CLI reports the 402 as its own error envelope, not the upstream body, in JSON mode', async () => {
+    const failure = await failureFrom(creditsResponse(ADMIN_BODY));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    printFailure('json', failure);
+    const text = output.mock.calls.map(([value]) => String(value)).join('');
+    expect(JSON.parse(text)).toEqual({
+      ok: false,
+      error: {
+        code: 'DEPLOYMENT_HANDOFF_FAILED',
+        message: 'This workspace has run out of credits.',
+        nextAction: `${SENTENCE} ${RETRY_HINT}`,
+      },
+    });
+    expect(text).not.toContain('billingWorkspaceId');
+    expect(text).not.toContain('raise_allowance');
   });
 });

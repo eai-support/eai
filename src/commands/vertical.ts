@@ -46,6 +46,7 @@ import {
 } from '../lib/platform-diagnostics.js';
 import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
+import { apiErrorCode, creditsExhaustedNextAction } from '../lib/credits-exhausted.js';
 import {
   CLI_MANAGED_SOURCE_OPERATION_ID,
   MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
@@ -1731,7 +1732,11 @@ verticalCommand
 
     if (!res.ok) {
       spinner?.fail('Failed to request source-unknown deployment handoff');
-      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+      const creditsNextAction = isRecord(payload)
+        ? creditsExhaustedNextAction(res.status, apiErrorCode(payload))
+        : undefined;
+      fail(creditsNextAction
+        ?? (isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`));
     }
 
     if (format === 'json') {
