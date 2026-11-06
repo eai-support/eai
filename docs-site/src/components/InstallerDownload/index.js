@@ -78,11 +78,13 @@ export default function InstallerDownload() {
   }, []);
 
   const installer = recommended ? installers[recommended] : null;
-  const listsEveryInstaller = recommended === null || recommended === unsupported;
+  // Before detection resolves (and in the server-rendered HTML a no-JS visitor keeps) every installer is listed openly.
+  const listsEveryInstaller = !installer;
+  const listStatus = recommended === undefined ? "Checking your operating system and processor."
+    : recommended === null ? `We could not identify a supported operating system and processor. ${availability}` : availability;
 
   return <section className={styles.downloadPanel} aria-live="polite">
     <p className={styles.eyebrow}>Recommended for this computer</p>
-    {recommended === undefined && <p className={styles.status}>Checking your operating system and processor.</p>}
     {installer && <>
       <h2>Download EAI Setup for {installer.label}</h2>
       <a className={styles.downloadButton} href={installerUrl(installer)}>Download now</a>
@@ -90,7 +92,7 @@ export default function InstallerDownload() {
     </>}
     {listsEveryInstaller && <>
       <h2>Choose an installer</h2>
-      <p className={styles.status}>{recommended === null ? `We could not identify a supported operating system and processor. ${availability}` : availability}</p>
+      <p className={styles.status}>{listStatus}</p>
       <div className={styles.choiceButtons}>
         {Object.entries(installers).map(([key, item]) =>
           <a key={key} href={installerUrl(item)}>{item.label}</a>,
