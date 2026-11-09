@@ -16,6 +16,19 @@ export interface GoferManagedFileState {
 
 export interface ProjectManifest {
   readonly schemaVersion: 1;
+  /** SECURITY: Package metadata describes runtime support; it never grants deployment or tenant authority. */
+  readonly applicationPackage?: {
+    readonly source: "eai.application.json";
+    readonly generated: "eai.application.generated.json";
+    readonly schemaLock: "eai.application.schema-lock.json";
+    readonly validator: "@enterpriseaigroup/application-package@0.1.0";
+  };
+  readonly runtime?: {
+    readonly interactiveIdentity: "delegated-user";
+    readonly workloadIdentity: "short-lived-installation-binding";
+    readonly platformIngress: "regional-public-api";
+    readonly supportedHosting: readonly ["eai-hosted", "buyer-hosted"];
+  };
   readonly cli?: {
     readonly version: string;
   };

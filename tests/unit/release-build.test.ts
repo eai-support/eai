@@ -31,6 +31,9 @@ describe('release build output', () => {
         files: ['dist'],
       }));
       copyFileSync(join(sourceRoot, 'scripts', 'clean-build-output.cjs'), join(root, 'scripts', 'clean-build-output.cjs'));
+      copyFileSync(join(sourceRoot, 'scripts', 'copy-application-package-contract.mjs'), join(root, 'scripts', 'copy-application-package-contract.mjs'));
+      mkdirSync(join(root, 'src', 'lib', 'generated'), { recursive: true });
+      copyFileSync(join(sourceRoot, 'src', 'lib', 'generated', 'application-package.schema.json'), join(root, 'src', 'lib', 'generated', 'application-package.schema.json'));
       writeFileSync(join(root, 'src', 'current.ts'), 'export const current = 1;\n');
       writeFileSync(join(root, 'dist', 'retired.js'), 'export const retired = 1;\n');
 
@@ -47,6 +50,10 @@ describe('release build output', () => {
       expect(existsSync(join(root, 'dist', 'retired.js'))).toBe(false);
       expect(readFileSync(join(root, 'dist', 'current.js'), 'utf8')).toContain('current = 1');
       expect(packed[0].files.map((file) => file.path)).toContain('dist/current.js');
+      expect(packed[0].files.map((file) => file.path)).toContain('dist/lib/generated/application-package.schema.json');
+      expect(readFileSync(join(root, 'dist', 'lib', 'generated', 'application-package.schema.json'), 'utf8')).toBe(
+        readFileSync(join(sourceRoot, 'src', 'lib', 'generated', 'application-package.schema.json'), 'utf8'),
+      );
       expect(packed[0].files.map((file) => file.path)).not.toContain('dist/retired.js');
     } finally {
       rmSync(root, { recursive: true, force: true });

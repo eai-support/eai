@@ -10,6 +10,7 @@ const ROOT = resolve(__dirname, '..');
 const { requiresProtectedScope, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const CONTRACTS = {
+  connection: { routes: ['/v4/platform/tenants/{tenantId}/connections'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Configurator'] },
   workspace: { routes: ['/v4/identity/tenants', '/v4/platform/tenants', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'ResourceAPI'] },
   user: { routes: ['/v4/platform/users', '/v4/platform/tenants/{tenantId}/users', '/v4/platform/tenants/{tenantId}/role-definitions'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'CIAM'] },
   app: { routes: ['/v4/platform', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'Configurator', 'ResourceAPI', 'TenantInfra'] },
@@ -51,6 +52,8 @@ function backendContract(command, operation) {
     dependencies: local ? ['local CLI/app files or external tooling'] : contract.services,
     authorization: local ? 'local context' : group === 'env'
       ? 'Azure CLI identity with App Configuration and optional Key Vault permissions'
+      : group === 'connection'
+      ? 'authenticated human tenant administrator; exact policy enforced by the backend'
       : command === 'eai resources cache-refresh'
       ? 'system-admin; signed refresh reason'
       : /create|update|delete/.test(operation) ? 'authorized tenant writer/admin; exact policy enforced by the backend'
