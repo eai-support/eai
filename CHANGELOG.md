@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Prepare 3.20.11 with template v1.0.23 and its exact managed deployment
+  producer. Linked-source refresh captures the producer, Gofer version and
+  complete bundle identity together; scheduled validation prepares matching
+  registry archives and documentation before tests. Publication remains separate.
+
+- Remove retired deployed CLI surfaces from owner coverage declarations while
+  retaining native tests/checks and existing PublicAPI declarations.
+
 - Add `eai login --switch-account`, which sends `prompt=select_account` on
   the authorize request so the browser shows its account picker instead of
   reusing the session it already holds. EAI Setup runs `eai logout` and then

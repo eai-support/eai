@@ -20,6 +20,49 @@
           "number": 3606
         }
       ]
+    },
+    {
+      "requirement_id": "3600-linked-template-exact-producer",
+      "criterion_text": "The selected released template, linked-source metadata and bundled managed deployment producer must use the same exact tag and commit with canonical source-file digests. Refresh validates producer contracts before replacing files. Existing source-unknown and managed operation replay bindings are preserved; candidate preparation does not claim publication or customer deployment.",
+      "feature_ids": [
+        "eai-cli-managed-tenantinfra-deploy"
+      ],
+      "source_refs": [
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3600
+        }
+      ]
+    },
+    {
+      "requirement_id": "3610-linked-source-release-consistency",
+      "criterion_text": "Scheduled linked-source refresh retains the exact verified Gofer source, declared semantic version and complete effective bundle digest, preserves substantive installer/support contracts, and prepares matching package/lockfile, registry archive and documentation before native validation. It must stage all generated assets without changing the existing publisher or replacing historical archives.",
+      "feature_ids": [
+        "eai-cli-command-contracts",
+        "eai-cli-static-release-registry"
+      ],
+      "source_refs": [
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3610
+        }
+      ]
+    },
+    {
+      "requirement_id": "3598-cli-owned-test-metadata",
+      "criterion_text": "CLI feature declarations retain their owner-native required tests and CI checks and any existing PublicAPI declarations while removing the retired deployed CLI surface and its describe/error/smoke paths. No substitute Vanguard probe or live gate change is introduced.",
+      "feature_ids": [
+        "eai-cli-command-contracts"
+      ],
+      "source_refs": [
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3598
+        }
+      ]
     }
   ]
 }

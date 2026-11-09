@@ -435,6 +435,18 @@ Extract from tasks.md:
 
 ---
 
+## Pull request titles
+
+Read `.specify/references/issue-and-pr-titles.md` before you open a pull request.
+
+A pull request describes the change delivered and the outcome it enables:
+
+`Enable [outcome] for [user or system] by [change made]`
+
+Keep the title concise and in business language. Use a prefix such as `CURATE:` only when it helps identify a programme. The prefix should not replace the outcome.
+
+---
+
 ## Step 7: Execute Implementation
 
 ### Loop Contract Preflight

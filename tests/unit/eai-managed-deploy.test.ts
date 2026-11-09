@@ -743,10 +743,13 @@ describe('EAI managed deployment helpers', () => {
     expect(outputAppender.match(/assertCommandFileBinding\(/g)).toHaveLength(2);
 
     const pin = JSON.parse(await readFile(join(root, 'producer-pin.json'), 'utf8'));
+    const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
+    const templateCommit = linkedSources.appTemplate.commit;
+    const templateVersion = linkedSources.appTemplate.version;
     expect(pin).toMatchObject({
       schemaVersion: 'eai.managed-deploy-producer-pin.v1',
       candidate: {
-        commit: '56db83e5519b63fed0a6f010e52ec2669b1c28fa',
+        commit: templateCommit,
         evidenceTest: {
           path: 'tests/source-unknown-deployment-evidence.test.mjs',
           sha256: 'sha256:245546a3cbf8451cf7b822edcd879225061902763cc034ec068c3e6206585e1e',
@@ -754,21 +757,18 @@ describe('EAI managed deployment helpers', () => {
       },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
-        templateCommitSha: '56db83e5519b63fed0a6f010e52ec2669b1c28fa',
+        templateCommitSha: templateCommit,
         workflowSha256: 'sha256:74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5',
       },
       releaseGate: {
         status: 'released',
-        tag: 'v1.0.20',
-        commit: '56db83e5519b63fed0a6f010e52ec2669b1c28fa',
+        tag: templateVersion,
+        commit: templateCommit,
       },
     });
-    const linkedSources = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8'));
-    expect(linkedSources.appTemplate).toMatchObject({
-      version: 'v1.0.20',
-      commit: '56db83e5519b63fed0a6f010e52ec2669b1c28fa',
-      packageLockSha256: '5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415',
-    });
+    expect(templateCommit).toMatch(/^[a-f0-9]{40}$/);
+    expect(templateVersion).toMatch(/^v\d+\.\d+\.\d+$/);
+    expect(linkedSources.appTemplate.packageLockSha256).toMatch(/^[a-f0-9]{64}$/);
     expect(() => producerPinVerifier.assertLinkedTemplateRelease(pin, linkedSources)).not.toThrow();
     expect(`sha256:${createHash('sha256').update(workflow).digest('hex')}`).toBe(pin.candidate.workflow.sha256);
     expect(`sha256:${createHash('sha256').update(collector).digest('hex')}`).toBe(pin.candidate.collector.sha256);

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
+import { createRequire } from "node:module";
 import { existsSync } from "node:fs";
 import {
   chmod,
@@ -38,9 +39,6 @@ import {
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL("../../resources/gofer/", import.meta.url),
 );
-const ACTIVE_SPECIFY_RESOURCES = fileURLToPath(
-  new URL("../../.specify/scripts/", import.meta.url),
-);
 const START_HERE_DOCUMENT = fileURLToPath(
   new URL("../../.tech-docs/start-here.md", import.meta.url),
 );
@@ -48,9 +46,13 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
-const GOFER_RELEASE_COMMIT = "965833ad06c5bed1c76b2e493891036449e67561";
-const GOFER_RELEASE_TAG = "v3.14.3";
-const GOFER_RELEASE_SOURCE = `https://github.com/eai-support/eai-gofer.git@${GOFER_RELEASE_TAG}`;
+const linkedGofer = JSON.parse(await readFile(new URL('../../resources/linked-sources.json', import.meta.url), 'utf8')).gofer;
+const GOFER_SOURCE_COMMIT = linkedGofer.commit;
+const GOFER_SOURCE_DESCRIBE = linkedGofer.describe;
+const GOFER_SOURCE = `${linkedGofer.repo}@${GOFER_SOURCE_COMMIT}`;
+const { goferResourceTreeSha256 } = createRequire(import.meta.url)('../../scripts/lib/gofer-bundle-identity.cjs') as {
+  goferResourceTreeSha256: (root: string) => string;
+};
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
   "bash-scripts/install-optional-tools.sh":
     "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
@@ -238,12 +240,12 @@ describe("eai gofer refresh", () => {
     expect(existsSync(target)).toBe(false);
   });
 
-  test("installs the released document lifecycle guidance", async () => {
+  test("installs the pinned document lifecycle guidance", async () => {
     const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
     expect(metadata).toMatchObject({
-      commit: GOFER_RELEASE_COMMIT,
-      describe: GOFER_RELEASE_TAG,
-      source: GOFER_RELEASE_SOURCE,
+      commit: GOFER_SOURCE_COMMIT,
+      describe: GOFER_SOURCE_DESCRIBE,
+      source: GOFER_SOURCE,
       dirty: false,
     });
     const relativePath = "references/platform/eai-service-patterns.md";
@@ -259,12 +261,12 @@ describe("eai gofer refresh", () => {
     expect(installed).toContain("workspace retention policy");
   });
 
-  test("installs the released managed-source guidance and executable readiness check", async () => {
+  test("installs the pinned managed-source guidance and executable readiness check", async () => {
     const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
     expect(metadata).toMatchObject({
-      commit: GOFER_RELEASE_COMMIT,
-      describe: GOFER_RELEASE_TAG,
-      source: GOFER_RELEASE_SOURCE,
+      commit: GOFER_SOURCE_COMMIT,
+      describe: GOFER_SOURCE_DESCRIBE,
+      source: GOFER_SOURCE,
       dirty: false,
     });
     for (const relativePath of [
@@ -691,7 +693,7 @@ describe("bundled Gofer Object Type routing assets", () => {
 });
 
 describe("bundled optional AI tool installers", () => {
-  test("record the released Gofer source and exact optional installers", async () => {
+  test("record the pinned Gofer source and exact optional installers", async () => {
     const metadata = JSON.parse(
       await readFile(GOFER_VERSION_FILE, "utf-8"),
     ) as {
@@ -700,11 +702,17 @@ describe("bundled optional AI tool installers", () => {
     };
 
     expect(metadata).toMatchObject({
-      commit: GOFER_RELEASE_COMMIT,
-      describe: GOFER_RELEASE_TAG,
-      source: GOFER_RELEASE_SOURCE,
+      commit: GOFER_SOURCE_COMMIT,
+      describe: GOFER_SOURCE_DESCRIBE,
+      source: GOFER_SOURCE,
       dirty: false,
+      resourceTreeSha256: linkedGofer.resourceTreeSha256,
+      version: linkedGofer.version,
     });
+    expect(GOFER_SOURCE_COMMIT).toMatch(/^[a-f0-9]{40}$/);
+    expect(linkedGofer.version).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(await readFile(new URL('../../.gofer-version', import.meta.url), 'utf8')).toBe(`${GOFER_SOURCE_COMMIT}\n`);
+    expect(goferResourceTreeSha256(BUNDLED_GOFER_RESOURCES)).toBe(linkedGofer.resourceTreeSha256);
 
     for (const [relativePath, expectedSha256] of Object.entries(
       GOFER_OPTIONAL_INSTALLER_SHA256,
@@ -718,29 +726,35 @@ describe("bundled optional AI tool installers", () => {
     }
   });
 
-  test("match the active .specify installers exactly", async () => {
-    const installerPaths = [
-      ["bash", "install-optional-tools.sh", "bash-scripts"],
-      ["powershell", "install-optional-tools.ps1", "powershell-scripts"],
-    ] as const;
+  test("install the pinned bundle's installers without coupling to repository-local tooling", async () => {
+    const projectRoot = await mkdtemp(join(tmpdir(), 'gofer-installer-identity-'));
+    try {
+      await installGoferResources(projectRoot, { workflowProfile: 'enterpriseai' });
+      const installerPaths = [
+        ["bash", "install-optional-tools.sh", "bash-scripts"],
+        ["powershell", "install-optional-tools.ps1", "powershell-scripts"],
+      ] as const;
 
-    for (const [
-      activeDirectory,
-      fileName,
-      bundledDirectory,
-    ] of installerPaths) {
-      const [activeInstaller, bundledInstaller] = await Promise.all([
-        readFile(
-          join(ACTIVE_SPECIFY_RESOURCES, activeDirectory, fileName),
-          "utf-8",
-        ),
-        readFile(
-          join(BUNDLED_GOFER_RESOURCES, bundledDirectory, fileName),
-          "utf-8",
-        ),
-      ]);
+      for (const [
+        activeDirectory,
+        fileName,
+        bundledDirectory,
+      ] of installerPaths) {
+        const [activeInstaller, bundledInstaller] = await Promise.all([
+          readFile(
+            join(projectRoot, '.specify/scripts', activeDirectory, fileName),
+            "utf-8",
+          ),
+          readFile(
+            join(BUNDLED_GOFER_RESOURCES, bundledDirectory, fileName),
+            "utf-8",
+          ),
+        ]);
 
-      expect(activeInstaller).toBe(bundledInstaller);
+        expect(activeInstaller).toBe(bundledInstaller);
+      }
+    } finally {
+      await rm(projectRoot, { recursive: true, force: true });
     }
   });
 
@@ -1031,18 +1045,22 @@ test('hand-kept support mirror blocks equal the canonical generator contract', a
 });
 
 
-test('active generated CLI instructions carry the canonical support producer contract', async () => {
-  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
-    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
-    console.log(JSON.stringify(buildSupportReportContract()));
-  `], { cwd: BUNDLED_GOFER_RESOURCES });
-  expect(result.exitCode).toBe(0);
-  const contract = JSON.parse(result.stdout) as string;
-  for (const file of ['.gemini/commands/gofer/eai.md', '.github/prompts/eai.prompt.md',
-    '.agents/skills/eai/SKILL.md',
-    '.github/skills/eai/SKILL.md', '.grok/skills/eai/SKILL.md', '.system/skills/eai/SKILL.md']) {
-    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, '../..', file), 'utf8'), file).toContain(contract);
-  }
+test('freshly installed CLI instructions carry their bundled canonical support producer contract', async () => {
+  const environment = await createTestEnvironment();
+  try {
+    await installGoferResources(environment.dir, { workflowProfile: 'enterpriseai' });
+    const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+      import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+      console.log(JSON.stringify(buildSupportReportContract()));
+    `], { cwd: BUNDLED_GOFER_RESOURCES });
+    expect(result.exitCode).toBe(0);
+    const contract = JSON.parse(result.stdout) as string;
+    for (const file of ['.gemini/commands/gofer/eai.md', '.github/prompts/eai.prompt.md',
+      '.agents/skills/eai/SKILL.md',
+      '.github/skills/eai/SKILL.md', '.grok/skills/eai/SKILL.md', '.system/skills/eai/SKILL.md']) {
+      expect(await readFile(join(environment.dir, file), 'utf8'), file).toContain(contract);
+    }
+  } finally { await environment.cleanup(); }
 });
 
 test.each([false, true])(
