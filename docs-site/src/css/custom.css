@@ -1,26 +1,72 @@
-/**
- * Custom CSS for EAI Testing Platform Documentation
- */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --eai-cyan: #8EDFF9;
+  --eai-navy: #0D3857;
+  --eai-light: #F1F4FA;
+  --eai-gray: #C0C2C9;
+  --eai-blue: #90BBD6;
+  --ifm-color-primary: var(--eai-navy);
+  --ifm-color-primary-dark: #0A2E49;
+  --ifm-color-primary-darker: #08263B;
+  --ifm-color-primary-darkest: #061D2D;
+  --ifm-color-primary-light: #154B70;
+  --ifm-color-primary-lighter: #205A81;
+  --ifm-color-primary-lightest: #376F98;
+  --ifm-background-color: #FFFFFF;
+  --ifm-background-surface-color: #FFFFFF;
+  --ifm-font-family-base: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --ifm-heading-font-family: 'Archivo', ui-sans-serif, system-ui, sans-serif;
+  --ifm-font-family-monospace: 'IBM Plex Mono', ui-monospace, monospace;
+  --ifm-font-color-base: #203A4F;
+  --ifm-heading-color: var(--eai-navy);
+  --ifm-code-font-size: 88%;
+  --ifm-navbar-height: 4.4rem;
+  --ifm-navbar-background-color: var(--eai-navy);
+  --ifm-footer-background-color: var(--eai-navy);
+  --docusaurus-highlighted-code-line-bg: rgba(142, 223, 249, .25);
 }
 
+html { scroll-behavior: smooth; }
+.navbar { max-width: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+.navbar__brand,.navbar__title,.navbar__link,.navbar__toggle { color: #FFFFFF; }
+.navbar__title { font-size: .95rem; font-weight: 700; letter-spacing: .02em; }
+.navbar__link { font-size: .9rem; font-weight: 600; }
+.navbar__link:hover,.navbar__link--active { color: var(--eai-cyan); }
+.navbar__toggle svg { fill: #FFFFFF; }
+.menu__link { border-radius: 8px; font-size: .9rem; }
+.menu__link--active:not(.menu__link--sublist) { background: var(--eai-light); color: var(--eai-navy); }
+.theme-doc-sidebar-container { border-right-color: #D7E1ED !important; }
+.theme-doc-sidebar-menu { padding: 1rem .75rem; }
+.theme-doc-markdown { max-width: 800px; }
+.theme-doc-markdown h1 { letter-spacing: -.045em; }
+.theme-doc-markdown h2 { margin-top: 2.7rem; letter-spacing: -.03em; }
+.theme-doc-markdown p,.theme-doc-markdown li { color: #3A4F60; line-height: 1.72; }
+.theme-doc-markdown table { display: table; width: 100%; }
+.theme-doc-markdown th { background: var(--eai-light); color: var(--eai-navy); }
+.theme-doc-markdown code { border: 1px solid #D7E1ED; border-radius: 4px; }
+.theme-doc-markdown pre code { border: 0; }
+.pagination-nav__link { border-color: #C7D5E4; border-radius: 12px; }
+.breadcrumbs { margin-top: .35rem; }
+.footer { margin: 1rem; border-radius: 16px; padding-bottom: 5rem; }
+.footer__title { color: #FFFFFF; }
+.footer__link-item { color: rgba(255, 255, 255, .72); }
+.footer__link-item:hover { color: var(--eai-cyan); }
+
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-background-color: #071E31;
+  --ifm-background-surface-color: #0D3857;
+  --ifm-font-color-base: #E7F3FA;
+  --ifm-heading-color: #FFFFFF;
+  --eai-light: #153F5E;
+}
+[data-theme='dark'] .theme-doc-markdown p,[data-theme='dark'] .theme-doc-markdown li { color: #D3E3EE; }
+[data-theme='dark'] .theme-doc-sidebar-container,[data-theme='dark'] .theme-doc-markdown code { border-color: #35617D !important; }
+[data-theme='dark'] .menu__link--active:not(.menu__link--sublist),[data-theme='dark'] .theme-doc-markdown th { background: #153F5E; color: #FFFFFF; }
+
+@media (max-width: 996px) {
+  .navbar { margin: 0; border-radius: 0; }
+  .theme-doc-sidebar-container { border-right: 0 !important; }
+  .theme-doc-markdown table { display: block; overflow-x: auto; }
+  .footer { margin: 0; border-radius: 0; }
 }

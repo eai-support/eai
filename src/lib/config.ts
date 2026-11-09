@@ -71,7 +71,7 @@ export interface ObjectTypeAction {
 
 export interface StorageIndexDefinition {
   name?: string;
-  fields: string[] | Array<Record<string, unknown>> | Record<string, unknown>;
+  fields: string[];
   unique?: boolean;
 }
 
@@ -105,7 +105,7 @@ export interface SearchStorageBinding {
   searchServiceAlias: string;
   indexName: string;
   sourceObjectTypes?: string[];
-  fieldMappings?: Record<string, unknown> | Array<Record<string, unknown>>;
+  fieldMappings?: Record<string, string>;
 }
 
 export interface StorageBindingDefinition {
@@ -391,6 +391,15 @@ function restoreTemporaryEnv(restore: TemporaryEnvRestore): void {
   }
 }
 
+/** SECURITY: Refuse dotenv expansion and unsafe tokens before writing credentials or recovering secrets. */
+export function entraScopeEnvPatch(scopes: readonly string[]): Record<string, string> {
+  if (scopes.length > 64 || scopes.join(" ").length > 16 * 1024
+    || scopes.some((scope) => scope.length > 2048 || scope.includes("$") || !/^[\x21\x23-\x5B\x5D-\x7E]+$/.test(scope))) {
+    throw new Error("Platform returned invalid sign-in scope metadata.");
+  }
+  return scopes.length > 0 ? { ENTRA_SCOPES: JSON.stringify(scopes.join(" ")) } : {};
+}
+
 /**
  * Load environment variables from the project's .env.local file.
  */
@@ -444,6 +453,11 @@ export async function patchEnvFile(
     return;
   }
 
+  await writeFile(envPath, patchEnvContent(content, patches), "utf-8");
+}
+
+/** Render an existing dotenv file's patch without performing filesystem writes. */
+export function patchEnvContent(content: string, patches: Record<string, string>): string {
   const patchKeys = Object.keys(patches);
   const patched = new Set<string>();
 
@@ -464,7 +478,7 @@ export async function patchEnvFile(
   }
 
   const trailingNewline = content.endsWith("\n") ? "\n" : "";
-  await writeFile(envPath, updatedLines.join("\n") + trailingNewline, "utf-8");
+  return updatedLines.join("\n") + trailingNewline;
 }
 
 /**

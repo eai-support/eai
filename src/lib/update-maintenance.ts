@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
 import process from "node:process";
 import chalk from "chalk";
-import inquirer from "inquirer";
 import { findProjectRoot } from "./config.js";
 import { applyGoferRefresh, planGoferRefresh } from "./gofer-refresh.js";
 import { resolveProjectManifest } from "./project-manifest.js";
@@ -15,7 +14,6 @@ export type ProjectMaintenanceMode = "check" | "apply";
 
 export interface ProjectUpdateMaintenanceOptions {
   readonly mode: ProjectMaintenanceMode;
-  readonly offerTemplateCheck?: boolean;
   readonly runTemplateCheck?: () => Promise<boolean>;
 }
 
@@ -28,14 +26,6 @@ export interface ProjectUpdateMaintenanceResult {
     | "review-recommended"
     | "custom-source"
     | "untracked";
-}
-
-function isInteractiveTerminal(): boolean {
-  return Boolean(
-    process.stdin.isTTY &&
-      process.stdout.isTTY &&
-      !process.env["CI"],
-  );
 }
 
 function hasGoferWork(summary: {
@@ -90,30 +80,25 @@ function describeTemplateSnapshot(template: {
   return template.repo || "unknown";
 }
 
-async function maybeOfferTemplateCheck(
+async function runAutomaticTemplateCheck(
   options: ProjectUpdateMaintenanceOptions,
 ): Promise<void> {
-  if (!options.offerTemplateCheck || !options.runTemplateCheck || !isInteractiveTerminal()) {
+  if (!options.runTemplateCheck) {
     return;
   }
 
-  const { runTemplateCheck } = await inquirer.prompt([
-    {
-      type: "confirm",
-      name: "runTemplateCheck",
-      message: "Run `eai template check` now to review app-template drift?",
-      default: true,
-    },
-  ]) as { runTemplateCheck?: boolean };
-
-  if (runTemplateCheck) {
-    await options.runTemplateCheck();
+  out.blank();
+  out.info("Running the read-only app-template drift check...");
+  const succeeded = await options.runTemplateCheck();
+  if (!succeeded) {
+    out.warn(
+      "The automatic template check could not complete. Gofer maintenance succeeded; run `eai template check` to retry the read-only review.",
+    );
   }
 }
 
 async function renderTemplateStatus(
   projectRoot: string,
-  options: ProjectUpdateMaintenanceOptions,
 ): Promise<ProjectUpdateMaintenanceResult["template"]> {
   const resolvedManifest = await resolveProjectManifest(projectRoot);
   const manifest = resolvedManifest.manifest;
@@ -159,7 +144,6 @@ async function renderTemplateStatus(
       "Template and UI files are not auto-merged into existing apps. Review the diff before copying anything.",
     );
     out.dim(`  Review: ${chalk.cyan("eai template check")}`);
-    await maybeOfferTemplateCheck(options);
     return "review-recommended";
   }
 
@@ -206,7 +190,7 @@ export async function runProjectUpdateMaintenance(
       out.success("Gofer-managed assets are already up to date.");
     }
 
-    const template = await renderTemplateStatus(projectRoot, options);
+    const template = await renderTemplateStatus(projectRoot);
     return {
       projectRoot,
       gofer: hasGoferWork(plan.summary) || plan.firstRefresh ? "checked" : "current",
@@ -214,23 +198,19 @@ export async function runProjectUpdateMaintenance(
     };
   }
 
-  const applyResult = await applyGoferRefresh(plan, { force: false });
+  const applyResult = await applyGoferRefresh(plan, { force: true });
   if (hasGoferWork(applyResult.summary) || plan.firstRefresh) {
     out.success("Gofer-managed assets refreshed.");
     renderGoferSummary(applyResult.summary);
     if (applyResult.backupDirectory) {
       out.info(`Backup directory: ${applyResult.backupDirectory}`);
     }
-    if (applyResult.summary.conflicted > 0) {
-      out.warn(
-        "Some managed files were left untouched because they have local edits. Re-run `eai gofer refresh --force` only after reviewing the backups.",
-      );
-    }
   } else {
     out.success("Gofer-managed assets are already up to date.");
   }
 
-  const template = await renderTemplateStatus(projectRoot, options);
+  const template = await renderTemplateStatus(projectRoot);
+  await runAutomaticTemplateCheck(options);
   return {
     projectRoot,
     gofer: "refreshed",

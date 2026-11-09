@@ -138,7 +138,7 @@ function validateFrontmatter(fm, filePath) {
 
   const validSurfaces = new Set([
     'claude', 'claude-mirror', 'copilot', 'vscode', 'codex',
-    'gemini', 'github-prompts', 'agents-skills', 'system-skills',
+    'gemini', 'github-prompts', 'agents-skills', 'system-skills', 'grok-skills',
   ]);
   for (const s of fm.surfaces) {
     if (!validSurfaces.has(s)) {

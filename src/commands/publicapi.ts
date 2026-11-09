@@ -5,11 +5,11 @@
 import { readFile } from 'node:fs/promises';
 import { Command } from 'commander';
 import { findProjectRoot } from '../lib/config.js';
-import { PlatformAPIClient, parseApiError, type PlatformMethod } from '../lib/api.js';
+import { PlatformAPIClient, isChildTenantCreateRequest, parseApiError, type PlatformMethod } from '../lib/api.js';
 import { normalizeFormat, makeSpinner } from '../lib/context.js';
 import { findGuidance } from '../lib/error-guidance/match.js';
 import { formatGuidanceText, guidanceToJSON } from '../lib/error-guidance/render.js';
-import { resolveActiveTenantContext, resolvePublicApiUrl } from '../lib/tenant-context.js';
+import { resolveActiveTenantContext, resolvePublicApiUrl, type PublicApiRequestPolicy } from '../lib/tenant-context.js';
 import * as out from '../lib/output.js';
 
 interface PublicApiCommandOptions {
@@ -28,6 +28,7 @@ interface DecodedResponseBody {
 }
 
 const METHODS: PlatformMethod[] = ['GET', 'POST', 'PATCH', 'PUT', 'DELETE'];
+const TENANT_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export const publicApiCommand = new Command('publicapi')
   .description('Call authorized PublicAPI V4 routes directly')
@@ -41,7 +42,7 @@ Examples:
 Notes:
   - Only /v4 PublicAPI paths are accepted.
   - Existing named commands remain preferred for common workflows.
-  - Authorization is still enforced by PublicAPI and platform tenant policy.
+  - Authorization is still enforced by PublicAPI and workspace access policy.
 `);
 
 function normalizePath(path: string): string {
@@ -116,18 +117,30 @@ async function decodeResponseBody(response: Response): Promise<DecodedResponseBo
   return { body: text, bodyKind: 'text' };
 }
 
-async function resolveClient(options: PublicApiCommandOptions): Promise<{
+/** Resolve ordinary explicit workspace context without replacing backend authorization with a local admin test. */
+export async function resolvePublicApiClient(options: { tenantId?: string }, requestPolicy?: PublicApiRequestPolicy): Promise<{
   client: PlatformAPIClient;
   publicApiUrl: string;
   tenantId: string;
 }> {
+  if (options.tenantId !== undefined && !TENANT_UUID.test(options.tenantId)) {
+    throw new Error('--tenant-id must be an exact workspace UUID.');
+  }
   const root = await findProjectRoot();
-  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined, requestPolicy);
+  // An explicit target is request context, not a local tenant-admin admission.
+  // PublicAPI authorizes the selected profile for this exact tenant and route.
+  if (options.tenantId !== undefined) {
+    return {
+      client: new PlatformAPIClient(publicApiUrl, options.tenantId),
+      publicApiUrl,
+      tenantId: options.tenantId,
+    };
+  }
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
-    tenantId: options.tenantId,
-    interactive: !options.tenantId,
+    interactive: true,
   });
 
   return {
@@ -145,18 +158,23 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
     const requestPath = normalizePath(path);
     const params = parseQueryParams(options.param);
     const body = await parseRequestBody(options);
-    const { client, publicApiUrl, tenantId } = await resolveClient(options);
+    const { client, publicApiUrl, tenantId } = await resolvePublicApiClient(options);
     const response = await client.requestPublicApi(requestPath, { method, body, params });
 
     if (!response.ok) {
-      const error = await parseApiError(response);
+      const error = await parseApiError(response, {
+        childTenantCreate: isChildTenantCreateRequest(method, requestPath, body),
+      });
       const guidance = findGuidance({
         operation: `${method} ${requestPath}`,
         status: error.status,
         serverCode: error.code,
         message: error.message,
       });
-      const failureMessage = `${method} ${requestPath} failed: ${error.status} ${error.message}`;
+      // `field` is allowlisted by parseApiError; `error.code` is deliberately not echoed in text
+      // because for non-admission errors it is the raw upstream `body.error` string.
+      const fieldSuffix = error.field ? ` (field: ${error.field})` : '';
+      const failureMessage = `${method} ${requestPath} failed: ${error.status} ${error.message}${fieldSuffix}`;
       if (spinner) {
         spinner.fail(failureMessage);
       } else if (format !== 'json') {
@@ -168,6 +186,7 @@ async function runPublicApiRequest(method: PlatformMethod, path: string, options
           status: error.status,
           error: {
             code: error.code,
+            ...(error.field ? { field: error.field } : {}),
             message: error.message,
             bodyText: error.bodyText,
           },
@@ -221,7 +240,7 @@ for (const method of METHODS) {
   publicApiCommand
     .command(`${method.toLowerCase()} <path>`)
     .description(`${method} an authorized PublicAPI V4 path`)
-    .option('--tenant-id <tenantId>', 'Use a specific tenant instead of the active tenant')
+    .option('--tenant-id <tenantId>', 'Use a specific workspace instead of the active workspace')
     .option('--data <json>', 'JSON request body')
     .option('--file <path>', 'Read JSON request body from a file')
     .option('--param <key=value>', 'Query parameter (repeatable)', (value, previous: string[]) => [...previous, value], [])

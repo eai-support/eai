@@ -76,4 +76,4 @@ For app work, gofer plans should capture:
 - [EAI App Template](./eai-app-template.md)
 - [Platform Service Patterns](./app-template/service-patterns.md)
 - [Config-Driven UI](./app-template/config-driven-ui.md)
-- [Scenario Library](/scenarios/)
+- [Scenario Library](./examples/)

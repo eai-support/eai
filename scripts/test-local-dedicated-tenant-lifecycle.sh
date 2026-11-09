@@ -1,23 +1,88 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Capture only installation hints before filtering. The operator and installed
+# Node remain trusted; arbitrary PATH executables never perform preflight.
+qa_node_hint="${npm_node_execpath:-}"
+qa_nvm_hint="${NVM_BIN:-}"
+# Filter once before any Node, build or CLI subprocess. Explicit --profile must
+# use its normal saved credentials, never an inherited token or app override.
+while IFS= read -r environment_key; do
+  case "$environment_key" in
+    HOME|USERPROFILE|APPDATA|LOCALAPPDATA|XDG_CONFIG_HOME|PATH|Path|PATHEXT|SystemRoot|SYSTEMROOT|WINDIR|windir|COMSPEC|ComSpec|TMPDIR|TMP|TEMP|LANG|LC_ALL|TERM|CI|NO_COLOR|FORCE_COLOR|HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|NO_PROXY|http_proxy|https_proxy|all_proxy|no_proxy|NODE_EXTRA_CA_CERTS|SSL_CERT_FILE|SSL_CERT_DIR|EAI_E2E_PROFILE|EAI_E2E_PUBLIC_API_URL|EAI_E2E_PARENT_TENANT_ID|EAI_E2E_SEARCH_SERVICE_NAME|EAI_E2E_SEARCH_RESOURCE_GROUP) ;;
+    *) unset "$environment_key" 2>/dev/null || export -n "$environment_key" ;;
+  esac
+done < <(compgen -e)
+unset environment_key
+
+qa_operator_home="$(cd -P -- "$HOME" && pwd -P)"
+qa_node_admitted() {
+  local candidate="$1" version=""
+  case "$candidate" in
+    /usr/bin/node|/usr/local/bin/node|/opt/homebrew/bin/node) return 0 ;;
+    "$qa_operator_home"/.nvm/versions/node/*/bin/node)
+      version="${candidate#"$qa_operator_home"/.nvm/versions/node/}"
+      version="${version%/bin/node}"
+      [[ "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+      return ;;
+  esac
+  # Match entire fixed installation paths; neither version nor architecture can
+  # contain a slash, dot traversal or an arbitrary other operator's home.
+  [[ "$candidate" =~ ^/(opt/homebrew|usr/local)/Cellar/node(@[0-9]+)?/[0-9]+\.[0-9]+\.[0-9]+(_[0-9]+)?/bin/node$ \
+    || "$candidate" =~ ^(/opt/hostedtoolcache|/Users/runner/hostedtoolcache)/node/[0-9]+\.[0-9]+\.[0-9]+/(x64|arm64)/bin/node$ ]]
+}
+QA_NODE=""
+for qa_candidate in "$qa_node_hint" "${qa_nvm_hint:+$qa_nvm_hint/node}" \
+  /opt/homebrew/bin/node /usr/local/bin/node /usr/bin/node "$qa_operator_home"/.nvm/versions/node/v*/bin/node; do
+  qa_node_admitted "$qa_candidate" || continue
+  [[ -f "$qa_candidate" && -x "$qa_candidate" ]] || continue
+  qa_node_version="$("$qa_candidate" --version 2>/dev/null)" || continue
+  if [[ "$qa_node_version" =~ ^v([0-9]+)\.[0-9]+\.[0-9]+$ && ${BASH_REMATCH[1]} -ge 24 ]]; then
+    QA_NODE="$qa_candidate"
+    break
+  fi
+done
+unset qa_node_hint qa_nvm_hint qa_candidate qa_node_version qa_operator_home
+unset -f qa_node_admitted
+if [[ -z "$QA_NODE" ]]; then
+  echo "A conventional installed Node 24 or newer is required for the local QA harness." >&2
+  exit 1
+fi
+readonly QA_NODE
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLI_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 WORKSPACE_ROOT="$(cd "$CLI_ROOT/.." && pwd)"
 PROFILE="${EAI_E2E_PROFILE:-local}"
 PUBLIC_API_URL="${EAI_E2E_PUBLIC_API_URL:-http://localhost:8000}"
 TIMESTAMP="$(date +%s)"
-RANDOM_SUFFIX="$(node -e "process.stdout.write(Math.random().toString(36).slice(2, 8))")"
+RANDOM_SUFFIX="$("$QA_NODE" -e "process.stdout.write(Math.random().toString(36).slice(2, 8))")"
 TENANT_NAME="e2e-local-${TIMESTAMP}-${RANDOM_SUFFIX}"
 TENANT_SLUG="$TENANT_NAME"
 TENANT_KEY="local-e2e"
 TENANT_ID=""
+PARENT_TENANT_ID="${EAI_E2E_PARENT_TENANT_ID:-}"
+if [[ -z "$PARENT_TENANT_ID" ]]; then
+  echo "EAI_E2E_PARENT_TENANT_ID is required; the local smoke never chooses an existing workspace implicitly." >&2
+  exit 1
+fi
+# This harness contains local Docker storage cleanup. Never run it against a
+# deployed environment; use the isolated full lifecycle harness for DEV/TEST.
+"$QA_NODE" - "$PUBLIC_API_URL" <<'NODE'
+const url = new URL(process.argv[2]);
+if (url.protocol !== 'http:' || !['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) {
+  console.error('Local dedicated-tenant lifecycle requires an HTTP loopback PublicAPI.');
+  process.exit(1);
+}
+NODE
 PROJECT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/eai-local-e2e.XXXXXX")"
 PG_ID=""
 DOCDB_ID=""
 BLOB_ID=""
 SEARCH_ID=""
 TENANT_CREATE_STDERR=""
+TENANT_CREATE_JOURNAL=""
+OWNERSHIP_HELPER="$SCRIPT_DIR/cli-local-child-ownership.cjs"
 
 ensure_local_search_key_loaded() {
   local current_key=""
@@ -114,51 +179,95 @@ asyncio.run(main())
 PY
 }
 
-cleanup_prior_test_tenants() {
-  local tenants_json
-  tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-  node -e '
-    const data = JSON.parse(process.argv[1]);
-    const parentId = process.argv[2];
-    const ids = (data.tenants || [])
-      .filter((tenant) => tenant.id !== parentId)
-      .map((tenant) => tenant.id);
-    process.stdout.write(ids.join("\n"));
-  ' "$tenants_json" "$PARENT_TENANT_ID" | while IFS= read -r tenant_id; do
-    [[ -z "$tenant_id" ]] && continue
-    node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$tenant_id" --force --format json >/dev/null 2>&1 || true
-    local tenant_compact="${tenant_id//-/}"
-    docker exec eai-postgres psql -U postgres -d resources -c "DELETE FROM tenant_connections WHERE tenant_id = '${tenant_id}';" >/dev/null 2>&1 || true
-    docker exec eai-postgres psql -U postgres -d postgres -c "DROP DATABASE IF EXISTS tenant_${tenant_compact};" >/dev/null 2>&1 || true
-    docker exec eai-mongodb mongosh --quiet --eval "db.getSiblingDB('tenant-${tenant_compact}').dropDatabase();" >/dev/null 2>&1 || true
-  done
+cleanup_resource() {
+  local type="$1" id="$2" delete_json="" absence_json="" delete_exit=0 absence_exit=0 failed=0
+  if ! "$QA_NODE" "$OWNERSHIP_HELPER" resource-cleanup-owned "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" \
+    "$PARENT_TENANT_ID" "$TENANT_ID" "$type" "$id"; then return 1; fi
+  if delete_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete "$type" "$id" \
+    --tenant-id "$TENANT_ID" --force --format json)"; then delete_exit=0; else delete_exit=$?; fi
+  printf '%s' "$delete_json" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-delete "$TENANT_CREATE_JOURNAL" "$type" "$id" "$delete_exit" || failed=1
+  if absence_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" publicapi get \
+    "/v4/data/resources/$TENANT_ID/$type/$id" --tenant-id "$TENANT_ID" --format json)"; then absence_exit=0; else absence_exit=$?; fi
+  printf '%s' "$absence_json" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-absence "$TENANT_CREATE_JOURNAL" "$type" "$id" "$absence_exit" || failed=1
+  return "$failed"
 }
 
 cleanup() {
+  local original_exit=$?
+  trap - EXIT
   set +e
+  local cleanup_failed=0
+  local cleanup_owned=0 journal_id=""
+  if [[ -n "$TENANT_CREATE_JOURNAL" ]]; then
+    if journal_id="$("$QA_NODE" "$OWNERSHIP_HELPER" cleanup-id "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID")" \
+      && [[ -n "$journal_id" && ( -z "$TENANT_ID" || "$TENANT_ID" == "$journal_id" ) ]] \
+      && "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-attempted "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1; then
+      TENANT_ID="$journal_id"
+      cleanup_owned=1
+    else
+      # Unknown creation never authorizes remote cleanup; preserve the unresolved journal.
+      cleanup_failed=1
+    fi
+  elif [[ -n "$TENANT_ID" ]]; then
+    cleanup_failed=1
+  fi
 
-  if [[ -n "$TENANT_ID" ]]; then
-    node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
+  if [[ $cleanup_owned -eq 1 ]]; then
+    "$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$PARENT_TENANT_ID" >/dev/null 2>&1 || true
 
     if [[ -n "$PG_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      cleanup_resource tenant-pg-note "$PG_ID" || cleanup_failed=1
     fi
     if [[ -n "$DOCDB_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      cleanup_resource tenant-document-note "$DOCDB_ID" || cleanup_failed=1
     fi
     if [[ -n "$BLOB_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      cleanup_resource tenant-blob-note "$BLOB_ID" || cleanup_failed=1
     fi
     if [[ -n "$SEARCH_ID" ]]; then
-      node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
+      cleanup_resource tenant-search-note "$SEARCH_ID" || cleanup_failed=1
     fi
 
-    node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$TENANT_ID" --force --format json >/dev/null 2>&1 || true
-    cleanup_storage
+    local purge_json="" inventory_json="" offset=0
+    if purge_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant delete "$TENANT_ID" \
+      --parent "$PARENT_TENANT_ID" --force --force-hard-purge --format json)" \
+      && printf '%s' "$purge_json" | "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-purge "$TENANT_CREATE_JOURNAL"; then
+      while [[ $offset -lt 1000 ]]; do
+        if ! inventory_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" publicapi get \
+          "/v4/platform/tenants/$PARENT_TENANT_ID/children?limit=100&offset=$offset" \
+          --tenant-id "$PARENT_TENANT_ID" --format json)" \
+          || ! printf '%s' "$inventory_json" | "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-page "$TENANT_CREATE_JOURNAL" "$offset"; then
+          cleanup_failed=1
+          break
+        fi
+        if "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-child-finished "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1; then break; fi
+        offset=$((offset + 100))
+      done
+      if "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-child-finished "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1; then
+        # Storage is authorized only after exact committed purge and complete parent absence.
+        cleanup_storage
+      else
+        cleanup_failed=1
+      fi
+      "$QA_NODE" "$OWNERSHIP_HELPER" cleanup-finished "$TENANT_CREATE_JOURNAL" >/dev/null 2>&1 || cleanup_failed=1
+    else
+      cleanup_failed=1
+    fi
   fi
 
   rm -f "$TENANT_CREATE_STDERR"
   rm -rf "$PROJECT_DIR"
+  if [[ -n "$TENANT_CREATE_JOURNAL" ]]; then
+    echo "Local child creation journal retained: $TENANT_CREATE_JOURNAL" >&2
+  fi
+  if [[ $cleanup_failed -ne 0 ]]; then
+    echo "Local child cleanup is unverified; inspect the retained creation journal." >&2
+    exit 1
+  fi
+  if [[ $original_exit -eq 0 && -n "$TENANT_ID" ]]; then
+    echo "Local dedicated tenant lifecycle E2E passed for tenant $TENANT_ID; parent hard purge and absence verified."
+  fi
+  exit "$original_exit"
 }
 
 trap cleanup EXIT
@@ -166,14 +275,14 @@ trap cleanup EXIT
 json_field() {
   local json="$1"
   local expression="$2"
-  node -e "const data = JSON.parse(process.argv[1]); const value = (${expression}); if (value === undefined || value === null) process.exit(2); if (typeof value === 'object') console.log(JSON.stringify(value)); else console.log(String(value));" "$json"
+  "$QA_NODE" -e "const data = JSON.parse(process.argv[1]); const value = (${expression}); if (value === undefined || value === null) process.exit(2); if (typeof value === 'object') console.log(JSON.stringify(value)); else console.log(String(value));" "$json"
 }
 
 assert_json() {
   local json="$1"
   local expression="$2"
   local message="$3"
-  node -e "const data = JSON.parse(process.argv[1]); if (!(${expression})) { console.error(process.argv[2]); process.exit(1); }" "$json" "$message"
+  "$QA_NODE" -e "const data = JSON.parse(process.argv[1]); if (!(${expression})) { console.error(process.argv[2]); process.exit(1); }" "$json" "$message"
 }
 
 retry_search() {
@@ -181,8 +290,8 @@ retry_search() {
   local attempt=1
   while [[ $attempt -le 10 ]]; do
     local output
-    output="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources search "$query" --tenant-id "$TENANT_ID" --types TenantSearchNote --mode fulltext --format json)"
-    if node -e "const data = JSON.parse(process.argv[1]); process.exit((data.results || []).length > 0 ? 0 : 1);" "$output"; then
+    output="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources search "$query" --tenant-id "$TENANT_ID" --types tenant-search-note --mode fulltext --format json)"
+    if "$QA_NODE" -e "const data = JSON.parse(process.argv[1]); process.exit((data.results || []).length > 0 ? 0 : 1);" "$output"; then
       printf '%s' "$output"
       return 0
     fi
@@ -198,7 +307,7 @@ wait_for_published_object_types() {
   local output=""
 
   for _ in $(seq 1 "$attempts"); do
-    output="$(node - "$TENANT_ID" "$PROFILE" "$PUBLIC_API_URL" "$CLI_ROOT" <<'NODE'
+    output="$("$QA_NODE" - "$TENANT_ID" "$PROFILE" "$PUBLIC_API_URL" "$CLI_ROOT" <<'NODE'
 const tenantId = process.argv[2];
 const profileName = process.argv[3];
 const publicApiUrl = process.argv[4];
@@ -230,7 +339,7 @@ const cliRoot = process.argv[5];
 });
 NODE
 )"
-    if node -e '
+    if "$QA_NODE" -e '
       const data = JSON.parse(process.argv[1]);
       const names = new Set((data.docs || []).map((item) => item.name));
       const required = ["TenantPgNote", "TenantDocumentNote", "TenantBlobNote", "TenantSearchNote"];
@@ -252,8 +361,8 @@ wait_for_schema_types() {
   local output=""
 
   for _ in $(seq 1 "$attempts"); do
-    output="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources schema --tenant-id "$TENANT_ID" --format json)"
-    if node -e '
+    output="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources schema --tenant-id "$TENANT_ID" --format json)"
+    if "$QA_NODE" -e '
       const data = JSON.parse(process.argv[1]);
       const names = new Set((data.objectTypes || []).map((item) => item.name));
       const required = ["TenantPgNote", "TenantDocumentNote", "TenantBlobNote", "TenantSearchNote"];
@@ -273,69 +382,27 @@ create_test_tenant() {
   local create_json=""
   local before_tenants_json=""
   local after_tenants_json=""
-  TENANT_CREATE_STDERR="$(mktemp "${TMPDIR:-/tmp}/eai-local-e2e-tenant-create.XXXXXX")"
-  before_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
+  before_tenants_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
 
   set +e
-  node "$CLI_ROOT/dist/index.js" \
+  create_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" \
     --profile "$PROFILE" \
     tenant create \
     --name "$TENANT_NAME" \
     --slug "$TENANT_SLUG" \
     --parent "$PARENT_TENANT_ID" \
-    --format text > /dev/null 2>"$TENANT_CREATE_STDERR"
+    --format json 2>"$TENANT_CREATE_STDERR")"
   local create_exit=$?
   set -e
+  printf '%s' "$create_json" | "$QA_NODE" "$OWNERSHIP_HELPER" ack "$TENANT_CREATE_JOURNAL" "$create_exit"
 
   if [[ $create_exit -eq 0 ]]; then
-    after_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-    create_json="$(node -e '
-      const beforeData = JSON.parse(process.argv[1]);
-      const afterData = JSON.parse(process.argv[2]);
-      const slug = process.argv[3];
-      const beforeIds = new Set((beforeData.tenants || []).map((tenant) => tenant.id));
-      const created =
-        (afterData.tenants || []).find((tenant) => tenant.slug === slug)
-        || (afterData.tenants || []).find((tenant) => !beforeIds.has(tenant.id));
-      if (!created) process.exit(1);
-      process.stdout.write(JSON.stringify({ tenant: created }));
-    ' "$before_tenants_json" "$after_tenants_json" "$TENANT_SLUG")"
+    after_tenants_json="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
+    create_json="$(printf '{"before":%s,"after":%s}' "$before_tenants_json" "$after_tenants_json" \
+      | "$QA_NODE" "$OWNERSHIP_HELPER" reconcile "$TENANT_CREATE_JOURNAL")"
     if [[ -n "$create_json" ]]; then
       printf '%s' "$create_json"
       return 0
-    fi
-  fi
-
-  if grep -Eq 'TENANT_QUOTA_EXCEEDED|CHILD_TENANT_LIMIT|quota|child-tenant limit' "$TENANT_CREATE_STDERR"; then
-    cleanup_prior_test_tenants
-    before_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-    set +e
-    node "$CLI_ROOT/dist/index.js" \
-      --profile "$PROFILE" \
-      tenant create \
-      --name "$TENANT_NAME" \
-      --slug "$TENANT_SLUG" \
-      --parent "$PARENT_TENANT_ID" \
-      --format text > /dev/null 2>>"$TENANT_CREATE_STDERR"
-    create_exit=$?
-    set -e
-    if [[ $create_exit -eq 0 ]]; then
-      after_tenants_json="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-      create_json="$(node -e '
-        const beforeData = JSON.parse(process.argv[1]);
-        const afterData = JSON.parse(process.argv[2]);
-        const slug = process.argv[3];
-        const beforeIds = new Set((beforeData.tenants || []).map((tenant) => tenant.id));
-        const created =
-          (afterData.tenants || []).find((tenant) => tenant.slug === slug)
-          || (afterData.tenants || []).find((tenant) => !beforeIds.has(tenant.id));
-        if (!created) process.exit(1);
-        process.stdout.write(JSON.stringify({ tenant: created }));
-      ' "$before_tenants_json" "$after_tenants_json" "$TENANT_SLUG")"
-      if [[ -n "$create_json" ]]; then
-        printf '%s' "$create_json"
-        return 0
-      fi
     fi
   fi
 
@@ -349,22 +416,23 @@ create_test_tenant() {
 }
 
 cd "$CLI_ROOT"
-npm run build >/dev/null
+"$QA_NODE" "$SCRIPT_DIR/cli-qa-npm-execution.cjs" "$CLI_ROOT" >/dev/null
+"$QA_NODE" --input-type=module - "$CLI_ROOT" "$PROFILE" "$PUBLIC_API_URL" <<'NODE'
+import { pathToFileURL } from 'node:url';
+import { join } from 'node:path';
+const [root, name, expectedUrl] = process.argv.slice(2);
+const { captureProfileConfig } = await import(pathToFileURL(join(root, 'dist/lib/profile.js')).href);
+const config = captureProfileConfig(name);
+if (!config || config.publicApiUrl?.replace(/\/+$/, '') !== expectedUrl.replace(/\/+$/, '')) {
+  console.error('The selected local profile must match EAI_E2E_PUBLIC_API_URL before any Docker or tenant mutation.');
+  process.exit(1);
+}
+NODE
 ensure_local_search_key_loaded
-
-PARENT_TENANT_ID="${EAI_E2E_PARENT_TENANT_ID:-}"
-if [[ -z "$PARENT_TENANT_ID" ]]; then
-  TENANT_LIST_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant list --format json)"
-  PARENT_TENANT_ID="$(json_field "$TENANT_LIST_JSON" "data.tenants.find((tenant) => tenant.active)?.id ?? data.tenants[0]?.id")"
-fi
-
-if [[ -z "$PARENT_TENANT_ID" ]]; then
-  echo "Could not resolve a parent tenant for profile '$PROFILE'." >&2
-  exit 1
-fi
 
 mkdir -p "$PROJECT_DIR/src/eai.config"
 cat > "$PROJECT_DIR/.env.local" <<EOF
+EAI_PROFILE=$PROFILE
 BASE_URL_PUBLIC_API=$PUBLIC_API_URL
 NEXT_PUBLIC_APP_NAME=local-e2e
 EOF
@@ -374,6 +442,7 @@ export const objectTypes = {
   'local-e2e': [
     {
       name: 'TenantPgNote',
+      slug: 'tenant-pg-note',
       displayName: 'TenantPgNote',
       description: 'Local E2E PostgreSQL note',
       status: 'published',
@@ -397,6 +466,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantDocumentNote',
+      slug: 'tenant-document-note',
       displayName: 'TenantDocumentNote',
       description: 'Local E2E DocumentDB note',
       status: 'published',
@@ -420,6 +490,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantBlobNote',
+      slug: 'tenant-blob-note',
       displayName: 'TenantBlobNote',
       description: 'Local E2E Blob note',
       status: 'published',
@@ -442,6 +513,7 @@ export const objectTypes = {
     },
     {
       name: 'TenantSearchNote',
+      slug: 'tenant-search-note',
       displayName: 'TenantSearchNote',
       description: 'Local E2E Search note',
       status: 'published',
@@ -467,13 +539,19 @@ EOF
 
 cd "$PROJECT_DIR"
 
+TENANT_CREATE_JOURNAL_DIR="$(mktemp -d "${TMPDIR:-/tmp}/eai-local-e2e-creation-XXXXXX")"
+TENANT_CREATE_JOURNAL="$TENANT_CREATE_JOURNAL_DIR/creation.json"
+TENANT_CREATE_STDERR="$TENANT_CREATE_JOURNAL_DIR/create.stderr"
+"$QA_NODE" "$OWNERSHIP_HELPER" init "$TENANT_CREATE_JOURNAL" "$PUBLIC_API_URL" "$PROFILE" "$PARENT_TENANT_ID" "$TENANT_SLUG"
+touch "$TENANT_CREATE_STDERR"
+chmod 600 "$TENANT_CREATE_STDERR"
 CREATE_JSON="$(create_test_tenant)"
 TENANT_ID="$(json_field "$CREATE_JSON" "data.tenant.doc?.id ?? data.tenant.id")"
 assert_json "$CREATE_JSON" "typeof (data.tenant.doc?.id ?? data.tenant.id) === 'string' && (data.tenant.doc?.id ?? data.tenant.id).length > 0" "Created tenant id is missing"
 
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$TENANT_ID" >/dev/null
+"$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" tenant select "$TENANT_ID" >/dev/null
 
-PROVISION_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" provision storage --tenant-id "$TENANT_ID" --format json)"
+PROVISION_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" provision storage --tenant-id "$TENANT_ID" --format json)"
 assert_json "$PROVISION_JSON" "Array.isArray(data.results) && data.results.some((item) => item.objectType === 'tenant-postgresql-base' && item.status === 'provisioned')" "PostgreSQL base provisioning missing"
 assert_json "$PROVISION_JSON" "Array.isArray(data.results) && data.results.some((item) => item.objectType === 'tenant-documentdb-base' && item.status === 'provisioned')" "DocumentDB base provisioning missing"
 assert_json "$PROVISION_JSON" "Array.isArray(data.results) && data.results.some((item) => item.objectType === 'tenant-blob-base' && item.status === 'provisioned')" "Blob base provisioning missing"
@@ -481,7 +559,7 @@ assert_json "$PROVISION_JSON" "Array.isArray(data.results) && data.results.some(
 assert_json "$PROVISION_JSON" "Array.isArray(data.results) && data.results.some((item) => item.objectType === 'tenant-platform-metadata' && item.status === 'provisioned')" "Tenant metadata provisioning failed"
 
 set +e
-TYPE_SEED_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" types seed --tenant-key "$TENANT_KEY" --tenant-id "$TENANT_ID" --format json)"
+TYPE_SEED_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" types seed --tenant-key "$TENANT_KEY" --tenant-id "$TENANT_ID" --format json)"
 TYPE_SEED_EXIT=$?
 set -e
 if [[ $TYPE_SEED_EXIT -ne 0 && -z "$TYPE_SEED_JSON" ]]; then
@@ -494,43 +572,45 @@ for TYPE_NAME in TenantPgNote TenantDocumentNote TenantBlobNote TenantSearchNote
   assert_json "$SCHEMA_JSON" "(data.objectTypes || []).some((type) => type.name === '$TYPE_NAME')" "Missing published schema for $TYPE_NAME"
 done
 
-PG_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantPgNote --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note","status":"draft"}')"
+PG_CREATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-pg-note --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note","status":"draft"}')"
 PG_ID="$(json_field "$PG_CREATE_JSON" "data.id")"
-PG_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --format json)"
+printf '%s' "$PG_CREATE_JSON" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-created "$TENANT_CREATE_JOURNAL" tenant-pg-note "$PG_ID" 0
+PG_GET_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$PG_GET_JSON" "data.data.title === 'pg note'" "PostgreSQL read returned unexpected payload"
-PG_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note updated","status":"ready"}')"
+PG_UPDATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-pg-note "$PG_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"pg note updated","status":"ready"}')"
 assert_json "$PG_UPDATE_JSON" "data.data.title === 'pg note updated'" "PostgreSQL update returned unexpected payload"
 
-DOC_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantDocumentNote --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note","status":"draft"}')"
+DOC_CREATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-document-note --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note","status":"draft"}')"
 DOCDB_ID="$(json_field "$DOC_CREATE_JSON" "data.id")"
-DOC_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json)"
+printf '%s' "$DOC_CREATE_JSON" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-created "$TENANT_CREATE_JOURNAL" tenant-document-note "$DOCDB_ID" 0
+DOC_GET_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$DOC_GET_JSON" "data.data.title === 'doc note'" "DocumentDB read returned unexpected payload"
-DOC_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note updated","status":"ready"}')"
+DOC_UPDATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-document-note "$DOCDB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"doc note updated","status":"ready"}')"
 assert_json "$DOC_UPDATE_JSON" "data.data.title === 'doc note updated'" "DocumentDB update returned unexpected payload"
 
-BLOB_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantBlobNote --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note","status":"draft"}')"
+BLOB_CREATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-blob-note --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note","status":"draft"}')"
 BLOB_ID="$(json_field "$BLOB_CREATE_JSON" "data.id")"
-BLOB_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --format json)"
+printf '%s' "$BLOB_CREATE_JSON" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-created "$TENANT_CREATE_JOURNAL" tenant-blob-note "$BLOB_ID" 0
+BLOB_GET_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$BLOB_GET_JSON" "data.data.title === 'blob note'" "Blob read returned unexpected payload"
-BLOB_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note updated","status":"ready"}')"
+BLOB_UPDATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-blob-note "$BLOB_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"blob note updated","status":"ready"}')"
 assert_json "$BLOB_UPDATE_JSON" "data.data.title === 'blob note updated'" "Blob update returned unexpected payload"
 
-SEARCH_CREATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create TenantSearchNote --tenant-id "$TENANT_ID" --format json --data '{"title":"search note","status":"draft"}')"
+SEARCH_CREATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources create tenant-search-note --tenant-id "$TENANT_ID" --format json --data '{"title":"search note","status":"draft"}')"
 SEARCH_ID="$(json_field "$SEARCH_CREATE_JSON" "data.id")"
-SEARCH_GET_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json)"
+printf '%s' "$SEARCH_CREATE_JSON" | "$QA_NODE" "$OWNERSHIP_HELPER" resource-created "$TENANT_CREATE_JOURNAL" tenant-search-note "$SEARCH_ID" 0
+SEARCH_GET_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources get tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json)"
 assert_json "$SEARCH_GET_JSON" "data.data.title === 'search note'" "Search read returned unexpected payload"
 SEARCH_QUERY_JSON="$(retry_search "search note")"
 assert_json "$SEARCH_QUERY_JSON" "(data.results || []).some((result) => result.id === '$SEARCH_ID')" "Search query did not return the created document"
-SEARCH_UPDATE_JSON="$(node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"search note updated","status":"ready"}')"
+SEARCH_UPDATE_JSON="$("$QA_NODE" "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources update tenant-search-note "$SEARCH_ID" --tenant-id "$TENANT_ID" --format json --data '{"title":"search note updated","status":"ready"}')"
 assert_json "$SEARCH_UPDATE_JSON" "data.data.title === 'search note updated'" "Search update returned unexpected payload"
 
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantPgNote "$PG_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+cleanup_resource tenant-pg-note "$PG_ID"
 PG_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantDocumentNote "$DOCDB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+cleanup_resource tenant-document-note "$DOCDB_ID"
 DOCDB_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantBlobNote "$BLOB_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+cleanup_resource tenant-blob-note "$BLOB_ID"
 BLOB_ID=""
-node "$CLI_ROOT/dist/index.js" --profile "$PROFILE" resources delete TenantSearchNote "$SEARCH_ID" --tenant-id "$TENANT_ID" --force --format json >/dev/null
+cleanup_resource tenant-search-note "$SEARCH_ID"
 SEARCH_ID=""
-
-echo "Local dedicated tenant lifecycle E2E passed for tenant $TENANT_ID"

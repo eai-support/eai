@@ -38,6 +38,6 @@ Every create-new decision must include:
 
 - Why reuse and extension are insufficient.
 - Architecture owner approval.
-- Data/security owner approval when object types, APIs/events, tenant
+- Data/security owner approval when object types, APIs/events, workspace
   boundaries, or sensitive data are affected.
 - Acceptance tests proving the new contract is required and working.

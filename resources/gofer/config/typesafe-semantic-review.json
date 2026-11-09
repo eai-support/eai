@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "enabled": false,
+  "provider": "typesafe",
+  "events": ["resume", "before_task_batch", "after_material_finding", "before_validation", "chat_readiness"],
+  "minimumConfidence": 0.85,
+  "uncertainAction": "reconcile",
+  "conflictAction": "block_affected_task"
+}

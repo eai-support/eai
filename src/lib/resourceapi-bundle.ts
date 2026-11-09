@@ -84,7 +84,7 @@ export function buildPassiveResourceApiBundle(
   const tenantId = options.tenantId.trim();
   const installId = options.installId.trim();
   if (!tenantId) {
-    throw new Error('tenantId is required.');
+    throw new Error('workspace ID is required.');
   }
   if (!installId) {
     throw new Error('installId is required.');

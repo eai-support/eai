@@ -1982,7 +1982,7 @@ This document defines 100 comprehensive business scenarios for testing the EAI C
 | `projectHasValidObjectTypes(types)` | Create object-types.ts | P0 |
 | `projectHasObjectType(name, def)` | Add single type | P1 |
 | `projectHasMultiTenantConfig(keys)` | Set TENANT_KEYS | P1 |
-| `publicAPIReachable()` | Mock /health endpoint | P0 |
+| `publicAPIReachable()` | Mock `/v4/data/resources/health` | P0 |
 | `publicAPIUnreachable()` | Mock network error | P1 |
 | `publicAPIReturns400(err)` | Mock 400 error | P1 |
 | `publicAPIReturns404(err)` | Mock 404 error | P1 |

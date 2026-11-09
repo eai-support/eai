@@ -1,3 +1,6 @@
+<!-- Required: plan path/URL, or "exempt — <reason>". See plan-before-code. -->
+Plan:
+
 ## Summary
 
 -

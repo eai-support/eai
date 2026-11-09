@@ -163,7 +163,7 @@ function validateInviteRole(options: InviteUserCommandOptions): void {
   }
   if (!isTenantBaseRole(options.role)) {
     out.error(`Unsupported role "${options.role}". Use one of: ${TENANT_BASE_ROLES.join(', ')}.`);
-    out.info('Run `eai user roles --tenant <tenant-id> --format json` to see tenant role definitions.');
+    out.info('Run `eai user roles --workspace <workspace-id> --format json` to see workspace role definitions.');
     process.exit(1);
   }
 }
@@ -173,11 +173,11 @@ function validateInviteRole(options: InviteUserCommandOptions): void {
 userCommand
   .command('invite')
   .alias('add')
-  .description('Invite or add a user to a tenant with a tenant role')
+  .description('Invite or add a user to a workspace and assign a platform role')
   .requiredOption('--email <email>', 'Email address of the user to add')
-  .option('--tenant <id>', 'Tenant ID to add the user to (defaults to the active tenant)')
-  .option('--role <role>', 'Tenant role to assign (tenant-viewer|tenant-staff|tenant-builder|tenant-admin)', 'tenant-viewer')
-  .option('--role-definition-id <id>', 'Specific tenant role definition ID to assign instead of a base role')
+  .option('--workspace, --tenant <id>', 'Workspace ID to add the user to (defaults to the active workspace)')
+  .option('--role <role>', 'Workspace role to assign (platform role IDs: tenant-viewer, tenant-staff, tenant-builder, tenant-admin)', 'tenant-viewer')
+  .option('--role-definition-id <id>', 'Specific workspace role definition ID to assign instead of a base role')
   .option('--first-name <name>', 'Optional first name for new invitations')
   .option('--last-name <name>', 'Optional last name for new invitations')
   .option('--message <message>', 'Optional invitation message')
@@ -186,12 +186,12 @@ userCommand
   .addHelpText('after', `
 Examples:
   $ eai user invite --email user@example.com --role tenant-viewer
-  $ eai user invite --email user@example.com --tenant <tenant-id> --role tenant-admin
+  $ eai user invite --email user@example.com --workspace <workspace-id> --role tenant-admin
   $ eai user add --email user@example.com --role-definition-id <role-definition-id>
 
-Use this command for normal tenant membership and role assignment. Do not use
-tenant bootstrap-admin unless repairing first-admin access on an immediate child
-tenant.
+Use this command for normal workspace membership and role assignment. Do not use
+workspace bootstrap-admin unless repairing first-admin access on an immediate child
+workspace.
 `)
   .action(async (options: InviteUserCommandOptions) => {
     assertTextOrJson(options.format);
@@ -205,7 +205,7 @@ tenant.
     const requestedRole = options.roleDefinitionId ? `role definition ${options.roleDefinitionId}` : options.role;
     const inviteSpinner = jsonOutput
       ? null
-      : ora(`Inviting ${options.email} to tenant ${tenantId} as ${requestedRole}...`).start();
+      : ora(`Inviting ${options.email} to workspace ${tenantId} as ${requestedRole}...`).start();
 
     try {
       const inviteRes = await client.inviteTenantMember(tenantId, {
@@ -225,8 +225,8 @@ tenant.
           command: 'eai user invite',
           operation: 'user invite',
           next: [
-            'Confirm you are tenant-admin for the target tenant with `eai whoami`.',
-            'List allowed roles with `eai user roles --tenant <tenant-id> --format json`.',
+            'Confirm you have workspace admin access for the target workspace with `eai whoami`.',
+            'List allowed roles with `eai user roles --workspace <workspace-id> --format json`.',
             'Retry with an explicit role, for example `--role tenant-admin` or `--role tenant-viewer`.',
           ],
         });
@@ -246,7 +246,7 @@ tenant.
       }
 
       inviteSpinner?.succeed(
-        `Invited ${chalk.cyan(result.email || options.email)} to tenant ${chalk.dim(tenantId)} as ${result.role || requestedRole}`,
+        `Invited ${chalk.cyan(result.email || options.email)} to workspace ${chalk.dim(tenantId)} as ${result.role || requestedRole}`,
       );
       if (result.message) {
         out.info(result.message);
@@ -268,8 +268,8 @@ tenant.
 
 userCommand
   .command('list')
-  .description('List members in the active tenant or an explicit tenant')
-  .option('--tenant <id>', 'Tenant ID to list members from (defaults to the active tenant)')
+  .description('List members in the active workspace or an explicit workspace')
+  .option('--workspace, --tenant <id>', 'Workspace ID to list members from (defaults to the active workspace)')
   .option('--search <query>', 'Search by email or name')
   .option('--page <number>', 'Page number', '1')
   .option('--limit <number>', 'Page size', '25')
@@ -303,7 +303,7 @@ userCommand
     }
 
     const members = result.data || [];
-    out.heading(`Tenant members (${result.total ?? members.length})`);
+    out.heading(`Workspace members (${result.total ?? members.length})`);
     if (members.length === 0) {
       out.info('No members returned for this page.');
       return;
@@ -315,8 +315,8 @@ userCommand
 
 userCommand
   .command('roles')
-  .description('List tenant role definitions available for user invitation')
-  .option('--tenant <id>', 'Tenant ID to list roles from (defaults to the active tenant)')
+  .description('List workspace roles available for user invitation')
+  .option('--workspace, --tenant <id>', 'Workspace ID to list roles from (defaults to the active workspace)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options: UserCommandOptions) => {
     assertTextOrJson(options.format);
@@ -341,7 +341,7 @@ userCommand
     }
 
     const roles = result.data || [];
-    out.heading(`Tenant roles (${result.total ?? roles.length})`);
+    out.heading(`Workspace roles (${result.total ?? roles.length})`);
     for (const role of roles) {
       out.info(`${role.value || role.id} — ${role.label || role.id}${role.baseRole ? ` (${role.baseRole})` : ''}`);
     }
@@ -351,15 +351,15 @@ userCommand
 
 const userRoleCommand = userCommand
   .command('role')
-  .description('Manage tenant member roles');
+  .description('Manage workspace member roles');
 
 userRoleCommand
   .command('set')
-  .description('Set a tenant member role; by email this uses the V4 invite/add flow')
-  .option('--tenant <id>', 'Tenant ID to update (defaults to the active tenant)')
+  .description('Set a workspace member role; by email this uses the V4 invite/add flow')
+  .option('--workspace, --tenant <id>', 'Workspace ID to update (defaults to the active workspace)')
   .option('--email <email>', 'Email address to add or update through the invite/add flow')
-  .option('--member-id <id>', 'Existing tenant member/user ID for the direct role update endpoint')
-  .requiredOption('--role <role>', 'Role to assign. Email-based updates support tenant-viewer|tenant-staff|tenant-builder|tenant-admin; member-id updates support member|tenant-admin.')
+  .option('--member-id <id>', 'Existing workspace member/user ID for the direct role update endpoint')
+  .requiredOption('--role <role>', 'Workspace role to assign. Email updates use platform role IDs tenant-viewer, tenant-staff, tenant-builder, tenant-admin; member-id updates also accept member.')
   .option('--first-name <name>', 'Optional first name for new email invitations')
   .option('--last-name <name>', 'Optional last name for new email invitations')
   .option('--message <message>', 'Optional invitation message for new email invitations')
@@ -371,8 +371,8 @@ Examples:
   $ eai user role set --email user@example.com --role tenant-admin --first-name Poppy --last-name Lucas --redirect-uri https://admin-portal.example.com/login
   $ eai user role set --member-id <member-id> --role tenant-admin
 
-For normal "add this person as tenant admin/member" requests, prefer email-based
-commands because they can resolve existing users and create missing tenant
+For normal "add this person as workspace admin/member" requests, prefer email-based
+commands because they can resolve existing users and create missing workspace
 membership in one V4 flow.
 `)
   .action(async (options: SetUserRoleCommandOptions) => {
@@ -407,8 +407,8 @@ membership in one V4 flow.
           command: 'eai user role set',
           operation: 'user role set',
           next: [
-            'Confirm you are tenant-admin for the target tenant with `eai whoami`.',
-            'List allowed roles with `eai user roles --tenant <tenant-id> --format json`.',
+            'Confirm you have workspace admin access for the target workspace with `eai whoami`.',
+            'List allowed roles with `eai user roles --workspace <workspace-id> --format json`.',
           ],
         });
       }
@@ -416,7 +416,7 @@ membership in one V4 flow.
       if (jsonOutput) {
         out.json(result);
       } else {
-        out.success(`Assigned ${options.email} to ${options.role} in tenant ${tenantId}.`);
+        out.success(`Assigned ${options.email} to ${options.role} in workspace ${tenantId}.`);
       }
       return;
     }
@@ -439,7 +439,7 @@ membership in one V4 flow.
     if (jsonOutput) {
       out.json(result);
     } else {
-      out.success(`Updated member ${options.memberId} to ${options.role} in tenant ${tenantId}.`);
+      out.success(`Updated member ${options.memberId} to ${options.role} in workspace ${tenantId}.`);
     }
   });
 
@@ -447,8 +447,8 @@ membership in one V4 flow.
 
 userCommand
   .command('provision-me')
-  .description('Provision the current EAI CLI user identity to a tenant')
-  .option('--tenant <id>', 'Tenant ID to provision yourself to (defaults to the active tenant)')
+  .description('Provision the current EAI CLI user identity to a workspace')
+  .option('--workspace, --tenant <id>', 'Workspace ID to provision yourself to (defaults to the active workspace)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .addHelpText('after', `
@@ -480,7 +480,7 @@ current signed-in CLI user. It does not test or authorize another app client.
           direct: true,
           roles: directMembership.roles,
         },
-        message: 'Direct tenant membership already exists; no provisioning request was sent.',
+        message: 'Direct workspace membership already exists; no provisioning request was sent.',
         scope: 'current-cli-session',
         note: 'This result validates the EAI CLI identity, not another application client ID.',
       };
@@ -496,7 +496,7 @@ current signed-in CLI user. It does not test or authorize another app client.
 
     const provisionSpinner = jsonOutput
       ? null
-      : ora(`Provisioning the current CLI user to tenant ${tenantId}...`).start();
+      : ora(`Provisioning the current CLI user to workspace ${tenantId}...`).start();
 
     try {
       const provisionRes = await client.provisionMe();
@@ -504,12 +504,12 @@ current signed-in CLI user. It does not test or authorize another app client.
         const context = await extractServerErrorContext(provisionRes);
         const callingApplicationNotAuthorized =
           context.serverCode === 'CALLING_APPLICATION_NOT_AUTHORIZED'
-          || /application not authorized for this tenant/i.test(context.serverMessage ?? '');
+          || /application not authorized for this (?:workspace|tenant)/i.test(context.serverMessage ?? '');
         const code = callingApplicationNotAuthorized
           ? 'CALLING_APPLICATION_NOT_AUTHORIZED'
           : context.serverCode || (provisionRes.status === 403 ? 'FORBIDDEN' : 'PROVISION_ME_FAILED');
         const message = callingApplicationNotAuthorized
-          ? 'The calling EAI CLI application is not authorized for this tenant.'
+          ? 'The calling EAI CLI application is not authorized for this workspace.'
           : context.serverMessage || `Provisioning failed with HTTP ${provisionRes.status}.`;
         const result = {
           ok: false,
@@ -522,9 +522,9 @@ current signed-in CLI user. It does not test or authorize another app client.
           note: 'This operation checks the EAI CLI client and does not test another app client ID.',
           ...(context.requestId ? { requestId: context.requestId } : {}),
           next: callingApplicationNotAuthorized
-            ? 'Authorize the calling CLI client for this tenant, or use eai app auth status to inspect a different app client.'
+            ? 'Authorize the calling CLI client for this workspace, or use eai app auth status to inspect a different app client.'
             : provisionRes.status === 403
-              ? 'Review the reported tenant self-provisioning policy or access condition before retrying.'
+              ? 'Review the reported workspace self-provisioning policy or access condition before retrying.'
               : 'Retry with --format json and provide the request ID to platform support.',
         };
         provisionSpinner?.fail(message);
@@ -542,7 +542,7 @@ current signed-in CLI user. It does not test or authorize another app client.
 
       const result = await provisionRes.json() as { success?: boolean; message?: string; user?: unknown };
       provisionSpinner?.succeed(
-        `Successfully provisioned to tenant ${chalk.cyan(tenantId)}`,
+        `Successfully provisioned to workspace ${chalk.cyan(tenantId)}`,
       );
 
       if (jsonOutput) {

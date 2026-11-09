@@ -1,15 +1,20 @@
 import { describe, expect, test } from 'vitest';
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
-import { access, chmod, cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { realpathSync } from 'node:fs';
+import { access, chmod, cp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
+  buildEaiSetupUpdateGuidance,
+  buildUpdateBinConflictGuidance,
   buildUpdateInstallExecConfig,
   buildUpdateInstallArgs,
   buildUpdatePermissionGuidance,
+  findEaiSetupToolchain,
+  findUpdateBinConflict,
   isUpdatePermissionError,
 } from '../../src/commands/update.js';
 import {
@@ -26,6 +31,13 @@ import type { TestContext } from '../helpers/setup-dsl.js';
 
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { version: string };
+const linkedSources = require('../../resources/linked-sources.json') as {
+  appTemplate: {
+    repo: string;
+    version?: string;
+    commit: string;
+  };
+};
 const execFileAsync = promisify(execFile);
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL('../../resources/gofer/', import.meta.url),
@@ -33,6 +45,7 @@ const BUNDLED_GOFER_RESOURCES = fileURLToPath(
 const RELEASE_PREFLIGHT = fileURLToPath(
   new URL('../../scripts/release-preflight.sh', import.meta.url),
 );
+const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
 
 async function startPackumentServer(latestVersion: string): Promise<{ readonly url: string; readonly close: () => Promise<void> }> {
   const server: Server = createServer((_request, response) => {
@@ -87,6 +100,23 @@ async function createEaiProjectFixture(root: string): Promise<void> {
       type: 'module',
       dependencies: {
         '@eai-tools/core': '1.0.0',
+      },
+    }, null, 2)}\n`,
+    'utf-8',
+  );
+}
+
+async function recordCurrentTemplateSnapshot(root: string): Promise<void> {
+  await writeFile(
+    join(root, '.eai-manifest.json'),
+    `${JSON.stringify({
+      schemaVersion: 1,
+      template: {
+        repo: linkedSources.appTemplate.repo,
+        version: linkedSources.appTemplate.version,
+        commit: linkedSources.appTemplate.commit,
+        displaySource: `eai-support/eai-app-template@${linkedSources.appTemplate.version ?? linkedSources.appTemplate.commit.slice(0, 7)}`,
+        initializedAt: new Date(0).toISOString(),
       },
     }, null, 2)}\n`,
     'utf-8',
@@ -161,6 +191,67 @@ async function createNpmShim(root: string): Promise<{ readonly binDir: string; r
   );
 
   return { binDir, logPath };
+}
+
+/** npm 11 refuses to overwrite a global bin that another package links. */
+async function createEexistNpmShim(root: string, binPath: string): Promise<{ readonly binDir: string }> {
+  const binDir = join(root, 'fake-eexist-bin');
+  await mkdir(binDir, { recursive: true });
+  const shimScript = join(binDir, 'npm-eexist.cjs');
+  await writeFile(
+    shimScript,
+    [
+      `const binPath = ${JSON.stringify(binPath)};`,
+      'process.stderr.write([',
+      "  'npm error code EEXIST',",
+      '  `npm error path ${binPath}`,',
+      "  'npm error EEXIST: file already exists',",
+      '  `npm error File exists: ${binPath}`,',
+      "  'npm error Remove the existing file and try again, or run npm',",
+      "  'npm error with --force to overwrite files recklessly.',",
+      "].join('\\n') + '\\n');",
+      'process.exit(1);',
+    ].join('\n'),
+    'utf-8',
+  );
+  const unixShim = join(binDir, 'npm');
+  await writeFile(unixShim, `#!/usr/bin/env sh\nexec node "${shimScript}" "$@"\n`, 'utf-8');
+  await chmod(unixShim, 0o755);
+  return { binDir };
+}
+
+/** A global npm prefix where the retired @eai-tools/cli still owns bin/eai. */
+async function createLegacyEaiPrefix(root: string): Promise<{ readonly binPath: string }> {
+  const prefix = join(root, 'legacy-prefix');
+  const legacyRoot = join(prefix, 'lib', 'node_modules', '@eai-tools', 'cli');
+  await mkdir(join(legacyRoot, 'dist'), { recursive: true });
+  await writeFile(join(legacyRoot, 'dist', 'index.js'), '#!/usr/bin/env node\n', 'utf-8');
+  await writeFile(
+    join(legacyRoot, 'package.json'),
+    `${JSON.stringify({ name: '@eai-tools/cli', version: '3.6.3', bin: { eai: 'dist/index.js' } })}\n`,
+    'utf-8',
+  );
+  await mkdir(join(prefix, 'bin'), { recursive: true });
+  const binPath = join(prefix, 'bin', 'eai');
+  await symlink('../lib/node_modules/@eai-tools/cli/dist/index.js', binPath);
+  return { binPath };
+}
+
+/**
+ * Mirror the EAI Setup layout: a pinned CLI under
+ * ~/.eai-setup/toolchains/<bundle>/cli/node_modules/@enterpriseai/cli.
+ * The built dist is copied (not linked) so the CLI sees the Setup path as its own.
+ */
+async function createEaiSetupManagedCli(home: string): Promise<string> {
+  const packageRoot = join(
+    home, '.eai-setup', 'toolchains', 'bundle-0011', 'cli', 'node_modules', '@enterpriseai', 'cli',
+  );
+  await mkdir(packageRoot, { recursive: true });
+  await cp(join(REPO_ROOT, 'dist'), join(packageRoot, 'dist'), { recursive: true });
+  await cp(join(REPO_ROOT, 'package.json'), join(packageRoot, 'package.json'));
+  await symlink(join(REPO_ROOT, 'node_modules'), join(packageRoot, 'node_modules'), 'dir');
+  await symlink(join(REPO_ROOT, 'resources'), join(packageRoot, 'resources'), 'dir');
+  return join(packageRoot, 'dist', 'index.js');
 }
 
 describe('buildUpdateInstallArgs', () => {
@@ -323,6 +414,165 @@ describe('update permission guidance', () => {
       'Your global npm install location is not writable from this shell.',
       'Retry from an elevated PowerShell or Command Prompt: npm install -g @enterpriseai/cli@1.2.3 --prefer-online --registry=https://registry.npmjs.org/ --@enterpriseai:registry=https://registry.npmjs.org/',
     ]);
+  });
+});
+
+describe('EAI Setup managed installs', () => {
+  test('detects a CLI that runs from the EAI Setup toolchain folder', () => {
+    const home = '/Users/eai-user';
+    expect(findEaiSetupToolchain(
+      '/Users/eai-user/.eai-setup/toolchains/015e7063-0011/cli/node_modules/@enterpriseai/cli',
+      home,
+    )).toBe('/Users/eai-user/.eai-setup/toolchains');
+  });
+
+  test('detects the toolchain when the home folder is reached through a symlink', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const realHome = join(env.dir, 'real-home');
+      const packageRoot = join(realHome, '.eai-setup', 'toolchains', 'b-0011', 'cli', 'node_modules', '@enterpriseai', 'cli');
+      await mkdir(packageRoot, { recursive: true });
+      const linkedHome = join(env.dir, 'linked-home');
+      await symlink(realHome, linkedHome, 'dir');
+      const realToolchains = realpathSync(join(realHome, '.eai-setup', 'toolchains'));
+
+      expect(findEaiSetupToolchain(realpathSync(packageRoot), linkedHome)).toBe(realToolchains);
+    } finally {
+      await env.cleanup();
+    }
+  });
+
+  test('ignores npm-managed installs, including the EAI Setup npm prefix', () => {
+    const home = '/Users/eai-user';
+    expect(findEaiSetupToolchain('/Users/eai-user/.eai-setup/npm-global/lib/node_modules/@enterpriseai/cli', home)).toBeNull();
+    expect(findEaiSetupToolchain('/Users/eai-user/.nvm/versions/node/v24.16.0/lib/node_modules/@enterpriseai/cli', home)).toBeNull();
+    expect(findEaiSetupToolchain('/Users/eai-user/.eai-setup/toolchains-old/cli/node_modules/@enterpriseai/cli', home)).toBeNull();
+    expect(findEaiSetupToolchain('/Users/eai-user/.eai-setup/toolchains', home)).toBeNull();
+  });
+
+  test('explains that EAI Setup pins the CLI and how to run a newer one', () => {
+    expect(buildEaiSetupUpdateGuidance('3.20.4', '3.20.5')).toEqual([
+      'EAI Setup manages this eai command and pins it to 3.20.4, so eai update cannot replace it.',
+      'Run 3.20.5 without changing EAI Setup: npx -y @enterpriseai/cli@3.20.5 <command>',
+      'To update the managed CLI, run a newer EAI Setup release. It installs the CLI version it bundles.',
+    ]);
+  });
+
+  test('prints guidance and never runs npm when EAI Setup manages the CLI', async () => {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer('99.99.99');
+    const npmShim = await createNpmShim(env.dir);
+    const home = join(env.dir, 'home');
+    const entry = await createEaiSetupManagedCli(home);
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        HOME: home,
+        USERPROFILE: home,
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
+        EAI_UPDATE_PACKUMENT_URL: server.url,
+        EAI_NPM_SHIM_LOG: npmShim.logPath,
+        NO_COLOR: '1',
+        PATH: `${npmShim.binDir}${delimiter}${process.env.PATH ?? ''}`,
+      },
+      prompts: [],
+    };
+
+    try {
+      const update = await runCommand(ctx, `${process.execPath} ${entry} update --no-project-refresh`);
+      const updateOutput = `${update.stdout}${update.stderr}`;
+      expect(update.exitCode).toBe(1);
+      expect(updateOutput).toContain('Update available:');
+      expect(updateOutput).toContain(`EAI Setup manages this eai command and pins it to ${pkg.version}`);
+      expect(updateOutput).toContain('npx -y @enterpriseai/cli@99.99.99 <command>');
+      expect(updateOutput).not.toContain('Updated to');
+
+      const check = await runCommand(ctx, `${process.execPath} ${entry} update --check --no-project-refresh`);
+      const checkOutput = `${check.stdout}${check.stderr}`;
+      expect(check.exitCode).toBe(0);
+      expect(checkOutput).toContain('EAI Setup manages this eai command');
+      expect(checkOutput).not.toContain('to install.');
+
+      expect(await pathExists(npmShim.logPath)).toBe(false);
+    } finally {
+      await server.close();
+      await env.cleanup();
+    }
+  });
+});
+
+describe('npm EEXIST bin conflicts', () => {
+  test('ignores npm failures that are not bin conflicts', async () => {
+    expect(await findUpdateBinConflict('npm error code E404\nnpm error 404 Not Found')).toBeNull();
+  });
+
+  test('names the global package that owns the existing eai bin', async () => {
+    const env = await createTestEnvironment();
+    try {
+      const { binPath } = await createLegacyEaiPrefix(env.dir);
+      expect(await findUpdateBinConflict(
+        `Command failed: npm install -g @enterpriseai/cli@3.20.5\nnpm error code EEXIST\nnpm error path ${binPath}\nnpm error File exists: ${binPath}`,
+      )).toEqual({ binPath, ownerPackage: '@eai-tools/cli', ownerVersion: '3.6.3' });
+    } finally {
+      await env.cleanup();
+    }
+  });
+
+  test('keeps the conflicting path when the owner cannot be read', async () => {
+    expect(await findUpdateBinConflict(
+      'npm ERR! code EEXIST\nnpm ERR! path /missing/prefix/bin/eai\nnpm ERR! EEXIST: file already exists',
+    )).toEqual({ binPath: '/missing/prefix/bin/eai' });
+  });
+
+  test('tells the user to remove the owning package, then install the update', () => {
+    expect(buildUpdateBinConflictGuidance(
+      { binPath: '/prefix/bin/eai', ownerPackage: '@eai-tools/cli', ownerVersion: '3.6.3' },
+      'npm install -g @enterpriseai/cli@3.20.5',
+    )).toEqual([
+      'The existing /prefix/bin/eai belongs to @eai-tools/cli 3.6.3, so npm could not replace it.',
+      'Remove that package: npm uninstall -g @eai-tools/cli',
+      'Then install the update: npm install -g @enterpriseai/cli@3.20.5',
+    ]);
+    expect(buildUpdateBinConflictGuidance(
+      { binPath: '/prefix/bin/eai' },
+      'npm install -g @enterpriseai/cli@3.20.5',
+    )).toEqual([
+      'The existing /prefix/bin/eai is not part of this CLI, so npm could not replace it.',
+      'Remove the package or file that provides it, then install the update: npm install -g @enterpriseai/cli@3.20.5',
+    ]);
+  });
+
+  test('eai update names the legacy owner instead of printing the raw npm failure', async () => {
+    const env = await createTestEnvironment();
+    const server = await startPackumentServer('99.99.99');
+    const { binPath } = await createLegacyEaiPrefix(env.dir);
+    const npmShim = await createEexistNpmShim(env.dir, binPath);
+    const ctx: TestContext = {
+      workingDir: env.dir,
+      mockAPI: {} as TestContext['mockAPI'],
+      env: {
+        EAI_UPDATE_NPMJS_PACKUMENT_URL: server.url,
+        EAI_UPDATE_PACKUMENT_URL: server.url,
+        NO_COLOR: '1',
+        PATH: `${npmShim.binDir}${delimiter}${process.env.PATH ?? ''}`,
+      },
+      prompts: [],
+    };
+
+    try {
+      const result = await runCommand(ctx, 'eai update --no-project-refresh');
+      const output = `${result.stdout}${result.stderr}`;
+      expect(result.exitCode).toBe(1);
+      expect(output).toContain('Update failed.');
+      expect(output).toContain(`The existing ${binPath} belongs to @eai-tools/cli 3.6.3, so npm could not replace it.`);
+      expect(output).toContain('Remove that package: npm uninstall -g @eai-tools/cli');
+      expect(output).toContain(`Then install the update: npm ${buildUpdateInstallArgs('99.99.99').join(' ')}`);
+      expect(output).not.toContain('overwrite files recklessly');
+    } finally {
+      await server.close();
+      await env.cleanup();
+    }
   });
 });
 
@@ -622,7 +872,78 @@ describe('eai update project maintenance', () => {
     }
   });
 
-  test('repairs a matching-version Gofer cache missing normalized config during update', async () => {
+  test('force-refreshes locally edited Gofer files and preserves their backups', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await recordCurrentTemplateSnapshot(env.dir);
+      const seedResult = await runCommand(ctx, 'eai update');
+      expect(seedResult, `${seedResult.stdout}\n${seedResult.stderr}`).toMatchObject({ exitCode: 0 });
+
+      const managedFile = join(env.dir, '.github', 'copilot-instructions.md');
+      const original = await readFile(managedFile, 'utf-8');
+      await writeFile(managedFile, `${original}\nLOCAL CUSTOMIZATION\n`, 'utf-8');
+
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({ exitCode: 0 });
+      expect(await readFile(managedFile, 'utf-8')).not.toContain('LOCAL CUSTOMIZATION');
+      expect(result.stdout).toContain('Backed up');
+      const backupMatch = result.stdout.match(/Backup directory: (.+)/);
+      expect(backupMatch?.[1]).toBeTruthy();
+      const backup = await readFile(
+        join(backupMatch![1]!.trim(), '.github', 'copilot-instructions.md'),
+        'utf-8',
+      );
+      expect(backup).toContain('LOCAL CUSTOMIZATION');
+    } finally {
+      await close();
+    }
+  });
+
+  test('automatically runs the read-only template check after explicit update', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await recordCurrentTemplateSnapshot(env.dir);
+
+      const result = await runCommand(ctx, 'eai update');
+
+      expect(result, `${result.stdout}\n${result.stderr}`).toMatchObject({ exitCode: 0 });
+      expect(result.stdout).toContain('Running the read-only app-template drift check');
+      expect(result.stdout).toContain('Template Check');
+      expect(result.stdout).toContain('Bundled default template commit matches this project snapshot');
+    } finally {
+      await close();
+    }
+  });
+
+  test('keeps successful Gofer maintenance when the automatic template check fails', async () => {
+    const { env, ctx, close } = await createMaintenanceContext();
+    try {
+      await writeFile(
+        join(env.dir, '.eai-manifest.json'),
+        `${JSON.stringify({
+          schemaVersion: 1,
+          template: {
+            repo: join(env.dir, 'missing-template-repository'),
+            commit: '0000000000000000000000000000000000000000',
+          },
+        }, null, 2)}\n`,
+        'utf-8',
+      );
+
+      const result = await runCommand(ctx, 'eai update');
+      const output = `${result.stdout}\n${result.stderr}`;
+
+      expect(result, output).toMatchObject({ exitCode: 0 });
+      expect(result.stdout).toContain('Gofer-managed assets refreshed');
+      expect(output).toContain('automatic template check could not complete');
+      expect(output).toContain('eai template check');
+    } finally {
+      await close();
+    }
+  });
+
+  test('repairs a matching-version Gofer cache missing normalized config during update', { timeout: 30_000 }, async () => {
     const { env, ctx, close } = await createMaintenanceContext();
     const goferVersion = '99.0.1';
     try {

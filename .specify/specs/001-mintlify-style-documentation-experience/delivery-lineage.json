@@ -1,0 +1,15 @@
+{
+  "schemaVersion": "eai.delivery_lineage.v1",
+  "plane": "customer",
+  "featureId": "001-mintlify-style-documentation-experience",
+  "generatedAt": "2026-09-23T00:00:00.000Z",
+  "nodes": [
+    { "id": "customer-docs", "kind": "customer-outcome", "visibility": "customer", "title": "Cited public documentation assistance" },
+    { "id": "docs-ui", "kind": "delivery-item", "visibility": "customer", "title": "Docusaurus Search and Ask drawer", "source": { "repository": "eai", "path": "docs-site/src/components/DocsAssistant/index.js" } },
+    { "id": "website-chat", "kind": "public-api-capability", "visibility": "public-contract", "capabilityId": "eai.publicapi.capability.website-docs-assistant.v4", "source": { "repository": "PublicAPI", "path": "src/app/middleware/auth_v4.py" } }
+  ],
+  "edges": [
+    { "from": "customer-docs", "to": "docs-ui", "kind": "delivered-by" },
+    { "from": "docs-ui", "to": "website-chat", "kind": "uses" }
+  ]
+}

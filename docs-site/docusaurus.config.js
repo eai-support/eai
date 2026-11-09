@@ -20,7 +20,14 @@ const config = {
   organizationName: "eai-support",
   projectName: "eai",
   deploymentBranch: "gh-pages",
+  staticDirectories: [process.env.EAI_DOCS_BUILD_STATIC_DIR || "static"],
   trailingSlash: false,
+  customFields: {
+    documentationFeedbackUrl: process.env.EAI_DOCS_FEEDBACK_URL || "",
+    docsAssistantApiUrl:
+      process.env.EAI_DOCS_ASSISTANT_API_URL ||
+      "https://www.enterpriseaigroup.com/api/chat",
+  },
   onBrokenLinks: "warn",
   markdown: {
     format: "md",
@@ -59,6 +66,7 @@ const config = {
             "review/**",
           ],
           onInlineTags: "ignore",
+          editUrl: "https://github.com/eai-support/eai/tree/main/.tech-docs/",
         },
         blog: false,
         pages: false,
@@ -92,6 +100,11 @@ const config = {
       title: "EAI Docs",
       items: [
         {
+          href: "https://enterpriseaigroup.com",
+          label: "Enterprise AI",
+          position: "left",
+        },
+        {
           type: "docSidebar",
           sidebarId: "docsSidebar",
           position: "left",
@@ -102,6 +115,12 @@ const config = {
           docId: "examples/index",
           position: "left",
           label: "Examples",
+        },
+        {
+          type: "doc",
+          docId: "api-reference",
+          position: "left",
+          label: "Reference",
         },
         {
           type: "doc",

@@ -9,10 +9,16 @@ Scaffold, configure, validate, and operate EAI applications from a developer
 terminal.
 
 The CLI gives teams a supported path for application setup, authentication,
-tenant selection, runtime validation, resource management, and deployment
+workspace selection, runtime validation, resource management, and deployment
 readiness. It keeps platform access behind authenticated commands and
 public-safe diagnostics, so developers and AI coding agents get useful next
 steps without exposing private infrastructure details.
+
+Customer-facing CLI language uses **workspace**. The CLI also accepts the
+`tenant` command and `--tenant-*` options for compatibility with existing
+scripts and platform API names. Stable fields such as `tenantId`, `--tenant-id`,
+`limits.tenants`, and role IDs such as `tenant-admin` remain unchanged. They
+refer to EAI workspaces or the platform role contract.
 
 ## Package Trust
 
@@ -26,7 +32,7 @@ environments.
 | Source | Public GitHub repository with issues, releases, and CI |
 | Publishing | GitHub Actions trusted publishing with npm provenance |
 | Runtime | Node.js 24 LTS or newer |
-| Secrets | No secrets, tenant credentials, or local environment files are committed or published |
+| Secrets | No secrets, workspace credentials, or local environment files are committed or published |
 | Support | Security issues are handled through [SECURITY.md](SECURITY.md); product issues through GitHub Issues |
 
 ## Public Repository
@@ -47,7 +53,7 @@ and find the maintained documentation.
 | License | [Apache-2.0](LICENSE) | Open source license and patent grant |
 
 Public-readiness rule for maintainers: everything committed here must be safe
-for a public audience. Do not commit secrets, customer data, private tenant
+for a public audience. Do not commit secrets, customer data, private workspace
 details, local `.env` files, unpublished internal architecture notes, private
 environment URLs, or temporary build output.
 
@@ -105,14 +111,15 @@ cd my-app
 
 # 2. For an existing login or automation, use the lower-level commands:
 eai whoami
-eai tenant select
+eai workspace select
 
-# 3. Create child tenants only when you need them
-#    `eai tenant create --parent <id>` now creates the tenant record,
+# 3. Create child workspaces only when you need them
+#    `eai workspace create --parent <id>` now creates the workspace record,
 #    attempts first-admin bootstrap for the current login, and only marks
-#    the tenant usable after direct tenant-admin membership is confirmed.
-#    The child home region defaults to the parent region; pass
-#    `--home-region au|ca|eu` when the child must use another region.
+#    the workspace usable after workspace-admin membership is confirmed
+#    (platform role ID `tenant-admin`).
+#    A child workspace always inherits its parent's home region;
+#    `--home-region` applies only to root workspaces (`--allow-root`).
 
 # 4. Sync project environment if your app needs local configuration
 eai env pull --include-secrets
@@ -184,12 +191,12 @@ a different repository or a local template path.
 | `eai whoami` | Show auth status and project context |
 | `eai provision entra` | Create or confirm the app's Entra app registration in the CIAM for the active platform environment |
 | `eai provision entra --rotate-secret` | Rotate the existing app registration secret and write the new value to `.env.local` |
-| `eai provision entra --deauthorize --force` | Remove tenant authorization, delete the app registration, and remove local Entra credentials |
-| `eai user invite --email <email> --role <role>` | Invite or provision a user into the active tenant or an explicit tenant with a V4 member role |
-| `eai user list` | List tenant members in the active tenant or an explicit tenant |
-| `eai user roles` | List tenant role definitions available for user invitation |
+| `eai provision entra --deauthorize --force` | Remove workspace authorization, delete the app registration, and remove local Entra credentials |
+| `eai user invite --email <email> --role <role>` | Invite or provision a user into the active workspace or a specified workspace with a V4 member role |
+| `eai user list` | List workspace members in the active workspace or a specified workspace |
+| `eai user roles` | List workspace role definitions available for user invitation |
 | `eai user role set --email <email> --role <role>` | Assign a role by email through the V4 invite/add flow |
-| `eai user provision-me` | Provision yourself to the active tenant or an explicit tenant |
+| `eai user provision-me` | Provision yourself to the active workspace or a specified workspace |
 
 Codespaces and other remote dev environments can keep the standard localhost
 callback by forwarding a fixed callback port from the Codespace to your local
@@ -207,6 +214,10 @@ eai login --callback-port 3476
 OAuth callback; it just pins the port instead of choosing a random one. That
 keeps the public Entra app registration unchanged while allowing your local
 machine to tunnel the callback into the Codespace.
+
+If your browser is already signed in to the wrong account, run
+`eai logout` and then `eai login --switch-account`: the browser shows its
+account picker instead of reusing the existing session.
 
 ### Environment
 
@@ -269,17 +280,46 @@ route construction.
 | `eai resources update <type> <id>` | Update (auto-fetches version) |
 | `eai resources delete <type> <id>` | Delete (with confirmation) |
 | `eai resources query` | Cross-type query with `--types`, `--where`, and optional `--tenant-id` |
-| `eai resources schema` | Show published Object Types for tenant (supports `--tenant-id`) |
+| `eai resources schema` | Show published Object Types for the workspace (supports `--tenant-id`) |
 
-### Tenants
+### Knowledge Base files
+
+Upload one file and request indexing through the same Knowledge Base flow as
+Admin Portal:
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+The command resolves the workspace's regional API using your selected login,
+then creates a `shared-kb-article`, uploads and verifies its server-committed file, and requests KB
+indexing. Supported KB formats are PDF, DOCX, XLSX, PPTX, plain text, Markdown, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC. Media types are inferred from known
+extensions; use `--content-type` only when it correctly describes the file.
+Markdown `.md`/`.markdown` filenames are case-insensitive and use canonical
+`text/markdown`; the compatibility alias `text/x-markdown` is normalized.
+Empty/octet-stream/plain-text MIME fallback is limited to known Markdown
+filenames. The original file bytes and filename stay intact. Invalid or blank
+UTF-8 Markdown, CSV and unknown media types are rejected before record creation.
+Generic `eai resources file upload` keeps its existing MIME behavior.
+The workspace must already have the published Knowledge Base model and storage.
+
+`status: in_progress` means indexing is pending. A failed or uncertain operation
+may leave a stored record; the result retains verified IDs and the article key.
+Inspect that record in the workspace's regional Knowledge Base before uploading
+again. The command never retries or deletes it automatically. Child visibility
+requires the explicit `--visible-to-children` option. `eai docs upload` keeps its
+existing configured document lifecycle and Curate behavior.
+
+### Workspaces
 
 | Command | Description |
 |---------|-------------|
-| `eai tenant list` | List active tenants where you are a `tenant-admin` |
-| `eai tenant select [tenant]` | Choose the active tenant for platform operations |
-| `eai tenant info <id>` | Show tenant details |
-| `eai tenant create` | Create a new tenant and verify child usability truthfully |
-| `eai tenant bootstrap-admin --parent <id> --child <id>` | Repair first child-tenant admin access when the parent admin should be able to administer an existing child |
+| `eai workspace list` | List workspaces available to your account (role name: `tenant-admin`) |
+| `eai workspace select [workspace]` | Choose the active workspace for platform operations |
+| `eai workspace info <id>` | Show workspace details |
+| `eai workspace create` | Create a workspace and confirm child access |
+| `eai workspace bootstrap-admin --parent <id> --child <id>` | Repair first child workspace admin access when the parent admin should be able to administer an existing child |
 
 ### AI & Documents
 
@@ -287,8 +327,8 @@ route construction.
 |---------|-------------|
 | `eai chat send <message>` | Send a single chat message |
 | `eai chat stream <message>` | Stream a conversation (SSE) |
-| `eai workflow readiness [keys...]` | Check tenant access, plan metadata, and optional workflow readiness together |
-| `eai workflow status <key>` | Check whether an AI runtime workflow key is bound for the active tenant |
+| `eai workflow readiness [keys...]` | Check workspace access, plan metadata, and optional workflow readiness together |
+| `eai workflow status <key>` | Check whether an AI runtime workflow key is bound for the active workspace |
 | `eai workflow request <key>` | Request operator-assisted workflow binding when a workflow is not ready yet |
 | `eai docs upload <file>` | Submit once for full processing with authorised app/workflow or project context |
 | `eai docs classify <file>` | Submit once for classification with paired `--vertical-key` and `--workflow-key`, or authorised project context |
@@ -307,8 +347,8 @@ route construction.
 Use named commands first for normal workflows. `eai publicapi` is the advanced
 V4-only surface for route families that do not yet have a polished command,
 such as geo, realtime, platform administration, integrations, or DAISY-specific
-diagnostics. It still uses your current login and tenant context, and PublicAPI
-still enforces platform tenant authorization.
+diagnostics. It still uses your current login and workspace context, and PublicAPI
+still enforces platform workspace authorization.
 
 ### Deployment
 
@@ -323,14 +363,14 @@ still enforces platform tenant authorization.
 
 The runtime contract lives in `eai.runtime.json`. It declares required
 environment variable names, required secrets, health/runtime endpoints, Auth.js
-callback path, tenant/workflow key patterns, user-delegated BFF access, and
+callback path, workspace/workflow key patterns, user-delegated BFF access, and
 post-deploy smoke tests. It is host-neutral: Vercel, Docker, AWS, Azure,
 Kubernetes, VM-style hosts, and internal demo environments should translate the
 same contract into their provider-specific env and secret setup.
 
 `eai deploy doctor` deliberately does more than `/health`. A deployment can have
 `/health` returning 200 and still fail because Auth.js providers are missing,
-the Entra callback URL is wrong, tenant/workflow config is empty, a route is
+the Entra callback URL is wrong, workspace/workflow config is empty, a route is
 trying to use unsupported app-only data-plane access, PublicAPI rejects
 authorization, or the app runtime is throwing errors.
 
@@ -344,36 +384,36 @@ authorization, or the app runtime is throwing errors.
 | `eai gofer refresh` | Safely refresh repo-local Gofer-managed assets with backups and conflict detection |
 | `eai template check` | Preview app-template and UI drift without writing files |
 
-## Tenant Lifecycle Truth
+## Workspace Lifecycle
 
-`eai tenant create` now distinguishes these states:
+`eai workspace create` now distinguishes these states:
 
-- `created`: the tenant document exists
-- `bootstrapped`: the CLI successfully called the constrained first-admin bootstrap flow for a child tenant
-- `usable`: a refreshed membership check confirmed the current login now holds direct `tenant-admin` on that tenant
+- `created`: the workspace record exists
+- `bootstrapped`: the CLI successfully called the constrained first-admin bootstrap flow for a child workspace
+- `usable`: a refreshed membership check confirmed the current login now holds direct workspace admin access (platform role ID `tenant-admin`) on that workspace
 
-For child tenants, the CLI only auto-selects the new tenant when `usable` is true. If bootstrap is blocked or downstream membership confirmation has not landed yet, the command leaves the active tenant unchanged and reports that explicitly.
+For child workspaces, the CLI only auto-selects the new workspace when `usable` is true. If bootstrap is blocked or downstream membership confirmation has not landed yet, the command leaves the active workspace unchanged and reports that explicitly.
 
 The first-admin bootstrap path is intentionally narrow:
 
-- the caller must already be `tenant-admin` on the direct parent tenant
+- the caller must already hold workspace admin access (platform role ID `tenant-admin`) on the direct parent workspace
 - the target must be an immediate child of that parent
-- the child must not already have a tenant admin
+- the child must not already have a workspace admin
 - parent child allowance is enforced from `limits.tenants`
 
-For existing child tenants that were created before the bootstrap completed, a parent tenant admin can run:
+For existing child workspaces that were created before the bootstrap completed, a parent workspace admin can run:
 
 ```bash
-eai tenant bootstrap-admin --parent <parent-tenant-id> --child <child-tenant-id>
+eai workspace bootstrap-admin --parent <parent-workspace-id> --child <child-workspace-id>
 ```
 
 By default this bootstraps the current login. To repair another known parent member, pass `--user-oid <entra-user-oid>` and optionally `--user-email <email>`.
 
-## Tenant Member And Role Management
+## Workspace Member And Role Management
 
-Use `eai user invite` for normal "add this person to a tenant" and "make this
-person a tenant admin/member" requests. The command calls the V4 tenant member
-invite/add flow and can assign these base roles:
+Use `eai user invite` for normal "add this person to a workspace" and "make this
+person a workspace admin/member" requests. The command calls the V4 workspace member
+invite/add flow and can assign these base roles (platform role IDs):
 
 - `tenant-viewer`
 - `tenant-staff`
@@ -383,10 +423,10 @@ invite/add flow and can assign these base roles:
 Common examples:
 
 ```bash
-eai user roles --tenant <tenant-id> --format json
-eai user invite --email user@example.com --tenant <tenant-id> --role tenant-viewer
-eai user invite --email admin@example.com --tenant <tenant-id> --role tenant-admin
-eai user list --tenant <tenant-id> --search admin@example.com --format json
+eai user roles --workspace <workspace-id> --format json
+eai user invite --email user@example.com --workspace <workspace-id> --role tenant-viewer
+eai user invite --email admin@example.com --workspace <workspace-id> --role tenant-admin
+eai user list --workspace <workspace-id> --search admin@example.com --format json
 ```
 
 If `eai user invite` fails with a 5xx or `EXTERNAL_SERVICE_ERROR`, do not guess
@@ -394,23 +434,24 @@ or edit the database directly. Run:
 
 ```bash
 eai errors explain user_invite_external_service_existing_member --format json
-eai user list --tenant <tenant-id> --search <email> --format json
+eai user list --workspace <workspace-id> --search <email> --format json
 ```
 
-If the person already exists as a direct tenant member and you approve the role
+If the person already exists as a direct workspace member and you approve the role
 change, repair the role through EAI CLI and verify read-back:
 
 ```bash
-eai user role set --tenant <tenant-id> --member-id <member-id> --role tenant-admin --format json
-eai user list --tenant <tenant-id> --search <email> --format json
+eai user role set --workspace <workspace-id> --member-id <member-id> --role tenant-admin --format json
+eai user list --workspace <workspace-id> --search <email> --format json
 ```
 
 The affected app user may need to sign out and sign back in because Auth.js
 session or JWT role data can be cached.
 
-`eai tenant bootstrap-admin` is not a general "make this user an admin" command.
-It is only for repairing first tenant-admin access on an existing immediate
-child tenant when the caller is already tenant-admin on the direct parent.
+`eai workspace bootstrap-admin` is not a general "make this user an admin" command.
+It is only for repairing first workspace-admin access on an existing immediate
+child workspace when the caller already has workspace admin access on the direct
+parent (platform role ID `tenant-admin`).
 
 ## Architecture
 
@@ -418,7 +459,7 @@ child tenant when the caller is already tenant-admin on the direct parent.
 Developer Terminal                    EAI Platform
 ──────────────────                    ────────────
 eai login ──────────────────────────→ Entra CIAM (browser PKCE + localhost callback)
-eai tenant select ──────────────────→ Current-user memberships → active tenant context
+eai workspace select ──────────────────→ Current-user memberships → active workspace
 eai env pull ───────────────────────→ Azure App Config + Key Vault
 eai types seed ─────────────────────→ Platform API → Type Registry
 eai resources list <object-type-slug> → Platform API → Data Service
@@ -431,7 +472,7 @@ eai deploy doctor ───────────────────→ d
 eai deploy trigger ─────────────────→ GitHub Actions → deployment workflow
 ```
 
-The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active working tenant from your tenant-admin memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but tenant selection for CLI platform commands comes from `eai login` and `eai tenant select`.
+The CLI authenticates via browser-based authorization code flow with PKCE, stores tokens locally in `~/.eai/`, persists the active workspace from your platform memberships, and calls the platform API directly with a Bearer token. `.env.local` is still available for project runtime configuration, but workspace selection for CLI platform commands comes from `eai login` and `eai workspace select`.
 
 Runtime workflow checks are intentionally public-safe. They tell you whether a workflow key is `available`, `operator_required`, `paid_upgrade_required`, `rate_limited`, `blocked`, `unsupported`, or not ready without exposing private platform topology. Use `eai workflow request <key>` when the platform reports `operator_required`.
 
@@ -456,7 +497,7 @@ Why this might happen:
 
 Try next:
 1. eai whoami [read-only]
-   Show the current login and active tenant status.
+   Show the current login and active workspace status.
 2. eai login [changes state]
    Authenticate with the EAI identity flow.
 
@@ -495,8 +536,65 @@ eai errors explain app_token_tenant_context_required --format json
 
 Use `app_token_tenant_context_required` when platform user lookup or membership
 prerequisite calls return `MISSING_TENANT` or "Tenant context required for app
-tokens"; retry tenant-scoped V4 platform routes before changing tenant members,
+tokens"; retry workspace-scoped V4 platform routes before changing workspace members,
 role definitions, Entra configuration, databases, or cloud portals.
+
+## Support reports
+
+Run `eai support` when you want help with a CLI failure. It shows a locally
+redacted report and asks before sending. The report includes the last failing
+command, catalog error code and reason, CLI version, OS, and known workspace/app
+context. Credentials and unrelated environment settings are excluded. Saved
+failure context contains command and catalog metadata only, is left out of the
+report after 24 hours (the CLI shows its time), and `--no-last-error` skips it.
+
+Every failing command ends with the same offer: "Need help? Run eai support, or
+ask your AI assistant to get help. Nothing is sent without your approval." Text mode
+prints this on every nonzero exit. JSON error keys stay unchanged; `error.suggestion`
+contains only the catalog suggestion.
+
+Re-run `eai init --tool <tool>` to refresh instructions in projects created with older CLI versions.
+`eai gofer refresh` preserves their CLAUDE.md and AGENTS.md.
+
+An AI harness starts a report only when you ask for EAI Support ("get help" or
+`eai support`). Generic coding help, command failures, failed fixes and error hints do not authorize any eai support call, including allocation, preview, sending or decline.
+Write a short summary of the chat problem, attempts and results, without raw transcripts, environment values or file contents.
+It passes its bounded session summary (what you asked, the goal,
+steps, commands, errors, attempted fixes and project-relative files) through `--context-file`.
+For a file, run `eai support --create-context-file --format json`, then write the summary into the returned `contextFile` without replacing it. The CLI allocates it in `~/.eai/support/context/` (directory 0700, file 0600) and records its identity. Preview keeps it; an approved send deletes it. On a declined preview, run `eai support --decline --context-file <path> --format json` to clean it up without sending. Marked files older than 24 hours are removed on the next support run. Untracked files and files elsewhere are never deleted.
+
+`--context-file`, which reads a JSON file or stdin (`-`), accepts at most 64 KiB,
+redacts credentials, hides your home directory and project root, and drops the
+oldest steps, commands and errors to stay within the website's 32 KiB cap:
+
+```bash
+eai support --source harness --tool codex --context-file - --format json
+```
+
+The JSON preview returns `previewText`, the whole redacted report as plain text
+ending with its digest, and `bundleDigest`. The harness shows `previewText`
+unchanged and asks you. After you approve, it reruns with
+`--yes --approved-digest <bundleDigest>`; any other digest answers
+`consent_stale` and sends nothing. JSON runs without `--yes` never send a report,
+and `--yes` always needs the digest, including interactive text runs.
+
+When the saved session has no active workspace, the report needs to know where
+your organisation is based so it is stored in that region. A terminal asks you;
+JSON runs answer `consent_required` with `questions: ["organisationLocation"]`
+until `--organisation-location apac|emea|americas` is supplied. If the website
+still cannot place the report it answers `region_required`, and the CLI returns
+the Support chat link instead.
+
+The returned link contains only a draft id and one-time token in its fragment.
+Open it to review and submit the report before the draft expires. A missing or
+expired `eai login` session, a website 401, a declined report or `region_required`
+returns `<website>/support?chat=open`, which opens the Support chat without
+prefill and creates no draft. `--no-open` prints the link without opening a
+browser. Reports never go in URL parameters.
+
+Existing projects can preview updated harness instructions with
+`eai gofer refresh --check`, then apply the supported refresh. `eai update`
+upgrades the CLI package; it does not rewrite project instructions.
 
 ## Machine-Readable Output
 
@@ -510,7 +608,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 eai resources list board-app-user --format json
 
 # Parse with jq
-eai tenant list --format json | jq '.tenants[] | .slug'
+eai workspace list --format json | jq '.tenants[] | .slug'
 
 # Use in scripts
 if eai verify calls --format json | jq -e '.summary.failed == 0' > /dev/null; then
@@ -608,8 +706,9 @@ app.
 
 `eai update` keeps the local EAI toolchain current. It checks the installed CLI
 against npmjs first, falls back to the public static registry when needed, installs the newer CLI when available, then
-refreshes safe Gofer-managed files in the current EAI project. It does **not**
-blindly rewrite template files or UI components inside an existing app repo.
+force-refreshes Gofer-managed files with backups and runs a read-only template
+check in the current EAI project. It does **not** rewrite template files or UI
+components inside an existing app repo.
 
 Use these commands for the full maintenance loop:
 
@@ -628,12 +727,16 @@ eai gofer refresh
 
 # Preview app-template and UI component drift before copying changes manually
 eai template check
+
+# Give an AI a read-only EAI capability adoption plan for this repository
+eai template check --ai-plan --preserve-ui
 ```
 
 Important boundaries:
 
-- `eai update --check` is read-only. `eai update` may write only
-  Gofer-managed files in an EAI project.
+- `eai update --check` is read-only. `eai update` force-refreshes only
+  Gofer-managed files in an EAI project and backs up conflicting local versions
+  before replacement.
 - `eai gofer refresh` prefers the latest public `eai-gofer` release at runtime,
   so Gofer asset updates do not require a new `eai` CLI release. If the latest
   release cannot be reached or prepared, it falls back to the bundled snapshot.
@@ -641,16 +744,29 @@ Important boundaries:
   such as `.specify/`, `.claude/`, `.agents/skills/`, the legacy `.gemini/`
   compatibility layout, and generated Copilot Gofer files.
 - It writes or updates `.eai-manifest.json` so future refreshes can detect
-  local edits and avoid overwriting them accidentally.
+  local edits. Standalone `eai gofer refresh` leaves conflicts untouched unless
+  `--force` is supplied; `eai update` always uses that backed-up force behavior.
 - If a tracked managed file has local edits, refresh leaves it untouched unless
   you explicitly pass `--force`, and even then it backs the file up first.
-- `eai template check` previews file-level drift against the app-template
-  `main` snapshot pinned in the installed CLI release and highlights which
+- `eai template check` previews file-level drift against the published
+  app-template release pinned in the installed CLI and highlights which
   files are new versus which need manual review, including likely UI paths under
   `src/app` and `src/components`.
+- `eai template check --ai-plan` also works in ordinary Git and JavaScript
+  package repositories. It emits JSON with capability groups, bounded diffs,
+  dependencies, adoption decisions, risks, and validation steps.
+- AI plans preserve existing layout, styles, design tokens, content,
+  components, and interaction patterns by default. Presentation files are
+  references and never automatic replacements.
+- AI plans are advisory and read-only. They do not install packages, execute
+  project code, write configuration, copy files, or call EAI Platform APIs.
+  The command can access Git to fetch the configured template revision.
 - Template or UI component changes are **not** auto-merged into existing repos
   yet. Copy additions first, then diff/review existing files that `eai template
   check` marks for manual review.
+- Normal `eai update` runs that template check automatically after Gofer
+  maintenance. A template-check failure does not undo a successful CLI or
+  Gofer update; the CLI reports how to retry it.
 - During normal interactive CLI use, if the CLI has already cached that a newer
   release is available, it can ask whether to run `eai update` immediately.
   That prompt is suppressed for CI, non-TTY, `--describe`, `--format json`, and
@@ -734,9 +850,9 @@ The script runs `npm run release:check`, which covers the main `$6_gofer_validat
 [`.tech-docs/full-e2e-smoke-traceability.md`](.tech-docs/full-e2e-smoke-traceability.md).
 The destructive live suite is opt-in because it creates a disposable app,
 publishes Object Types, provisions storage, and CRUDs PostgreSQL, DocumentDB,
-Blob-backed file, and Search-indexed resources in a dedicated test tenant.
+Blob-backed file, and Search-indexed resources in a dedicated test workspace.
 
-Use a dedicated test user and tenant. Do not paste the password into a chat or
+Use a dedicated test user and workspace. Do not paste the password into a chat or
 commit it to the repo; store it in your shell only for the run, or in GitHub
 Actions secrets.
 
@@ -744,7 +860,7 @@ Actions secrets.
 export EAI_RELEASE_FULL_E2E_SMOKE=1
 export EAI_E2E_TEST_PROFILE=test
 export EAI_E2E_TEST_USERNAME='<dedicated-test-user-email>'
-export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-tenant-id>'
+export EAI_E2E_PARENT_TENANT_ID='<dedicated-test-workspace-id>'
 
 # Authenticate the profile before the run:
 eai --profile "$EAI_E2E_TEST_PROFILE" login
@@ -818,3 +934,5 @@ Full documentation: https://eai-support.github.io/eai/
 - [ ] `eai dev --offline` — local mock gateway for offline development
 - [ ] `eai tunnel` — Cloudflare tunnel for webhook testing
 - [x] npmjs install alias (`npm install -g eai-cli`) with static registry fallback
+
+Bundled Gofer assets stay pinned to v3.14.3 and include the support-only patch from eai-gofer#433 until its release. Regenerated entrypoints include the existing Gofer 3.12.7 to 3.14.3 generator drift.

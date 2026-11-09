@@ -41,7 +41,7 @@ describe('resource type diagnostics', () => {
   test('describes empty published schema clearly', () => {
     const message = buildMissingPublishedTypeMessage(matchPublishedType('ConversationMessage', []));
 
-    expect(message).toContain('No published object types were found for the active tenant');
+    expect(message).toContain('No published object types were found for the active workspace');
     expect(message).toContain('ConversationMessage');
   });
 
@@ -120,7 +120,7 @@ describe('resource type diagnostics', () => {
     await client.createTenant({
       name: 'Root Tenant',
       slug: 'root-tenant',
-      domain: ['root.example.com'],
+      domain: 'root.example.com',
       homeRegion: 'eu',
     });
 
@@ -130,9 +130,8 @@ describe('resource type diagnostics', () => {
         method: 'POST',
         body: JSON.stringify({
           displayName: 'Root Tenant',
-          name: 'Root Tenant',
           slug: 'root-tenant',
-          domain: ['root.example.com'],
+          domain: 'root.example.com',
           usecase: 'generic',
           homeRegion: 'eu',
         }),
@@ -425,7 +424,7 @@ describe('resource type diagnostics', () => {
         expect.objectContaining({
           method: 'POST',
           headers: expect.objectContaining({
-            'Content-Type': 'application/octet-stream',
+            'Content-Type': 'text/plain',
             'X-Tenant-Id': 'tenant-1',
           }),
         }),

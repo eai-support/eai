@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "eai.object-type-routing.source-audit-config/v1",
+  "contractVersion": "eai.object-type-routing/v1",
+  "fixedRoots": ["src", "app", "pages", "lib", "packages"],
+  "governedRepositoryRoots": ["front/eai-app-template"],
+  "excludedDirectories": [
+    ".git",
+    ".next",
+    ".specify",
+    "build",
+    "coverage",
+    "dist",
+    "docs",
+    "generated",
+    "node_modules",
+    "out",
+    "playwright-report",
+    "test-results",
+    "tests",
+    "__tests__"
+  ],
+  "soleOwner": "front/eai-app-template/packages/platform-sdk/src/resource-routing.ts",
+  "canonicalGuidance": "Keep PascalCase model names separate from exact stored slugs. Emitted linkTypes[].targetObjectType, runtime target_type, paths, and governed v4 fields use slugs. Resolve same-manifest name shorthand through its declared slug, use the shared platform SDK for routes, and never re-derive or rename historical stored slugs."
+}

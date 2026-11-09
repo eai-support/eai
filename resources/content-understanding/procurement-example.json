@@ -1,0 +1,135 @@
+{
+  "kind": "eai.content-understanding",
+  "schemaVersion": 1,
+  "tenantId": "11111111-1111-4111-8111-111111111111",
+  "bundleKey": "procurement",
+  "provider": "azure-content-understanding",
+  "apiVersion": "2025-11-01",
+  "binding": {
+    "appKey": "document-assistant",
+    "workflowKey": "procurement",
+    "documentLifecycle": "business-document-v1"
+  },
+  "documentTypes": [
+    {
+      "code": "Quotation",
+      "name": "Quotation",
+      "contentUnderstanding": {
+        "analyzerDefinition": {
+          "fieldSchema": {
+            "fields": {
+              "quotationNumber": {
+                "type": "string",
+                "method": "extract",
+                "description": "Read the quotation number"
+              },
+              "validUntil": {
+                "type": "date",
+                "method": "extract"
+              },
+              "arrivalTime": {
+                "type": "time",
+                "method": "extract"
+              },
+              "totalAmount": {
+                "type": "number",
+                "method": "extract"
+              },
+              "quantity": {
+                "type": "integer",
+                "method": "extract"
+              },
+              "includesTax": {
+                "type": "boolean",
+                "method": "extract"
+              },
+              "supplier": {
+                "$ref": "#/definitions/Supplier"
+              },
+              "lineItems": {
+                "type": "array",
+                "method": "generate",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "description": {
+                      "type": "string",
+                      "method": "extract"
+                    },
+                    "expenseCategory": {
+                      "type": "string",
+                      "method": "classify",
+                      "enum": [
+                        "Goods",
+                        "Transportation",
+                        "Services",
+                        "Other"
+                      ],
+                      "enumDescriptions": {
+                        "Goods": "Physical goods",
+                        "Transportation": "Delivery charges",
+                        "Services": "Installation charges",
+                        "Other": "Anything else"
+                      }
+                    }
+                  }
+                }
+              },
+              "additionalSpecifications": {
+                "type": "json",
+                "method": "generate",
+                "description": "Preserve supplier-specific specifications"
+              },
+              "summary": {
+                "type": "string",
+                "method": "generate",
+                "description": "Summarize the main decisions"
+              }
+            },
+            "definitions": {
+              "Supplier": {
+                "type": "object",
+                "method": "extract",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "method": "extract"
+                  },
+                  "address": {
+                    "type": "string",
+                    "method": "extract"
+                  },
+                  "contact": {
+                    "type": "string",
+                    "method": "extract"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "classifier": {
+    "classifierKey": "procurement",
+    "displayName": "Procurement router",
+    "definition": {
+      "labels": [
+        {
+          "key": "Quote",
+          "displayName": "Quotation",
+          "description": "A supplier quotation",
+          "documentTypeKey": "Quotation"
+        },
+        {
+          "key": "Other",
+          "displayName": "Other",
+          "description": "Anything else for manual review",
+          "documentTypeKey": "Other"
+        }
+      ],
+      "minimumConfidence": 0.75
+    }
+  }
+}

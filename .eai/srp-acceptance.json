@@ -1,0 +1,25 @@
+{
+  "schema": "eai.srp_acceptance.v1",
+  "repository": "eai-support/eai",
+  "requirements": [
+    {
+      "requirement_id": "issue3614-cli-kb-markdown",
+      "criterion_text": "KB uploads accept nonempty strict UTF-8 Markdown through case-insensitive .md/.markdown filenames or an explicit supported Markdown MIME. Canonical text/markdown is identical in create metadata, raw upload headers and committed-file readback; the text/x-markdown alias is normalized and empty/octet/plain fallback is limited to known Markdown filenames. Preserve original bytes/name, checksum, tenant routing, one-request and unknown-ACK custody without rendering, linked-resource fetch or generic binary acceptance. Invalid Markdown, malformed MIME and unrelated CSV/binary inputs fail before record creation; generic resource/configured document and typed-CU classifier policies remain unchanged. Bind the supported backend type fixture to a genuine committed AICore source. Owning unit and composed transport tests do not establish live acceptance: a new matching immutable client/backend candidate still needs genuine TEST upload/index/authorized retrieval, all existing 17 CU and 15 KB gates, and exact-candidate PROD acceptance before Main backmerge.",
+      "feature_ids": [
+        "knowledge-base-upload-index"
+      ],
+      "source_refs": [
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3614
+        },
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3606
+        }
+      ]
+    }
+  ]
+}

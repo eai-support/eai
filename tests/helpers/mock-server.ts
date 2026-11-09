@@ -138,10 +138,10 @@ export class PublicAPIMock {
   constructor(private baseURL: string, private mockServer: ReturnType<typeof createMockServer>) {}
 
   /**
-   * Mock health endpoint
+   * Mock the PublicAPI V4 reachability endpoint.
    */
-  mockHealth(healthy = true) {
-    this.mockServer.mockGET(`${this.baseURL}/health`, {
+  mockReachability(healthy = true) {
+    this.mockServer.mockGET(`${this.baseURL}/v4/data/resources/health`, {
       status: healthy ? 200 : 503,
       body: { status: healthy ? 'ok' : 'unhealthy' },
     });

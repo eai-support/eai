@@ -1,2 +1,0 @@
-description = "Create or update project constitution with coding principles and guidelines."
-prompt = "{{include: ../../../.specify/commands/gofer_constitution.md}}"

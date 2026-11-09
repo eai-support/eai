@@ -22,8 +22,9 @@ source_inputs:
 ## Branding And Presentation
 
 Apply only approved brand profile values. Do not include private screenshots,
-tenant identifiers, secret names, customer-confidential diagrams, or unapproved
-logos in CISO/Risk materials.
+workspace identifiers, platform tenant identifiers, Entra/CIAM authority tenant
+identifiers, secret names, customer-confidential diagrams, or unapproved logos
+in CISO/Risk materials.
 
 ## Security Posture
 
@@ -31,7 +32,7 @@ logos in CISO/Risk materials.
 | ------------------------ | ------------------------------------ | -------- | ---------------- |
 | Identity                 | {{identity-control}}                 | {{path}} | {{pass-open-na}} |
 | Authorization            | {{authorization-control}}            | {{path}} | {{pass-open-na}} |
-| Tenant isolation         | {{tenant-control}}                   | {{path}} | {{pass-open-na}} |
+| Workspace isolation      | {{tenant-control}}                   | {{path}} | {{pass-open-na}} |
 | Secrets handling         | {{secret-handling}}                  | {{path}} | {{pass-open-na}} |
 | Data handling            | {{data-classification-and-controls}} | {{path}} | {{pass-open-na}} |
 | Logging / audit          | {{audit-controls}}                   | {{path}} | {{pass-open-na}} |
@@ -55,11 +56,11 @@ logos in CISO/Risk materials.
 
 ## Visual Security Evidence
 
-| Visual                                  | Security question answered                                         | Public-safety check            | Freshness             |
-| --------------------------------------- | ------------------------------------------------------------------ | ------------------------------ | --------------------- |
-| Risk heatmap: `visuals/risk-heatmap.md` | Which risks matter most and what controls reduce them?             | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
-| Auth/tenant flow visual, if applicable  | Where are identity, authorization, and tenant boundaries enforced? | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
-| Data-flow or ERD visual, if applicable  | What sensitive data moves or persists, and where?                  | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Visual                                    | Security question answered                                            | Public-safety check            | Freshness             |
+| ----------------------------------------- | --------------------------------------------------------------------- | ------------------------------ | --------------------- |
+| Risk heatmap: `visuals/risk-heatmap.md`   | Which risks matter most and what controls reduce them?                | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Auth/workspace flow visual, if applicable | Where are identity, authorization, and workspace boundaries enforced? | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
+| Data-flow or ERD visual, if applicable    | What sensitive data moves or persists, and where?                     | {{no-private-data-or-finding}} | {{fresh-stale-or-na}} |
 
 ## CISO Review Ask
 

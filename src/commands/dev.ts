@@ -11,6 +11,7 @@ import chalk from 'chalk';
 import { findProjectRoot, loadEnvFile } from '../lib/config.js';
 import { getNpmExecutable } from '../lib/npm.js';
 import { getAccessToken } from '../lib/auth.js';
+import { probePublicApiReachability } from '../lib/api.js';
 import * as out from '../lib/output.js';
 
 export function normalizeDevPort(port: unknown): string | null {
@@ -87,10 +88,8 @@ export const devCommand = new Command('dev')
       // Check PublicAPI connectivity
       if (publicApiUrl) {
         try {
-          const res = await fetch(`${publicApiUrl}/health`, {
-            signal: AbortSignal.timeout(5_000),
-          });
-          if (res.ok || res.status === 404) {
+          const res = await probePublicApiReachability(publicApiUrl, 5_000);
+          if (res.status < 500) {
             out.success(`PublicAPI reachable at ${chalk.dim(publicApiUrl)}`);
           } else {
             out.warn(`PublicAPI returned ${res.status}`);

@@ -52,7 +52,14 @@ goferCommand
           firstRefresh: plan.firstRefresh,
           bundle: plan.bundle,
           summary: plan.summary,
-          items: actionableItems,
+          items: actionableItems.map((item) => ({
+            relativePath: item.relativePath,
+            action: item.action,
+            source: item.source,
+            desiredHash: item.desiredHash,
+            currentHash: item.currentHash,
+            executable: item.executable,
+          })),
         });
         return;
       }

@@ -10,6 +10,8 @@
 
 import { findGuidanceByCode } from './error-guidance/catalog.js';
 import { guidanceToJSON, formatGuidanceText } from './error-guidance/render.js';
+import { recordSupportError } from './support-context.js';
+import { redactSupportBundle, redactSupportText } from './support-redaction.js';
 
 /** Stable public codes used by CLI output, automation, and support guidance. */
 export enum ErrorCode {
@@ -63,7 +65,7 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
   },
   [ErrorCode.E002]: {
     message: '{var} environment variable not set',
-    suggestion: 'Set {var} in your environment or project config. Tenant selection comes from `eai login` and `eai tenant select`, not tenant IDs in .env.local',
+    suggestion: 'Set {var} in your environment or project config. Workspace selection comes from `eai login` and `eai workspace select`, not workspace IDs in .env.local',
   },
   [ErrorCode.E003]: {
     message: 'Configuration file not found: {file}',
@@ -122,16 +124,16 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
     suggestion: 'The resource already exists or conflicts with existing data',
   },
   [ErrorCode.E242]: {
-    message: 'Tenant app authorization is incomplete',
-    suggestion: 'Run `eai whoami`, `eai tenant list --format json`, then `eai provision entra --force --debug`',
+    message: 'Workspace app authorization is incomplete',
+    suggestion: 'Run `eai whoami`, `eai workspace list --format json`, then `eai provision entra --force --debug`',
   },
   [ErrorCode.E243]: {
-    message: 'Tenant app authorization returned a platform server error',
+    message: 'Workspace app authorization returned a platform server error',
     suggestion: 'Retry `eai provision entra --force --debug` with bounded backoff, then escalate with the request ID if the 5xx repeats',
   },
   [ErrorCode.E250]: {
-    message: 'Tenant plan does not allow this builder operation',
-    suggestion: 'Run `eai workflow readiness --format json` and ask a tenant administrator to update the plan if required',
+    message: 'Workspace plan does not allow this builder operation',
+    suggestion: 'Run `eai workflow readiness --format json` and ask a workspace admin to update the plan if required',
   },
   [ErrorCode.E260]: {
     message: 'Object Type validation failed',
@@ -142,7 +144,7 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
     suggestion: 'Run `eai update`, validate the Object Types, then retry `eai types seed` once',
   },
   [ErrorCode.E270]: {
-    message: 'Object Type is not published for the active tenant',
+    message: 'Object Type is not published for the active workspace',
     suggestion: 'Run `eai resources schema --format json`, then `eai types seed` if the type is missing',
   },
   [ErrorCode.E280]: {
@@ -215,6 +217,7 @@ export function formatErrorJSON(
   const suggestion = interpolate(def.suggestion, context);
   const guidance = findGuidanceByCode(code);
 
+  // The deployed JSON contract pins these keys; the person-facing support hint belongs on text stderr.
   return {
     error: {
       code,
@@ -227,20 +230,45 @@ export function formatErrorJSON(
 }
 
 /**
+ * Retained identifiers and allowlisted upstream HTTP diagnostics added beside
+ * the pinned envelope keys. Callers must never pass upstream bodies here.
+ */
+export interface ErrorExitDiagnostics {
+  readonly operationId?: string;
+  readonly status?: number;
+  readonly serverCode?: string;
+  readonly requestId?: string;
+}
+
+const DIAGNOSTIC_TEXT_LABELS: Record<keyof ErrorExitDiagnostics, string> = {
+  status: 'HTTP status',
+  serverCode: 'Server code',
+  requestId: 'Request ID',
+  operationId: 'Operation ID',
+};
+
+/**
  * Exit with error (text or JSON format)
  */
 export function exitWithError(
   code: ErrorCode,
   context?: Record<string, string>,
   format?: 'text' | 'json',
+  diagnostics: ErrorExitDiagnostics = {},
 ): never {
+  recordSupportError({ code, message: formatError(code, context) });
+  const present = (Object.keys(DIAGNOSTIC_TEXT_LABELS) as Array<keyof ErrorExitDiagnostics>)
+    .filter(key => diagnostics[key] !== undefined && diagnostics[key] !== '');
   if (format === 'json') {
-    console.error(JSON.stringify(formatErrorJSON(code, context), null, 2));
+    const envelope = formatErrorJSON(code, context) as { error: Record<string, unknown> };
+    const fields = Object.fromEntries(present.map(key => [key, diagnostics[key]]));
+    console.error(JSON.stringify(redactSupportBundle({ error: { ...envelope.error, ...fields } }), null, 2));
   } else {
     // Import error symbol only when needed (avoids circular dependency)
     const errorSymbol = '✗';
-    const errorMessage = formatError(code, context);
-    console.error(`${errorSymbol} ${errorMessage}`);
+    const errorMessage = redactSupportText(formatError(code, context));
+    const lines = present.map(key => `${DIAGNOSTIC_TEXT_LABELS[key]}: ${diagnostics[key]}`);
+    console.error(`${errorSymbol} ${errorMessage}${lines.length ? `\n\n${redactSupportText(lines.join('\n'))}` : ''}`);
   }
 
   process.exit(1);

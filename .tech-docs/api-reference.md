@@ -1,23 +1,25 @@
 ---
 generated: true
-generated_at: "2026-09-15T06:36:37.955Z"
-source_commit: "cd62b2c2f0a04faef5e4bd134488f845d37d7130"
+generated_at: "2026-11-05T02:17:50.218Z"
+source_commit: "70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea"
 ---
 # EAI CLI — API Reference
 
 ## Overview
 
-The EAI CLI groups its commands into scaffolding, authentication, tenant and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
+Customer guidance uses **workspace**. Use `eai workspace`, `--workspace` for member and workflow commands, and `--company-workspace` for app setup. Tenant forms remain compatibility aliases. Data flags and `/tenants/` API paths retain their current names.
+
+The EAI CLI groups its commands into scaffolding, authentication, workspace and user management, environment/config, Object Types, resource data operations, AI chat and workflow provisioning, document processing, deployment, block-catalog inspection, app management, advanced PublicAPI V4 access, and diagnostics. All commands that interact with the platform use the **EAI Platform API v4** (PublicAPI) with Bearer token authentication.
 
 The v4 surface is grouped by domain prefix:
 
 | Prefix | Domain |
 |--------|--------|
-| `/v4/platform` | Tenants, users, capabilities, Entra app provisioning |
+| `/v4/platform` | Workspaces, users, capabilities, Entra app provisioning |
 | `/v4/identity` | Current-user identity, membership, self-provision |
 | `/v4/data/resources` | Object Types, resource CRUD, query, aggregate, search, storage |
 | `/v4/data/documents` | Document upload, classification, RAG indexing |
-| `/v4/ai` | Chat (scoped by tenant / workflow / stage) |
+| `/v4/ai` | Chat (scoped by workspace / workflow / stage) |
 | `/v4/workflows` | Runtime workflow status and binding requests |
 | `/v4/integrations` | Builder readiness |
 | `/v4/geo` | Geospatial lookup, reports, and dataset ingestion |
@@ -28,7 +30,7 @@ The v4 surface is grouped by domain prefix:
 - **Authentication**: `Authorization: Bearer {access_token}` (obtained via `eai login`)
 **Global Flags**: `--simple`, `--no-color`, `--color`, `--profile <name>`, `--describe`, `-V`
 
-> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access.
+> **Note on `eai env`:** `env pull` and `env push` are configuration-plane operations. They do not call PublicAPI and may require organization-specific cloud access. The local CLI selector `EAI_PROFILE` is excluded from cloud synchronization.
 
 ---
 
@@ -43,11 +45,11 @@ Scaffold a new application from the EAI app template.
 - `--from <source>` — Template source: GitHub repo URL or local path (default: `https://github.com/eai-support/eai-app-template.git`)
 - `--skip-prompts` — Use defaults without interactive prompts
 - `--current-dir` — Scaffold into the current directory instead of creating `./<name>`
-- `--company-tenant <id>` — Main company tenant ID that owns this app
-- `--tenant <id>` — Deprecated alias for `--company-tenant`
-- `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
-- `--child-tenant <name>` — Create or reuse a child company tenant (display name) for the app runtime boundary
-- `--create-child-tenant` — Prompt for a child company tenant instead of using the selected company tenant
+- `--company-workspace <id>` — Main company workspace ID that owns this app
+- `--company-tenant <id>` — Compatibility alias for `--company-workspace`
+- `--parent-tenant <id>` — Immediate parent company workspace ID for the new child company
+- `--child-tenant <name>` — Create or reuse a child company workspace (display name) for the app runtime boundary
+- `--create-child-tenant` — Prompt for a child company workspace instead of using the selected company workspace
 - `--no-gofer` — Skip installing Gofer AI CLI assets
 - `--package-profile <profile>` — Package profile for block-catalog discovery: `external`, `internal`, or `hybrid` (default: `external`)
 
@@ -55,7 +57,8 @@ Scaffold a new application from the EAI app template.
 1. Clones template repository or copies local template
 2. Installs Gofer AI assets (unless `--no-gofer`)
 3. Initializes git repository and installs npm dependencies
-4. Records the company/child tenant boundary and package profile in the project manifest
+4. Records the company/child workspace boundary and package profile in the project manifest
+5. Stores the local CLI profile selector in ignored `.env.local` for reopened workspaces
 
 By default, `eai init my-app` creates a new `./my-app` folder. Interactive init
 can scaffold into the current folder when selected, and automation can use
@@ -64,7 +67,7 @@ existing files and Git metadata, and updates files that are part of the
 generated scaffold.
 
 **API calls** — when authenticated, `eai init` creates or binds the app under
-the selected company tenant and evaluates the tenant capabilities used by the
+the selected company workspace and evaluates the workspace capabilities used by the
 generated scaffold.
 
 ---
@@ -91,6 +94,7 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
+- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`
@@ -102,52 +106,52 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 ---
 
 #### `eai logout`
-Clear stored authentication tokens (deletes `~/.eai/tokens.json` and clears tenant context).
+Clear stored authentication tokens (deletes `~/.eai/tokens.json` and clears workspace context).
 
 **No API calls**
 
 ---
 
 #### `eai whoami`
-Show authentication status, active tenant, profile, and token expiry from local state.
+Show authentication status, active workspace, profile, and token expiry from local state.
 
 **No API calls**
 
 ---
 
-### Tenant Commands
+### Workspace Commands
 
-#### `eai tenant list`
-List tenants where the current user is a `tenant-admin` (default), or all roles with `--all`.
+#### `eai workspace list`
+List workspaces where the current user is a `tenant-admin` (default), or all roles with `--all`.
 
 **Options**:
-- `--parent <id>` — Parent tenant ID
-- `--all` — Include tenants where the user holds non-admin roles
-- `--debug` — Show debug diagnostics for tenant lookup
+- `--parent <id>` — Parent workspace ID
+- `--all` — Include workspaces where the user holds non-admin roles
+- `--debug` — Show debug diagnostics for workspace lookup
 - `--raw-user` — Print the raw membership payload in debug mode
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/identity/tenants` — fetch the current user's tenant memberships
+- `GET /v4/identity/tenants` — fetch the current user's workspace memberships
 
 ---
 
-#### `eai tenant select [tenant]`
-Choose the active tenant for platform operations (interactive if `[tenant]` is omitted).
+#### `eai workspace select [workspace]`
+Choose the active workspace for platform operations (interactive if `[workspace]` is omitted).
 
 **Arguments**:
-- `[tenant]` — Tenant ID or slug (optional)
+- `[workspace]` — Workspace ID or slug (optional)
 
 **Platform API Endpoints Used**:
 - `GET /v4/identity/tenants` — resolve memberships for selection
 
 ---
 
-#### `eai tenant info <id>`
-Show tenant details.
+#### `eai workspace info <id>`
+Show workspace details.
 
 **Arguments**:
-- `<id>` — Tenant ID or slug
+- `<id>` — Workspace ID or slug
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
@@ -157,61 +161,67 @@ Show tenant details.
 
 ---
 
-#### `eai tenant create`
-Create a new tenant and bootstrap admin access.
+#### `eai workspace create`
+Create a new workspace and bootstrap admin access.
 
 **Options**:
-- `--name <name>` — Tenant display name (required)
-- `--slug <slug>` — Tenant slug, kebab-case (required)
-- `--parent <id>` — Parent tenant ID (creates a child tenant)
-- `--domain <domains>` — Comma-separated domain list
+- `--name <name>` — Workspace display name (required)
+- `--slug <slug>` — Workspace slug, kebab-case (required)
+- `--parent <id>` — Parent workspace ID (creates a child workspace)
+- `--domain <domain>` — One workspace domain. A comma-separated list is rejected.
 - `--usecase <usecase>` — `council|retail|healthcare|finance|manufacturing|generic` (default: `generic`)
 - `--industry <industry>` — Signup/onboarding industry segment
 - `--starter-template <key>` — Starter application template key (default: `blank-vertical-template`)
-- `--home-region <region>` — Tenant home region (`au|ca|eu`); required with `--allow-root`, optional child override with `--parent`
-- `--allow-root` — Allow root tenant creation for administrative backfills
+- `--home-region <region>` — Root workspace home region (`au|ca|eu`); required with `--allow-root` and rejected with `--parent`, because a child inherits its parent's home region
+- `--allow-root` — Allow root workspace creation for administrative backfills
 - `--format <format>` — Output format (text|json, default: text)
 
 **What it does**:
-1. Creates a child tenant under `--parent`, or a root tenant when `--allow-root` is set
-2. Bootstraps the current user as `tenant-admin` on the new child tenant
-3. Polls membership to confirm the tenant is usable, then auto-selects it
-4. For child tenants, sends the parent home region by default or the explicit `--home-region` override
-5. For root tenants, requires an explicit `--home-region` because there is no parent tenant to inherit from
+1. Creates a child workspace under `--parent`, or a root workspace when `--allow-root` is set
+2. Bootstraps the current user as `tenant-admin` on the new child workspace
+3. Polls membership to confirm the workspace is usable, then auto-selects it
+4. For child workspaces, sends no home region: the child always inherits its parent's home region
+5. For root workspaces, requires an explicit `--home-region` because there is no parent workspace to inherit from
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{parentId}/children` — create child tenant (when `--parent` is given)
-- `POST /v4/platform/tenants` — create root tenant (requires `--allow-root`)
+- `POST /v4/platform/tenants/{parentId}/children` — create child workspace (when `--parent` is given)
+- `POST /v4/platform/tenants` — create root workspace (requires `--allow-root`)
 - `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — bootstrap current user as admin
 - `GET /v4/identity/tenants` — verify usable membership
 
 ---
 
-#### `eai tenant delete <id>`
-Soft-delete a tenant.
+#### `eai workspace delete <id>`
+Delete a workspace. A parent workspace admin can permanently remove one immediate
+leaf child with `--parent <parent-id> --force-hard-purge`; the backend rejects
+children that still have descendants. The JSON success receipt confirms the exact
+child ID, parent ID, and `hard_purged` status.
 
 **Arguments**:
 - `<id>` — Tenant ID
 
 **Options**:
 - `--force` — Skip confirmation
+- `--force-hard-purge` — Permanently purge the workspace (without `--parent`, uses the existing system-admin subtree purge contract)
+- `--parent <id>` — Authorize one leaf child hard purge through its immediate parent; requires `--force-hard-purge` and a parent different from the child
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/tenants/{tenantId}/delete`
+- `POST /v4/platform/tenants/{parentId}/children/{childId}/delete` — parent-authorized leaf hard purge; sends the parent as `X-Tenant-Id`
 
 ---
 
 ### User Management Commands
 
 #### `eai user invite`
-Invite or provision a user into a tenant via the V4 tenant member-invite flow.
-Use this when a tenant admin needs to add a member or promote a trusted user to
+Invite or provision a user into a workspace via the V4 workspace member-invite flow.
+Use this when a workspace admin needs to add a member or promote a trusted user to
 `tenant-admin`.
 
 **Options**:
 - `--email <email>` — Email of the user to add
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--role <role>` — Target base role (default: `tenant-viewer`; supported base roles are `tenant-viewer`, `tenant-staff`, `tenant-builder`, `tenant-admin`)
 - `--role-definition-id <id>` — Assign a specific tenant role definition instead of a base role
 - `--first-name <name>` — Optional first name for invite/provisioning context
@@ -221,15 +231,15 @@ Use this when a tenant admin needs to add a member or promote a trusted user to
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the tenant member with the requested role
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — invite or provision the workspace member with the requested role
 
 ---
 
 #### `eai user list`
-List members in the active tenant or an explicit tenant.
+List members in the active workspace or an explicit workspace.
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--search <query>` — Search by email or name
 - `--page <number>` — Page number (default: 1)
 - `--limit <number>` — Page size (default: 25)
@@ -237,31 +247,31 @@ List members in the active tenant or an explicit tenant.
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/tenants/{tenantId}/members` — list tenant members
+- `GET /v4/platform/tenants/{tenantId}/members` — list workspace members
 
 ---
 
 #### `eai user roles`
-List role definitions available for tenant member invitation.
+List role definitions available for workspace member invitation.
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable tenant role definitions
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — list assignable workspace role definitions
 
 ---
 
 #### `eai user role set`
-Assign a tenant member role. Email-based role assignment uses the V4 invite/add
-flow so agents can handle "user already exists", "user is new to this tenant",
-and "user needs a tenant-admin role" with one command.
+Assign a workspace member role. Email-based role assignment uses the V4 invite/add
+flow so agents can handle "user already exists", "user is new to this workspace",
+and "user needs a workspace-admin role" with one command.
 
 **Options**:
 - `--email <email>` — Add or update a user by email through the invite/add flow
-- `--member-id <id>` — Existing tenant member/user ID for the direct role update endpoint
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--member-id <id>` — Existing workspace member/user ID for the direct role update endpoint
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 - `--role <role>` — Role to assign. Email-based updates support `tenant-viewer`, `tenant-staff`, `tenant-builder`, and `tenant-admin`; member-id updates support the platform role update contract.
 - `--first-name <name>` — Optional first name for a new email invitation
 - `--last-name <name>` — Optional last name for a new email invitation
@@ -275,18 +285,18 @@ and "user needs a tenant-admin role" with one command.
 
 ---
 
-**Agent rule**: for normal user addition or tenant-admin assignment, use
-`eai user invite --email <email> --tenant <tenant-id> --role <role>`.
-`eai tenant bootstrap-admin` is only for first-admin repair on an immediate child
-tenant.
+**Agent rule**: for normal user addition or workspace-admin assignment, use
+`eai user invite --email <email> --workspace <workspace-id> --role <role>`.
+`eai workspace bootstrap-admin` is only for first-admin repair on an immediate child
+workspace.
 
 ---
 
 #### `eai user provision-me`
-Provision yourself to a tenant (first-time setup).
+Provision yourself to a workspace (first-time setup).
 
 **Options**:
-- `--tenant <id>` — Target tenant (default: active tenant)
+- `--workspace <id>` — Target workspace (legacy alias: `--tenant`; default: active workspace)
 
 **Platform API Endpoints Used**:
 - `POST /v4/identity/me/provision`
@@ -299,15 +309,15 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 **Options**:
 - `--force` — Re-check the remote app registration even if `ENTRA_CLIENT_ID` already exists locally
 - `--rotate-secret` — Rotate the existing secret and write the new value to `.env.local`
-- `--deauthorize` — Remove tenant authorization and delete the app registration for cleanup; requires `--force`
+- `--deauthorize` — Remove workspace authorization and delete the app registration for cleanup; requires `--force`
 - `--client-id <id>` — Client ID to deauthorize; defaults to `ENTRA_CLIENT_ID` in `.env.local`
-- `--keep-registration` — Remove tenant authorization without deleting the app registration
+- `--keep-registration` — Remove workspace authorization without deleting the app registration
 - `--debug` — Print product-safe diagnostics and request identifiers on failure
 
 **What it does**:
 1. Creates/confirms the Entra app registration on the platform
 2. Writes the client ID (and secret) to `.env.local`
-3. With `--deauthorize --force`, removes tenant authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
+3. With `--deauthorize --force`, removes workspace authorization, deletes the app registration, and removes local `ENTRA_CLIENT_ID`/`ENTRA_CLIENT_SECRET`
 
 **Platform API Endpoints Used**:
 - `POST /v4/platform/provisioning/entra-apps` — create/confirm app registration
@@ -317,7 +327,7 @@ Create or confirm an Entra app registration for end-user auth (Auth.js).
 ---
 
 #### `eai provision storage`
-Provision platform storage backends for the active tenant.
+Provision platform storage backends for the active workspace.
 
 **Options**:
 - `--tenant-id <id>` — Provision for a specific tenant
@@ -401,8 +411,8 @@ Push Object Types to the platform and verify convergence.
 
 **Options**:
 - `--env <environment>` — Target environment (default: `dev`)
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 - `--dry-run` — Show what would be seeded without making changes
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -417,8 +427,8 @@ Push Object Types to the platform and verify convergence.
 Compare local definitions with remote state.
 
 **Options**:
-- `--tenant-key <key>` — Specific tenant key from `object-types.ts`
-- `--tenant-id <id>` — Override the resolved tenant ID (use with `--tenant-key`)
+- `--tenant-key <key>` — Workspace scope key from `object-types.ts` (current option name)
+- `--tenant-id <id>` — Override the resolved workspace ID (use with `--tenant-key`)
 
 **Platform API Endpoints Used**:
 - `GET /v4/data/resources/object-types`
@@ -426,7 +436,25 @@ Compare local definitions with remote state.
 ---
 
 #### `eai types pull`
-Download remote types to local TypeScript.
+Download remote types to local TypeScript. Stored identifiers and platform
+metadata are preserved through a serialized JSON data boundary. The generated
+file imports the project model relative to its output location. Failed or malformed
+responses preserve existing output. The model filename `object-types.ts` is
+reserved in every directory; choose a generated filename. Linked output paths
+are refused, and parent identities are checked before the read and throughout
+atomic publication. These checks detect observed namespace changes; they do not
+provide isolation against an arbitrary concurrent writer with the same filesystem
+permissions. An unverifiable publication exits with inspection guidance because
+the local generated file may already have been replaced. The command reads all
+pages in ID order with the
+same workspace filter and compares two complete scans before atomically replacing
+the generated file. Pagination drift, duplicate IDs, foreign workspace records,
+malformed present workspace markers, or an incomplete scan fail the command.
+Legacy documents may omit workspace metadata; present identifiers must match the
+selected workspace exactly. Export bounds are 1,000 pages per scan,
+64 MiB across both scans, and 120 seconds overall. This detects observed changes;
+the server does not provide a transactional snapshot token. Optional legacy arrays
+and unknown metadata are retained exactly; writable manifest rules remain separate.
 
 **Options**:
 - `--tenant-id <id>` — Platform tenant ID
@@ -437,9 +465,17 @@ Download remote types to local TypeScript.
 
 ---
 
+#### `eai types define`
+Interactive definition is currently unsupported. The command exits nonzero before
+authentication or network access. `--format json` returns the stable
+`TYPES_DEFINE_UNSUPPORTED` error. Edit the project definitions, then use
+`eai types validate` and `eai types seed`.
+
+---
+
 ### Resource Commands
 
-All resource routes are tenant-scoped: the active tenant (or `--tenant-id`) is part of the path.
+All resource routes are workspace-scoped: the active workspace (or `--tenant-id`) is part of the path.
 
 #### `eai resources list <type>`
 List resources of a specific Object Type.
@@ -448,7 +484,7 @@ List resources of a specific Object Type.
 - `<type>` — Exact published Object Type slug, for example `board-app-user`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--page <number>` — Page number (default: 1)
 - `--limit <number>` — Items per page (default: 20)
 - `--sort <field>` — Sort field; prefix with `-` for descending (default: `-created_at`)
@@ -467,7 +503,7 @@ Get a single resource.
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -478,10 +514,15 @@ Get a single resource.
 #### `eai resources create <type>`
 Create a resource.
 
+JSON preserves the created resource fields and adds `request` with the exact
+response-bound `publicApiUrl`, `tenantId` and `proofKind: "transport-response"`.
+Backend-provided request assertions are replaced by this sanitized transport
+observation; credentials, headers and query values are excluded.
+
 **Arguments**: `<type>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Resource data as a JSON string
 - `--file <path>` — Resource data from a JSON file
 - `--format <format>` — Output format (text|json, default: text)
@@ -497,7 +538,7 @@ Update a resource with optimistic locking.
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Updated data as a JSON string
 - `--version <number>` — Resource version (auto-fetched if omitted)
 - `--format <format>` — Output format (text|json, default: text)
@@ -515,10 +556,12 @@ Update a resource with optimistic locking.
 #### `eai resources delete <type> <id>`
 Delete a resource.
 
+Successful JSON adds the same response-bound `request` scope as resource create.
+
 **Arguments**: `<type>`, `<id>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--force` — Skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -531,7 +574,7 @@ Delete a resource.
 Cross-type query with filters.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--types <types>` — Comma-separated exact published Object Type slugs (required)
 - `--where <json>` — Filter conditions as JSON
 - `--limit <number>` — Max results (default: 20)
@@ -548,7 +591,7 @@ Run a server-side aggregate query.
 **Arguments**: `<type>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--group-by <fields>` — Comma-separated groupBy fields (required)
 - `--metrics <json>` — Aggregate metrics as JSON (required)
 - `--where <json>` — Structured where filter as JSON
@@ -561,12 +604,12 @@ Run a server-side aggregate query.
 ---
 
 #### `eai resources search <query>`
-Search tenant resource projections.
+Search workspace resource projections.
 
 **Arguments**: `<query>`
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--types <types>` — Comma-separated exact published Object Type slugs
 - `--mode <mode>` — `fulltext|hybrid|vector` (default: `hybrid`)
 - `--hybrid` / `--vector` / `--fulltext` — Shorthands that override `--mode`
@@ -579,10 +622,10 @@ Search tenant resource projections.
 ---
 
 #### `eai resources schema`
-Show the published Object Types for a tenant.
+Show the published Object Types for a workspace.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -593,10 +636,13 @@ Show the published Object Types for a tenant.
 #### `eai resources batch-create <type>` · `batch-update <type>` · `batch-delete <type>`
 Bulk resource operations.
 
+`batch-create`, `batch-import` and `batch-delete` JSON preserves backend result
+fields and adds the same exact response-bound `request` scope as resource create.
+
 **Arguments**: `<type>`
 
 **Options** (all three):
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--data <json>` — Batch payload as a JSON array or object
 - `--file <path>` — Read the batch payload from a JSON file
 - `--format <format>` — Output format (text|json, default: text)
@@ -619,23 +665,31 @@ Bulk resource operations.
 Manage binary file properties on a resource.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--output <path>` — (`file get`) write to a specific path
+- `--content-type <mime>` — (`file upload`) override the MIME type inferred from the filename; parameters and header newlines are rejected
 - `--force` — (`file delete`) skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload (`application/octet-stream`)
+- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload using the filename's MIME type (unknown extensions use `application/octet-stream`)
 - `GET /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — download
 - `DELETE /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — delete
 
 ---
 
 #### `eai resources storage status` · `storage doctor` · `doctor` · `sync-schema`
-Inspect and reconcile tenant storage.
+Inspect and reconcile workspace storage.
+
+Schema sync refuses malformed result records before reporting success. Optional
+`actions` must be an array of strings when present; omitted or empty actions are
+supported in both JSON and text output.
+Supported producer states are `planned`, `provisioned`, `skipped`, `applied`, and
+`already_applied`. A `failed` result exits nonzero, and any unknown state is
+refused rather than reported as a successful schema sync.
 
 **Options**:
-- `--tenant-id <id>` — Target tenant (default: active tenant)
+- `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--backend <backend>` — (`sync-schema`) limit to `postgresql|documentdb|blob|search`
 - `--dry-run` — (`sync-schema`) show the reconcile plan without mutating storage
 - `--format <format>` — Output format (text|json, default: text)
@@ -647,9 +701,28 @@ Inspect and reconcile tenant storage.
 
 ---
 
+#### `eai resources indexes-plan`
+Preview validated storage/index changes for an explicit published Object Type selection.
+
+**Options**:
+- `--tenant-id <id>` — Target workspace (default: active workspace)
+- `--object-type <slug...>` — Required exact published Object Type slugs; 1 to 1,000 entries, each at most 255 characters. Model names and non-canonical slugs are rejected without normalization.
+- `--format <format>` — Output format (text|json, default: text)
+
+**Platform API Endpoint Used**:
+- `POST /v4/platform/tenants/{tenantId}/resourceapi/index-plan` — body `{ objectTypes: ["exact-published-slug"] }`. PublicAPI enforces a dry run; the client does not send `apply` or `dryRun`.
+
+`eai resources indexes-apply` is currently **unsupported**. PublicAPI does not
+expose an apply operation. The compatibility command accepts its existing options
+and exits nonzero before authentication or HTTP; `--format json` emits
+`RESOURCE_INDEX_APPLY_UNSUPPORTED`. Applying changes requires a supported platform
+operator workflow.
+
+---
+
 ### AI Chat Commands
 
-Chat is scoped by **tenant / workflow / stage**. The tenant comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
+Chat is scoped by **workspace / workflow / stage**. The workspace comes from the active context; `--workflow` is required; `--stage` defaults to `chat`. A `conversation_id` (from `--conversation-id`, or an auto-generated UUID) is sent in the request body.
 
 #### `eai chat send <message>`
 Send a single chat message.
@@ -684,14 +757,14 @@ Stream a chat response over SSE.
 ### Workflow Commands
 
 #### `eai workflow provision <workflow-key>`
-Provision a usecase-agnostic workflow config and bind it to a tenant app. Optionally creates the AI runtime records.
+Provision a usecase-agnostic workflow config and bind it to a workspace app. Optionally creates the AI runtime records.
 
 **Arguments**: `<workflow-key>`
 
 **Key options**:
-- `--app <key>` — Tenant app key that consumes this workflow (required)
+- `--app <key>` — Workspace app key that consumes this workflow (required)
 - `--vertical <key>` — Deprecated compatibility alias for `--app`
-- `--tenant <id>` — Tenant to provision against (default: active tenant)
+- `--workspace <id>` — Workspace to provision against (legacy alias: `--tenant`; default: active workspace)
 - `--display-name <name>` — Workflow display name
 - `--usecase <usecase>` — Workflow usecase namespace (default: `generic`)
 - `--scope-key <scopeKey>` — Explicit workflow scope key (defaults to `<usecase>:<workflow-key>`)
@@ -700,7 +773,7 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 - `--stage-prompt <stage=prompt>` — Prompt content for a stage (repeatable)
 - `--workflow-env-key <key>` — Env key for the workflow id
 - `--bind-ai-runtime` — Also create `shared-ai-profile` and `shared-chatbot-config` records
-- `--ai-provider <integrationKey>` — Tenant integration key for the AI provider
+- `--ai-provider <integrationKey>` — Workspace integration key for the AI provider
 - `--ai-model <model>` — AI model/deployment name
 - `--ai-profile-key <key>` — Reusable `shared-ai-profile` key
 - `--status <status>` — `active` or `draft` (default: `active`)
@@ -723,12 +796,12 @@ Provision a usecase-agnostic workflow config and bind it to a tenant app. Option
 ---
 
 #### `eai workflow readiness [workflow-keys...]`
-Check tenant, plan, and workflow readiness for building an app.
+Check workspace, plan, and workflow readiness for building an app.
 
 **Arguments**: `[workflow-keys...]` (optional)
 
 **Options**:
-- `--tenant <id>` — Tenant to check (default: active tenant)
+- `--workspace <id>` — Workspace to check (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -742,7 +815,7 @@ Check whether a workflow key has an executable runtime binding.
 **Arguments**: `<workflow-key>`
 
 **Options**:
-- `--tenant <id>` — Tenant to check (default: active tenant)
+- `--workspace <id>` — Workspace to check (legacy alias: `--tenant`; default: active workspace)
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
@@ -758,7 +831,7 @@ Request an operator-assisted runtime workflow binding.
 **Arguments**: `<workflow-key>`
 
 **Options**:
-- `--tenant <id>` — Tenant to request for (default: active tenant)
+- `--workspace <id>` — Workspace to request for (legacy alias: `--tenant`; default: active workspace)
 - `--display-name <name>` — Human-readable workflow display name
 - `--reason <reason>` — Short reason for the platform operator
 - `--format <format>` — Output format (text|json, default: text)
@@ -768,7 +841,13 @@ Request an operator-assisted runtime workflow binding.
 
 ---
 
+### Content Understanding configuration
+
+`eai content-understanding schema` and `validate --file <path>` are local, authentication-free commands. `capabilities`, `plan`, `apply` and `status` use the selected workspace and require `--tenant-id`. `plan` is read-only; `apply` requires the original `--file` and saved JSON `--plan`, accepts an acknowledged `--operation-id` for resume, and optionally waits within `--timeout 1..1800`. Status only reads an existing operation and asks for explicit apply when mutation remains. JSON output uses `--format json`; pending work is distinct from completion. See [Content Understanding](content-understanding.md) for bounded fields, flat classification, readiness and unknown acknowledgement recovery.
+
 ### Document Commands
+
+For October launch-scope analyzer fields, use `eai docs configure-type --file <configuration.json> --tenant-id <workspace-id> --format json` before submitting a document. This named command maps a bounded document type and its scalar extract/generate fields to a tenant-owned analyzer and matching runtime rules, verifies analyzer readback, and reports any partial runtime-sync failure. It does not publish a classifier or enable the separately gated typed CU v2 workflow. See [Content Understanding](content-understanding.md) for the JSON shape and full background-job sequence.
 
 Uploads require authorized context: either an existing Curate planning project
 (`--planning-application-id <id>` or `--business-request-id <id>`), or paired
@@ -778,7 +857,7 @@ The CLI selects `storage_target=resourceapi` and refuses missing or incomplete
 context before reading the file. Both commands support `--tenant-id` and
 `--format json`. PublicAPI selects the lifecycle from the saved binding; callers
 cannot supply a lifecycle, storage mapping or owner override in upload fields.
-These options do not provision tenant schemas or enable a provider.
+These options do not provision workspace schemas or enable a provider.
 HTTP 202 means accepted; poll `/v4/data/documents/jobs/{jobId}` for completion
 and verify the saved result. Direct URL analysis is not this queued lifecycle.
 
@@ -825,6 +904,10 @@ Classify a document.
 
 ---
 
+#### `eai docs job <jobId>` and `eai docs get <documentId>`
+
+Read an accepted job or the complete persisted document result. Both accept `--tenant-id` and `--format json`. Job supports GET-only `--wait` with `--timeout 1..1800`; failed stages, completed-with-errors and timed-out waits exit nonzero without re-upload. Get accepts `--job-id` and `--storage-target resourceapi`, preserves recursive values/evidence/provenance in the response body, and checks document/job/workspace observations.
+
 #### `eai docs index <id>`
 Index a document for RAG (two-step).
 
@@ -836,6 +919,70 @@ Index a document for RAG (two-step).
 
 ---
 
+### Knowledge Base Documents
+
+#### `eai kb upload <file> --tenant-id <id>`
+
+Upload and index a document through the existing Admin Portal Knowledge Base
+contract. Select the correct login profile before running the command. The
+workspace must already have a published `shared-kb-article` model and ready
+storage. Session routing must resolve that exact workspace to a supported
+regional HTTPS PublicAPI gateway in the selected environment; unresolved,
+foreign or cross-environment routes stop before upload.
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+**Options**:
+- `--tenant-id <id>` — required exact workspace UUID
+- `--title <title>` — title; defaults to the filename
+- `--document-type <type>` — category; defaults to `Other`
+- `--content-type <mime>` — valid supported KB MIME override; known extensions are inferred
+- `--tag <tag>` — repeatable search tag
+- `--visible-to-children` — explicitly allow descendant workspaces to retrieve this document; false by default
+- `--format <format>` — text or JSON
+
+Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text and Markdown.
+Case-insensitive `.md`/`.markdown` filenames use canonical `text/markdown`;
+`text/x-markdown` is normalized to the same value. Empty, octet-stream or
+plain-text MIME fallback is allowed only for a known Markdown filename.
+Original bytes and filename are preserved in the upload, while record metadata,
+upload headers and committed-file verification use the same canonical MIME.
+Markdown must be nonempty strict UTF-8 text; decoding never replaces invalid
+bytes and the CLI does not render or fetch Markdown links/images.
+
+CSV and unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE`;
+invalid/blank Markdown uses `KB_UPLOAD_INVALID_MARKDOWN`, before record creation.
+Invalid MIME syntax and empty files retain their existing distinct safe input
+errors. Generic resource file uploads and configured document/classifier
+policies keep their existing behavior.
+
+An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
+result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format
+help. Its `phase: index` and known record/document IDs distinguish it from a
+pre-upload input rejection. The document may remain stored; the command does
+not repeat the request or delete it. Unknown backend errors keep generic safe
+messages and never expose provider response text.
+
+The command sends each create, raw file upload and KB reindex request once.
+Upload already stores the file link and metadata. An exact resource GET verifies
+the committed file, checksum, media type and metadata before indexing; no
+follow-up resource PUT replaces server-owned upload metadata. The JSON result distinguishes `indexed`, `in_progress`,
+`failed` and `outcome_unknown`, and retains only verified resource, document
+and operation IDs. HTTP 202 is pending, not indexed. A timeout may leave stored
+data; inspect the record and article key in the workspace's regional Knowledge
+Base before uploading again. No request is replayed or compensated by deletion.
+This command does not change `eai docs upload` or Curate document workflows.
+
+**Platform API Endpoints Used**:
+- `POST /v4/identity/session/resolve` — resolve the exact workspace and regional API
+- `POST /v4/data/resources/{tenantId}/shared-kb-article` — create the KB record
+- `POST /v4/data/resources/{tenantId}/shared-kb-article/{id}/files/file?filename=...` — upload the file with its MIME type
+- `GET /v4/data/resources/{tenantId}/shared-kb-article/{id}` — verify the committed file and server-owned metadata
+- `POST /v4/data/knowledge-base/reindex` — request AICore extraction and indexing for that exact record
+
 ### Advanced PublicAPI V4 Commands
 
 Use named commands first for normal workflows. The `publicapi` command is the
@@ -843,14 +990,23 @@ advanced V4-only access layer for authorized users and operators when a route
 family does not yet have a polished command.
 
 #### `eai publicapi get <path>` · `post <path>` · `patch <path>` · `put <path>` · `delete <path>`
-Call an authorized PublicAPI V4 path using the current login and active tenant
-context.
+Call an authorized PublicAPI V4 path using the current login and workspace
+context. An explicit `--tenant-id` must be an exact workspace UUID. It sends
+that tenant as request context using the selected login and PublicAPI gateway;
+PublicAPI decides whether the user can perform the requested operation. This
+also supports tenant builders and viewers without a local tenant-admin
+membership check. It does not change the saved active workspace.
+
+When `--tenant-id` is omitted, the existing interactive active-workspace
+resolver applies. For tenant-scoped routes, use the same tenant UUID in the
+path and `--tenant-id`. Authentication and authorization failures retain their
+actual HTTP status in JSON output and exit unsuccessfully.
 
 **Arguments**:
 - `<path>` — PublicAPI path. It must start with `/v4/`.
 
 **Options**:
-- `--tenant-id <tenantId>` — Use a specific tenant instead of the active tenant
+- `--tenant-id <tenant-id>` — Use a specific workspace instead of the active workspace
 - `--data <json>` — JSON request body
 - `--file <path>` — Read JSON request body from a file
 - `--param <key=value>` — Query parameter; repeat for multiple values
@@ -879,7 +1035,7 @@ eai publicapi patch /v4/identity/me/profile --file profile.json
 - Any authorized route under `/v4/webhooks`
 
 The command does not bypass authorization. PublicAPI still validates the bearer
-token, tenant context, route policy, and platform tenant authorization for the
+token, workspace context, route policy, and platform workspace authorization for the
 called interface.
 
 ---
@@ -968,10 +1124,10 @@ Validate the installed block catalog, or a manifest JSON file.
 `eai vertical ...` remains available as a compatibility alias during the migration window.
 
 #### `eai app list`
-List apps for the active company tenant.
+List apps for the active company workspace.
 
 **Options**:
-- `--tenant-id <id>` — Target company tenant
+- `--tenant-id <id>` — Target company workspace
 - `--limit <number>` — Items per page (default: 50)
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -981,15 +1137,15 @@ List apps for the active company tenant.
 ---
 
 #### `eai app create <name>`
-Create an app under a company tenant.
+Create an app under a company workspace.
 
 **Arguments**: `<name>`
 
 **Options**:
-- `--tenant-id <id>` — Main company tenant ID that owns this app
-- `--parent-tenant <id>` — Immediate parent company tenant ID for the new child company
-- `--child-tenant <name>` — Create or reuse a child company tenant (display name)
-- `--child-tenant-slug <slug>` — Child company tenant key
+- `--tenant-id <id>` — Main company workspace ID that owns this app
+- `--parent-tenant <id>` — Immediate parent company workspace ID for the new child company
+- `--child-tenant <name>` — Create or reuse a child company workspace (display name)
+- `--child-tenant-slug <slug>` — Child company workspace key
 - `--key <key>` — Stable app key (defaults to kebab-case of `<name>`)
 - `--template <templateKey>` — Optional app-catalog template key
 - `--source <source>` — Creation source (default: `eai-cli`)
@@ -1008,7 +1164,7 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Validate against a specific company tenant
+- `--tenant-id <id>` — Validate against a specific company workspace
 - `--skip-validate` — Skip the remote lookup before writing `.env.local`
 - `--format <format>` — Output format (text|json, default: text)
 
@@ -1018,22 +1174,32 @@ Set `EAI_APP_KEY` in the current project `.env.local`. The CLI also writes `EAI_
 ---
 
 #### `eai app provision <key>`
-Prepare platform storage for an app.
+Run the parent-owned app provisioning job and write local storage bindings only after that exact job is ready. For an app with a separate runtime child tenant, specify both tenant IDs. A failed or incomplete job does not write local bindings.
+
+With `--app-tenant-id`, the parent owns the enrollment and `--tenant-id` pins the
+runtime child. Without an explicit parent, the selected workspace owns the
+enrollment and its exact `childTenantId`, when present, selects the runtime.
+Conflicting child bindings fail before storage or local writes. A dry run
+preserves local configuration, including when `--select` is supplied.
 
 **Arguments**: `<key>`
 
 **Options**:
-- `--tenant-id <id>` — Target company tenant
-- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` (default: `all`)
+- `--tenant-id <id>` — Runtime tenant receiving the app storage bindings
+- `--app-tenant-id <id>` — Parent tenant owning the app enrollment; requires an explicit runtime `--tenant-id`
+- `--job-id <id>` — Resume the exact provisioning job without creating another; requires `--tenant-id` and cannot be combined with `--dry-run`
+- `--backend <backend>` — `postgresql|mongodb|documentdb|blob|search|all` for `--dry-run` only (default: `all`)
 - `--dry-run` — Plan actions without applying changes
-- `--rebuild-search` — Request a search projection rebuild after provisioning
+- `--rebuild-search` — Request a search projection rebuild for `--dry-run` only
 - `--skip-validate` — Skip the app lookup
-- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after successful provisioning
+- `--select` — Write `EAI_APP_KEY` and compatibility `EAI_VERTICAL_KEY` after the exact job is ready
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `GET /v4/data/resources/{tenantId}/tenant-vertical-enrollment` — validation (unless `--skip-validate`)
-- `POST /v4/data/resources/{tenantId}/storage/provision`
+- `GET /v4/data/resources/{appTenantId}/tenant-vertical-enrollment` — parent enrollment validation (unless `--skip-validate`)
+- `POST /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs` — create the parent-owned job with `targetTenantId` for a separate runtime child
+- `GET /v4/platform/tenants/{appTenantId}/apps/{key}/provisioning-jobs/{jobId}?targetTenantId={runtimeTenantId}` — read or resume the exact job until ready
+- `POST /v4/data/resources/{runtimeTenantId}/storage/provision` — `--dry-run` storage planning only
 
 ---
 
@@ -1046,8 +1212,8 @@ Run read-only platform connectivity checks.
 - `--tenant-id <id>` — Run checks against a specific tenant (read-only)
 
 **Platform API Endpoints Used**:
-- `GET /health` — PublicAPI gateway health
-- `GET /v4/data/resources/object-types` — platform reachability
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
+- `GET /v4/data/resources/object-types` — Object Type access
 - `GET /v4/data/resources/schema/{tenantId}` — data-service reachability
 
 ---
@@ -1080,7 +1246,7 @@ Audit the platform API contracts used by the CLI. All checks are read-only unles
 - `--chat-message <message>` — Message to send when probing chat
 - `--format <format>` — Output format (text|json, default: text)
 
-**Endpoints probed** (subset, depending on flags): `GET /health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
+**Endpoints probed** (subset, depending on flags): `GET /v4/data/resources/health`, `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships`, `GET /v4/data/resources/object-types`, `GET /v4/data/resources/schema/{tenantId}`, `GET|POST /v4/data/resources/{tenantId}/...`, `GET /v4/platform/tenants/{tenantId}/users/by-email`, `POST /v4/ai/chat/{tenantId}/{workflowId}/{stage}` (with `--include-chat`)
 
 ---
 
@@ -1100,8 +1266,8 @@ registry fallback for the update check.
 
 #### `eai update`
 Check for and install CLI updates from npmjs, with the EAI static registry as a
-fallback, then maintain
-safe repo-local project assets when the command is run inside an EAI project.
+fallback, then maintain repo-local project assets when the command is run
+inside an EAI project.
 
 **Options**:
 - `--check` — Only check for CLI, Gofer, and app-template status without installing or writing files
@@ -1138,10 +1304,11 @@ npm install -g @enterpriseai/cli
 No platform API calls.
 
 **Project maintenance**:
-- Normal `eai update` refreshes safe Gofer-managed files with the same backups
-  and conflict detection as `eai gofer refresh`.
-- App-template and UI files are not auto-merged. The CLI reports drift and
-  points to `eai template check` for manual review.
+- Normal `eai update` always force-refreshes Gofer-managed files. Conflicting
+  local versions are backed up before replacement.
+- It then runs `eai template check` automatically. This check is read-only and
+  reports additions and changed files for manual review; app-template and UI
+  files are not auto-merged.
 - Interactive update prompts are suppressed for CI, non-TTY, `--describe`,
   `--format json`, and `--json`.
 
@@ -1165,8 +1332,24 @@ Preview file-level app-template / UI drift without writing to the repo.
 
 **Options**:
 - `--format <format>` — Output format (text|json, default: text)
+- `--ai-plan` — Emit a structured JSON plan for selective EAI capability adoption
+- `--preserve-ui` — Protect existing layout, styles, components, content, and interactions in the AI plan; enabled by default
 
-**No API calls** — local diff against the bundled template snapshot
+**No API calls** — clones the configured Git template revision, then performs a
+local read-only diff. Git access is required when that revision is not already
+available from the configured source.
+
+AI planning also accepts ordinary Git and JavaScript package repositories. It
+fetches the template revision pinned by the installed CLI, or the current
+revision of a recorded custom template source. For a
+repository without template provenance, it reports `unbased-adoption` and does
+not claim that the repository came from the EAI template.
+
+The plan groups platform, authentication, runtime, data, deployment, tooling,
+and presentation changes. Each operation includes a decision, risk, purpose,
+hashes, bounded diff evidence, dependencies, instructions, and available
+validation commands. The command does not apply the plan or execute repository
+scripts. Existing presentation files remain protected references.
 
 ---
 
@@ -1176,23 +1359,23 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /oauth2/v2.0/token` — Entra CIAM token exchange
 
 ### Health
-- `GET /health` — PublicAPI gateway health
+- `GET /v4/data/resources/health` — PublicAPI and ResourceAPI health
 
-### Platform — Tenants
-- `POST /v4/platform/tenants` — Create root tenant
-- `POST /v4/platform/tenants/{parentId}/children` — Create child tenant
-- `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child tenant
+### Platform — Workspaces
+- `POST /v4/platform/tenants` — Create root workspace
+- `POST /v4/platform/tenants/{parentId}/children` — Create child workspace
+- `POST /v4/platform/tenants/{parentId}/children/{childId}/bootstrap-admin` — Bootstrap admin on a child workspace
 - `POST /v4/platform/tenants/{tenantId}/delete` — Soft-delete tenant
 - `POST /v4/platform/tenants/{companyTenantId}/apps` — Create app enrollment
 
 ### Platform — Users & Capabilities
-- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a tenant context
-- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a tenant context
-- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a tenant
-- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a tenant member with a role
-- `GET /v4/platform/tenants/{tenantId}/members` — List tenant members
-- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable tenant role definitions
-- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a tenant member role
+- `GET /v4/platform/tenants/{tenantId}/users/by-email` — Look up a user by email in a workspace context
+- `GET /v4/platform/tenants/{tenantId}/users/{oid}/memberships` — User memberships in a workspace context
+- `POST /v4/platform/tenants/{tenantId}/users/{oid}/provision` — Provision a user into a workspace
+- `POST /v4/platform/tenants/{tenantId}/members/invite` — Invite or provision a workspace member with a role
+- `GET /v4/platform/tenants/{tenantId}/members` — List workspace members
+- `GET /v4/platform/tenants/{tenantId}/role-definitions` — List assignable workspace role definitions
+- `PATCH /v4/platform/tenants/{tenantId}/members/{memberId}/roles` — Update a workspace member role
 - `POST /v4/platform/capabilities/evaluate` — Evaluate a capability decision
 
 ### Platform — Provisioning (Entra)
@@ -1200,14 +1383,14 @@ Preview file-level app-template / UI drift without writing to the repo.
 - `POST /v4/platform/provisioning/entra-apps/{clientId}/rotate-secret` — Rotate the app secret
 
 ### Identity
-- `GET /v4/identity/tenants` — Current user's tenant memberships
+- `GET /v4/identity/tenants` — Current user's workspace memberships
 - `POST /v4/identity/me/provision` — Self-provision the current user
 
 ### Data — Object Types
 - `GET /v4/data/resources/object-types` — List Object Types
 - `POST /v4/data/resources/object-types` — Create an Object Type
 - `PATCH /v4/data/resources/object-types/{objectTypeId}` — Update an Object Type
-- `GET /v4/data/resources/schema/{tenantId}` — Published schema for a tenant
+- `GET /v4/data/resources/schema/{tenantId}` — Published schema for a workspace
 
 ### Data — Resources
 - `GET /v4/data/resources/{tenantId}/{objectType}` — List resources
@@ -1281,7 +1464,7 @@ The CLI uses structured error codes for consistent error handling. Each error ca
 | Code | Message | Suggestion |
 |------|---------|------------|
 | `E001` | Not in an EAI project | Run `eai init`, or navigate to an existing EAI project directory |
-| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Tenant selection comes from `eai login` / `eai tenant select`, not tenant IDs in `.env.local` |
+| `E002` | `{var}` environment variable not set | Set `{var}` in your environment or project config. Workspace selection comes from `eai login` / `eai workspace select`, not workspace IDs in `.env.local` |
 | `E003` | Configuration file not found: `{file}` | Ensure `{file}` exists. Run `eai init` if this is a new project |
 | `E004` | Object Types file not found or invalid | Create `src/eai.config/object-types.ts` |
 | `E005` | Invalid project structure | Run `eai verify` to check your setup |
@@ -1331,6 +1514,73 @@ When a command is run with `--format json`, errors are emitted as:
 }
 ```
 
+## Support
+
+### `eai support`
+
+Review a locally redacted report and, after consent, create a temporary draft
+using the existing `eai login` session. The Support page link carries only the
+draft id and one-time token in its fragment. The page submits the final report.
+
+| Option | Behavior |
+| --- | --- |
+| `--format text\|json` | Text shows the report, its digest and prompts in a terminal. JSON previews until `--yes --approved-digest`. |
+| `--source eai-cli\|harness` | Entry source. Defaults to `harness` when `--tool` is supplied, otherwise `eai-cli`. |
+| `--tool <name>` | Harness name. |
+| `--tool-version <version>` | Harness version when known. |
+| `--command <command>` | Failing command override, locally redacted. |
+| `--exit-code <code>` | Signed 32-bit exit code override. |
+| `--error-code <code-or-reason>` | Catalog entry from `eai errors list`. |
+| `--description <text>` | Optional description, 10 to 6000 characters after redaction. |
+| `--decline` | Decline a preview locally and remove only its CLI-owned `--context-file`; no authentication or network request. Cannot be combined with `--yes` or `--create-context-file`. |
+| `--create-context-file` | Allocate an empty private CLI-owned file and return `contextFile`; no authentication or network request. Write the JSON summary into that file without replacing it. |
+| `--context-file <path>` | Harness session summary as JSON (`-` reads stdin). Requires the harness source. At most 64 KiB raw; the redacted `harness` block is capped at 32 KiB by dropping the oldest steps, then commands, then errors (`truncated: true`). A file allocated with `--create-context-file` under the CLI-owned `~/.eai/support/context/` directory (0700) is kept for preview and removed after an approved send or decline. Marked files older than 24 hours in that directory are removed on the next support invocation; untracked files and files elsewhere are never deleted. |
+| `--approved-digest <sha256>` | `bundleDigest` of the previewed report the person approved. Required with `--yes` in every mode; a mismatch answers `consent_stale`. |
+| `--organisation-location <location>` | `apac`, `emea` or `americas`; sent as `organisationLocation` when the saved session has no active workspace. |
+| `--no-last-error` | Leave the saved context of the last failing command out of the report. |
+| `--yes` | Send only after the person has explicitly consented to the displayed report. |
+| `--no-open` | Print the link without opening a browser. JSON always prints without opening. |
+
+The `harness` block is strict: `requestedByPerson: true`, `request` (500),
+`goal` (1000), `summary` (4000), `steps` (50 × 500), `commands` (50 ×
+`{ command, exitCode, errorCode?, reasonCode?, at? }`), `errors` (50 ×
+`{ code?, message, at? }`), `attemptedFixes` (20 × 500), `filesTouched` (100 ×
+260, project-relative, absolute paths refused) and `truncated`. Missing lists
+default to empty. Every text field is redacted with the shared rules plus the home
+directory shown as `~` and the project root as `.`. Validation failures answer
+`context_invalid` and name fields only; unreadable or oversized input answers
+`context_unreadable` or `context_too_large`.
+
+JSON results carry `status` (`consent_required`, `consent_stale`, `declined`,
+`signed_out`, `region_required`, `created`, or `failed`) and the redacted `bundle`
+on successful preparation. `consent_required` and `signed_out` add `previewText`
+(the whole redacted bundle as plain text, ending with its digest) and
+`bundleDigest` (sha256 of the canonical redacted bundle with sorted keys).
+When the saved session has no active workspace and no `--organisation-location`
+was given, `consent_required` also carries `questions: ["organisationLocation"]`
+and nothing is sent, even with `--yes`. `ignoredLastError` names the saved
+failure left out because it is older than 24 hours. Created drafts add `url` and
+`expiresAt`. Every no-draft result (`signed_out`, `region_required`, `failed`)
+includes the chat link `<website>/support?chat=open`. Missing/expired sessions
+and website 401 responses create no draft; a website
+`400 {"error":"region_required"}` is reported as `region_required`. Other
+website errors return safe messages and exit 1. Draft requests have a 10-second
+timeout and never retry automatically.
+
+Every nonzero exit prints "Need help? Run eai support, or ask your AI assistant
+to get help. Nothing is sent without your approval." to stderr in text mode,
+including failing `eai support` and `eai errors` commands. JSON error keys remain
+unchanged; `error.suggestion` holds only the catalog suggestion.
+
+Previous failure context stores only command, exit code, recognized catalog code
+and reason, and timestamp. Raw diagnostic text is excluded, including from older
+caches. The optional error summary comes from the recognized catalog title.
+
+The default website is `https://www.enterpriseaigroup.com`. Private CLI profiles
+can set `websiteUrl` in their existing local configuration; `EAI_WEBSITE_URL` is
+an explicit runtime override. The value must be an HTTPS origin. HTTP is allowed
+only for loopback fixtures. Project `.env.local` cannot change the destination.
+
 ## Machine-Readable Output
 
 Most data-returning commands that advertise `--format <format>` support
@@ -1343,7 +1593,7 @@ scripting a subcommand; status-only commands such as `eai whoami` and quick
 eai resources list board-app-user --format json
 
 # Parse with jq
-eai tenant list --format json | jq '.tenants[].slug'
+eai workspace list --format json | jq '.tenants[].slug'
 
 # Use in scripts
 if eai verify calls --format json | jq -e '.summary.failed == 0' > /dev/null; then

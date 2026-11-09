@@ -84,11 +84,11 @@ const releaseSnapshotBody = `
 `;
 
 updateFile('.tech-docs/start-here.md', (markdown) => (
-  upsertSection(markdown, 'Current Release', currentReleaseBody, '## What The Pieces Do')
+  `${upsertSection(markdown, 'Current Release', currentReleaseBody, '## What The Pieces Do').trimEnd()}\n`
 ));
 
 updateFile('.tech-docs/eai-cli.md', (markdown) => (
-  upsertSection(markdown, 'Release Snapshot', releaseSnapshotBody, '## Common Workflow')
+  `${upsertSection(markdown, 'Release Snapshot', releaseSnapshotBody, '## Common Workflow').trimEnd()}\n`
 ));
 
 for (const generatedDocPath of [

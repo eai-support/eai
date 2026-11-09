@@ -24,6 +24,14 @@ Examples:
   ./release.sh patch "Fix auth token refresh bug"
   ./release.sh minor "Add bulk resource import command"
   ./release.sh major "Replace config schema with v3 format"
+
+Install after release publication (choose one):
+  Recommended npmjs package:
+    npm install -g eai-cli
+  Canonical npmjs package:
+    npm install -g @enterpriseai/cli
+  Static registry fallback:
+    npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
 EOF
 }
 
@@ -296,10 +304,6 @@ fi
 if [[ "$RELEASE_PHASE" == "publish" ]]; then
   TAG_NAME="v$OLD_VERSION"
 
-  section "Waiting for docs/static-registry deployment from main"
-  wait_for_main_docs_run "$(git rev-parse HEAD)"
-  echo "  ✓ Deploy Docs workflow completed"
-
   section "Creating and pushing release tag"
   if remote_tag_exists "$TAG_NAME"; then
     echo "✗ Remote tag $TAG_NAME already exists"
@@ -312,7 +316,7 @@ if [[ "$RELEASE_PHASE" == "publish" ]]; then
 
   section "Waiting for GitHub release workflow"
   wait_for_release_run "$TAG_NAME"
-  echo "  ✓ Release workflow completed"
+  echo "  ✓ Release workflow and qualified Docs publication completed"
 
   section "Verifying public release channels"
   verify_npmjs_latest "$NPM_PACKAGE" "$OLD_VERSION"
@@ -353,6 +357,7 @@ ALIAS_TARBALL="$(npm pack --silent .release/eai-cli-package)"
 node scripts/generate-registry.cjs >/dev/null
 node scripts/generate-error-guidance-docs.cjs >/dev/null
 node scripts/generate-release-docs.cjs >/dev/null
+node scripts/generate-docs-experience-assets.cjs >/dev/null
 echo "  ✓ npm pack -> $TARBALL"
 echo "  ✓ eai-cli alias pack -> $ALIAS_TARBALL"
 echo "  ✓ static registry metadata refreshed"
@@ -363,7 +368,20 @@ git checkout -b "$RELEASE_BRANCH"
 echo "  ✓ branch created: $RELEASE_BRANCH"
 
 section "Committing release prep"
-git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json
+git add package.json package-lock.json .tech-docs/ docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json docs-site/static/docs-search-index.json docs-site/static/docs-capabilities.json
+# Case-insensitive filesystems alias %2f and %2F on disk; stage both Git paths
+# from the same generated packument so the published registry cannot diverge.
+PACKUMENT_BLOB="$(git hash-object -w docs-site/static/registry/@enterpriseai/cli)"
+for packument_path in \
+  'docs-site/static/registry/%40enterpriseai%2Fcli' \
+  'docs-site/static/registry/@enterpriseai%2fcli' \
+  'docs-site/static/registry/@enterpriseai%2Fcli'; do
+  git update-index --add --cacheinfo "100644,$PACKUMENT_BLOB,$packument_path"
+  [[ "$(git rev-parse ":$packument_path")" == "$PACKUMENT_BLOB" ]] || {
+    echo "✗ Static registry alias is not staged from the canonical packument: $packument_path"
+    exit 1
+  }
+done
 git commit -m "chore: release v$NEW_VERSION — $MESSAGE"
 git push -u origin "$RELEASE_BRANCH"
 PR_URL="$(create_release_pr "$RELEASE_BRANCH" "$NEW_VERSION" "$MESSAGE")"

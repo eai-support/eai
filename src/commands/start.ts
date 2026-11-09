@@ -21,6 +21,7 @@ import {
   installAndVerifyCompanionCli,
   runCompanionCliInstaller,
 } from '../lib/ai-surface-installer.js';
+import { assessLocalIsolation } from '../lib/local-isolation.js';
 
 interface StartOptions {
   check?: boolean;
@@ -30,6 +31,7 @@ interface StartOptions {
   remember?: boolean;
   format?: string;
   contractVersion?: string;
+  isolationCheck?: boolean;
 }
 
 function parseContractVersion(value: string | undefined): AiSurfaceContractVersion {
@@ -144,6 +146,7 @@ export const startCommand = new Command('start')
   .description('Detect or start a supported AI workspace for an EAI project')
   .argument('[directory]', 'Project folder to open', '.')
   .option('--check', 'Detect supported AI workspaces without opening or changing anything', false)
+  .option('--isolation-check', 'Probe local-only worktree and sandbox readiness without a model call', false)
   .option('--surface <id>', `Use a specific surface (${AI_SURFACES.map((surface) => surface.id).join('|')})`)
   .option('--install', 'Install or update the required companion CLI and verify it')
   .option('--dry-run', 'Show the launch plan without starting the provider', false)
@@ -155,13 +158,15 @@ Examples:
   $ eai start --check
   $ eai start --check --format json
   $ eai start --check --format json --contract-version v2
+  $ eai start --isolation-check --surface codex-cli --format json
   $ eai start . --surface vscode-copilot
   $ eai start . --surface claude-desktop --dry-run
   $ eai start --surface copilot-desktop --install
 
 Privacy:
-  Detection checks filesystem, package, signature, and application metadata;
-  it never runs provider binaries or reads provider accounts or project files.
+  Detection checks filesystem, package, signature, and application metadata.
+  Isolation checks may run a signed local provider sandbox without a model call;
+  they create and remove temporary probe files near the project worktree.
   Starting a surface is your confirmation
   that the provider may read this project and use your provider account.
   `)
@@ -172,6 +177,26 @@ Privacy:
       throw new Error(`Project folder does not exist: ${projectDirectory}`);
     });
     const inventory = await detectAiSurfaces({ projectDirectory });
+
+    if (options.isolationCheck) {
+      const surfaceIds = options.surface
+        ? [isSurfaceId(options.surface) ? options.surface : (() => { throw new Error(`Unknown AI surface: ${options.surface}`); })()]
+        : inventory.surfaces
+          .filter((surface) => surface.id === 'codex-cli' || surface.id === 'grok-cli')
+          .map((surface) => surface.id);
+      const report = assessLocalIsolation({ projectDirectory, platform: inventory.platform, surfaceIds });
+      if (options.format === 'json') out.json(report);
+      else {
+        out.heading('Local isolation readiness');
+        for (const assessment of report.assessments) {
+          console.log(`- ${assessment.surfaceId}: ${assessment.status} — ${assessment.reason}`);
+        }
+      }
+      if (report.assessments.length === 0 || report.assessments.some((assessment) => assessment.status !== 'ready')) {
+        process.exitCode = 1;
+      }
+      return;
+    }
 
     if (options.check) {
       if (options.format === 'json') out.json(serializeAiSurfaceInventory(inventory, contractVersion));

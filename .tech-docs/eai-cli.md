@@ -6,7 +6,7 @@ title: EAI CLI
 # EAI CLI
 
 `eai` is the supported command-line interface for building and operating apps on
-the EAI platform. It wraps authentication, tenant context, Object Types,
+the EAI platform. It wraps authentication, workspace context, Object Types,
 ResourceAPI data, document processing, chat workflows, deployment, diagnostics,
 and gofer asset refresh.
 
@@ -14,13 +14,20 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.15.11 |
-| Released | 2026-09-15 |
-| Last Material Change | Pair AI surfaces with verified companion CLIs |
-| Source Commit | `cd62b2c2f0a04faef5e4bd134488f845d37d7130` |
+| Version | 3.20.10 |
+| Released | 2026-11-05 |
+| Last Material Change | Add eai login --switch-account for EAI Setup account switching |
+| Source Commit | `70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea` |
 
 
 ## Install
+
+For a new desktop computer, use [EAI Setup](./installer-setup.md) first. It is
+the standard guided path for Windows (x64 and ARM64) and Apple Silicon Mac
+users. It prepares prerequisites, installs the CLI, opens browser sign-in,
+creates the project, and installs its dependencies.
+
+Use the commands below for CI, managed developer environments, or manual setup.
 
 Recommended install:
 
@@ -51,17 +58,57 @@ npm install -g @enterpriseai/cli
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <workspace-slug>
 eai whoami
 
 eai types validate
-eai types seed --tenant-key <tenant-key> --tenant-id <tenant-id> --format json
-eai types diff --tenant-key <tenant-key> --tenant-id <tenant-id>
-eai resources schema --tenant-id <tenant-id> --format json
+eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
+eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
+eai resources schema --tenant-id <workspace-id> --format json
 
 eai dev
 ```
+
+For an app enrolled under a parent workspace with a separate runtime child, use
+`eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json`.
+The CLI checks the exact parent/app/child enrollment before publishing through
+the parent app route and reads schema visibility from the child. This mode
+stops if the manifest route or binding is unavailable; it does not switch to
+direct Object Type writes.
+
+Delete that app through its owning parent and explicitly identify the runtime child:
+
+```bash
+eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+```
+
+The CLI keeps the parent as the enrollment owner, passes the child to the ownership
+plan and deletion request, and verifies the same owner, child, manifest and runtime
+targets in the final receipt. A mismatched plan stops before deletion. Omit
+`--target-tenant-id` for an app whose enrollment and runtime use the same workspace.
+
+## Check Source Before EAI Hosting
+
+After building an app, check its source before choosing EAI-managed publication:
+
+```bash
+eai deploy source validate --format json
+```
+
+The check uses the same source guard as publication. It reads local files without
+signing in, publishing, or writing a deployment receipt. The upload includes the
+complete authored app: frontend and backend code, custom runners, tests, scripts,
+assets, documentation and ordinary config files. Executable script permissions
+are bound into the source digest and retained in GitHub. NCB's generation layout
+does not constrain Installer/CLI source.
+
+Deployment-owned Docker, workflow, platform authentication and tenant-binding
+controls remain protected. Credentials, dependencies, build caches and local
+agent state are excluded. A custom runtime needs an approved runtime contract;
+it cannot be silently replaced by the template runtime. The check reports
+unsupported controls and preserves your changes. A passing source check does
+not prove that the build, deployment or hosted readiness has completed.
 
 ## Object Type Identifiers
 
@@ -87,17 +134,18 @@ construction.
 | `eai init`                              | Scaffold an app from the EAI App Template.                                                |
 | `eai start`                             | Detect or open a supported AI workspace for the current EAI app.                          |
 | `eai login`, `eai logout`, `eai whoami` | Manage local authentication and inspect active context.                                   |
-| `eai tenant`                            | List, select, create, inspect, and administer tenant context.                             |
+| `eai workspace`                         | List, select, create, inspect, and administer workspace context. `eai tenant` remains available as a compatibility alias.     |
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
+| `eai kb upload`                         | Upload and index one tenant-explicit Knowledge Base file using its resolved regional API. |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
 | `eai deploy`                            | Translate provider env/secrets and black-box doctor deployed EAI app runtimes.            |
 | `eai gofer`                             | Install and refresh repo-local agent workflow assets.                                     |
-| `eai template`                          | Check app-template and UI drift without writing files.                                    |
-| `eai update`                            | Update the CLI, refresh safe Gofer-managed assets, and report app-template drift.         |
+| `eai template`                          | Check template drift or create a read-only, UI-preserving AI adoption plan.               |
+| `eai update`                            | Update the CLI, force-refresh backed-up Gofer assets, and run a read-only template check. |
 | `eai verify`, `eai doctor`              | Run connectivity, contract, update, and troubleshooting checks.                           |
 
 ## Output Modes
@@ -105,8 +153,8 @@ construction.
 Use machine-readable output for automation:
 
 ```bash
-eai tenant list --format json
-eai resources schema --tenant-id <tenant-id> --format json
+eai workspace list --format json
+eai resources schema --tenant-id <workspace-id> --format json
 eai whoami --simple
 eai doctor --no-color
 ```
@@ -119,15 +167,37 @@ Prefer product-shaped commands before `eai publicapi`:
 | -------------------- | -------------------------------------------------------- |
 | Scaffold app         | `eai init <name>` or `eai init <name> --current-dir`     |
 | Start AI workspace   | `eai start --check`, then `eai start`                    |
-| Select tenant        | `eai tenant list`, `eai tenant select <slug>`            |
+| Select workspace        | `eai workspace list`, `eai workspace select <slug>`            |
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
-| Inspect schemas      | `eai resources schema --tenant-id <tenant-id>`           |
+| Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
-| Work with documents  | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
+| Index a Knowledge Base file | `eai kb upload <file> --tenant-id <workspace-id>` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+`eai kb upload` accepts nonempty UTF-8 `.md`/`.markdown` files, including
+uppercase extensions. It preserves the original filename and bytes and sends
+canonical `text/markdown` in the record, upload and verification flow. The
+`text/x-markdown` alias is normalized; empty/octet/plain MIME fallback is
+limited to known Markdown filenames. It does not render or fetch links/images.
+General resource uploads and configured document/classifier behavior remain
+unchanged. See [the KB upload reference](api-reference.md#eai-kb-upload-file---tenant-id-id).
+
+For protected POSIX qualification, named `eai init <name> --skip-prompts` can
+optionally pair `--binding-receipt <absolute-path>` with
+`--binding-receipt-nonce <canonical-UUIDv4>`. The destination must be fresh, in
+an owner-only directory outside the project and Git trees. A pending reservation
+grants no creation ownership. An acknowledged `eai.init_app_binding.v1` record
+retains the original request gateway/actor, actual immutable enrollment and
+parent/runtime tenant IDs, and actual creation flags, including after later
+scaffold failure. Selected or concurrently reused apps keep false flags.
+Preserve an existing receipt and choose a fresh private path/nonce for a new
+invocation; an existing destination rejects before provider work. Keep this
+private evidence out of Git and source bundles. Normal init produces no extra
+binding receipt; Windows delivery requires separate evidence.
 
 ## Related Reference
 

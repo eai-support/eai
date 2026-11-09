@@ -1,0 +1,22 @@
+{
+  "_comment": "Frozen copy of every reasonCode the Authz capability evaluation policy can return. The CLI cannot import Authz, so tests/integration/error-guidance.test.ts asserts each denying code resolves through the error guidance catalog. To refresh: read the policy at the path below on Authz origin/main, update denyReasonCodes and source.commit, and add catalog entries for any new code.",
+  "source": {
+    "repository": "enterpriseaigroup/Authz",
+    "path": "policies/capabilities/evaluate.rego",
+    "ref": "origin/main",
+    "commit": "038a5a6ce2403351927ab09fb1aaafaf28d44831",
+    "pathLastChangedInCommit": "f5fdb0fdffaba323480cf0b07b70cc6e2dea6316",
+    "frozenOn": "2026-10-22"
+  },
+  "denyReasonCodes": [
+    "capability_not_in_plan",
+    "capability_unavailable",
+    "subscription_inactive",
+    "tenant_admin_required",
+    "tenant_limit_reached",
+    "tenant_limit_unconfigured"
+  ],
+  "nonErrorReasonCodes": [
+    "allowed"
+  ]
+}

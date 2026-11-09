@@ -62,7 +62,26 @@ describe("eai classifier", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    process.exitCode = 0;
   });
+
+  /** Run a classifier command and capture its clean failure (stderr text and exit code). */
+  async function runClassifier(args: string[]): Promise<{ exitCode: number | string | undefined; stderr: string; stdout: string }> {
+    process.exitCode = 0;
+    const stderr = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stdout = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await classifierCommand.parseAsync(["node", "classifier", ...args]);
+      return {
+        exitCode: process.exitCode,
+        stderr: stderr.mock.calls.flat().join("\n"),
+        stdout: stdout.mock.calls.flat().join(""),
+      };
+    } finally {
+      stderr.mockRestore();
+      stdout.mockRestore();
+    }
+  }
 
   test("validates portable definitions before provider publication", () => {
     expect(parseClassifierDraft(draft)).toEqual(
@@ -569,16 +588,9 @@ describe("eai classifier", () => {
   });
 
   test("BP001 CLASSIFIER-LIFECYCLE-001: rejects mismatched delete confirmation before tenant or network access", async () => {
-    await expect(
-      classifierCommand.parseAsync([
-        "node",
-        "classifier",
-        "delete",
-        "compliance",
-        "--confirm",
-        "wrong-key",
-      ]),
-    ).rejects.toThrow("--confirm must exactly match compliance");
+    const result = await runClassifier(["delete", "compliance", "--confirm", "wrong-key"]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain("--confirm must exactly match compliance");
 
     expect(resolveCommandContext).not.toHaveBeenCalled();
     expect(listResources).not.toHaveBeenCalled();
@@ -606,16 +618,9 @@ describe("eai classifier", () => {
         ),
       );
 
-      await expect(
-        classifierCommand.parseAsync([
-          "node",
-          "classifier",
-          "delete",
-          "compliance",
-          "--confirm",
-          "compliance",
-        ]),
-      ).rejects.toThrow(expectedMessage);
+      const result = await runClassifier(["delete", "compliance", "--confirm", "compliance"]);
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain(expectedMessage);
       expect(requestPublicApi).not.toHaveBeenCalled();
     },
   );
@@ -644,15 +649,9 @@ describe("eai classifier", () => {
       );
 
       try {
-        await expect(
-          classifierCommand.parseAsync([
-            "node",
-            "classifier",
-            "save",
-            "--file",
-            draftPath,
-          ]),
-        ).rejects.toThrow(/Enable classifier/);
+        const result = await runClassifier(["save", "--file", draftPath]);
+        expect(result.exitCode).toBe(1);
+        expect(result.stderr).toMatch(/Enable classifier/);
       } finally {
         await rm(tempDirectory, { recursive: true, force: true });
       }
@@ -680,18 +679,16 @@ describe("eai classifier", () => {
       ),
     );
 
-    await expect(
-      classifierCommand.parseAsync([
-        "node",
-        "classifier",
-        "target",
-        "compliance",
-        "--app",
-        "mysnm",
-        "--workflow",
-        "compliance-review",
-      ]),
-    ).rejects.toThrow(
+    const result = await runClassifier([
+      "target",
+      "compliance",
+      "--app",
+      "mysnm",
+      "--workflow",
+      "compliance-review",
+    ]);
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain(
       "Enable classifier compliance before associating a target",
     );
     expect(requestPublicApi).not.toHaveBeenCalled();
@@ -728,20 +725,78 @@ describe("eai classifier", () => {
       ),
     );
 
-    let failure: Error | undefined;
-    try {
-      await classifierCommand.parseAsync([
-        "node",
-        "classifier",
-        "disable",
-        "compliance",
-      ]);
-    } catch (error) {
-      failure = error as Error;
+    const failure = await runClassifier(["disable", "compliance"]);
+
+    expect(failure.exitCode).toBe(1);
+    expect(failure.stderr).toContain("body.expectedVersion");
+    expect(failure.stderr).not.toContain("do-not-print");
+    expect(failure.stderr).not.toContain("secret");
+  });
+
+  describe("target readiness failures", () => {
+    const targetArgs = ["target", "compliance", "--app", "cu-trust-review", "--workflow", "trust-review"];
+
+    function publishedDraft(): void {
+      listResources.mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            docs: [{ id: "draft-id", version: 7, data: { ...draft, status: "published", publishedVersion: 3 } }],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } },
+        ),
+      );
     }
 
-    expect(failure?.message).toContain("body.expectedVersion");
-    expect(failure?.message).not.toContain("do-not-print");
-    expect(failure?.message).not.toContain("secret");
+    function publicApiRejects(status: number, error: string, step = "target-readiness"): void {
+      requestPublicApi.mockResolvedValue(
+        new Response(
+          JSON.stringify({ error, message: "Classifier target association did not complete", step }),
+          { status, headers: { "content-type": "application/json" } },
+        ),
+      );
+    }
+
+    test("prints the PublicAPI code, step and next action, then exits 1 without a stack trace", async () => {
+      publishedDraft();
+      publicApiRejects(409, "CLASSIFIER_APP_ENROLLMENT_NOT_READY");
+
+      const result = await runClassifier(targetArgs);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Classifier target association failed: 409 Classifier target association did not complete");
+      expect(result.stderr).toContain("Code: CLASSIFIER_APP_ENROLLMENT_NOT_READY (step: target-readiness)");
+      expect(result.stderr).toContain("Next: Turn on app cu-trust-review for this workspace in Admin Portal (/platform/verticals).");
+      expect(result.stderr).not.toMatch(/\n\s+at /);
+    });
+
+    test("returns a machine-readable failure envelope with --format json", async () => {
+      publishedDraft();
+      publicApiRejects(409, "CLASSIFIER_WORKFLOW_NOT_READY");
+
+      const result = await runClassifier([...targetArgs, "--format", "json"]);
+
+      expect(result.exitCode).toBe(1);
+      expect(JSON.parse(result.stdout)).toEqual({
+        ok: false,
+        status: 409,
+        step: "target-readiness",
+        error: {
+          code: "CLASSIFIER_WORKFLOW_NOT_READY",
+          message: "Classifier target association failed: 409 Classifier target association did not complete",
+          nextAction: "Provision the workflow for this app, then rerun this command: eai workflow provision trust-review --app cu-trust-review --stage <stage-id>",
+        },
+      });
+    });
+
+    test("prints the code and step without inventing a next action for unmapped codes", async () => {
+      publishedDraft();
+      publicApiRejects(409, "CLASSIFIER_TARGET_CONFLICT", "target-binding");
+
+      const result = await runClassifier(targetArgs);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.stderr).toContain("Code: CLASSIFIER_TARGET_CONFLICT (step: target-binding)");
+      expect(result.stderr).not.toContain("Next:");
+    });
   });
 });

@@ -5,7 +5,7 @@
  *
  * Scaffold, seed, deploy, and manage applications.
  * Every command wraps platform API calls — developers work with resources,
- * types, tenants, and chat using simple commands.
+ * types, workspaces, and chat using simple commands.
  */
 
 import { createRequire } from 'node:module';
@@ -43,11 +43,14 @@ import { goferCommand } from './commands/gofer.js';
 import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
+import { knowledgeBaseCommand } from './commands/knowledge-base.js';
 import { errorsCommand } from './commands/errors.js';
+import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
 import { connectionCommand } from './commands/connection.js';
+import { contentUnderstandingCommand, contentUnderstandingPreflightOperationId } from './commands/content-understanding.js';
 import {
   checkForUpdate,
   isMachineReadableInvocation,
@@ -55,10 +58,23 @@ import {
   notifyIfUpdateAvailableForDiscovery,
 } from './lib/update-check.js';
 import { setSimpleMode } from './lib/output.js';
-import { resolveCommandProfile, setActiveProfile } from './lib/profile.js';
+import { activateCommandProfile, setActiveProfile } from './lib/profile.js';
+import { ErrorCode, exitWithError } from './lib/error-codes.js';
 import { describeProgram } from './lib/schema-builder.js';
+import { installSupportErrorTracking, setSupportCommand } from './lib/support-context.js';
+import { validateCustomerCommitPreAction } from './commands/eai-managed-source-authorize-commit.js';
+import { printFailure } from './commands/eai-managed-deploy-output.js';
 
 const program = new Command();
+installSupportErrorTracking();
+
+function supportCommandPath(command: Command): string {
+  const names: string[] = [];
+  for (let current: Command | null = command; current; current = current.parent) {
+    names.unshift(current.name());
+  }
+  return names.join(' ');
+}
 
 program
   .name('eai')
@@ -69,8 +85,9 @@ program
   .option('--color', 'Force colored output')
   .option('--profile <name>', 'Use a locally configured private profile')
   .option('--describe', 'Output JSON schema of all commands')
-  .hook('preAction', async (thisCommand) => {
-    const opts = thisCommand.optsWithGlobals();
+  .hook('preAction', async (_thisCommand, actionCommand) => {
+    setSupportCommand(supportCommandPath(actionCommand));
+    const opts = actionCommand.optsWithGlobals();
 
     // Handle --simple flag
     if (opts.simple) {
@@ -87,9 +104,24 @@ program
       process.env.FORCE_COLOR = '1';
     }
 
-    // Handle --profile flag or EAI_PROFILE env var. Plain `eai ...`
-    // intentionally stays on the public production default profile.
-    setActiveProfile(resolveCommandProfile(thisCommand));
+    const capability = `${actionCommand.parent?.name()}:${actionCommand.name()}`;
+    if (capability === 'types:define' || capability === 'resources:indexes-apply'
+      || capability === 'content-understanding:schema' || capability === 'content-understanding:validate') return;
+
+    const retainedOperationId = capability === 'content-understanding:apply' || capability === 'content-understanding:status'
+      ? contentUnderstandingPreflightOperationId(opts) : undefined;
+
+    if (capability === 'source:authorize-commit') {
+      try { validateCustomerCommitPreAction(actionCommand); }
+      catch (error) { printFailure(opts.format === 'json' ? 'json' : 'text', error); process.exit(1); }
+    }
+
+    try {
+      await activateCommandProfile(actionCommand);
+    } catch (error) {
+      exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+        opts.format === 'json' || opts.json ? 'json' : 'text', { operationId: retainedOperationId });
+    }
   });
 
 // Register all commands
@@ -118,11 +150,14 @@ program.addCommand(goferCommand);
 program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
+program.addCommand(knowledgeBaseCommand);
 program.addCommand(errorsCommand);
+program.addCommand(supportCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
 program.addCommand(classifierCommand);
 program.addCommand(connectionCommand);
+program.addCommand(contentUnderstandingCommand);
 
 // Custom help footer
 program.addHelpText('after', `
@@ -140,7 +175,7 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.dim('# Define your types, validate them, then publish them')}
   ${chalk.cyan('eai types validate && eai types seed')}
 
-  ${chalk.dim('# See what is published for the active tenant')}
+  ${chalk.dim('# See what is published for the active workspace')}
   ${chalk.cyan('eai resources schema')}
   ${chalk.cyan('eai app create "My App" --template eai-app-template')}
 
@@ -153,7 +188,7 @@ ${chalk.bold('Development Workflows:')}
   ${chalk.cyan('eai workflow status strategy-monitor')}
   ${chalk.cyan('eai workflow request strategy-monitor --reason "CEO strategy cockpit"')}
 
-  ${chalk.dim('# Check login, tenant, and API connectivity')}
+  ${chalk.dim('# Check login, workspace, and API connectivity')}
   ${chalk.cyan('eai verify && eai doctor')}
 
 ${chalk.bold('Deployment:')}
@@ -171,7 +206,7 @@ ${chalk.bold('Deployment:')}
 ${chalk.bold('Machine-Readable Output:')}
   ${chalk.dim('# Get structured JSON output for automation')}
   ${chalk.cyan('eai resources list User --format json')}
-  ${chalk.cyan('eai tenant list --format json | jq')}
+  ${chalk.cyan('eai workspace list --format json | jq')}
   ${chalk.cyan('eai verify calls --format json')}
   ${chalk.cyan('eai errors explain E101 --format json')}
 
@@ -219,7 +254,7 @@ ${chalk.bold('Accessibility:')}
   ${chalk.cyan('eai --no-color <command>')}
 `);
 
-function readTopLevelCommandName(args: readonly string[]): string | null {
+function readTopLevelCommandIndex(args: readonly string[]): number | null {
   const flagsWithValues = new Set(['--profile']);
 
   for (let i = 0; i < args.length; i += 1) {
@@ -229,7 +264,7 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
     }
 
     if (arg === '--') {
-      return args[i + 1] ?? null;
+      return args[i + 1] ? i + 1 : null;
     }
 
     if (arg.startsWith('--profile=')) {
@@ -245,10 +280,52 @@ function readTopLevelCommandName(args: readonly string[]): string | null {
       continue;
     }
 
-    return arg;
+    return i;
   }
 
   return null;
+}
+
+function readTopLevelCommandName(args: readonly string[]): string | null {
+  const index = readTopLevelCommandIndex(args);
+  return index === null ? null : args[index] ?? null;
+}
+
+function readInvocationProfile(args: readonly string[]): string {
+  let profile = process.env.EAI_PROFILE?.trim() || 'default';
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (arg === '--') break;
+    if (arg.startsWith('--profile=')) {
+      profile = arg.slice('--profile='.length).trim() || profile;
+    } else if (arg === '--profile' && args[index + 1] && !args[index + 1].startsWith('-')) {
+      profile = args[index + 1].trim() || profile;
+      index += 1;
+    }
+  }
+  return profile;
+}
+
+/** Recover only a CU command's own ID when bootstrap profile syntax fails. */
+function readContentUnderstandingBootstrapOperationId(args: readonly string[]): string | undefined {
+  const groupIndex = readTopLevelCommandIndex(args);
+  if (groupIndex === null || args[groupIndex] !== 'content-understanding') return undefined;
+  const relativeIndex = readTopLevelCommandIndex(args.slice(groupIndex + 1));
+  if (relativeIndex === null) return undefined;
+  const commandIndex = groupIndex + 1 + relativeIndex;
+  const command = contentUnderstandingCommand.commands.find(item => item.name() === args[commandIndex]);
+  if (!command || !['apply', 'status'].includes(command.name())) return undefined;
+  let operationId: string | undefined;
+  for (let index = commandIndex + 1; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === '--') break;
+    const equal = arg.indexOf('='), flag = equal < 0 ? arg : arg.slice(0, equal);
+    const option = [...program.options, ...command.options].find(item => item.long === flag || item.short === flag);
+    if (!option) continue;
+    const value = equal >= 0 ? arg.slice(equal + 1) : option.required || option.optional ? args[++index] : undefined;
+    if (option.long === '--operation-id') operationId = value;
+  }
+  return contentUnderstandingPreflightOperationId({ operationId, format: isMachineReadableInvocation(args) ? 'json' : 'text' });
 }
 
 function isHelpInvocation(args: readonly string[]): boolean {
@@ -283,10 +360,28 @@ if (cliArgs.includes('--describe')) {
   console.log(JSON.stringify(describeProgram(program), null, 2));
 } else {
   const topLevelCommandName = readTopLevelCommandName(cliArgs);
-  const shouldForegroundCheckForUpdate = isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs);
+  const invokedCommand = program.commands.find(command => command.name() === topLevelCommandName
+    || command.aliases().includes(topLevelCommandName ?? ''));
+  if (invokedCommand) setSupportCommand(`eai ${invokedCommand.name()}`);
+  const commandIndex = readTopLevelCommandIndex(cliArgs);
+  const isLocalContentUnderstanding = topLevelCommandName === 'content-understanding' && commandIndex !== null
+    && ['schema', 'validate'].includes(readTopLevelCommandName(cliArgs.slice(commandIndex + 1)) ?? '');
+  if (!isLocalContentUnderstanding) {
+    try {
+      setActiveProfile(readInvocationProfile(cliArgs));
+    } catch (error) {
+      const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
+      exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
+        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', { operationId: retainedOperationId });
+    }
+  }
+  const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));
   const shouldSuppressPostCommandNotice =
     topLevelCommandName === 'update' ||
-    isMachineReadableInvocation(cliArgs);
+    isMachineReadableInvocation(cliArgs) ||
+    isLocalContentUnderstanding ||
+    (topLevelCommandName === 'types' && cliArgs.includes('define')) ||
+    (topLevelCommandName === 'resources' && cliArgs.includes('indexes-apply'));
 
   if (shouldForegroundCheckForUpdate) {
     await notifyIfUpdateAvailableForDiscovery(pkg.version);

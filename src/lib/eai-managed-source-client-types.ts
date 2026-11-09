@@ -1,0 +1,98 @@
+import type {
+  CliManagedGithubLinkRequest,
+  CliManagedGithubLinkSession,
+} from "./api.js";
+
+/** All browser and source operations must preserve this user-selected deployment scope. */
+export interface CliManagedSourceScope {
+  tenantId: string;
+  appKey: string;
+  targetTenantId: string;
+  environment: CliManagedGithubLinkRequest["environment"];
+  actorId: string;
+}
+
+/** The publisher owns repository identity and reports review separately from observed deployment readiness. */
+export interface CliManagedSourceOperation extends CliManagedSourceScope {
+  schemaVersion: "eai.cli_managed_source_operation.v1";
+  sourceMode: "eai-cli-generated";
+  operationId: string;
+  status:
+    | "accepted"
+    | "publishing"
+    | "pending_review"
+    | "deploying"
+    | "handoff_pending"
+    | "completed"
+    | "failed";
+  githubLinkSessionId?: string;
+  templateCommitSha: string;
+  bundleSha256?: string;
+  sourceProvenance?: {
+    kind: 'customer-merged-commit'; commitSha: string; treeSha: string; providerProofDigest: string;
+    predecessorReachable: true;
+    pullRequest: { number: number; headBranch: string; baseBranch: string; headSha: string; baseSha: string; mergedCommitSha: string; mergedAt: string };
+    checks: { name: string; headSha: string; conclusion: 'success'; runId: number }[];
+    providerReviews: { id: number; state: string; commitSha: string; userId: number }[];
+  };
+  customerAuthorization?: {
+    kind: 'authenticated-exact-commit'; actorId: string; githubUserId: number;
+    pullRequestNumber: number; mergedCommitSha: string; authorizedAt: string;
+  };
+  configHash: string;
+  bundleSchemaVersion?: 'eai.cli_managed_source_bundle.v1' | 'eai.cli_managed_source_bundle.v2';
+  reviewRepair?: CliManagedSourceReviewRepair;
+  verifiedGithubUser: NonNullable<
+    CliManagedGithubLinkSession["verifiedGithubUser"]
+  >;
+  repositoryAuthority?: "eai-managed" | "customer-owned";
+  predecessor?: { operationId: string; integrityHash: string; mergedCommitSha: string };
+  repository: {
+    owner: string;
+    name: string;
+    id?: number;
+    nodeId?: string;
+    defaultBranch?: string;
+    installationId?: string;
+    private?: boolean;
+  };
+  review?: {
+    /** The source-operation API uses the immutable merged commit field. */
+    mergedCommitSha?: string;
+    /** Publication summaries use a separate merged-SHA field. */
+    mergedSha?: string;
+    pullRequestUrl?: string;
+    [key: string]: unknown;
+  };
+  deployment?: {
+    requestId?: string;
+    status?: string;
+    liveUrl?: string;
+    workflowRunId?: string;
+    artifactDigest?: string;
+    imageDigest?: string;
+    runtimeIdentity?: { clientId?: string; principalId?: string };
+    latestPointerVersion?: number;
+    expectedLatestVersion?: number;
+    requiresTenantInfra?: boolean;
+    [key: string]: unknown;
+  };
+  error?: unknown;
+  expiresAt: string;
+  upload?: { url: string; ticket: string; expiresAt: string; sha256: string; purpose?: 'review-repair' };
+}
+
+/** SECURITY: recovery can replace only the exact unmerged review derived from the original partial bundle. */
+export interface CliManagedSourceReviewRepair {
+  schemaVersion: 'eai.cli_managed_source_review_repair.v1' | 'eai.cli_managed_source_review_repair.v2';
+  reason: 'legacy-partial-omission-deletions' | 'reviewed-scaffold-evidence-refresh';
+  originalReview: { number: number; headBranch: string; headSha: string; baseSha: string };
+  originalFileChecksumsSha256: string;
+  originalDeletedPaths: string[];
+  originalBundleSha256?: string;
+  replacementBundleSha256?: string;
+  replacementFileCount?: number;
+  replacementTotalBytes?: number;
+  replacementPaths?: string[];
+  replacementControlPath?: string;
+}

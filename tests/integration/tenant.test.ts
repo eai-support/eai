@@ -3,7 +3,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import inquirer from 'inquirer';
@@ -42,6 +42,7 @@ import {
   type TenantMembership,
   type TenantEntry,
 } from '../../src/lib/tenant-context.js';
+import { flattenTenantHierarchy } from '../../src/lib/tenant-hierarchy.js';
 
 function createTenantEntry(
   overrides: Partial<TenantEntry> = {},
@@ -57,6 +58,12 @@ function createTenantEntry(
     ...overrides,
   };
 }
+
+const profileFixture = vi.hoisted(() => ({ home: '' }));
+vi.mock('node:os', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:os')>();
+  return { ...actual, homedir: () => profileFixture.home || actual.homedir() };
+});
 
 const originalBaseUrlPublicApi = process.env.BASE_URL_PUBLIC_API;
 const originalRoutingBootstrapPublicApiUrl = process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL;
@@ -168,9 +175,9 @@ describe('tenant list filtering', () => {
       tenantName: 'profile-dev-tenant',
       tenantId: 'dev-tenant-id',
     })).toEqual({
-      headline: 'No active tenant-admin memberships found for the current login.',
-      tenantContext: 'Authenticated tenant context: profile-dev-tenant (dev-tenant-id)',
-      hint: 'Use `eai whoami` to inspect the authenticated tenant context.',
+      headline: 'No active workspace admin memberships found for the current login.',
+      tenantContext: 'Authenticated workspace: profile-dev-tenant (dev-tenant-id)',
+      hint: 'Use `eai whoami` to inspect the authenticated workspace.',
     });
   });
 
@@ -232,8 +239,8 @@ describe('tenant list filtering', () => {
     ]);
 
     expect(buildTenantHierarchyTreeLines(roots)).toEqual([
-      'parent - Parent Tenant [tenant-admin]',
-      '\tchild - Child Tenant [tenant-admin]',
+      'parent - Parent Tenant [workspace admin]',
+      '\tchild - Child Tenant [workspace admin]',
       '\t\tgrandchild - Grandchild Tenant [visible via parent]',
     ]);
   });
@@ -267,8 +274,8 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'tenant-a - Tenant A [tenant-admin]',
-      '\ttenant-b - Tenant B [tenant-admin]',
+      'tenant-a - Tenant A [workspace admin]',
+      '\ttenant-b - Tenant B [workspace admin]',
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -305,8 +312,8 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).not.toHaveBeenCalled();
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'eai - EAI [tenant-admin]',
-      '\tcompliance - Compliance [tenant-admin]',
+      'eai - EAI [workspace admin]',
+      '\tcompliance - Compliance [workspace admin]',
     ]);
     expect(result.warnings).toEqual([]);
   });
@@ -320,10 +327,10 @@ describe('tenant list filtering', () => {
 
     const promptSpy = vi.spyOn(inquirer, 'prompt').mockImplementation(async (questions: Array<Record<string, unknown>>) => {
       const [question] = questions;
-      expect(question?.message).toBe('Select the tenant to work with now');
+      expect(question?.message).toBe('Select the workspace to work with now');
       expect(question?.choices).toEqual([
-        { name: 'parent - Parent Tenant [tenant-admin]', value: 'parent-tenant', disabled: undefined },
-        { name: '\tchild - Child Tenant [tenant-admin]', value: 'child-tenant', disabled: undefined },
+        { name: 'parent - Parent Tenant [workspace admin]', value: 'parent-tenant', disabled: undefined },
+        { name: '\tchild - Child Tenant [workspace admin]', value: 'child-tenant', disabled: undefined },
       ]);
       return { tenantId: 'child-tenant' };
     });
@@ -451,10 +458,40 @@ describe('tenant list filtering', () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(buildTenantHierarchyTreeLines(result.roots)).toEqual([
-      'parent - Parent Tenant [tenant-admin]',
+      'parent - Parent Tenant [workspace admin]',
       '\tchild - Child Tenant [visible via parent]',
     ]);
     expect(result.warnings).toEqual([]);
+  });
+
+  test('merges the caller memberships into child rows for an explicit parent', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/parent-tenant/children?include_descendants=true&limit=100`) {
+        return new Response(JSON.stringify({ children: [
+          { id: 'member-child', displayName: 'Member Child', slug: 'member-child', parentTenant: { id: 'parent-tenant' } },
+          { id: 'visible-child', displayName: 'Visible Child', slug: 'visible-child', parentTenant: { id: 'parent-tenant' } },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response(`Unhandled request: ${href}`, { status: 500 });
+    }));
+
+    const result = await loadTenantHierarchy({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL,
+      parentId: 'parent-tenant',
+      memberships: [
+        { id: 'parent-tenant', displayName: 'Parent Tenant', slug: 'parent', isActive: true, roles: ['tenant-admin'] },
+        { id: 'member-child', displayName: 'Member Child', slug: 'member-child', isActive: true, roles: ['tenant-admin'] },
+        { id: 'other-tenant', displayName: 'Other Tenant', slug: 'other', isActive: true, roles: ['tenant-admin'] },
+      ],
+    });
+
+    expect(flattenTenantHierarchy(result.roots).map(({ id, roles, directMembership, parentId }) =>
+      ({ id, roles, directMembership, parentId }))).toEqual([
+      { id: 'parent-tenant', roles: ['tenant-admin'], directMembership: true, parentId: undefined },
+      { id: 'member-child', roles: ['tenant-admin'], directMembership: true, parentId: 'parent-tenant' },
+      { id: 'visible-child', roles: [], directMembership: false, parentId: 'parent-tenant' },
+    ]);
   });
 
   test('normalizes parent tenant metadata from flat membership payloads', () => {
@@ -671,6 +708,19 @@ describe('tenant list filtering', () => {
     );
   });
 
+  test.each(['context', 'memberships'])('typed auth mismatch stops %s before token or transport dispatch', async source => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.spyOn(auth, 'getActiveAuthConfigMismatch').mockResolvedValue('Private stored authority and client diagnostic');
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const result = source === 'context'
+      ? resolveActiveTenantContext({ publicApiUrl: DEFAULT_PUBLIC_API_URL, interactive: false })
+      : fetchTenantAdminMemberships(DEFAULT_PUBLIC_API_URL);
+    await expect(result).rejects.toMatchObject({ name: 'TenantAuthConfigMismatchError',
+      safeMessage: 'Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.' });
+    expect(auth.getAccessToken).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('returns login refresh guidance when no access token can be loaded for membership lookup', async () => {
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue(null);
@@ -818,8 +868,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap: first tenant admin was provisioned for the current login.',
-      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+      'Workspace setup: admin access was added for the current login.',
+      'Ready: workspace admin access confirmed and the new workspace is selected.',
     ]);
   });
 
@@ -843,8 +893,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap not confirmed: CHILD_ALREADY_HAS_ADMIN: Tenant tenant-1 already has a tenant admin',
-      'Usable: not yet confirmed. The tenant exists, but direct tenant-admin membership is not visible yet.',
+      'Workspace setup was not confirmed (CHILD_ALREADY_HAS_ADMIN). The CLI will check workspace admin access before reporting readiness.',
+      'Workspace access is not confirmed. The workspace exists, but admin access is not visible yet.',
     ]);
   });
 
@@ -868,8 +918,8 @@ describe('tenant list filtering', () => {
     };
 
     expect(buildTenantCreateStatusMessages(outcome)).toEqual([
-      'Bootstrap not confirmed: TENANT_ACCESS_DENIED: User does not have access to tenant tenant-1',
-      'Usable: direct tenant-admin confirmed and the new tenant was selected.',
+      'Workspace setup was not confirmed (TENANT_ACCESS_DENIED). The CLI will check workspace admin access before reporting readiness.',
+      'Ready: workspace admin access confirmed and the new workspace is selected.',
     ]);
   });
 
@@ -884,10 +934,10 @@ describe('tenant list filtering', () => {
       status: 'bootstrapped',
       reason: null,
     })).toEqual([
-      'Bootstrap: tenant-admin access was provisioned for the target user.',
-      'Membership: child tenant membership was created.',
-      'Role: tenant-admin was assigned on the child tenant.',
-      'Usable: direct tenant-admin confirmed for the child tenant.',
+      'Workspace setup: admin access was added for the target user.',
+      'Membership: child workspace membership was created.',
+      'Role: workspace admin access was assigned on the child workspace.',
+      'Usable: workspace admin access confirmed for the child workspace.',
     ]);
 
     expect(buildTenantBootstrapAdminStatusMessages({
@@ -900,10 +950,10 @@ describe('tenant list filtering', () => {
       status: 'already-usable',
       reason: 'target_user_already_child_tenant_admin',
     })).toEqual([
-      'Bootstrap: the target user already had direct tenant-admin on the child tenant.',
-      'Membership: child tenant membership already existed or did not need creation.',
-      'Role: tenant-admin was already assigned or did not need assignment.',
-      'Usable: direct tenant-admin confirmed for the child tenant.',
+      'Workspace setup: the target user already has admin access to the child workspace.',
+      'Membership: child workspace membership already existed or did not need creation.',
+      'Role: workspace admin access was already present or did not need assignment.',
+      'Usable: workspace admin access confirmed for the child workspace.',
     ]);
   });
 
@@ -929,7 +979,336 @@ describe('tenant list filtering', () => {
   });
 });
 
+describe('child workspace creation admission', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant', displayName: 'Parent Workspace', slug: 'parent-tenant', isActive: true, homeRegion: 'au',
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+  });
+
+  test.each([
+    { status: 409, code: 'TENANT_SLUG_CONFLICT', field: 'slug', message: 'A child workspace with this slug already exists under this parent. Choose a different slug.' },
+    { status: 422, code: 'HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The parent workspace has no home region for the child workspace to inherit. Ask a platform admin to repair the parent workspace home region.' },
+    { status: 422, code: 'CHILD_HOME_REGION_REQUIRED', field: 'homeRegion', message: 'The existing child workspace has no supported home region. Ask a platform admin to repair the child workspace home region before reuse or recovery.' },
+  ])('emits a structured immediate $status rejection without creating or bootstrapping a workspace', async ({ status, code, field, message }) => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify({
+      error: code, message: 'Rejected value: tax-file-secret', details: { field, input: 'tax-file-secret' },
+    }), { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const refreshSpy = vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus');
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual({ ok: false, status, error: { status, code, field, message } });
+    expect(JSON.stringify([...outputSpy.mock.calls, ...stderrSpy.mock.calls])).not.toContain('tax-file-secret');
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.has('Prefer')).toBe(false);
+  });
+
+  test('does not describe a root workspace conflict as a child conflict', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', message: 'A workspace with this slug already exists.', field: 'slug',
+    }), { status: 409 })));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--home-region', 'au', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = JSON.stringify(parseJsonOutput(outputSpy));
+    expect(output).toContain('TENANT_SLUG_CONFLICT');
+    expect(output).toContain('A workspace with this slug already exists.');
+    expect(output).not.toContain('under this parent');
+  });
+
+  test('displays actionable immediate validation guidance in text output', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_INVALID', field: 'slug', message: 'Rejected value: tax-file-secret',
+    }), { status: 422 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain('TENANT_SLUG_INVALID');
+    expect(output).toContain('lowercase kebab-case');
+    expect(output).toContain('(field: slug)');
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('includes the allowlisted rejected field in text output without echoing upstream text', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: 'TENANT_SLUG_CONFLICT', field: 'portalSlug', message: 'Rejected value: tax-file-secret',
+    }), { status: 409 })));
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    const output = stderrSpy.mock.calls.flat().join('');
+    expect(output).toContain(
+      '409: TENANT_SLUG_CONFLICT: This portal slug is already in use. Choose a different portal slug. (field: portalSlug)',
+    );
+    expect(output).not.toContain('tax-file-secret');
+  });
+
+  test('never prompts for or sends a child home region, so the child inherits its parent region', async () => {
+    const originalStdinTty = process.stdin.isTTY;
+    const originalStdoutTty = process.stdout.isTTY;
+    Object.defineProperty(process.stdin, 'isTTY', { value: true, configurable: true });
+    Object.defineProperty(process.stdout, 'isTTY', { value: true, configurable: true });
+    const promptSpy = vi.spyOn(inquirer, 'prompt');
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(
+      JSON.stringify({ id: 'child-tenant', slug: 'child-workspace', homeRegion: 'au' }),
+      { status: 201 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'child-tenant', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: false,
+    } });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    try {
+      await tenantCommand.parseAsync([
+        'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant',
+      ], { from: 'user' });
+    } finally {
+      Object.defineProperty(process.stdin, 'isTTY', { value: originalStdinTty, configurable: true });
+      Object.defineProperty(process.stdout, 'isTTY', { value: originalStdoutTty, configurable: true });
+    }
+
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).not.toHaveProperty('homeRegion');
+  });
+
+  test('refuses --home-region for a child workspace before sending any request', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant',
+      '--home-region', 'eu', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(errorSpy.mock.calls.flat().join('')).toContain(
+      "--home-region is only for root workspaces (--allow-root). A child workspace inherits its parent's home region.",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('still requires --home-region for a root workspace', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+
+    expect(errorSpy.mock.calls.flat().join('')).toContain('--home-region au|ca|eu is required with --allow-root');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('sends the selected home region for a root workspace', async () => {
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(
+      JSON.stringify({ id: 'root-tenant', slug: 'root-workspace', homeRegion: 'eu' }),
+      { status: 201 },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'root-tenant', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: false,
+    } });
+    vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Root Workspace', '--slug', 'root-workspace', '--allow-root', '--home-region', 'eu',
+      '--format', 'json',
+    ], { from: 'user' });
+
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({ homeRegion: 'eu' });
+  });
+
+  test('accepts synchronous existing-child reuse without opting in to an operation', async () => {
+    const tenant = { doc: { id: 'existing-child', slug: 'child-workspace' }, reused: true };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) => new Response(JSON.stringify(tenant), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'existing-child', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: true,
+    } });
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(parseJsonOutput(outputSpy)).toContainEqual(expect.objectContaining({ tenant, bootstrap: null, bootstrapError: null }));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Prefer')).toBe(false);
+  });
+});
+
 describe('tenant delete hard purge contract', () => {
+  beforeEach(() => {
+    const command = tenantCommand.commands.find(item => item.name() === 'delete')!;
+    command.setOptionValue('parent', undefined);
+    command.setOptionValue('force', false);
+    command.setOptionValue('forceHardPurge', false);
+    command.setOptionValue('json', false);
+    command.setOptionValue('format', 'text');
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
+      activeTenant: {
+        id: 'parent-tenant', displayName: 'Parent Tenant', slug: 'parent-tenant',
+        isActive: true, roles: ['tenant-admin'],
+      },
+    } as Awaited<ReturnType<typeof tenantContext.resolveActiveTenantContext>>);
+  });
+
+  test('a parent tenant admin deletes only the requested leaf and receives its exact parent receipt', async () => {
+    const receipt = { id: 'tenant-1', parentTenantId: 'parent-tenant', status: 'hard_purged' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(tenantContext.resolveActiveTenantContext).toHaveBeenCalledWith({
+      projectRoot: undefined, publicApiUrl: 'https://api.example.test', interactive: true,
+      tenantId: 'parent-tenant',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children/tenant-1/delete');
+    expect(init.method).toBe('POST');
+    expect(new Headers(init.headers).get('X-Tenant-Id')).toBe('parent-tenant');
+    expect(JSON.parse(String(init.body))).toEqual({
+      forceHardPurge: true, confirmationTenantId: 'tenant-1', reason: 'eai tenant delete --force-hard-purge',
+    });
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: true, hardPurged: true, response: receipt }]);
+  });
+
+  test.each([
+    { status: 403, error: 'CHILD_RELATION_INVALID' },
+    { status: 409, error: 'CHILD_TENANTS_EXIST' },
+  ])('propagates a parent-authorized backend $status without reporting deletion', async ({ status, error }) => {
+    const body = JSON.stringify({ error });
+    const fetchMock = vi.fn(async () => new Response(body, { status }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: false, status, error: body }]);
+  });
+
+  test.each([
+    { id: 'another-child', parentTenantId: 'parent-tenant', status: 'hard_purged' },
+    { id: 'tenant-1', parentTenantId: 'another-parent', status: 'hard_purged' },
+    { id: 'tenant-1', status: 'hard_purged' },
+    { id: 'tenant-1', parentTenantId: 'parent-tenant', status: 'deleted' },
+  ])('rejects a parent delete receipt that does not prove the exact requested operation: %j', async receipt => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 })));
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--parent', 'parent-tenant', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(parseJsonOutput(outputSpy)).toEqual([expect.objectContaining({
+      id: 'tenant-1', deleted: false, hardPurged: false, requestedHardPurge: true, response: receipt,
+    })]);
+  });
+
+  test.each([
+    ['delete', 'tenant-1', '--parent', 'tenant-1', '--force-hard-purge', '--format', 'json'],
+    ['delete', 'tenant-1', '--parent', 'parent-tenant', '--format', 'json'],
+  ])('rejects invalid parent flags before confirmation, membership lookup, or API calls: %j', async (...args) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const prompt = vi.spyOn(inquirer, 'prompt');
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.spyOn(process, 'exit').mockImplementation(((code?: string | number | null) => {
+      throw new Error(`process.exit ${code}`);
+    }) as never);
+
+    await expect(tenantCommand.parseAsync(args, { from: 'user' })).rejects.toThrow('process.exit 1');
+    expect(parseJsonOutput(errorSpy)).toEqual([expect.objectContaining({ error: expect.objectContaining({ code: 'E305' }) })]);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(config.findProjectRoot).not.toHaveBeenCalled();
+    expect(tenantContext.resolvePublicApiUrl).not.toHaveBeenCalled();
+    expect(tenantContext.resolveActiveTenantContext).not.toHaveBeenCalled();
+    expect(auth.getAccessToken).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test('preserves the existing no-parent system-admin hard purge route and receipt', async () => {
+    const receipt = { id: 'tenant-1', status: 'hard_purged' };
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(receipt), { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'delete', 'tenant-1', '--force', '--force-hard-purge', '--format', 'json',
+    ], { from: 'user' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.example.test/v4/platform/tenants/tenant-1/delete');
+    expect(JSON.parse(String(init.body))).toEqual({
+      forceHardPurge: true, confirmationTenantId: 'tenant-1', reason: 'eai tenant delete --force-hard-purge',
+    });
+    expect(parseJsonOutput(outputSpy)).toEqual([{ id: 'tenant-1', deleted: true, hardPurged: true, response: receipt }]);
+  });
+
   test('fails when the backend only reports a soft delete for a requested hard purge', async () => {
     vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
     vi.spyOn(tenantContext, 'resolveActiveTenantContext').mockResolvedValue({
@@ -975,6 +1354,108 @@ describe('tenant delete hard purge contract', () => {
         message: 'Account deleted',
       },
     });
+  });
+});
+
+describe('workspace info', () => {
+  beforeEach(() => {
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue('https://api.example.test');
+    vi.spyOn(tenantContext, 'fetchTenantAdminMemberships').mockResolvedValue({
+      publicApiUrl: 'https://api.example.test',
+      tokens: storedTokens({ oid: 'user-oid' }),
+      memberships: [{ id: 'known-tenant', displayName: 'Known Workspace', slug: 'known', isActive: true, roles: ['tenant-admin'] }],
+    });
+    vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
+      throw new Error(`process.exit ${exitCode}`);
+    }) as never);
+  });
+
+  test('emits a not-found JSON error envelope and exits non-zero for an unknown workspace', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    await expect(tenantCommand.parseAsync(['info', 'missing-tenant', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('process.exit 1');
+
+    expect(outputSpy).not.toHaveBeenCalled();
+    expect(parseJsonOutput(errorSpy)).toEqual([{ error: {
+      code: 'E202', message: 'Workspace not found', suggestion: 'Verify the Workspace ID or name and try again', exitCode: 1,
+    } }]);
+  });
+
+  test('still prints the matched workspace as JSON', async () => {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync(['info', 'known', '--format', 'json'], { from: 'user' });
+
+    expect(parseJsonOutput(outputSpy)).toEqual([expect.objectContaining({ id: 'known-tenant', slug: 'known' })]);
+  });
+});
+
+describe('workspace list roles', () => {
+  type ListedWorkspace = { id: string; roles: string[]; directMembership: boolean };
+  type ListPayload = { tenants: ListedWorkspace[]; count: number; selectableCount: number };
+
+  beforeEach(() => {
+    vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
+    vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
+    vi.spyOn(tenantContext, 'resolvePublicApiUrl').mockResolvedValue(DEFAULT_PUBLIC_API_URL);
+    vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request) => {
+      const href = String(url);
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/identity/tenants`) {
+        return new Response(JSON.stringify({ tenants: [
+          { id: 'admin-tenant', displayName: 'Admin Workspace', slug: 'admin', role: 'tenant-admin', isActive: true },
+          { id: 'viewer-tenant', displayName: 'Viewer Workspace', slug: 'viewer', role: 'tenant-viewer', isActive: true },
+          { id: 'inactive-tenant', displayName: 'Inactive Workspace', slug: 'inactive', role: 'tenant-viewer', isActive: false },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      if (href === `${DEFAULT_PUBLIC_API_URL}/v4/platform/tenants/admin-tenant/children?include_descendants=true&limit=100`) {
+        return new Response(JSON.stringify({ children: [
+          { id: 'viewer-tenant', displayName: 'Viewer Workspace', slug: 'viewer', parentTenant: { id: 'admin-tenant' } },
+          { id: 'plain-child', displayName: 'Plain Child', slug: 'plain', parentTenant: { id: 'admin-tenant' } },
+        ] }), { status: 200, headers: { 'content-type': 'application/json' } });
+      }
+      return new Response('{}', { status: 404, headers: { 'content-type': 'application/json' } });
+    }));
+  });
+
+  async function listWorkspaces(args: string[]): Promise<ListPayload> {
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await tenantCommand.parseAsync(['list', ...args, '--format', 'json'], { from: 'user' });
+    const [payload] = parseJsonOutput(outputSpy) as ListPayload[];
+    outputSpy.mockRestore();
+    return payload!;
+  }
+
+  const rows = (payload: ListPayload): ListedWorkspace[] =>
+    payload.tenants.map(({ id, roles, directMembership }) => ({ id, roles, directMembership }));
+
+  test('lists only active workspace admin memberships by default', async () => {
+    const payload = await listWorkspaces([]);
+    expect(rows(payload)).toEqual([{ id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true }]);
+    expect(payload).toMatchObject({ count: 1, selectableCount: 1 });
+  });
+
+  test('--all includes active memberships of every role but keeps only admin memberships selectable', async () => {
+    const payload = await listWorkspaces(['--all']);
+    expect(rows(payload)).toEqual([
+      { id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true },
+      { id: 'viewer-tenant', roles: ['tenant-viewer'], directMembership: true },
+    ]);
+    expect(payload).toMatchObject({ count: 2, selectableCount: 1 });
+  });
+
+  test.each([
+    { args: [], viewer: { roles: [], directMembership: false } },
+    { args: ['--all'], viewer: { roles: ['tenant-viewer'], directMembership: true } },
+  ])('--parent $args reports the caller direct membership on child rows', async ({ args, viewer }) => {
+    const payload = await listWorkspaces(['--parent', 'admin-tenant', ...args]);
+    expect(rows(payload)).toEqual([
+      { id: 'admin-tenant', roles: ['tenant-admin'], directMembership: true },
+      { id: 'plain-child', roles: [], directMembership: false },
+      { id: 'viewer-tenant', ...viewer },
+    ]);
+    expect(payload.selectableCount).toBe(1);
   });
 });
 
@@ -1100,6 +1581,8 @@ describe('PublicAPI URL routing order', () => {
 
 describe('active tenant PublicAPI env sync', () => {
   test('named profiles preserve their configured endpoint when tenant metadata has a production region', async () => {
+    const home = await mkdtemp(join(tmpdir(), 'eai-tenant-profile-'));
+    profileFixture.home = home;
     vi.mocked(profile.getActiveProfile).mockReturnValue('local');
     vi.mocked(auth.loadTokens).mockResolvedValue(storedTokens({ oid: 'user-oid' }));
     vi.mocked(auth.getAccessToken).mockResolvedValue('access-token');
@@ -1127,16 +1610,33 @@ describe('active tenant PublicAPI env sync', () => {
       return new Response(`Unhandled request: ${href}`, { status: 500 });
     }));
 
-    const context = await resolveActiveTenantContext({
-      projectRoot: '/workspace',
-      publicApiUrl: 'http://localhost:8000',
-      interactive: false,
-      tenantId: 'tenant-au',
-    });
+    try {
+      await mkdir(join(home, '.eai'), { mode: 0o700 });
+      await writeFile(join(home, '.eai', 'config.json'), JSON.stringify({
+        profiles: {
+          local: {
+            publicApiUrl: 'http://localhost:8000',
+            authTenantName: 'fixture-tenant',
+            authTenantId: 'fixture-tenant-id',
+            authClientId: 'fixture-client-id',
+          },
+        },
+      }), { mode: 0o600 });
+      const context = await resolveActiveTenantContext({
+        projectRoot: '/workspace',
+        publicApiUrl: 'http://localhost:8000',
+        interactive: false,
+        tenantId: 'tenant-au',
+      });
 
-    expect(context.publicApiUrl).toBe('http://localhost:8000');
-    expect(context.publicApiEnvSync).toBeUndefined();
-    expect(patchEnvFileSpy).not.toHaveBeenCalled();
+      expect(context.publicApiUrl).toBe('http://localhost:8000');
+      expect(context.publicApiEnvSync).toBeUndefined();
+      expect(patchEnvFileSpy).not.toHaveBeenCalled();
+    } finally {
+      profileFixture.home = '';
+      profile.setActiveProfile('default');
+      await rm(home, { recursive: true, force: true });
+    }
   });
 
   test('HP001 TENANT-REGION-001: selecting an EU tenant updates stale AU BASE_URL_PUBLIC_API', async () => {
@@ -1194,7 +1694,7 @@ describe('active tenant PublicAPI env sync', () => {
         level: 'warn',
         message:
           '.env.local BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public ' +
-          `for active tenant homeRegion eu (was ${DEFAULT_PUBLIC_API_URL}).`,
+          `for active workspace region eu (was ${DEFAULT_PUBLIC_API_URL}).`,
       });
       expect(storeTokensSpy).toHaveBeenCalledWith(expect.objectContaining({
         activeTenantId: 'tenant-eu',

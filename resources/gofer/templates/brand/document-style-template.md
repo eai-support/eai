@@ -15,7 +15,8 @@ OverwriteNoticeWhenApplicable:
 - It keeps brand choices explicit so generated summaries, PR/FAQs, diagrams, and
   decks stay consistent.
 - It should reference approved brand assets without embedding private logos,
-  credentials, tenant IDs, or customer-confidential data.
+  credentials, private workspace/platform tenant IDs, Entra/CIAM authority
+  tenant IDs, or customer-confidential data.
 
 ## Brand Sources
 
@@ -46,5 +47,6 @@ OverwriteNoticeWhenApplicable:
   prose fallback where the visual is important.
 - Marp decks should reference `.specify/templates/brand/marp-theme-template.css`
   unless a repo-specific theme has been approved.
-- Never include private logos, screenshots, client names, or tenant-specific
-  information in a public release artifact.
+- Never include private logos, screenshots, client names, private
+  workspace/platform tenant IDs, Entra/CIAM authority tenant IDs, or other
+  workspace-specific information in a public release artifact.

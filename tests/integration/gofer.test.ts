@@ -2,10 +2,21 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
-import { chmod, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import {
+  chmod,
+  cp,
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  realpath,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { delimiter, join, relative } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   createTestEnvironment,
   type TestEnvironment,
@@ -19,7 +30,10 @@ import {
   expectFileContains,
   expectFileExists,
 } from "../helpers/assert-dsl.js";
-import { installGoferResources } from "../../src/lib/gofer-installer.js";
+import {
+  GOFER_RESOURCE_MAPPINGS,
+  installGoferResources,
+} from "../../src/lib/gofer-installer.js";
 
 const BUNDLED_GOFER_RESOURCES = fileURLToPath(
   new URL("../../resources/gofer/", import.meta.url),
@@ -34,12 +48,17 @@ const GOFER_SYNC_SCRIPT = fileURLToPath(
   new URL("../../scripts/sync-gofer-resources.cjs", import.meta.url),
 );
 const GOFER_VERSION_FILE = join(BUNDLED_GOFER_RESOURCES, ".gofer-version");
-const GOFER_BASE_COMMIT = "6059c0e61377f648a9470b3554ae689e6912ec24";
-const GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT = "03f3c5d7c6a0aa1121f85b0da4a31cdfe1218b8d";
+const GOFER_RELEASE_COMMIT = "965833ad06c5bed1c76b2e493891036449e67561";
+const GOFER_RELEASE_TAG = "v3.14.3";
+const GOFER_RELEASE_SOURCE = `https://github.com/eai-support/eai-gofer.git@${GOFER_RELEASE_TAG}`;
 const GOFER_OPTIONAL_INSTALLER_SHA256 = {
-  "bash-scripts/install-optional-tools.sh": "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
-  "powershell-scripts/install-optional-tools.ps1": "a7fbfefad761074480f634504fb88d6739050ac95c501dd1d59380e258879811",
+  "bash-scripts/install-optional-tools.sh":
+    "9b870c7c803df01738a614aab115e41e1e880d08244992e905694456ee73abac",
+  "powershell-scripts/install-optional-tools.ps1":
+    "a7fbfefad761074480f634504fb88d6739050ac95c501dd1d59380e258879811",
 } as const;
+const SOURCE_READINESS_SCRIPT_SHA256 =
+  "6a33b8494944b0c91c54dcde27ce55b50ffd45fe0e1c3f685b6493441ff50903";
 
 interface ChildResult {
   readonly exitCode: number;
@@ -159,27 +178,272 @@ describe("eai gofer refresh", () => {
     await env.cleanup();
   });
 
-  test("installs the source-pinned document lifecycle guidance without changing the base Gofer pin", async () => {
-    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, 'utf8'));
-    expect(metadata.commit).toBe(GOFER_BASE_COMMIT);
-    expect(metadata.document_lifecycle_overlay).toMatchObject({
-      commit: 'b9cc180288efbf857b763cf1e2565ec093f15765',
-      source: 'https://github.com/eai-support/eai-gofer',
-      section: 'Document Lifecycle Rules',
+  test("regenerated public entrypoints retain report preview, consent, and welcome guidance", async () => {
+    const moduleUrl = pathToFileURL(join(BUNDLED_GOFER_RESOURCES, "node-scripts/generate-commands.mjs")).href;
+    const result = await runChild(process.execPath, ["--input-type=module", "--eval", `
+      import {buildPublicEntrypointPrompt} from ${JSON.stringify(moduleUrl)};
+      const hosts = ['claude', 'copilot', 'codex-or-antigravity', 'codex', 'grok', 'gemini'];
+      console.log(JSON.stringify(hosts.map(host => {
+        const eai = buildPublicEntrypointPrompt({name:'eai', title:'EAI', description:'EAI'}, [], host);
+        const update = buildPublicEntrypointPrompt({name:'eai-update', title:'EAI update', description:'Update EAI'}, [], host);
+        return {
+          host,
+          support: eai.split('## Support only when the person asks')[1]?.split('## Verified EAI CLI Command Contract')[0],
+          welcome: eai.split('### Required First-Run Response')[1]?.split('## Route The Pipeline')[0],
+          updateHasSupport: update.includes('eai support --source harness'),
+        };
+      })));
+    `], { cwd: env.dir });
+    expect(result.exitCode, result.stderr).toBe(0);
+    const entries = JSON.parse(result.stdout) as Array<{ host: string; support: string; welcome: string; updateHasSupport: boolean }>;
+    expect(entries).toHaveLength(6);
+    for (const { host, support, welcome, updateHasSupport } of entries) {
+      expect(support, host).toContain("Start a support report only when the person explicitly asks for EAI Support");
+      expect(support, host).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+      expect(support, host).toContain('allocation, preview, sending or decline');
+      expect(support, host).toContain('chat problem, attempts and results');
+      expect(support, host).toContain('without raw transcripts, environment values or file contents');
+      expect(support, host).toContain("Never start one on your own.");
+      expect(support, host).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
+      expect(support, host).toContain("Only after a clear yes");
+      expect(support, host).toContain("--yes --approved-digest <bundleDigest> --no-open");
+      expect(support, host).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
+      expect(support, host).toContain("If `eai support --help` does not list `--context-file`");
+      expect(welcome, host).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+      expect(welcome, host).not.toContain(['If anything fails,', 'say'].join(' '));
+      expect(updateHasSupport, host).toBe(false);
+    }
+    });
+
+  test("JSON refresh checks report file metadata without serializing managed contents", async () => {
+    const relativePath = ".specify/commands/3_gofer_plan.md";
+    const target = join(env.dir, relativePath);
+    const contents = await readFile(target);
+    await rm(target);
+    ctx.env.EAI_GOFER_REFRESH_SOURCE = "bundled";
+
+    const result = await runCommand(ctx, "eai gofer refresh --check --format json");
+    expectCommandSucceeded(result);
+    const payload = JSON.parse(result.stdout) as {
+      items: Array<Record<string, unknown>>;
+    };
+    expect(payload.items.find((item) => item.relativePath === relativePath)).toMatchObject({
+      action: "add",
+      source: "bundled",
+      desiredHash: createHash("sha256").update(contents).digest("hex"),
+      executable: false,
+    });
+    expect(payload.items.every((item) => !("contents" in item))).toBe(true);
+    expect(Buffer.byteLength(result.stdout)).toBeLessThan(131_072);
+    expect(existsSync(target)).toBe(false);
+  });
+
+  test("installs the released document lifecycle guidance", async () => {
+    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
       dirty: false,
     });
-    const relativePath = 'references/platform/eai-service-patterns.md';
-    const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath), 'utf8');
-    const section = '## Document Lifecycle Rules\n' + bundled
-      .split('## Document Lifecycle Rules\n')[1].split('\n## Storage Backend Rules')[0].trimEnd() + '\n';
-    expect(createHash('sha256').update(section).digest('hex'))
-      .toBe(metadata.document_lifecycle_overlay.section_sha256);
-    const installed = await readFile(join(env.dir, '.specify', relativePath), 'utf8');
-    expect(installed).toContain(section.trimEnd());
-    expect(installed).toContain('business-document-v1');
-    expect(installed).toContain('Preserve working DAISY/Assess');
-    expect(installed).toContain('never re-upload automatically');
+    const relativePath = "references/platform/eai-service-patterns.md";
+    const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath), "utf8");
+    const installed = await readFile(
+      join(env.dir, ".specify", relativePath),
+      "utf8",
+    );
+    expect(installed).toBe(bundled);
+    expect(installed).toContain("## Document Lifecycle Rules");
+    expect(installed).toContain("POST /v4/data/documents/upload");
+    expect(installed).toContain("Existing DAISY and Assess");
+    expect(installed).toContain("workspace retention policy");
   });
+
+  test("installs the released managed-source guidance and executable readiness check", async () => {
+    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf8"));
+    expect(metadata).toMatchObject({
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
+      dirty: false,
+    });
+    for (const relativePath of [
+      "commands/3_gofer_plan.md",
+      "commands/4_gofer_tasks.md",
+      "commands/5_gofer_implement.md",
+      "commands/6_gofer_validate.md",
+      "references/platform/eai-app-template.md",
+      "node-scripts/eai-app-template-readiness.mjs",
+    ]) {
+      const bundled = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath));
+      const mapping = GOFER_RESOURCE_MAPPINGS.find(({ sourceSubdirectory }) =>
+        relativePath.startsWith(`${sourceSubdirectory}/`),
+      );
+      expect(mapping).toBeDefined();
+      const installed = join(env.dir, ...mapping!.targetSegments, relativePath.slice(mapping!.sourceSubdirectory.length + 1));
+      expect(await readFile(installed)).toEqual(bundled);
+    }
+    const readiness = await readFile(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs"));
+    expect(createHash("sha256").update(readiness).digest("hex")).toBe(SOURCE_READINESS_SCRIPT_SHA256);
+    const validate = await readFile(
+      join(env.dir, ".specify/commands/6_gofer_validate.md"),
+      "utf8",
+    );
+    expect(validate.indexOf("## Managed-Source Readiness Gate")).toBeLessThan(
+      validate.indexOf("## Step 1.5:"),
+    );
+    expect(validate).toContain("all customer-authored app");
+    expect(validate).toContain("workflow controls");
+    expect(validate).toContain("Unsupported custom runtimes");
+    const packageManifest = JSON.parse(
+      await readFile(new URL("../../package.json", import.meta.url), "utf8"),
+    );
+    expect(packageManifest.files).toContain("resources");
+  });
+
+  test("resolves Windows npm shims to Node without executing shim text or ComSpec", async () => {
+    const directory = join(env.dir, "CLI path & %literal%");
+    const packageRoot = join(directory, "node_modules", "@enterpriseai", "cli");
+    const entrypoint = join(packageRoot, "dist", "index.js");
+    const marker = join(env.dir, "shell-was-executed");
+    await mkdir(join(packageRoot, "dist"), { recursive: true });
+    await writeFile(join(directory, "eai.cmd"), `echo unsafe > "${marker}"`);
+    await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: "@enterpriseai/cli", bin: { eai: "dist/index.js" } }));
+    await writeFile(entrypoint, "console.log(JSON.stringify({args:process.argv.slice(2),cwd:process.cwd()}));");
+    const moduleUrl = pathToFileURL(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs")).href;
+    const result = await runChild(process.execPath, ["--input-type=module", "--eval", `
+      import {resolveCliExecution} from ${JSON.stringify(moduleUrl)};
+      import {execFileSync} from 'node:child_process';
+      const selected = await resolveCliExecution('eai', 'win32', ${JSON.stringify(directory)});
+      if (!selected || selected.command !== process.execPath) throw new Error('Expected Node entrypoint');
+      process.stdout.write(execFileSync(selected.command, selected.args, {cwd:${JSON.stringify(env.dir)},encoding:'utf8'}));
+    `], { cwd: env.dir, env: { ...process.env, ComSpec: `cmd.exe /c echo unsafe > "${marker}"` } });
+    expect(result.exitCode).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({ args: ["deploy", "source", "validate", "--format", "json"], cwd: await realpath(env.dir) });
+    expect(existsSync(marker)).toBe(false);
+  });
+
+  test.each(["missing-shim", "wrong-package", "wrong-bin", "missing-entrypoint"])(
+    "fails closed on Windows when the selected shim has %s", async (fault) => {
+      const directory = join(env.dir, "selected-cli");
+      const packageRoot = join(directory, "node_modules", "@enterpriseai", "cli");
+      await mkdir(join(packageRoot, "dist"), { recursive: true });
+      if (fault !== "missing-shim") await writeFile(join(directory, "eai.cmd"), "untrusted shim text");
+      await writeFile(join(packageRoot, "package.json"), JSON.stringify({ name: fault === "wrong-package" ? "unrelated-cli" : "@enterpriseai/cli", bin: { eai: fault === "wrong-bin" ? "alternate.js" : "dist/index.js" } }));
+      if (fault !== "missing-entrypoint") await writeFile(join(packageRoot, "dist", "index.js"), "");
+      const moduleUrl = pathToFileURL(join(BUNDLED_GOFER_RESOURCES, "node-scripts/eai-app-template-readiness.mjs")).href;
+      const result = await runChild(process.execPath, ["--input-type=module", "--eval", `
+        import {resolveCliExecution} from ${JSON.stringify(moduleUrl)};
+        console.log(JSON.stringify(await resolveCliExecution('eai', 'win32', ${JSON.stringify([directory, env.dir].join(delimiter))})));
+      `], { cwd: env.dir });
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toBeNull();
+    },
+  );
+
+  test.each([
+    {
+      name: "valid source",
+      cliExit: 0,
+      report: {
+        schemaVersion: "eai.cli_managed_source_validation.v1",
+        status: "passed",
+        sourceMode: "eai-cli-generated",
+        templateCommitSha: "a".repeat(40),
+        fileCount: 3,
+        totalBytes: 40,
+      },
+      expectedStatus: "passed",
+      expectedCode: undefined,
+    },
+    {
+      name: "unsupported source",
+      cliExit: 1,
+      report: {
+        schemaVersion: "eai.cli_managed_source_validation.v1",
+        status: "failed",
+        sourceMode: "eai-cli-generated",
+        error: {
+          code: "SOURCE_SCOPE_UNSUPPORTED",
+          message: "PRIVATE_VALIDATOR_DETAIL",
+        },
+      },
+      expectedStatus: "failed",
+      expectedCode: "SOURCE_SCOPE_UNSUPPORTED",
+    },
+    {
+      name: "malformed source receipt",
+      cliExit: 0,
+      report: {
+        schemaVersion: "wrong",
+        privateContent: "PRIVATE_VALIDATOR_DETAIL",
+      },
+      expectedStatus: "failed",
+      expectedCode: "SOURCE_VALIDATOR_INVALID",
+    },
+  ])(
+    "installed checker invokes only the selected read-only validator for $name",
+    async ({ cliExit, report, expectedStatus, expectedCode }) => {
+      await writeFile(
+        join(env.dir, ".eai-manifest.json"),
+        JSON.stringify({
+          schemaVersion: 1,
+          template: {
+            repo: "https://github.com/eai-support/eai-app-template",
+            initializedAt: "2026-10-05T00:00:00Z",
+          },
+        }),
+      );
+      await writeFile(join(env.dir, "eai.runtime.json"), "{}\n");
+      await writeFile(
+        join(env.dir, "src/eai.config/register.ts"),
+        "export {};\n",
+      );
+      await writeFile(join(env.dir, ".env.example"), "");
+      await writeFile(join(env.dir, ".npmrc"), "");
+      const selectedCli = join(env.dir, "selected-cli.cjs");
+      const invocation = join(env.dir, "validator-invocation.json");
+      await writeFile(
+        selectedCli,
+        `const fs = require('node:fs');\nfs.writeFileSync(${JSON.stringify(invocation)}, JSON.stringify({args: process.argv.slice(2), cwd: fs.realpathSync(process.cwd())}));\nfs.writeSync(1, JSON.stringify(${JSON.stringify(report)}));\nprocess.exit(${cliExit});\n`,
+      );
+      const result = await runChild(
+        process.execPath,
+        [
+          await realpath(
+            join(
+              env.dir,
+              ".specify/scripts/node/eai-app-template-readiness.mjs",
+            ),
+          ),
+          "--root",
+          env.dir,
+          "--source",
+          "eai-managed",
+          "--cli",
+          selectedCli,
+          "--json",
+        ],
+        { cwd: env.dir },
+      );
+      expect(result.exitCode).toBe(expectedStatus === "passed" ? 0 : 2);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        ready: expectedStatus === "passed",
+        sourceValidation: {
+          status: expectedStatus,
+          ...(expectedCode ? { code: expectedCode } : {}),
+        },
+      });
+      expect(JSON.parse(await readFile(invocation, "utf8"))).toEqual({
+        args: ["deploy", "source", "validate", "--format", "json"],
+        cwd: await realpath(env.dir),
+      });
+      expect(result.stdout + result.stderr).not.toContain(
+        "PRIVATE_VALIDATOR_DETAIL",
+      );
+      expect(existsSync(join(env.dir, ".eai/deployments"))).toBe(false);
+    },
+  );
 
   test("records the current managed snapshot on the first refresh without rewriting matching files", async () => {
     const result = await runCommand(ctx, "eai gofer refresh");
@@ -213,10 +477,7 @@ describe("eai gofer refresh", () => {
       ".specify/references/platform/eai-config-driven-ui.md",
       "Config-Driven UI Reference",
     );
-    await expectFileExists(
-      ctx,
-      ".specify/config/object-type-routing.json",
-    );
+    await expectFileExists(ctx, ".specify/config/object-type-routing.json");
     await expectFileContains(
       ctx,
       ".specify/config/object-type-routing.json",
@@ -244,7 +505,7 @@ describe("eai gofer refresh", () => {
     await expectFileContains(
       ctx,
       ".specify/commands/6_gofer_validate.md",
-      "Generated `linkTypes[].targetObjectType`",
+      "platform SDK route owner declared in `.specify/config/object-type-routing.json`",
     );
     await expectFileExists(
       ctx,
@@ -254,6 +515,27 @@ describe("eai gofer refresh", () => {
       ctx,
       ".specify/schemas/object-type-routing-phase-bundle-v1.schema.json",
     );
+  });
+
+  test("refreshes support guidance for existing projects while preserving project instructions", async () => {
+    const supportReference = join(env.dir, ".specify/references/platform/eai-support.md");
+    await rm(supportReference);
+    const skillPath = join(env.dir, ".agents/skills/eai/SKILL.md");
+    const skill = await readFile(skillPath, "utf8");
+    await writeFile(skillPath, skill.replace(
+      /## Support only when the person asks\n[\s\S]*?(?=## Verified EAI CLI Command Contract)/,
+      "",
+    ));
+    await writeFile(join(env.dir, "CLAUDE.md"), "# Project notes\nKeep this custom instruction.\n");
+    await writeFile(join(env.dir, "AGENTS.md"), "# Agent notes\nKeep this custom instruction.\n");
+
+    const result = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(result);
+    await expectFileContains(ctx, ".specify/references/platform/eai-support.md", "Only after a clear yes");
+    await expectFileContains(ctx, ".agents/skills/eai/SKILL.md", "--yes --approved-digest <bundleDigest> --no-open");
+    await expectFileContains(ctx, ".grok/skills/eai/SKILL.md", 'say "get help"');
+    expect(await readFile(join(env.dir, "CLAUDE.md"), "utf8")).toBe("# Project notes\nKeep this custom instruction.\n");
+    expect(await readFile(join(env.dir, "AGENTS.md"), "utf8")).toBe("# Agent notes\nKeep this custom instruction.\n");
   });
 
   test("detects local edits as conflicts and only overwrites them when forced", async () => {
@@ -290,6 +572,75 @@ describe("eai gofer refresh", () => {
     ).toBe(true);
   });
 
+  test("refuses to force-refresh a managed path through a symbolic link", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const outsideFile = join(env.dir, "outside-managed-target.md");
+    await writeFile(outsideFile, "KEEP OUTSIDE CONTENT\n", "utf-8");
+    await rm(managedFile);
+    await symlink(outsideFile, managedFile);
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE CONTENT\n");
+  });
+
+  test("preflights generated settings paths before changing managed files", async () => {
+    const seedResult = await runCommand(ctx, "eai gofer refresh");
+    expectCommandSucceeded(seedResult);
+
+    const managedFile = join(env.dir, ".github", "copilot-instructions.md");
+    const original = await readFile(managedFile, "utf-8");
+    await writeFile(managedFile, `${original}\nKEEP LOCAL CHANGE\n`, "utf-8");
+    const outsideDirectory = join(env.dir, "outside-vscode");
+    await mkdir(outsideDirectory);
+    await rm(join(env.dir, ".vscode"), { recursive: true, force: true });
+    await symlink(outsideDirectory, join(env.dir, ".vscode"));
+
+    const forceResult = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(forceResult.exitCode).not.toBe(0);
+    expect(`${forceResult.stdout}\n${forceResult.stderr}`).toContain(
+      "Refusing to refresh Gofer-managed symbolic link",
+    );
+    expect(await readFile(managedFile, "utf-8")).toContain("KEEP LOCAL CHANGE");
+  });
+
+  test("rejects traversal paths from a crafted managed-file manifest", async () => {
+    const outsideFile = join(env.dir, "..", `outside-gofer-${Date.now()}.md`);
+    await writeFile(outsideFile, "KEEP OUTSIDE\n", "utf-8");
+    await writeFile(
+      join(env.dir, ".eai-manifest.json"),
+      JSON.stringify({
+        schemaVersion: 1,
+        gofer: {
+          managedFiles: {
+            [relative(env.dir, outsideFile)]: {
+              sha256: "invalid",
+              source: "generated",
+            },
+          },
+        },
+      }),
+      "utf-8",
+    );
+
+    const result = await runCommand(ctx, "eai gofer refresh --force");
+
+    expect(result.exitCode).not.toBe(0);
+    expect(`${result.stdout}\n${result.stderr}`).toContain(
+      "Refusing unsafe Gofer-managed path",
+    );
+    expect(await readFile(outsideFile, "utf-8")).toBe("KEEP OUTSIDE\n");
+    await rm(outsideFile, { force: true });
+  });
+
   test("can refresh from a newer Gofer resources source without a new CLI release", async () => {
     const latestResources = join(env.dir, "latest-gofer-resources");
     await cp(BUNDLED_GOFER_RESOURCES, latestResources, { recursive: true });
@@ -308,9 +659,12 @@ describe("eai gofer refresh", () => {
     );
 
     ctx.env.EAI_GOFER_REFRESH_SOURCE = "latest";
-    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = latestResources;
+    ctx.env.EAI_GOFER_REFRESH_RESOURCES_PATH = await realpath(latestResources);
 
-    const result = await runCommand(ctx, "eai gofer refresh --check --format json");
+    const result = await runCommand(
+      ctx,
+      "eai gofer refresh --check --format json",
+    );
     expectCommandSucceeded(result);
 
     const payload = JSON.parse(result.stdout) as {
@@ -337,28 +691,30 @@ describe("bundled Gofer Object Type routing assets", () => {
 });
 
 describe("bundled optional AI tool installers", () => {
-  test("record clean composite provenance for the exact optional-installer overlay", async () => {
-    const metadata = JSON.parse(await readFile(GOFER_VERSION_FILE, "utf-8")) as {
+  test("record the released Gofer source and exact optional installers", async () => {
+    const metadata = JSON.parse(
+      await readFile(GOFER_VERSION_FILE, "utf-8"),
+    ) as {
       commit?: string;
-      source?: string;
-      dirty?: boolean;
-      overlay_source?: string;
-      overlay_commit?: string;
-      overlays?: string[];
+      describe?: string;
     };
 
     expect(metadata).toMatchObject({
-      commit: GOFER_BASE_COMMIT,
-      source: `https://github.com/eai-support/eai-gofer.git@${GOFER_BASE_COMMIT}`,
+      commit: GOFER_RELEASE_COMMIT,
+      describe: GOFER_RELEASE_TAG,
+      source: GOFER_RELEASE_SOURCE,
       dirty: false,
-      overlay_source: `https://github.com/eai-support/eai-gofer.git@${GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT}`,
-      overlay_commit: GOFER_OPTIONAL_INSTALLER_OVERLAY_COMMIT,
-      overlays: Object.keys(GOFER_OPTIONAL_INSTALLER_SHA256),
     });
 
-    for (const [relativePath, expectedSha256] of Object.entries(GOFER_OPTIONAL_INSTALLER_SHA256)) {
-      const contents = await readFile(join(BUNDLED_GOFER_RESOURCES, relativePath));
-      expect(createHash("sha256").update(contents).digest("hex")).toBe(expectedSha256);
+    for (const [relativePath, expectedSha256] of Object.entries(
+      GOFER_OPTIONAL_INSTALLER_SHA256,
+    )) {
+      const contents = await readFile(
+        join(BUNDLED_GOFER_RESOURCES, relativePath),
+      );
+      expect(createHash("sha256").update(contents).digest("hex")).toBe(
+        expectedSha256,
+      );
     }
   });
 
@@ -368,10 +724,20 @@ describe("bundled optional AI tool installers", () => {
       ["powershell", "install-optional-tools.ps1", "powershell-scripts"],
     ] as const;
 
-    for (const [activeDirectory, fileName, bundledDirectory] of installerPaths) {
+    for (const [
+      activeDirectory,
+      fileName,
+      bundledDirectory,
+    ] of installerPaths) {
       const [activeInstaller, bundledInstaller] = await Promise.all([
-        readFile(join(ACTIVE_SPECIFY_RESOURCES, activeDirectory, fileName), "utf-8"),
-        readFile(join(BUNDLED_GOFER_RESOURCES, bundledDirectory, fileName), "utf-8"),
+        readFile(
+          join(ACTIVE_SPECIFY_RESOURCES, activeDirectory, fileName),
+          "utf-8",
+        ),
+        readFile(
+          join(BUNDLED_GOFER_RESOURCES, bundledDirectory, fileName),
+          "utf-8",
+        ),
       ]);
 
       expect(activeInstaller).toBe(bundledInstaller);
@@ -380,11 +746,19 @@ describe("bundled optional AI tool installers", () => {
 
   test("use current provider-owned CLI installers and never install Gemini as Antigravity", async () => {
     const bashInstaller = await readFile(
-      join(BUNDLED_GOFER_RESOURCES, "bash-scripts", "install-optional-tools.sh"),
+      join(
+        BUNDLED_GOFER_RESOURCES,
+        "bash-scripts",
+        "install-optional-tools.sh",
+      ),
       "utf-8",
     );
     const powershellInstaller = await readFile(
-      join(BUNDLED_GOFER_RESOURCES, "powershell-scripts", "install-optional-tools.ps1"),
+      join(
+        BUNDLED_GOFER_RESOURCES,
+        "powershell-scripts",
+        "install-optional-tools.ps1",
+      ),
       "utf-8",
     );
     const installers = `${bashInstaller}\n${powershellInstaller}`;
@@ -402,29 +776,55 @@ describe("bundled optional AI tool installers", () => {
       expect(installers).toContain(url);
     }
     expect(installers).toContain("@github/copilot@1.0.83");
-    expect(installers).toContain("sha512-M8uZI0V0dahYV1KZij3nGDxaXEGG7I7YUZzQPI7NEZkL/83Nl/tNTbPdxKtdWZbOmWoXsPKXty/eEYoj6RHDhA==");
+    expect(installers).toContain(
+      "sha512-M8uZI0V0dahYV1KZij3nGDxaXEGG7I7YUZzQPI7NEZkL/83Nl/tNTbPdxKtdWZbOmWoXsPKXty/eEYoj6RHDhA==",
+    );
     expect(installers).toContain("https://registry.npmjs.org/");
     expect(installers).not.toContain("@google/gemini-cli");
     expect(installers).not.toContain("@openai/codex-cli");
     expect(installers).not.toContain("@anthropic-ai/claude-code");
     expect(installers).toContain("claude auth login");
     expect(installers).not.toMatch(/\bclaude login\b/);
-    expect(bashInstaller).toContain("--proto '=https' --proto-redir '=https' --tlsv1.2");
-    expect(bashInstaller).toContain("--max-redirs 5 --connect-timeout 15 --max-time 120 --max-filesize 1048576");
-    expect(bashInstaller).toContain("Refusing $tool_name installer because its SHA-256 digest changed");
+    expect(bashInstaller).toContain(
+      "--proto '=https' --proto-redir '=https' --tlsv1.2",
+    );
+    expect(bashInstaller).toContain(
+      "--max-redirs 5 --connect-timeout 15 --max-time 120 --max-filesize 1048576",
+    );
+    expect(bashInstaller).toContain(
+      "Refusing $tool_name installer because its SHA-256 digest changed",
+    );
     expect(bashInstaller).toContain("compute_sha256 /dev/fd/8");
-    expect(bashInstaller).toContain("run_sanitized_installer \"$shell_name\" /dev/fd/9");
+    expect(bashInstaller).toContain(
+      'run_sanitized_installer "$shell_name" /dev/fd/9',
+    );
     expect(bashInstaller).toContain("INSTALLER_TIMEOUT_SECONDS=900");
     expect(bashInstaller).toContain("validate_installed_cli");
     expect(bashInstaller).toContain("apt-cache show azure-cli >/dev/null 2>&1");
-    expect(bashInstaller).toContain("Azure CLI is unavailable from the configured apt repositories");
-    expect(powershellInstaller).toContain("$handler.AllowAutoRedirect = $false");
-    expect(powershellInstaller).toContain("$allowedOrigins -cnotcontains $currentOrigin");
-    expect(powershellInstaller).toContain("$sha256.ComputeHash($installerBytes)");
-    expect(powershellInstaller).toContain("-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -");
-    expect(powershellInstaller).toContain("$startInfo.RedirectStandardInput = $true");
-    expect(powershellInstaller).toContain("$startInfo.EnvironmentVariables.Clear()");
-    expect(powershellInstaller).toContain("CopyToAsync([System.IO.Stream]::Null)");
+    expect(bashInstaller).toContain(
+      "Azure CLI is unavailable from the configured apt repositories",
+    );
+    expect(powershellInstaller).toContain(
+      "$handler.AllowAutoRedirect = $false",
+    );
+    expect(powershellInstaller).toContain(
+      "$allowedOrigins -cnotcontains $currentOrigin",
+    );
+    expect(powershellInstaller).toContain(
+      "$sha256.ComputeHash($installerBytes)",
+    );
+    expect(powershellInstaller).toContain(
+      "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command -",
+    );
+    expect(powershellInstaller).toContain(
+      "$startInfo.RedirectStandardInput = $true",
+    );
+    expect(powershellInstaller).toContain(
+      "$startInfo.EnvironmentVariables.Clear()",
+    );
+    expect(powershellInstaller).toContain(
+      "CopyToAsync([System.IO.Stream]::Null)",
+    );
     expect(powershellInstaller).toContain("[DateTime]::UtcNow.AddMinutes(15)");
     expect(powershellInstaller).toContain("Test-InstalledCli");
     expect(powershellInstaller).not.toContain("Invoke-Expression");
@@ -432,22 +832,42 @@ describe("bundled optional AI tool installers", () => {
 
   test("pins every provider bootstrap and suppresses untrusted installer output", async () => {
     const bashInstaller = await readFile(
-      join(BUNDLED_GOFER_RESOURCES, "bash-scripts", "install-optional-tools.sh"),
+      join(
+        BUNDLED_GOFER_RESOURCES,
+        "bash-scripts",
+        "install-optional-tools.sh",
+      ),
       "utf-8",
     );
     const powershellInstaller = await readFile(
-      join(BUNDLED_GOFER_RESOURCES, "powershell-scripts", "install-optional-tools.ps1"),
+      join(
+        BUNDLED_GOFER_RESOURCES,
+        "powershell-scripts",
+        "install-optional-tools.ps1",
+      ),
       "utf-8",
     );
 
-    expect(bashInstaller.match(/^[ \t]*"[0-9a-f]{64}"[ \t]*\\?$/gm)).toHaveLength(4);
-    expect(powershellInstaller.match(/-ExpectedSha256 '[0-9a-f]{64}'/g)).toHaveLength(4);
-    expect(bashInstaller).toContain('>/dev/null 2>&1');
-    expect(powershellInstaller).toContain('$startInfo.RedirectStandardOutput = $true');
-    expect(powershellInstaller).toContain('$startInfo.RedirectStandardError = $true');
-    expect(powershellInstaller).toContain('ConvertTo-SafeDiagnostic');
-    expect(powershellInstaller).toContain("if ([string]::IsNullOrEmpty($Message))");
-    expect(powershellInstaller).toContain("return 'No diagnostic details were provided.'");
+    expect(
+      bashInstaller.match(/^[ \t]*"[0-9a-f]{64}"[ \t]*\\?$/gm),
+    ).toHaveLength(4);
+    expect(
+      powershellInstaller.match(/-ExpectedSha256 '[0-9a-f]{64}'/g),
+    ).toHaveLength(4);
+    expect(bashInstaller).toContain(">/dev/null 2>&1");
+    expect(powershellInstaller).toContain(
+      "$startInfo.RedirectStandardOutput = $true",
+    );
+    expect(powershellInstaller).toContain(
+      "$startInfo.RedirectStandardError = $true",
+    );
+    expect(powershellInstaller).toContain("ConvertTo-SafeDiagnostic");
+    expect(powershellInstaller).toContain(
+      "if ([string]::IsNullOrEmpty($Message))",
+    );
+    expect(powershellInstaller).toContain(
+      "return 'No diagnostic details were provided.'",
+    );
   });
 
   test("rejects malformed Bash options and does not echo untrusted option contents", async () => {
@@ -468,15 +888,21 @@ describe("bundled optional AI tool installers", () => {
         env: { ...process.env, HOME: BUNDLED_GOFER_RESOURCES },
       });
       expect(result.exitCode).toBe(64);
-      expect(`${result.stdout}${result.stderr}`).not.toContain("credential=do-not-print");
+      expect(`${result.stdout}${result.stderr}`).not.toContain(
+        "credential=do-not-print",
+      );
     }
   });
 
-  const powershellPath = ["/usr/bin/pwsh", "/opt/homebrew/bin/pwsh"].find(existsSync);
+  const powershellPath = ["/usr/bin/pwsh", "/opt/homebrew/bin/pwsh"].find(
+    existsSync,
+  );
   test.runIf(Boolean(powershellPath))(
     "does not validate Copilot after its PowerShell npm install fails",
     async () => {
-      const fixtureRoot = await mkdtemp(join(tmpdir(), "eai-optional-installer-test-"));
+      const fixtureRoot = await mkdtemp(
+        join(tmpdir(), "eai-optional-installer-test-"),
+      );
       const fakeNpm = join(fixtureRoot, "npm");
       const callLog = join(fixtureRoot, "npm-calls.txt");
       try {
@@ -521,9 +947,8 @@ esac
           ],
           {
             cwd: fixtureRoot,
-            // PowerShell cold starts on hosted Linux runners can exceed the
-            // generic child-process timeout before the fixture npm is invoked.
-            timeoutMs: 15_000,
+            // Hosted Linux PowerShell can cold start under concurrent tests.
+            timeoutMs: process.platform === "linux" ? 30_000 : 15_000,
             env: {
               ...process.env,
               PATH: `${fixtureRoot}:/usr/bin:/bin`,
@@ -534,6 +959,8 @@ esac
           },
         );
 
+        expect(result.exitCode).not.toBe(124);
+        expect(existsSync(callLog)).toBe(true);
         const npmCalls = await readFile(callLog, "utf-8");
         expect(result.exitCode).toBe(1);
         expect(npmCalls).toContain("install --global");
@@ -545,7 +972,7 @@ esac
         await rm(fixtureRoot, { recursive: true, force: true });
       }
     },
-    20_000,
+    40_000,
   );
 });
 
@@ -576,3 +1003,191 @@ describe("current AI workspace documentation", () => {
     expect(catalogSection).not.toMatch(/Gemini/i);
   });
 });
+
+
+test('fresh installer-created CLAUDE.md retains help-on-request within its line budget', async () => {
+  const environment = await createTestEnvironment();
+  try {
+    await installGoferResources(environment.dir, { workflowProfile: 'enterpriseai' });
+    const content = await readFile(join(environment.dir, 'CLAUDE.md'), 'utf8');
+    expect(content.split('\n').length).toBeLessThan(65);
+    expect(content).toContain('Support starts only when the person asks "get help".');
+    expect(content).toContain('Follow the full support contract in AGENTS.md.');
+    expect(content).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+  } finally { await environment.cleanup(); }
+});
+
+
+test('hand-kept support mirror blocks equal the canonical generator contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['commands/0_gofer_start.md', 'commands/gofer_eai_first_run.md', 'references/platform/eai-support.md', 'instruction-templates/base/agents-base.md', 'instruction-templates/base/copilot-base.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, file), 'utf8'), file).toContain(contract);
+  }
+});
+
+
+test('active generated CLI instructions carry the canonical support producer contract', async () => {
+  const result = await runChild(process.execPath, ['--input-type=module', '-e', `
+    import { buildSupportReportContract } from ${JSON.stringify(pathToFileURL(join(BUNDLED_GOFER_RESOURCES, 'node-scripts', 'generate-commands.mjs')).href)};
+    console.log(JSON.stringify(buildSupportReportContract()));
+  `], { cwd: BUNDLED_GOFER_RESOURCES });
+  expect(result.exitCode).toBe(0);
+  const contract = JSON.parse(result.stdout) as string;
+  for (const file of ['.gemini/commands/gofer/eai.md', '.github/prompts/eai.prompt.md',
+    '.agents/skills/eai/SKILL.md',
+    '.github/skills/eai/SKILL.md', '.grok/skills/eai/SKILL.md', '.system/skills/eai/SKILL.md']) {
+    expect(await readFile(join(BUNDLED_GOFER_RESOURCES, '../..', file), 'utf8'), file).toContain(contract);
+  }
+});
+
+test.each([false, true])(
+  "installed tagged bootstrap emits singular support instructions (EAI=%s)",
+  async (eai) => {
+    const environment = await createTestEnvironment();
+    try {
+      await mkdir(join(environment.dir, ".git"));
+      await writeFile(
+        join(environment.dir, "package.json"),
+        '{"name":"tagged-bootstrap-fixture"}',
+      );
+      if (eai)
+        await writeFile(
+          join(environment.dir, "eai.runtime.json"),
+          '{"schemaVersion":1}',
+        );
+      await installGoferResources(environment.dir, {
+        workflowProfile: "enterpriseai",
+      });
+      for (const file of [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".github/copilot-instructions.md",
+      ])
+        await rm(join(environment.dir, file), { force: true });
+      const result = await runChild(
+        process.execPath,
+        [
+          join(
+            environment.dir,
+            ".specify/scripts/node/gofer-workspace-bootstrap.mjs",
+          ),
+          "--workspace",
+          environment.dir,
+          "--host",
+          eai ? "claude" : "copilot",
+          "--include-mirrors",
+        ],
+        { cwd: environment.dir },
+      );
+      expect(result.exitCode, result.stderr).toBe(0);
+      for (const file of ["AGENTS.md", ".github/copilot-instructions.md"]) {
+        const content = await readFile(join(environment.dir, file), "utf8");
+        if (eai) {
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        } else expect(content).not.toContain('For `MISSING_TENANT`');
+        expect(content, file).toContain(
+          "Never retry or explain a failed `eai errors explain` command",
+        );
+        expect(
+          content.split("## Support only when the person asks"),
+          file,
+        ).toHaveLength(2);
+        expect(content).not.toMatch(/After any .*eai.* command error/);
+        expect(content).not.toContain('offer "get help"');
+        expect(content).toContain("stop and wait for the person to ask");
+      }
+      const claude = await readFile(join(environment.dir, "CLAUDE.md"), "utf8");
+      expect(claude).toContain(
+        "Follow the full support contract in AGENTS.md.",
+      );
+      expect(claude).not.toContain("## Support only when the person asks");
+      expect(claude.split("\n").length).toBeLessThanOrEqual(65);
+    } finally {
+      await environment.cleanup();
+    }
+  },
+);
+
+test.each(['missing', 'regular', 'symlink', 'directory'])(
+  'bundled packager preserves the filesystem boundary for AGENTS=%s',
+  async (kind) => {
+    const outer = await mkdtemp(join(tmpdir(), 'cli-packager-agents-'));
+    const root = join(outer, 'source');
+    const sentinel = join(outer, 'outside.md');
+    const original = '# Unrelated file\nPreserve these bytes.\n';
+    try {
+      await mkdir(join(root, 'extension'), { recursive: true });
+      await writeFile(join(root, 'extension/package.json'), '{"version":"3.14.3"}');
+      await writeFile(join(root, 'extension/icon.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXkQAAAAASUVORK5CYII=', 'base64'));
+      await mkdir(join(root, '.specify/commands'), { recursive: true });
+      await cp(join(BUNDLED_GOFER_RESOURCES, 'commands/0_gofer_start.md'), join(root, '.specify/commands/0_gofer_start.md'));
+      await writeFile(sentinel, original);
+      if (kind === 'regular') await writeFile(join(root, 'AGENTS.md'), original);
+      if (kind === 'symlink') await symlink(sentinel, join(root, 'AGENTS.md'));
+      if (kind === 'directory') await mkdir(join(root, 'AGENTS.md'));
+      const result = await runChild(process.execPath, [join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'out'], { cwd: root });
+      expect(await readFile(sentinel, 'utf8')).toBe(original);
+      if (kind === 'symlink' || kind === 'directory') {
+        expect(result.exitCode).not.toBe(0);
+        expect(result.stderr).toContain('AGENTS.md must be a regular file');
+      } else {
+        expect(result.exitCode, result.stderr).toBe(0);
+        const plugin = join(root, 'out/eai-gofer-agent-plugin-3.14.3/eai-gofer');
+        expect(existsSync(join(plugin, 'AGENTS.md'))).toBe(kind === 'regular');
+        if (kind === 'regular') {
+          const content = await readFile(join(plugin, 'AGENTS.md'), 'utf8');
+          expect(content).toContain(original.trim());
+          expect(content.split('## Support only when the person asks')).toHaveLength(2);
+        }
+        for (const file of ['README.md', 'skills/eai/SKILL.md']) {
+          const content = await readFile(join(plugin, file), 'utf8');
+          expect(content).toContain('reuse the original-failure guidance for `app_token_tenant_context_required`');
+          expect(content).toContain('only if it has not been queried');
+        }
+      }
+    } finally { await rm(outer, { recursive: true, force: true }); }
+  },
+);
+
+
+test.each(['open-error', 'open-enoent-present', 'open-enoent-absent', 'read-error', 'write-error', 'close-error', 'short-write', 'zero-write', 'empty-input'])(
+    'closes packaged AGENTS handles and preserves complete bytes for %s',
+    async (mode) => {
+      const outer = await mkdtemp(join(tmpdir(), 'gofer-agents-handle-'));
+      const root = join(outer, 'source'), trace = join(outer, 'trace.log');
+      const original = mode === 'empty-input' ? '' : '# Local instructions\nUnicode: café λ.\n';
+      try {
+        await mkdir(join(root, 'extension'), { recursive: true });
+        await writeFile(join(root, 'extension/package.json'), JSON.stringify({ version: '3.14.3' }));
+        await writeFile(join(root, 'extension/icon.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aXkQAAAAASUVORK5CYII=', 'base64'));
+        await mkdir(join(root, '.specify/commands'), { recursive: true });
+        await cp(join(BUNDLED_GOFER_RESOURCES, 'commands/0_gofer_start.md'), join(root, '.specify/commands/0_gofer_start.md'));
+        if (mode !== 'open-enoent-absent') await writeFile(join(root, 'AGENTS.md'), original);
+        const preload = join(outer, 'observe.mjs');
+        await writeFile(preload, "import { promises as fs } from 'node:fs';\nimport path from 'node:path';\nconst mode = MODE, trace = TRACE;\nconst record = event => fs.appendFile(trace, event + '\\n');\nconst originalOpen = fs.open.bind(fs);\nfs.open = async (file, ...args) => {\n  const tracked = path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out');\n  if (tracked && mode === 'open-error') throw new Error('controlled AGENTS open failure');\n  if (tracked && mode.startsWith('open-enoent-')) throw Object.assign(new Error('controlled AGENTS ENOENT'), { code: 'ENOENT' });\n  const handle = await originalOpen(file, ...args);\n  if (!tracked) return handle;\n  await record('opened');\n  const originalClose = handle.close.bind(handle);\n  handle.close = async () => { try { const value = await originalClose(); if (mode === 'close-error') throw new Error('controlled AGENTS close failure'); return value; } finally { await record('closed'); } };\n  const originalRead = handle.readFile.bind(handle);\n  handle.readFile = async (...readArgs) => { if (mode === 'read-error') throw new Error('controlled AGENTS read failure'); return originalRead(...readArgs); };\n  const originalWrite = handle.write.bind(handle);\n  handle.write = async (buffer, offset, length, position) => {\n    if (mode === 'write-error') throw new Error('controlled AGENTS write failure');\n    if (mode === 'zero-write') return { bytesWritten: 0, buffer };\n    return originalWrite(buffer, offset, mode === 'short-write' ? Math.min(length, 17) : length, position);\n  };\n  return handle;\n};\nconst originalReadFile = fs.readFile.bind(fs), originalWriteFile = fs.writeFile.bind(fs);\nfs.readFile = async (file, ...args) => { if (mode === 'read-error' && path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out')) throw new Error('controlled AGENTS read failure'); return originalReadFile(file, ...args); };\nfs.writeFile = async (file, ...args) => { if (mode === 'write-error' && path.basename(String(file)) === 'AGENTS.md' && String(file).split(path.sep).includes('out')) throw new Error('controlled AGENTS write failure'); return originalWriteFile(file, ...args); };\n".replace('MODE', JSON.stringify(mode)).replace('TRACE', JSON.stringify(trace)));
+        const result = await runChild(process.execPath, ['--import', preload, join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'out'], { cwd: root });
+        const events = existsSync(trace) ? (await readFile(trace, 'utf8')).trim().split('\n') : [];
+        if (mode === 'open-enoent-absent') { expect(result.exitCode, result.stderr).toBe(0); expect(events).toEqual([]); }
+        else if (mode === 'open-enoent-present') { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain('controlled AGENTS ENOENT'); expect(events).toEqual([]); }
+        else if (mode === 'open-error') { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain('controlled AGENTS open failure'); expect(events).toEqual([]); }
+        else {
+          expect(events).toEqual(['opened', 'closed']);
+          if (mode === 'short-write' || mode === 'empty-input') {
+            expect(result.exitCode, result.stderr).toBe(0);
+            const control = await runChild(process.execPath, [join(BUNDLED_GOFER_RESOURCES, 'node-scripts/package-agent-plugin.mjs'), '--root', root, '--out-dir', 'control'], { cwd: root }); expect(control.exitCode, control.stderr).toBe(0);
+            const entry = `eai-gofer-agent-plugin-3.14.3/eai-gofer/AGENTS.md`;
+            const actual = await readFile(join(root, 'out', entry));
+            expect(actual).toEqual(await readFile(join(root, 'control', entry)));
+            expect(actual.toString()).toContain(original.trim());
+            expect(actual.includes(0)).toBe(false);
+          } else { expect(result.exitCode).not.toBe(0); expect(result.stderr).toContain(mode === 'zero-write' ? 'AGENTS.md normalization write made no progress.' : `controlled AGENTS ${mode.split('-')[0]} failure`); }
+        }
+      } finally { await rm(outer, { recursive: true, force: true }); }
+    }
+  );

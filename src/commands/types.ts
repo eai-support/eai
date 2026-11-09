@@ -26,6 +26,7 @@ import { deriveObjectTypeSlugV1 } from "../lib/object-type-identifiers.js";
 import { isRecord, toObjectTypeSlug } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import { readConsistentObjectTypes } from "../lib/object-type-export.js";
 
 export interface TenantResolution {
   tenantId?: string;
@@ -426,10 +427,39 @@ function formatStorageFieldIssue(label: string, missing: string[]): string {
   return `${label} is incomplete. Missing: ${missing.join(", ")}`;
 }
 
+/** Validate the app manifest's index and Search mapping wire shapes before publication. */
+function validateStorageBindingManifestShape(binding: unknown): string[] {
+  if (!isRecord(binding)) return [];
+  const issues: string[] = [];
+
+  for (const scopeKey of ["sql", "documentdb"] as const) {
+    const scope = getStorageBindingScope(binding, scopeKey);
+    const indexes = scope?.indexes;
+    if (indexes === undefined || indexes === null) continue;
+    if (!Array.isArray(indexes)) {
+      issues.push(`storageBinding.${scopeKey}.indexes must be an array of objects for app manifests`);
+      continue;
+    }
+    indexes.forEach((index, position) => {
+      const fields = isRecord(index) ? index.fields : undefined;
+      if (!Array.isArray(fields) || fields.some(field => typeof field !== "string")) {
+        issues.push(`storageBinding.${scopeKey}.indexes[${position}].fields must be an array of strings for app manifests; field objects and dictionaries are unsupported`);
+      }
+    });
+  }
+
+  const mappings = getStorageBindingScope(binding, "search")?.fieldMappings;
+  if (mappings !== undefined && mappings !== null
+    && (!isRecord(mappings) || Object.values(mappings).some(value => typeof value !== "string"))) {
+    issues.push("storageBinding.search.fieldMappings must be an object containing only string values for app manifests; mapping arrays are unsupported");
+  }
+  return issues;
+}
+
 export function validateObjectTypeStorageMetadata(
   type: ObjectTypeDefinition,
 ): string[] {
-  const issues: string[] = [];
+  const issues = validateStorageBindingManifestShape(type.storageBinding);
   const backend = type.storageBackend || "postgresql";
   const storageMetadataStatus = type.storageMetadataStatus || "draft";
 
@@ -608,16 +638,16 @@ function describeTenantResolutionSource(
     case "option":
       return "CLI override";
     case "active:tenant":
-      return "active tenant";
+      return "active workspace";
     default:
       return "unresolved";
   }
 }
 
 function explainMissingTenantId(tenantKey: string): void {
-  out.warn(`No active tenant is available for "${tenantKey}"`);
+  out.warn(`No active workspace is available for "${tenantKey}"`);
   out.info(
-    `Run ${chalk.cyan("eai login")} and ${chalk.cyan("eai tenant select")} to choose the tenant to work with, or use ${chalk.cyan(`--tenant-key ${tenantKey} --tenant-id <uuid>`)}`,
+    `Run ${chalk.cyan("eai login")} and ${chalk.cyan("eai workspace select")} to choose the workspace to work with, or use ${chalk.cyan(`--tenant-key ${tenantKey} --tenant-id <uuid>`)}`,
   );
 }
 
@@ -909,6 +939,74 @@ export async function resolveTypesPullOutputPath(
   return isAbsolute(output) ? output : pathJoin(root, output);
 }
 
+/** Pull authoritative schema DTOs without rewriting files on a failed response. */
+export async function pullObjectTypesToFile(
+  client: Pick<PlatformAPIClient, "getPublishedObjectTypes">,
+  tenantId: string,
+  root: string,
+  output: string,
+): Promise<{ count: number; outputPath: string }> {
+  const { basename, dirname, join: pathJoin, relative, resolve } = await import("node:path");
+  const { lstat, mkdir: makeDirectory, realpath } = await import("node:fs/promises");
+  const { assertDirectoryIdentities, snapshotNoLinkDirectoryPath } =
+    await import('../lib/eai-managed-deploy-filesystem.js');
+  const { writeObjectTypeExportFile } = await import('../lib/object-type-export-filesystem.js');
+  const outputPath = await resolveTypesPullOutputPath(root, output);
+  const modelPath = pathJoin(root, "src", "eai.config", "object-types");
+  const canonicalPath = async (path: string): Promise<string> => {
+    try { return await realpath(path); }
+    catch (error) {
+      if (!isRecord(error) || error.code !== 'ENOENT') throw error;
+      const parent = dirname(path);
+      return parent === path ? resolve(path) : pathJoin(await canonicalPath(parent), basename(path));
+    }
+  };
+  const assertGeneratedOutput = async (): Promise<void> => {
+    if (await canonicalPath(resolve(outputPath)) === await canonicalPath(resolve(modelPath + ".ts"))) {
+      throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
+    }
+  };
+  // A parent replacement redirects both sibling paths. Reserve the producer's
+  // leaf name as well as its canonical path, including case-insensitive systems.
+  if (basename(outputPath).toLowerCase() === 'object-types.ts') {
+    throw new Error("Choose a generated output file; preserve src/eai.config/object-types.ts for its model definitions.");
+  }
+  await assertGeneratedOutput();
+  let existingParent = dirname(resolve(outputPath));
+  let parentIdentities: Awaited<ReturnType<typeof snapshotNoLinkDirectoryPath>>;
+  try {
+    while (true) {
+      try { await lstat(existingParent); break; }
+      catch (error) {
+        if (!isRecord(error) || error.code !== 'ENOENT' || dirname(existingParent) === existingParent) throw error;
+        existingParent = dirname(existingParent);
+      }
+    }
+    parentIdentities = await snapshotNoLinkDirectoryPath(existingParent);
+  } catch {
+    throw new Error('Object Type pull could not publish or verify the generated output. Inspect the generated file before retrying.');
+  }
+  const docs = await readConsistentObjectTypes(client, tenantId);
+  const modelRelative = relative(dirname(outputPath), modelPath).replace(/\\/g, "/");
+  const modelImport = modelRelative.startsWith(".") ? modelRelative : "./" + modelRelative;
+  const source = generatePulledTypesTypeScript(docs, tenantId, modelImport);
+  const binding = { path: existingParent, assert: async (): Promise<void> => {
+    await assertDirectoryIdentities(parentIdentities);
+    await assertGeneratedOutput();
+  } };
+  try {
+    await binding.assert();
+    await makeDirectory(dirname(outputPath), { recursive: true });
+    await binding.assert();
+    await writeObjectTypeExportFile(outputPath, source, binding);
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('Choose a generated output')) throw error;
+    // eslint-disable-next-line preserve-caught-error -- local I/O errors can reveal private paths; keep the public error static.
+    throw new Error('Object Type pull could not publish or verify the generated output. Inspect the generated file before retrying.');
+  }
+  return { count: docs.length, outputPath };
+}
+
 export async function describeFailedPlatformResponse(
   response: Response,
 ): Promise<string> {
@@ -934,6 +1032,7 @@ function appOwnedStoragePublishGuidance(
   message: string,
   tenantKey: string,
   tenantId: string,
+  appTenantId: string = tenantId,
 ): string {
   if (
     !/databaseAlias|storageBinding|app-owned prefix|not authorized|tableName/i.test(
@@ -945,8 +1044,8 @@ function appOwnedStoragePublishGuidance(
 
   return [
     "",
-    "Why this can happen: tenant app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
-    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}.`,
+    "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
+    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`}.`,
   ].join("\n");
 }
 
@@ -998,7 +1097,7 @@ export async function appObjectTypePublishFallbackReason(
       body = "";
     }
     if (/app was not found|not found for this company/i.test(body)) {
-      return `app object-type manifest ${phase} route unavailable (tenant has no app enrollment)`;
+      return `app object-type manifest ${phase} route unavailable (workspace has no app enrollment)`;
     }
   }
   return null;
@@ -1153,18 +1252,40 @@ export async function trySeedViaAppManifestPublish(
   tenantKey: string,
   tenantId: string,
   types: ObjectTypeDefinition[],
+  runtimeTenantId: string = tenantId,
 ): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  const splitTenantScope = runtimeTenantId !== tenantId;
+  if (splitTenantScope) {
+    const bindingResponse = await client.getBoundAppProvisioningJobs(tenantKey, runtimeTenantId);
+    if (!bindingResponse.ok) {
+      throw new Error(`app enrollment binding preflight failed: ${await describeFailedPlatformResponse(bindingResponse)}`);
+    }
+    const binding: unknown = await bindingResponse.json();
+    const enrollment = isRecord(binding) && isRecord(binding.enrollment) ? binding.enrollment : null;
+    const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : null;
+    const childTenantIds = [enrollment?.childTenantId, metadata?.childTenantId]
+      .filter((value) => value !== undefined && value !== null);
+    if (!isRecord(binding) || binding.tenantId !== tenantId
+      || binding.appKey !== tenantKey || childTenantIds.length === 0
+      || childTenantIds.some((value) => value !== runtimeTenantId)) {
+      throw new Error('app enrollment binding preflight did not match the exact parent, app, and runtime tenant');
+    }
+  }
   let appManifestRequestShape: TypeSeedResult["appManifestRequestShape"] =
     "explicit-name-and-slug";
   let manifestResponse = await client.saveAppObjectTypeManifest(
     tenantKey,
     toAppManifestObjectTypes(types),
+    splitTenantScope ? runtimeTenantId : undefined,
   );
   const manifestFallbackReason = await appObjectTypePublishFallbackReason(
     manifestResponse,
     "save",
   );
   if (manifestFallbackReason) {
+    if (splitTenantScope) {
+      throw new Error(`app manifest save failed for bound runtime tenant: ${manifestFallbackReason}`);
+    }
     return { fallbackReason: manifestFallbackReason };
   }
 
@@ -1192,6 +1313,7 @@ export async function trySeedViaAppManifestPublish(
     const nameDerivedResponse = await client.saveAppObjectTypeManifest(
       tenantKey,
       toAppManifestObjectTypes(types, "name-derived-slug"),
+      splitTenantScope ? runtimeTenantId : undefined,
     );
     if (nameDerivedResponse.ok) {
       manifestResponse = nameDerivedResponse;
@@ -1214,34 +1336,68 @@ export async function trySeedViaAppManifestPublish(
   if (!manifestResponse.ok) {
     const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
-      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
+      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
     );
   }
 
-  const publishResponse = await client.publishAppObjectTypes(tenantKey);
+  const publishResponse = await client.publishAppObjectTypes(
+    tenantKey, splitTenantScope ? runtimeTenantId : undefined,
+  );
   const publishFallbackReason = await appObjectTypePublishFallbackReason(
     publishResponse,
     "publish",
   );
   if (publishFallbackReason) {
+    if (splitTenantScope) {
+      throw new Error(`app manifest publish failed for bound runtime tenant: ${publishFallbackReason}`);
+    }
     return { fallbackReason: publishFallbackReason };
   }
   if (!publishResponse.ok) {
     const detail = await describeFailedPlatformResponse(publishResponse);
     throw new Error(
-      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, tenantId)}`,
+      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
     );
   }
 
+  const publishPayload: unknown = await publishResponse.json();
+  if (splitTenantScope && (!isRecord(publishPayload)
+    || publishPayload.tenantId !== tenantId
+    || !isRecord(publishPayload.verification)
+    || publishPayload.verification.tenantId !== runtimeTenantId)) {
+    throw new Error('app manifest publish did not verify the exact parent and runtime tenant');
+  }
   const result = summarizeAppObjectTypePublish(
     tenantKey,
-    tenantId,
+    runtimeTenantId,
     types,
-    await publishResponse.json(),
+    publishPayload,
     appManifestRequestShape,
   );
 
   return { result };
+}
+
+export async function publishAppObjectTypesForRuntime(
+  appClient: PlatformAPIClient,
+  runtimeClient: PlatformAPIClient,
+  tenantKey: string,
+  appTenantId: string,
+  runtimeTenantId: string,
+  types: ObjectTypeDefinition[],
+): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  const outcome = await trySeedViaAppManifestPublish(
+    appClient, tenantKey, appTenantId, types, runtimeTenantId,
+  );
+  if (outcome.result) {
+    outcome.result.resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(
+      runtimeClient,
+      runtimeTenantId,
+      types.map((type) => type.name),
+      outcome.result.resourceApiSchemaSync,
+    );
+  }
+  return outcome;
 }
 
 const RESOURCEAPI_SYNC_SUCCESS_STATUSES = new Set([
@@ -1626,9 +1782,9 @@ export const typesCommand = new Command("types")
 Workflow:
   1. Validate local definitions:
        eai types validate
-  2. Login and select the active tenant:
+  2. Login and select the active workspace:
        eai login
-       eai tenant select
+       eai workspace select
   3. Preview remote differences:
        eai types diff --tenant-key <key>
   4. Publish:
@@ -1644,10 +1800,14 @@ typesCommand
   .command("seed")
   .description("Push Object Types to platform")
   .option("--env <label>", "Optional deployment label for compatibility")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
-    "Override the resolved tenant ID (use with --tenant-key)",
+    "Override the resolved workspace ID (use with --tenant-key)",
+  )
+  .option(
+    "--app-tenant-id <id>",
+    "Parent tenant that owns this app enrollment; --tenant-id remains the runtime child",
   )
   .option(
     "--dry-run",
@@ -1664,6 +1824,7 @@ Examples:
   $ eai types seed --dry-run
   $ eai types seed --tenant-key trial-portal
   $ eai types seed --tenant-key template --tenant-id 00000000-0000-4000-8000-000000000000
+  $ eai types seed --tenant-key template --tenant-id <runtime-child-id> --app-tenant-id <parent-id>
   $ eai types seed --format json | jq
   `,
   )
@@ -1671,6 +1832,10 @@ Examples:
     // Backward compatibility: --json maps to --format json
     if (options.json) {
       options.format = "json";
+    }
+
+    if (options.appTenantId && (!options.tenantId || !options.tenantKey)) {
+      exitWithError(ErrorCode.E303, { field: "--app-tenant-id requires --tenant-id and --tenant-key" }, options.format);
     }
 
     const ctx = await resolveCommandContext({ tenantId: options.tenantId });
@@ -1693,7 +1858,7 @@ Examples:
       const tenantKeys = Object.keys(objectTypes);
       if (spinner) {
         spinner.succeed(
-          `Found ${totalTypes} types across ${tenantKeys.length} tenant scope(s): ${tenantKeys.join(", ")}`,
+          `Found ${totalTypes} types across ${tenantKeys.length} workspace scope(s): ${tenantKeys.join(", ")}`,
         );
       }
     } catch (err) {
@@ -1767,7 +1932,7 @@ Examples:
       const types = objectTypes[tenantKey];
       if (!types || types.length === 0) {
         if (options.format !== "json") {
-          out.warn(`No types for tenant key "${tenantKey}"`);
+          out.warn(`No types for workspace key "${tenantKey}"`);
         }
         continue;
       }
@@ -1849,6 +2014,9 @@ Examples:
       }
 
       const client = new PlatformAPIClient(publicApiUrl, tenantId);
+      const appClient = options.appTenantId
+        ? new PlatformAPIClient(publicApiUrl, options.appTenantId)
+        : client;
       let created = 0,
         updated = 0,
         failed = 0;
@@ -1856,20 +2024,15 @@ Examples:
       let appManifestFallbackReason: string | undefined;
 
       try {
-        const appPublishOutcome = await trySeedViaAppManifestPublish(
+        const appPublishOutcome = await publishAppObjectTypesForRuntime(
+          appClient,
           client,
           tenantKey,
+          options.appTenantId ?? tenantId,
           tenantId,
           types,
         );
         if (appPublishOutcome.result) {
-          appPublishOutcome.result.resourceApiSchemaSync =
-            await waitForResourceApiSchemaVisibility(
-              client,
-              tenantId,
-              types.map((type) => type.name),
-              appPublishOutcome.result.resourceApiSchemaSync,
-            );
           if (options.format !== "json") {
             out.success("Published via app object-type manifest");
             out.info(
@@ -2205,7 +2368,7 @@ Examples:
 typesCommand
   .command("validate")
   .description("Validate Object Types against platform schema rules")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
     "Check app-owned storage naming for this tenant ID",
@@ -2268,7 +2431,7 @@ Examples:
     let warnings = 0;
 
     for (const [tenantKey, types] of entries) {
-      out.heading(`Tenant: ${tenantKey}`);
+      out.heading(`Workspace key: ${tenantKey}`);
 
       for (const type of types) {
         const issues: string[] = [];
@@ -2432,10 +2595,10 @@ Examples:
 typesCommand
   .command("diff")
   .description("Compare local Object Types with remote platform")
-  .option("--tenant-key <key>", "Specific tenant key from object-types.ts")
+  .option("--tenant-key <key>", "Workspace scope key from object-types.ts (current option name)")
   .option(
     "--tenant-id <id>",
-    "Override the resolved tenant ID (use with --tenant-key)",
+    "Override the resolved workspace ID (use with --tenant-key)",
   )
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
@@ -2635,7 +2798,7 @@ Examples:
 typesCommand
   .command("pull")
   .description("Download remote Object Types to local TypeScript")
-  .option("--tenant-id <id>", "platform tenant ID")
+  .option("--tenant-id <id>", "platform workspace ID")
   .option(
     "--output <path>",
     "Output file path",
@@ -2656,17 +2819,8 @@ Examples:
 
     try {
       const { client, tenantId, root } = ctx;
-      const res = await client.getPublishedObjectTypes({ limit: 100 });
-
-      const data = (await res.json()) as { docs?: ObjectTypeDefinition[] };
-      const types = data?.docs || [];
-      spinner.succeed(`Found ${types.length} remote types`);
-
-      // Generate TypeScript
-      const ts = generateTypeScript(types, tenantId);
-      const { writeFile: write } = await import("node:fs/promises");
-      const outputPath = await resolveTypesPullOutputPath(root, options.output);
-      await write(outputPath, ts, "utf-8");
+      const pulled = await pullObjectTypesToFile(client, tenantId, root, options.output);
+      spinner.succeed(`Found ${pulled.count} remote types`);
 
       out.success(`Written to ${chalk.bold(options.output)}`);
       out.info("Review the generated file and merge into object-types.ts");
@@ -2681,18 +2835,22 @@ Examples:
 
 typesCommand
   .command("define")
-  .description("Interactive Object Type builder (coming soon)")
-  .action(async () => {
-    out.info("Interactive Object Type builder is planned for Phase 3.");
-    out.info("For now, edit src/eai.config/object-types.ts directly.");
-    out.info("See the Object Types Guide in CLAUDE.md for the schema format.");
+  .description("Interactive Object Type builder (unsupported)")
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .action(async (options) => {
+    const message = 'Interactive Object Type definition is unavailable. Edit src/eai.config/object-types.ts and use eai types validate and eai types seed.';
+    if (options.format === 'json') console.log(JSON.stringify({ error: { code: 'TYPES_DEFINE_UNSUPPORTED', message } }));
+    else out.error(`TYPES_DEFINE_UNSUPPORTED: ${message}`);
+    process.exit(1);
   });
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
 
-function generateTypeScript(
-  types: ObjectTypeDefinition[],
+/** Emit a review/merge module preserving complete read DTOs via JSON and the producer-relative type import. */
+export function generatePulledTypesTypeScript(
+  types: ReadonlyArray<Record<string, unknown>>,
   tenantKey: string,
+  modelImport: string,
 ): string {
   const lines: string[] = [
     "/**",
@@ -2702,14 +2860,10 @@ function generateTypeScript(
     " * Review and merge into object-types.ts.",
     " */",
     "",
-    "import type { ObjectTypeDefinition } from './object-types';",
+    `import type { ObjectTypeDefinition } from ${JSON.stringify(modelImport)};`,
     "",
-    `export const pulledTypes: Record<string, ObjectTypeDefinition[]> = {`,
-    `  '${tenantKey}': ${JSON.stringify(types, null, 4)
-      .split("\n")
-      .map((l, i) => (i === 0 ? l : "  " + l))
-      .join("\n")},`,
-    "};",
+    "// Retain authoritative remote identifiers and metadata through the JSON data boundary.",
+    `export const pulledTypes: Record<string, ObjectTypeDefinition[]> = JSON.parse(${JSON.stringify(JSON.stringify({ [tenantKey]: types }))});`,
     "",
   ];
   return lines.join("\n");

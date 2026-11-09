@@ -5,24 +5,40 @@
  */
 
 import { execFile } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { chmod, link, lstat, mkdir, readFile, realpath, rm, stat, symlink, writeFile } from "node:fs/promises";
+import { Command } from "commander";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import { promisify } from "node:util";
 import inquirer from "inquirer";
+import { parse as parseDotenv } from "dotenv";
 import { describe, test, beforeEach, afterEach, expect, vi } from "vitest";
+const initPublication = vi.hoisted(() => ({ beforePublish: undefined as ((target: string) => Promise<void>) | undefined }));
+vi.mock("node:fs/promises", async importOriginal => {
+  const actual = await importOriginal<typeof import("node:fs/promises")>();
+  return { ...actual,
+    rename: async (source: string, target: string) => { await initPublication.beforePublish?.(target); return actual.rename(source, target); },
+    link: async (source: string, target: string) => { await initPublication.beforePublish?.(target); return actual.link(source, target); },
+  };
+});
 import {
   describeAppCreationFailure,
+  describeAppCreationTimeout,
   describeCloneFailure,
   describeCreateFlowFailure,
   describeGitCommitFailure,
   initCommand,
   isDefaultTemplateSource,
   isMissingGitIdentity,
+  parseTemplateVersionOverride,
   resolveTemplateClonePlan,
   selectExistingAppSelection,
+  updateInitProjectFile,
 } from "../../src/commands/init.js";
+import * as profile from "../../src/lib/profile.js";
 import * as auth from "../../src/lib/auth.js";
+import * as cloudEnv from "../../src/lib/cloud-env.js";
+import { findProjectRoot } from "../../src/lib/config.js";
 import {
   getNpmExecOptions,
   getNpmExecutable,
@@ -37,6 +53,7 @@ import {
 import { createMockServer, PublicAPIMock } from "../helpers/mock-server.js";
 import type { TestContext } from "../helpers/setup-dsl.js";
 import {
+  cleanupTestTokens,
   workingDirectoryIs,
   gitIsInstalled,
   networkIsAvailable,
@@ -59,7 +76,7 @@ const require = createRequire(import.meta.url);
 const pkg = require("../../package.json") as { version: string };
 const tscPath = require.resolve("typescript/bin/tsc");
 const linkedSources = require("../../resources/linked-sources.json") as {
-  appTemplate: { commit: string };
+  appTemplate: { commit: string; version?: string };
 };
 const TEST_PUBLIC_API_URL = "https://profile-test.example.test/public";
 
@@ -141,19 +158,25 @@ describe("eai init", () => {
   let ctx: TestContext;
   let templateRepo: string;
   let originalPublicApiUrl: string | undefined;
+  let originalHome: string | undefined;
+  let originalUserProfile: string | undefined;
 
   beforeEach(async () => {
     originalPublicApiUrl = process.env.BASE_URL_PUBLIC_API;
+    originalHome = process.env.HOME;
+    originalUserProfile = process.env.USERPROFILE;
     process.env.BASE_URL_PUBLIC_API = TEST_PUBLIC_API_URL;
 
     env = await createTestEnvironment();
+    process.env.HOME = env.dir;
+    process.env.USERPROFILE = env.dir;
     mockServer = createMockServer();
     mockServer.start();
 
     ctx = {
       workingDir: env.dir,
       mockAPI: new PublicAPIMock("https://test-api.example.com", mockServer),
-      env: {},
+      env: { HOME: env.dir, USERPROFILE: env.dir },
       prompts: [],
     };
 
@@ -168,8 +191,14 @@ describe("eai init", () => {
   });
 
   afterEach(async () => {
+    initPublication.beforePublish = undefined;
     mockServer.stop();
+    await cleanupTestTokens(ctx);
     await env.cleanup();
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+    if (originalUserProfile === undefined) delete process.env.USERPROFILE;
+    else process.env.USERPROFILE = originalUserProfile;
     if (originalPublicApiUrl === undefined) {
       delete process.env.BASE_URL_PUBLIC_API;
     } else {
@@ -177,10 +206,436 @@ describe("eai init", () => {
     }
   });
 
+  test.each(([".gitignore", ".env.local"] as const).flatMap(name => [false, true].map(alias => ({ name, alias }))))
+    ("an absent $name cannot overwrite a file created at publication (alias=$alias)", async ({ name, alias }) => {
+    const directory = join(env.dir, "publication-fixture"); await mkdir(directory);
+    const selected = alias ? join(env.dir, "publication-alias") : directory;
+    if (alias) await symlink(directory, selected, "dir");
+    const target = join(await realpath(selected), name); const sentinel = "Unrelated concurrent bytes\n";
+    initPublication.beforePublish = async destination => {
+      if (destination === target) { initPublication.beforePublish = undefined; await writeFile(target, sentinel); }
+    };
+    let failure: unknown;
+    try { await updateInitProjectFile(selected, name, () => Buffer.from("Synthetic init bytes\n"), 0o600); }
+    catch (error) { failure = error; }
+    expect(failure).toBeInstanceOf(Error);
+    expect(await readFile(target, "utf8")).toBe(sentinel);
+  });
+
+  test('existing-leaf init writers fail on lock contention without stale takeover', async () => {
+    const directory = join(env.dir, "cooperative-publication-fixture"); await mkdir(directory);
+    const target = join(await realpath(directory), ".gitignore"); await writeFile(target, "Original\n");
+    let entered!: () => void; const publishing = new Promise<void>(resolve => { entered = resolve; });
+    let release!: () => void; const held = new Promise<void>(resolve => { release = resolve; });
+    initPublication.beforePublish = async destination => {
+      if (destination === target) { initPublication.beforePublish = undefined; entered(); await held; }
+    };
+    const first = updateInitProjectFile(directory, ".gitignore", content => Buffer.concat([content, Buffer.from("First writer\n")]));
+    await publishing;
+    let failure: unknown;
+    try { await updateInitProjectFile(directory, ".gitignore", content => Buffer.concat([content, Buffer.from("Second writer\n")])); }
+    catch (error) { failure = error; }
+    finally { release(); await first; }
+    expect(failure).toMatchObject({ code: "EEXIST" });
+    expect(await readFile(target, "utf8")).toBe("Original\nFirst writer\n");
+  });
+
+  test.each(["symlink", "directory"])("init refuses an unsafe gitignore %s before generating credentials", async (kind) => {
+    const outside = join(env.dir, "outside-ignore-fixture");
+    const original = "# Outside the initialized app\n!/.env.local\n";
+    await writeFile(outside, original, { mode: 0o600 });
+    const ignore = join(templateRepo, ".gitignore");
+    if (kind === "symlink") await symlink(outside, ignore);
+    else { await mkdir(ignore); await writeFile(join(ignore, "sentinel"), "fixture\n"); }
+    await exec("git", ["add", ".gitignore"], { cwd: templateRepo });
+    await exec("git", ["commit", "-m", "Unsafe ignore fixture"], { cwd: templateRepo });
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
+    const publicApiSpy = vi.spyOn(tenantContext, "resolvePublicApiUrl").mockResolvedValue(TEST_PUBLIC_API_URL);
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "fixture-access", expiresAt: Date.now() + 600_000,
+        tenantId: "fixture-ciam", tenantName: "fixture-auth", clientId: "fixture-client" },
+      activeTenant: { id: "ignore-parent", displayName: "Ignore Parent", slug: "ignore-parent", isActive: true,
+        roles: ["tenant-admin"], homeRegion: "au" }, memberships: [],
+    });
+    const tokenSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({ accessToken: "fixture-access",
+      expiresAt: Date.now() + 600_000, tenantId: "fixture-ciam", tenantName: "fixture-auth", clientId: "fixture-client" });
+    const capability = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const tenant = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({
+      id: "ignore-parent", ultimateParentId: "ignore-parent",
+    }), { status: 200 }));
+    const app = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({
+      childTenant: { id: "ignore-child", displayName: "Ignore Child", slug: "ignore-child" },
+    }), { status: 201 }));
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => { throw new Error("Unsafe ignore rejected"); }) as never);
+    try {
+      await expect(initCommand.parseAsync(["ignore-app", "--skip-prompts", "--no-gofer", "--no-install", "--no-splash",
+        "--child-tenant", "Ignore Child", "--from", templateRepo, "--trust-template-scripts"], { from: "user" }))
+        .rejects.toThrow("Unsafe ignore rejected");
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(await readFile(outside, "utf8")).toBe(original);
+      if (kind === "symlink") expect((await lstat(join(env.dir, "ignore-app", ".gitignore"))).isSymbolicLink()).toBe(true);
+      await expect(readFile(join(env.dir, "ignore-app", ".env.local"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      for (const spy of [exit, authSpy, publicApiSpy, tenantSpy, tokenSpy, capability, tenant, app]) spy.mockRestore();
+    }
+  });
+
+  test.each(["symlink", "hardlink", "directory", "hydration-symlink", "hydration-hardlink"])("current-dir init refuses an unsafe credential destination %s", async (kind) => {
+    const projectDir = join(env.dir, "credential-destination-app");
+    await mkdir(projectDir);
+    const outside = join(env.dir, "outside-credential-fixture");
+    const original = "# Synthetic outside fixture; no credentials\n";
+    await writeFile(outside, original, { mode: 0o644 });
+    await chmod(outside, 0o644);
+    const destination = join(projectDir, ".env.local");
+    if (kind === "symlink") await symlink(outside, destination);
+    else if (kind === "hardlink") await link(outside, destination);
+    else if (kind === "directory") { await mkdir(destination); await writeFile(join(destination, "sentinel"), "fixture\n"); }
+    workingDirectoryIs(ctx, projectDir);
+    // No app context exists before init. The real preAction cannot guard the newly copied target.
+    expect(await findProjectRoot(projectDir)).toBeNull();
+    const savedOptions = { ...initCommand.opts() };
+    const savedParent = initCommand.parent;
+    const savedProfile = profile.getActiveProfile();
+    const root = new Command("eai").addCommand(initCommand).hook("preAction", async (_root, command) => {
+      await profile.activateCommandProfile(command, "default", projectDir);
+    });
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
+    const publicApiSpy = vi.spyOn(tenantContext, "resolvePublicApiUrl").mockResolvedValue(TEST_PUBLIC_API_URL);
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "fixture-access", expiresAt: Date.now() + 600_000,
+        tenantId: "fixture-ciam", tenantName: "fixture-auth", clientId: "fixture-client" },
+      activeTenant: { id: "credential-parent", displayName: "Credential Parent", slug: "credential-parent", isActive: true,
+        roles: ["tenant-admin"], homeRegion: "au" }, memberships: [],
+    });
+    const tokenSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({ accessToken: "fixture-access",
+      expiresAt: Date.now() + 600_000, tenantId: "fixture-ciam", tenantName: "fixture-auth", clientId: "fixture-client" });
+    const capability = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const tenant = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({
+      id: "credential-parent", ultimateParentId: "credential-parent",
+    }), { status: 200 }));
+    const app = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({
+      childTenant: null,
+    }), { status: 201 }));
+    const originalProfileLoader = profile.loadProfileConfig;
+    let redirected = false;
+    const profileLoader = vi.spyOn(profile, "loadProfileConfig").mockImplementation(async name => {
+      if (!redirected && kind.startsWith("hydration-") && await lstat(destination).catch(() => null)) {
+        redirected = true; await rm(destination);
+        if (kind === "hydration-symlink") await symlink(outside, destination);
+        else await link(outside, destination);
+      }
+      return originalProfileLoader(name);
+    });
+    const exit = vi.spyOn(process, "exit").mockImplementation((() => { throw new Error("Unsafe credential destination rejected"); }) as never);
+    try {
+      let failure: unknown;
+      try {
+        await root.parseAsync(["init", "credential-destination-app", "--current-dir", "--skip-prompts", "--no-gofer",
+          "--no-install", "--no-splash", "--company-tenant", "credential-parent", "--from", templateRepo, "--trust-template-scripts"], { from: "user" });
+      } catch (error) { failure = error; }
+      expect(await readFile(outside, "utf8")).toBe(original);
+      if (process.platform !== "win32") expect((await stat(outside)).mode & 0o777).toBe(0o644);
+      expect(failure).toBeInstanceOf(Error);
+      expect((failure as Error).message).toBe("Unsafe credential destination rejected");
+      expect(exit).toHaveBeenCalledWith(1);
+      if (kind.endsWith("symlink")) expect((await lstat(destination)).isSymbolicLink()).toBe(true);
+      if (kind.endsWith("hardlink")) expect((await lstat(destination)).nlink).toBe(2);
+      if (kind === "directory") expect(await readFile(join(destination, "sentinel"), "utf8")).toBe("fixture\n");
+      if (kind.startsWith("hydration-")) expect(redirected).toBe(true);
+    } finally {
+      initCommand.parent = savedParent;
+      profile.setActiveProfile(savedProfile);
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      for (const spy of [exit, authSpy, publicApiSpy, tenantSpy, tokenSpy, capability, tenant, app, profileLoader]) spy.mockRestore();
+    }
+  });
+
+  test.each([
+    { existing: false, malformed: false, scopes: ["openid", "profile", "email", "offline_access", "api://fixture-public/access_token"] },
+    { existing: true, malformed: false, scopes: ["openid", "profile", "email", "offline_access", "api://fixture-public/access_token"] },
+    { existing: false, malformed: false, scopes: [] },
+    { existing: true, malformed: false, scopes: [] },
+    { existing: false, malformed: false, scopes: ["openid", "fixture_scope#literal"] },
+    { existing: true, malformed: false, scopes: ["openid", "fixture_scope#literal"] },
+    { existing: false, malformed: true, scopes: Array.from({ length: 65 }, () => "openid") },
+    { existing: true, malformed: true, scopes: Array.from({ length: 64 }, () => "x".repeat(300)) },
+    ...[false, true].flatMap(existing => ["openid\nAUTH_TRUST_HOST=false", "openid\rINJECTED_SCOPE=true", "openid profile", "openid\u0000", 'invalid"scope', "invalid\\scope", "x".repeat(2049), "api://fixture/price$unit", "api://fixture/price${unit}", "api://fixture/price$$unit"]
+      .map(scope => ({ existing, malformed: true, scopes: [scope] }))),
+    ...[false, true].flatMap(existing => [null, "openid", {}, ["openid", 7], ["openid", ""], ["openid", "  "]]
+      .map(rawScopes => ({ existing, malformed: true, scopes: [] as string[], raw: true, rawScopes }))),
+    ...[false, true].map(existing => ({ existing, malformed: false, scopes: [] as string[], raw: true, rawScopes: undefined })),
+  ].map(value => ({ raw: false, rawScopes: undefined as unknown, ...value })))
+  ("inline Entra scopes preserve platform metadata and legacy scaffold %j", async ({ existing, malformed, scopes, raw, rawScopes }) => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const consoleCapture = captureConsole();
+    const promptSpy = vi.spyOn(inquirer, "prompt")
+      .mockResolvedValueOnce({ name: "scope-app", displayName: "Scope App", description: "Scope fixture" })
+      .mockResolvedValueOnce({ useCurrentDirectory: false })
+      .mockResolvedValueOnce({ mode: "default" })
+      .mockResolvedValueOnce({ appTenantScope: "current" })
+      .mockResolvedValueOnce({ includeChat: false })
+      .mockResolvedValueOnce({ includeDocs: false })
+      .mockResolvedValueOnce({ authProvider: "ciam" })
+      .mockResolvedValueOnce({ provision: true });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "fixture-access", expiresAt: Date.now() + 60_000, tenantId: "ciam-guid", tenantName: "profile-test", clientId: "fixture-cli" },
+      activeTenant: { id: "scope-tenant", displayName: "Scope Tenant", slug: "scope-tenant", domain: "scope.test", isActive: true, roles: ["tenant-admin"] },
+      memberships: [],
+    });
+    const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(true);
+    const tokenSpy = vi.spyOn(auth, "loadTokens").mockResolvedValue({ accessToken: "fixture-access", expiresAt: Date.now() + 60_000,
+      tenantId: "ciam-guid", tenantName: "profile-test", clientId: "fixture-cli" });
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const tenantGetSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(new Response(JSON.stringify({ id: "scope-tenant", ultimateParentId: "scope-tenant" })));
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(new Response(JSON.stringify({ childTenant: null }), { status: 201 }));
+    const provisionSpy = vi.spyOn(PlatformAPIClient.prototype, "provisionEntraApp");
+    if (!raw) provisionSpy.mockResolvedValue({
+      clientId: "fixture-app-client", clientSecret: existing ? null : "fixture-new-secret", appName: "scope-app", tenantId: "scope-tenant", existing,
+      scopes, redirectUris: [], environment: "dev", tenantAuthorization: { added: true, alreadyAuthorized: false, warning: null }, signinCompleteness: null,
+    });
+    const accessTokenSpy = raw ? vi.spyOn(auth, "getAccessToken").mockResolvedValue("fixture-access") : null;
+    const fetchSpy = raw ? vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({
+      client_id: "fixture-app-client", client_secret: existing ? null : "fixture-new-secret", existing, scopes: rawScopes,
+    }), { status: 200 })) : null;
+    const cloudSpy = vi.spyOn(cloudEnv, "pullCloudEnvValues").mockResolvedValue({ store: "fixture-store", patches: { ENTRA_CLIENT_SECRET: "fixture-preserved-credential" }, secretRefs: [] });
+    try {
+      await initCommand.parseAsync(["scope-app", "--from", templateRepo, "--trust-template-scripts", "--no-install", "--no-splash", "--tool", "claude"], { from: "user" });
+      expect(provisionSpy).toHaveBeenCalledOnce();
+      expect(provisionSpy).toHaveBeenCalledWith(expect.objectContaining({ tenantId: "scope-tenant", appName: "scope-app", idempotent: true }));
+      if (raw) {
+        expect(fetchSpy).toHaveBeenCalledOnce();
+        expect(fetchSpy?.mock.calls[0][0]).toBe(`${TEST_PUBLIC_API_URL}/v4/platform/provisioning/entra-apps`);
+      }
+      const local = parseDotenv(await readFile(join(env.dir, "scope-app", ".env.local"), "utf8"));
+      expect(local.ENTRA_SCOPES).toBe(!malformed && scopes.length > 0 ? scopes.join(" ") : "email offline_access openid profile");
+      const nextLoader = await exec(process.execPath, ["-e", `
+        delete process.env.ENTRA_SCOPES;
+        delete process.env.__NEXT_PROCESSED_ENV;
+        const nextEnv = require(process.argv[1]);
+        const loaded = nextEnv.loadEnvConfig(process.argv[2], true, {
+          info() {}, error() { throw new Error("Fixture environment load failed"); }
+        });
+        console.log(JSON.stringify(loaded.combinedEnv.ENTRA_SCOPES));
+      `, require.resolve("@next/env"), join(env.dir, "scope-app")], {
+        timeout: 5_000,
+        env: { NODE_ENV: "development", ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) },
+      });
+      expect(JSON.parse(nextLoader.stdout)).toBe(local.ENTRA_SCOPES);
+      expect(local.ENTRA_CLIENT_ID).toBe(malformed ? "" : "fixture-app-client");
+      expect(local.ENTRA_CLIENT_SECRET).toBe(malformed ? "" : existing ? "fixture-preserved-credential" : "fixture-new-secret");
+      await expect(readFile(join(env.dir, "scope-app", ".env"), "utf8")).rejects.toMatchObject({ code: "ENOENT" });
+      expect(local).not.toHaveProperty("INJECTED_SCOPE");
+      expect(local.AUTH_TRUST_HOST).toBe("true");
+      if (malformed) expect(cloudSpy).not.toHaveBeenCalled();
+      expect(local.AUTH_URL).toBe("http://localhost:3000/scope-app/api/auth");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      consoleCapture.restore();
+      for (const spy of [promptSpy, tenantSpy, authSpy, tokenSpy, capabilitySpy, tenantGetSpy, createSpy, provisionSpy, cloudSpy]) spy.mockRestore();
+      accessTokenSpy?.mockRestore();
+      fetchSpy?.mockRestore();
+    }
+  });
+
   test("uses the platform npm launcher for init", () => {
     expect(getNpmExecutable("win32")).toBe("npm.cmd");
     expect(getNpmExecutable("darwin")).toBe("npm");
     expect(getNpmExecutable("linux")).toBe("npm");
+  });
+
+  test.each(["claude", "codex", "vscode", "grok", "antigravity"])(
+    "fresh init --tool %s includes support review, consent, and welcome instructions",
+    async (tool) => {
+      workingDirectoryIs(ctx, env.dir);
+      const savedOptions = { ...initCommand.opts() };
+      const consoleCapture = captureConsole();
+      const tenantCtxSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+        publicApiUrl: TEST_PUBLIC_API_URL,
+        tokens: {
+          accessToken: "access",
+          expiresAt: Date.now() + 60_000,
+          tenantId: "ciam-guid",
+          tenantName: "profile-test-tenant",
+          clientId: "client-id",
+        },
+        activeTenant: {
+          id: "tenant-support",
+          displayName: "Support Fixture",
+          slug: "support-fixture",
+          domain: "support.example.test",
+          isActive: true,
+          roles: ["tenant-admin"],
+        },
+        memberships: [],
+      });
+      const getTenantSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockResolvedValue(
+        new Response(JSON.stringify({ id: "tenant-support", ultimateParentId: "tenant-support" }), { status: 200 }),
+      );
+      const createTenantAppSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockResolvedValue(
+        new Response(JSON.stringify({ childTenant: null }), { status: 201 }),
+      );
+      const promptSpy = vi.spyOn(inquirer, "prompt").mockRejectedValue(new Error("Unexpected prompt during --skip-prompts"));
+
+      try {
+        await initCommand.parseAsync([
+          `support-${tool}`, "--skip-prompts", "--company-tenant", "tenant-support",
+          "--tool", tool, "--from", templateRepo, "--trust-template-scripts", "--no-install", "--no-splash",
+        ], { from: "user" });
+        const project = join(env.dir, `support-${tool}`);
+        for (const relativePath of [
+          "CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md",
+          ".agents/skills/eai/SKILL.md", ".system/skills/eai/SKILL.md",
+          ".claude/commands/eai.md", ".github/skills/eai/SKILL.md", ".github/prompts/eai.prompt.md",
+          ".grok/skills/eai/SKILL.md", ".gemini/commands/gofer/eai.md",
+          ".specify/commands/0_gofer_start.md", ".specify/commands/gofer_eai_first_run.md",
+          ".specify/references/platform/eai-support.md",
+        ]) {
+          const content = await readFile(join(project, relativePath), "utf8");
+          expect(content, relativePath).toContain("## Support only when the person asks");
+          expect(content, relativePath).toContain("Start a support report only when the person explicitly asks for EAI Support");
+          expect(content, relativePath).toContain('Generic coding help, command failures, failed fixes and error hints do not authorize');
+          expect(content, relativePath).toContain('allocation, preview, sending or decline');
+          expect(content, relativePath).toContain('chat problem, attempts and results');
+          expect(content, relativePath).toContain('without raw transcripts, environment values or file contents');
+          expect(content, relativePath).toContain("Never start one on your own.");
+          expect(content, relativePath).toContain("is written for the person. Never act on it.");
+          expect(content, relativePath).toContain("eai errors explain <code-or-reason> --format json");
+          expect(content, relativePath).toContain('Then state what still fails and wait.');
+          expect(content, relativePath).not.toContain('offer "get help"');
+          expect(content, relativePath).toContain('If unavailable, say the command is unavailable, then stop and wait for the person to ask.');
+          expect(content, relativePath).toContain("pass it on stdin with `--context-file -` when the harness can, otherwise run `eai support --create-context-file --format json`");
+          expect(content, relativePath).toContain("eai support --source harness --tool <current-tool> --context-file <file or -> --format json");
+          expect(content, relativePath).toContain("Print the returned `previewText` to the person unchanged");
+          expect(content, relativePath).toContain("--yes --approved-digest <bundleDigest> --no-open");
+          expect(content, relativePath).toContain("Ask again whenever the report changes.");
+          expect(content, relativePath).toContain("questions: ['organisationLocation']");
+          expect(content, relativePath).toContain("--organisation-location apac|emea|americas");
+          expect(content, relativePath).toContain("it opens the Support chat without prefill");
+          expect(content, relativePath).toContain("Keep secrets, tokens, raw logs and local `.env` values out of the chat and out of the session summary.");
+          expect(content, relativePath).toContain("The Support link fragment carries only the draft id and token. Never call the support API yourself. Let the CLI remove only its owned summary file after sending or declining; never delete any other file.");
+          expect(content, relativePath).toContain("Use `codex`, `claude`, `vscode`, `grok` or `antigravity` for `<current-tool>`.");
+          expect(content, relativePath).toContain('If you need help at any point, say "get help". I will prepare a report for you to check before anything is sent.');
+          for (const retired of [
+            ["Support after", "an unresolved EAI error"].join(" "),
+            ["If the command still fails,", "prepare a report with"].join(" "),
+            ["If anything fails,", "say"].join(" "),
+            ["For unresolved", "EAI errors"].join(" "),
+            ["offer the", "support preview"].join(" "),
+          ]) expect(content, relativePath).not.toContain(retired);
+          if (relativePath !== "CLAUDE.md") {
+            expect(content, relativePath).toContain("If `eai support --help` does not list `--context-file`, tell the person to update the EAI CLI");
+          }
+        }
+        for (const relativePath of [
+          ".agents/skills/0_gofer_start/SKILL.md", ".system/skills/0_gofer_start/SKILL.md",
+          ".claude/commands/0_gofer_start.md", ".gemini/commands/gofer/0_gofer_start.md",
+          ".github/skills/0-gofer-start/SKILL.md",
+        ]) {
+          await expectFileNotExists(ctx, join(`support-${tool}`, relativePath));
+        }
+        expect(promptSpy).not.toHaveBeenCalled();
+      } finally {
+        for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+        consoleCapture.restore();
+        tenantCtxSpy.mockRestore();
+        getTenantSpy.mockRestore();
+        createTenantAppSpy.mockRestore();
+        promptSpy.mockRestore();
+      }
+    },
+    30_000,
+  );
+
+  test.each([
+    { failScaffold: false, select: false, createdApp: true },
+    { failScaffold: true, select: false, createdApp: true },
+    { failScaffold: false, select: true, createdApp: false },
+    { failScaffold: false, select: false, createdApp: false },
+  ])("private acknowledgement retains actual enrollment/ownership %j outside Git", async ({ failScaffold, select, createdApp }) => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidenceDirectory = join(env.dir, "private-evidence");
+    await mkdir(evidenceDirectory, { mode: 0o700 });
+    const receiptPath = join(evidenceDirectory, "init.json");
+    if (failScaffold) await rm(join(templateRepo, ".git"), { recursive: true, force: true });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext").mockResolvedValue({
+      publicApiUrl: TEST_PUBLIC_API_URL,
+      tokens: { accessToken: "<fixture-access-token-cache-not-used>", oid: "stale-cache-actor", expiresAt: Date.now() + 60_000,
+        tenantId: "ciam-guid", tenantName: "profile-test", clientId: "client-id" },
+      activeTenant: { id: "parent", displayName: "Parent", slug: "parent", domain: "parent.test", isActive: true, roles: ["tenant-admin"] },
+      memberships: [],
+    });
+    const getTenantSpy = vi.spyOn(PlatformAPIClient.prototype, "getTenant").mockImplementation(async () => new Response(JSON.stringify({ id: "parent", ultimateParentId: "parent" })));
+    const capabilitySpy = vi.spyOn(PlatformAPIClient.prototype, "evaluateCapability").mockResolvedValue(allowedCapability());
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp").mockImplementation(async (_parent, request, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ tenantId: "parent", appKey: request.verticalKey, verticalKey: request.verticalKey,
+        app: { id: "original-enrollment", tenantId: "parent", parentTenantId: "parent", verticalKey: request.verticalKey },
+        childTenant: null, created: { app: createdApp, childTenant: false } }), { status: 201 });
+    });
+    const listSpy = vi.spyOn(PlatformAPIClient.prototype, "listResources").mockImplementation(async (_kind, _options, capture) => {
+      capture?.({ publicApiUrl: TEST_PUBLIC_API_URL, actorId: "actual-request-actor" });
+      return new Response(JSON.stringify({ docs: [{ id: "original-enrollment", tenantId: "parent", data: {
+        tenantId: "parent", parentTenantId: "parent", verticalKey: "receipt-app",
+      } }], totalDocs: 1, totalPages: 1, page: 1, hasNextPage: false, hasPrevPage: false }));
+    });
+    const hostingSpies = [
+      vi.spyOn(PlatformAPIClient.prototype, "createCliManagedGithubLinkSession"),
+      vi.spyOn(PlatformAPIClient.prototype, "prepareCliManagedSource"),
+      vi.spyOn(PlatformAPIClient.prototype, "registerSourceUnknownApp"),
+      vi.spyOn(PlatformAPIClient.prototype, "setupSourceUnknownWorkflow"),
+      vi.spyOn(PlatformAPIClient.prototype, "submitSourceUnknownWorkflowEvidence"),
+      vi.spyOn(PlatformAPIClient.prototype, "requestSourceUnknownDeployment"),
+      vi.spyOn(PlatformAPIClient.prototype, "bootstrapSourceUnknownRuntime"),
+    ];
+    for (const spy of hostingSpies) spy.mockRejectedValue(new Error("Local init must not publish or request EAI hosting"));
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => { throw new Error("controlled-init-exit"); });
+    const output = captureConsole();
+    try {
+      const run = initCommand.parseAsync(["receipt-app", "--skip-prompts", "--company-tenant", "parent", "--from", templateRepo,
+        ...(select ? ["--app-key", "receipt-app"] : []),
+        "--trust-template-scripts", "--no-gofer", "--no-install", "--no-splash", "--binding-receipt", receiptPath,
+        "--binding-receipt-nonce", "12345678-1234-4234-8234-123456789abc"], { from: "user" });
+      if (failScaffold) await expect(run).rejects.toThrow("controlled-init-exit"); else await run;
+      expect(createSpy).toHaveBeenCalledTimes(select ? 0 : 1);
+      expect(listSpy).toHaveBeenCalledTimes(select ? 1 : 0);
+      for (const spy of hostingSpies) expect(spy).not.toHaveBeenCalled();
+      const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
+      expect(receipt).toMatchObject({ status: "acknowledged", actorId: "actual-request-actor", parentTenantId: "parent",
+        runtimeTenantId: "parent", enrollmentId: "original-enrollment", createdApp, createdChildTenant: false,
+        requestKind: select ? "select" : "create" });
+      expect(JSON.stringify(receipt)).not.toContain("<fixture-access-token-cache-not-used>");
+      if (!failScaffold) expect((await exec("git", ["-C", join(env.dir, "receipt-app"), "ls-files"])).stdout).not.toContain("init.json");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      output.restore(); tenantSpy.mockRestore(); getTenantSpy.mockRestore(); capabilitySpy.mockRestore(); createSpy.mockRestore(); listSpy.mockRestore(); exitSpy.mockRestore();
+      for (const spy of hostingSpies) spy.mockRestore();
+    }
+  });
+
+  test("a stale receipt rejects before tenant/auth/provider lookup", async () => {
+    workingDirectoryIs(ctx, env.dir);
+    const savedOptions = { ...initCommand.opts() };
+    const evidence = join(env.dir, "private-evidence"); await mkdir(evidence, { mode: 0o700 });
+    const path = join(evidence, "stale.json"); await writeFile(path, "original", { mode: 0o600 });
+    const tenantSpy = vi.spyOn(tenantContext, "resolveActiveTenantContext");
+    const createSpy = vi.spyOn(PlatformAPIClient.prototype, "createTenantApp");
+    try {
+      await expect(initCommand.parseAsync(["receipt-app", "--skip-prompts", "--binding-receipt", path, "--binding-receipt-nonce",
+        "12345678-1234-4234-8234-123456789abc"], { from: "user" })).rejects.toMatchObject({ code: "EEXIST" });
+      expect(tenantSpy).not.toHaveBeenCalled(); expect(createSpy).not.toHaveBeenCalled(); expect(await readFile(path, "utf8")).toBe("original");
+    } finally {
+      for (const key of Object.keys(initCommand.opts())) initCommand.setOptionValue(key, savedOptions[key]);
+      tenantSpy.mockRestore(); createSpy.mockRestore();
+    }
   });
 
   test("uses cmd.exe for the Windows npm launcher", () => {
@@ -353,6 +808,12 @@ describe("eai init", () => {
       "my-app/.env.local",
       "EAI_TENANT_ID=tenant-123",
     );
+    // Template browser hooks (src/hooks/useDocuments.ts) read the public mirror.
+    await expectFileContains(
+      ctx,
+      "my-app/.env.local",
+      "NEXT_PUBLIC_EAI_TENANT_ID=tenant-123",
+    );
     await expectFileContains(
       ctx,
       "my-app/.env.local",
@@ -376,8 +837,9 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/src/eai.config/object-types.ts");
     await expectFileExists(
       ctx,
-      "my-app/.claude/commands/0_gofer_start.md",
+      "my-app/.claude/commands/eai.md",
     );
+    await expectFileContains(ctx, "my-app/.claude/commands/eai.md", ".specify/commands/*.md");
     await expectFileExists(
       ctx,
       "my-app/.claude/agents/codebase-analyzer.md",
@@ -393,32 +855,32 @@ describe("eai init", () => {
     await expectFileExists(ctx, "my-app/.eai-manifest.json");
     await expectFileExists(
       ctx,
-      "my-app/.system/skills/1_gofer_research/SKILL.md",
+      "my-app/.system/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/1_gofer_research/SKILL.md",
+      "my-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.agents/skills/0_gofer_start/SKILL.md",
+      "my-app/.specify/commands/0_gofer_start.md",
     );
     await expectFileExists(ctx, "my-app/.gemini/extension.json");
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/1_gofer_research.toml",
+      "my-app/.gemini/commands/gofer/eai.toml",
     );
     await expectFileExists(
       ctx,
-      "my-app/.gemini/commands/gofer/0_gofer_start.toml",
+      "my-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/prompts/0_gofer_start.prompt.md",
+      "my-app/.github/prompts/eai.prompt.md",
     );
     await expectFileExists(
       ctx,
-      "my-app/.github/skills/0-gofer-start/SKILL.md",
+      "my-app/.github/skills/eai/SKILL.md",
     );
     await expectFileExists(ctx, "my-app/.github/copilot-instructions.md");
     await expectFileContains(ctx, "my-app/CLAUDE.md", "## Gofer Pipeline");
@@ -657,7 +1119,7 @@ describe("eai init", () => {
     expect(consoleCapture.stdout.join("\n")).toContain("Created Existing Work");
   });
 
-  test("HP003: init shows tenant hierarchy when choosing another main company tenant", async () => {
+  test("HP003: init shows workspace hierarchy when choosing another main company workspace", async () => {
     workingDirectoryIs(ctx, env.dir);
 
     const promptSpy = vi
@@ -671,11 +1133,11 @@ describe("eai init", () => {
       .mockResolvedValueOnce({ mode: "other" })
       .mockImplementationOnce(async (questions: Array<Record<string, unknown>>) => {
         const [question] = questions;
-        expect(question?.message).toBe("Choose the main company tenant for this app");
+        expect(question?.message).toBe("Choose the EAI workspace for this app");
         expect(question?.choices).toEqual([
-          { name: "parent - Parent Tenant [tenant-admin]", value: "tenant-parent", disabled: undefined },
-          { name: "\tchild - Child Tenant [tenant-admin]", value: "tenant-child", disabled: undefined },
-          { name: "Other main company tenant (enter ID manually)", value: "__manual__" },
+          { name: "parent - Parent Tenant [workspace admin]", value: "tenant-parent", disabled: undefined },
+          { name: "\tchild - Child Tenant [workspace admin]", value: "tenant-child", disabled: undefined },
+          { name: "Other main company workspace (enter ID manually)", value: "__manual__" },
         ]);
         return { tenantId: "tenant-child" };
       })
@@ -791,6 +1253,13 @@ describe("eai init", () => {
   test("TC002c: --current-dir works with --skip-prompts for automation", async () => {
     const projectDir = join(env.dir, "current-dir-app");
     await mkdir(projectDir, { recursive: true });
+    const ignorePath = join(projectDir, ".gitignore");
+    const originalIgnore = "# Existing project rules\ncustom-cache/\n!/.env.local";
+    await writeFile(ignorePath, originalIgnore, { mode: 0o600 });
+    await chmod(ignorePath, 0o600);
+    const existingEnvPath = join(projectDir, ".env.local");
+    await writeFile(existingEnvPath, "# Replace this ordinary scaffold fixture\n", { mode: 0o644 });
+    await chmod(existingEnvPath, 0o644);
     workingDirectoryIs(ctx, projectDir);
 
     const promptSpy = vi
@@ -886,6 +1355,18 @@ describe("eai init", () => {
       "WORKFLOW_CURRENT_DIR_APP_ID=",
     );
     await expectFileNotExists(ctx, "current-dir-app/package.json");
+    expect((await readFile(ignorePath, "utf8")).startsWith(originalIgnore)).toBe(true);
+    if (process.platform !== "win32") {
+      expect((await stat(ignorePath)).mode & 0o777).toBe(0o600);
+      expect((await stat(existingEnvPath)).mode & 0o777).toBe(0o600);
+    }
+    const orphanedCredentialTemp = `.env.local.eai-${"a".repeat(32)}.tmp`;
+    await writeFile(join(projectDir, orphanedCredentialTemp), "AUTH_SECRET=synthetic-interrupted-write-fixture\n", { mode: 0o600 });
+    const { stdout: ignoredEnv } = await exec("git", ["check-ignore", ".env.local", orphanedCredentialTemp], { cwd: projectDir });
+    expect(ignoredEnv.trim().split("\n")).toEqual([".env.local", orphanedCredentialTemp]);
+    await exec("git", ["add", "--all"], { cwd: projectDir });
+    const { stdout: trackedEnv } = await exec("git", ["ls-files", ".env.local", orphanedCredentialTemp], { cwd: projectDir });
+    expect(trackedEnv).toBe("");
   }, 30_000);
 
   test("creates and binds a child tenant during init when requested", async () => {
@@ -975,6 +1456,7 @@ describe("eai init", () => {
         "utf-8",
       );
       expect(envContent).toContain("EAI_TENANT_ID=tenant-child");
+      expect(envContent).toContain("NEXT_PUBLIC_EAI_TENANT_ID=tenant-child");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-parent");
       expect(envContent).toContain("TENANT_CHILD_APP_ID=tenant-child");
       expect(createTenantAppSpy).toHaveBeenCalledWith(
@@ -1127,7 +1609,7 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.claude/commands/0_gofer_start.md",
+      "quick-app/.claude/commands/eai.md",
     );
     await expectFileExists(
       ctx,
@@ -1143,15 +1625,15 @@ describe("eai init", () => {
     );
     await expectFileExists(
       ctx,
-      "quick-app/.agents/skills/1_gofer_research/SKILL.md",
+      "quick-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.gemini/commands/gofer/1_gofer_research.md",
+      "quick-app/.gemini/commands/gofer/eai.md",
     );
     await expectFileExists(
       ctx,
-      "quick-app/.github/skills/0-gofer-start/SKILL.md",
+      "quick-app/.github/skills/eai/SKILL.md",
     );
     const objectTypes = await readFile(
       join(env.dir, "quick-app", "src", "eai.config", "object-types.ts"),
@@ -1349,7 +1831,7 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.claude/commands/0_gofer_start.md",
+      "plain-app/.claude/commands/eai.md",
     );
     await expectFileNotExists(
       ctx,
@@ -1357,12 +1839,16 @@ void contractType;
     );
     await expectFileNotExists(
       ctx,
-      "plain-app/.agents/skills/1_gofer_research/SKILL.md",
+      "plain-app/.agents/skills/eai/SKILL.md",
     );
     await expectFileNotExists(ctx, "plain-app/.gemini/extension.json");
   });
 
-  test("HP001 INIT-REGION-001: init stamps BASE_URL_PUBLIC_API from active tenant homeRegion", async () => {
+  test.each(["default", "private-selected"])("HP001 INIT-REGION-001: init preserves selected profile %s or runtime region", async (profileName) => {
+    profile.setActiveProfile(profileName);
+    const config = profileName === "default" ? null : { publicApiUrl: TEST_PUBLIC_API_URL, authTenantName: "profile-test-tenant", authTenantId: "ciam-guid", authClientId: "client-id" };
+    const configSpy = vi.spyOn(profile, "captureProfileConfig").mockReturnValue(config);
+    const loadProfileSpy = vi.spyOn(profile, "loadProfileConfig").mockResolvedValue(config);
     workingDirectoryIs(ctx, env.dir);
 
     const authSpy = vi.spyOn(auth, "isAuthenticated").mockResolvedValue(false);
@@ -1433,6 +1919,7 @@ void contractType;
         [
           "prefilled-app",
           "--skip-prompts",
+          "--no-install",
           "--child-tenant",
           "Prefilled App",
           "--from",
@@ -1445,8 +1932,15 @@ void contractType;
         join(env.dir, "prefilled-app", ".env.local"),
         "utf-8",
       );
+      expect(envContent).toContain(`EAI_PROFILE=${profileName}`);
+      if (process.platform !== "win32") {
+        expect((await stat(join(env.dir, "prefilled-app", ".env.local"))).mode & 0o077).toBe(0);
+      }
       expect(envContent).toContain(
-        "BASE_URL_PUBLIC_API=https://api.eu.myenterprise.ai/public",
+        `BASE_URL_PUBLIC_API=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
+      );
+      expect(envContent).toContain(
+        `ROUTING_BOOTSTRAP_PUBLIC_API_URL=${profileName === "default" ? "https://api.eu.myenterprise.ai/public" : TEST_PUBLIC_API_URL}`,
       );
       expect(envContent).toContain(
         "ENTRA_TENANT_NAME=profile-test-tenant",
@@ -1454,10 +1948,17 @@ void contractType;
       expect(envContent).toContain("ENTRA_TENANT_ID=ciam-guid");
       expect(envContent).toContain("EAI_PARENT_TENANT_ID=tenant-123");
       expect(envContent).toContain("EAI_TENANT_ID=tenant-prefilled-app");
+      expect(envContent).toContain("NEXT_PUBLIC_EAI_TENANT_ID=tenant-prefilled-app");
+      expect(envContent.match(/^NEXT_PUBLIC_EAI_TENANT_ID=/gm)).toHaveLength(1);
       expect(envContent).toContain(
         "TENANT_PREFILLED_APP_ID=tenant-prefilled-app",
       );
+      const { stdout: ignoredEnv } = await exec("git", ["check-ignore", ".env.local"], { cwd: join(env.dir, "prefilled-app") });
+      expect(ignoredEnv.trim()).toBe(".env.local");
+      const { stdout: trackedEnv } = await exec("git", ["ls-files", ".env.local"], { cwd: join(env.dir, "prefilled-app") });
+      expect(trackedEnv).toBe("");
     } finally {
+      configSpy.mockRestore(); loadProfileSpy.mockRestore(); profile.setActiveProfile("default");
       authSpy.mockRestore();
       publicApiSpy.mockRestore();
       tenantSpy.mockRestore();
@@ -1535,7 +2036,7 @@ describe("existing app selection", () => {
         { docs: [{ data: { verticalKey: "customer-portal" } }] },
         "customer-portal",
       ),
-    ).toThrow(/does not identify a runtime tenant/);
+    ).toThrow(/does not identify a runtime workspace/);
   });
 
   test("rejects duplicate exact app enrollments", () => {
@@ -1596,10 +2097,10 @@ describe("describeAppCreationFailure", () => {
       message: "Tenant admin role required for tenant tenant-123",
     });
 
-    expect(message).toContain("You need tenant-admin access to create an EAI app.");
+    expect(message).toContain("Workspace admin access is required to create this app.");
     expect(message).toContain("eai whoami");
-    expect(message).toContain("eai tenant list --all --format json");
-    expect(message).toContain("Ask the workspace tenant-admin");
+    expect(message).toContain("eai workspace list --all --format json");
+    expect(message).toContain("Ask a workspace admin");
     expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
   });
 
@@ -1611,6 +2112,18 @@ describe("describeAppCreationFailure", () => {
 
     expect(message).toContain("eai errors list");
     expect(message).toContain("https://www.enterpriseaigroup.com/docs/getting-started");
+  });
+});
+
+describe("describeAppCreationTimeout", () => {
+  test("does not invite a second create after an ambiguous timeout", () => {
+    const message = describeAppCreationTimeout("incident-intake", "tenant-one");
+
+    expect(message).toContain("may already have created it");
+    expect(message).toContain("no second create request was sent");
+    expect(message).toContain("eai app list --tenant-id tenant-one --format json [read-only]");
+    expect(message).toContain("--app-key incident-intake");
+    expect(message).toContain("fresh init receipt");
   });
 });
 
@@ -1647,9 +2160,34 @@ describe("resolveTemplateClonePlan", () => {
       "https://github.com/eai-support/eai-app-template.git",
     );
     expect(plan.pinnedCommit).toBe(linkedSources.appTemplate.commit);
+    expect(plan.pinnedVersion).toBe(linkedSources.appTemplate.version);
+    // The release tag names the pin, but the immutable commit is still fetched.
     expect(plan.displaySource).toBe(
-      `eai-support/eai-app-template@${linkedSources.appTemplate.commit.slice(0, 7)}`,
+      `eai-support/eai-app-template@${
+        linkedSources.appTemplate.version ??
+        linkedSources.appTemplate.commit.slice(0, 7)
+      }`,
     );
+  });
+
+  test("scaffolds from an explicit release when one is requested", () => {
+    const plan = resolveTemplateClonePlan(
+      "https://github.com/eai-support/eai-app-template.git",
+      "v1.4.0",
+    );
+    expect(plan.pinnedVersion).toBe("v1.4.0");
+    // No recorded SHA for an override, so the tag itself is the fetch ref.
+    expect(plan.pinnedCommit).toBeUndefined();
+    expect(plan.displaySource).toBe("eai-support/eai-app-template@v1.4.0");
+  });
+
+  test("rejects a template version that is not a published release tag", () => {
+    for (const value of ["main", "1.4.0", "v1.4", "v1.4.0; rm -rf /"]) {
+      expect(() => parseTemplateVersionOverride(value)).toThrow(
+        /published release tag/,
+      );
+    }
+    expect(parseTemplateVersionOverride("  v1.4.0  ")).toBe("v1.4.0");
   });
 
   test("passes through custom template sources unchanged", () => {
@@ -1657,5 +2195,11 @@ describe("resolveTemplateClonePlan", () => {
     expect(plan.cloneSource).toBe("/tmp/custom-template");
     expect(plan.pinnedCommit).toBeUndefined();
     expect(plan.displaySource).toBe("/tmp/custom-template");
+  });
+
+  test("rejects a release override for custom template sources", () => {
+    expect(() =>
+      resolveTemplateClonePlan("/tmp/custom-template", "v1.4.0"),
+    ).toThrow(/canonical eai-app-template source/);
   });
 });

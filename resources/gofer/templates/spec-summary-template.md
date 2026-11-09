@@ -98,7 +98,7 @@ information each needs before the feature can move forward.
 | Business owner          | User journey, adoption, success metrics          | Problem brief, journey, value targets        |
 | Internal delivery       | Delivery plan, dependencies, red/green readiness | Tasks, validation plan, audit history        |
 | Enterprise architecture | Platform fit, reuse, contract boundaries         | Context bundle, contract pack, reuse scan    |
-| CISO                    | Identity, tenant boundary, residual risk         | Controls, validation report, exceptions      |
+| CISO                    | Identity, workspace boundary, residual risk      | Controls, validation report, exceptions      |
 | Data architecture       | Object model, lineage, quality controls          | Data model, lineage, quality tests           |
 | CIO                     | Platform strategy and operating model            | Roadmap fit, run model, support ownership    |
 | CFO                     | Investment case and benefit tracking             | Cost estimate, benefit baseline, value owner |

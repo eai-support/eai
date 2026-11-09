@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Version: 3.15.11
+Package source version: 3.20.10
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -13,6 +13,144 @@ npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.gi
 Persistent static fallback setup:
 npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
+
+eai kb upload --help
+====================
+
+Usage: eai kb upload [options] <file>
+
+Upload one shared-kb-article file, verify it is stored, then request KB indexing
+once
+
+Options:
+  --tenant-id <id>        Exact workspace ID; PublicAPI enforces access
+  --title <title>         Knowledge document title (defaults to the filename)
+  --document-type <type>  Knowledge document category (default: "Other")
+  --content-type <mime>   Override the MIME type inferred from the filename
+  --tag <tag>             Knowledge search tag (repeatable) (default: [])
+  --visible-to-children   Allow descendant workspaces to retrieve this document
+                          (default: false)
+  --format <format>       Output format (text|json) (default: "text")
+  -h, --help              display help for command
+
+Supported KB files: PDF, DOCX, XLSX, PPTX, plain text, Markdown (.md/.markdown), HTML, PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC.
+Markdown uses nonempty UTF-8 text and canonical text/markdown without changing the file.
+CSV, unknown media types and invalid Markdown text are rejected before record creation.
+This uses the existing KB APIs, separate from docs upload/classification.
+A pending index is not complete. Do not repeat this command after a timeout.
+No failed or uncertain write is retried or deleted automatically.
+
+---
+
+eai content-understanding --help
+================================
+
+Usage: eai content-understanding [options] [command]
+
+Validate, plan and materialize bounded document analyzers through the selected
+workspace PublicAPI
+
+Options:
+  -h, --help              display help for command
+
+Commands:
+  schema [options]        Print the local manifest JSON schema and semantic
+                          bounds
+  validate [options]      Validate the complete manifest locally with no
+                          authentication or network access
+  capabilities [options]  Read actual selected-workspace typed mode,
+                          prerequisites and readiness
+  plan [options]          Read prerequisites and return a scope-bound
+                          configuration plan; writes nothing
+  apply [options]         Apply or explicitly resume the unchanged saved plan
+                          after current capability checks
+  status [options]        Read or wait for an existing operation; dispatches no
+                          provider mutation
+  help [command]          display help for command
+
+Harness workflow:
+  eai content-understanding schema --format json
+  eai content-understanding validate --file cu.json --format json
+  eai content-understanding capabilities --tenant-id <workspace-id> --format json
+  eai content-understanding plan --file cu.json --tenant-id <workspace-id> --format json > cu-plan.json
+  eai content-understanding apply --file cu.json --plan cu-plan.json --tenant-id <workspace-id> --format json
+  eai content-understanding status --operation-id <operation-id> --tenant-id <workspace-id> --format json
+
+Your harness authors the manifest. The platform owns Azure credentials, approved models,
+provider ownership and readiness. Typed mode must be enabled and qualified on that workspace.
+Only document fields and flat classification are available. Graphs and segmentation are refused.
+Formula, figure and output-format settings require features.advancedDocumentConfig exactly true.
+Before planning, prepare the existing app/workflow binding and matching tenant-owned
+classifier draft with the existing setup and eai classifier save commands.
+Keep the original manifest and plan for deliberate recovery after an unknown acknowledgement.
+Status only reads existing operations; acceptance and pending work are not completion.
+Succeeded historical work requires currentReady exactly true before document processing.
+
+---
+
+eai docs configure-type --help
+==============================
+
+Usage: eai docs configure-type [options]
+
+Configure bounded tenant-owned document fields for an existing classifier
+workflow
+
+Options:
+  --file <path>      Document type configuration JSON
+  --tenant-id <id>   Exact owning workspace UUID, matching the file
+  --format <format>  Output format (choices: "text", "json", default: "text")
+  -h, --help         display help for command
+
+Use a JSON file with kind "eai.document-type.configuration", schemaVersion 1, tenantId, code, name, description,
+and 1–32 fields with name, description, scalar type and extract/generate method.
+Codes use letters, numbers and underscores only; punctuation could collide in provider IDs.
+Use a lowercase canonical workspace UUID in the file and --tenant-id.
+Example:
+  {"kind":"eai.document-type.configuration","schemaVersion":1,"tenantId":"<workspace-id>",
+   "code":"Quotation","name":"Quotation","description":"Supplier quotation",
+   "fields":[{"name":"supplierName","description":"Supplier organisation", "type":"string","method":"extract"},
+             {"name":"summary","description":"One-sentence summary", "type":"string","method":"generate"}]}
+Run inside an initialized EAI project with an explicit --profile for the intended environment.
+The command verifies the tenant-owned analyzer before syncing runtime rules.
+It does not publish a classifier, bind an app/workflow, enable typed CU v2, or upload a document.
+On partial failure, retain the same file and retry only after inspecting the reported phase.
+
+---
+
+eai docs job --help
+===================
+
+Usage: eai docs job [options] <jobId>
+
+Read an accepted document job; optionally wait without repeating upload
+
+Options:
+  --tenant-id <id>     Exact owning workspace
+  --wait               Poll this exact job only (default: false)
+  --timeout <seconds>  Wait deadline, 1 to 1800 seconds (default: "300")
+  --format <format>    Output format (choices: "text", "json", default: "text")
+  -h, --help           display help for command
+
+---
+
+eai docs get --help
+===================
+
+Usage: eai docs get [options] <documentId>
+
+Read the persisted document and analysis result through PublicAPI
+
+Options:
+  --tenant-id <id>           Exact owning workspace
+  --job-id <id>              Original accepted job ID for the document
+  --storage-target <target>  Document storage target (choices: "resourceapi",
+                             default: "resourceapi")
+  --format <format>          Output format (choices: "text", "json", default:
+                             "text")
+  -h, --help                 display help for command
+
+---
 
 eai --help
 ==========
@@ -36,14 +174,16 @@ Commands:
   create [options] [name]      Guide a new builder through EAI setup and create
                                an application
   dev [options]                Start local development server
-  login [options]              Authenticate with Entra CIAM
+  login [options]              Authenticate with Entra CIAM using your
+                               configured sign-in directory
   logout                       Clear stored authentication tokens
   env                          Manage environment variables
   types                        Manage Object Type definitions
-  tenant                       Manage tenants on the platform
+  workspace|tenant             Manage EAI workspaces (the tenant command remains
+                               available for compatibility)
   user                         Manage users on the platform
   resources                    CRUD operations on platform resources
-  app|vertical                 Manage apps under the active company tenant
+  app|vertical                 Manage apps under the active company workspace
   chat                         Chat with AI workflows
   workflow                     Provision app workflow configs and inspect AI
                                runtime workflow bindings
@@ -53,7 +193,7 @@ Commands:
                                contract
   verify [options]             Run platform connectivity checks
   doctor [options]             Diagnose common issues and suggest fixes
-  whoami                       Show auth status and tenant info
+  whoami                       Show auth status and workspace info
   update [options]             Check for and install CLI updates
   provision                    Provision platform resources for this app
   gofer                        Inspect and refresh Gofer-managed project assets
@@ -61,13 +201,20 @@ Commands:
                                drift for the current project
   blocks                       Discover AI-readable EAI UI block manifests
   publicapi                    Call authorized PublicAPI V4 routes directly
+  kb                           Upload tenant Knowledge Base files and index
+                               their content
   errors                       Explain EAI CLI errors and agent-safe recovery
                                steps
+  support [options]            Review a redacted error report and hand it to the
+                               Support page with consent
   agent                        Show AI-agent discovery and recovery guidance
   start [options] [directory]  Detect or start a supported AI workspace for an
                                EAI project
   classifier                   Create, inspect, publish, target, disable,
-                               enable, and delete tenant document classifiers
+                               enable, and delete workspace document classifiers
+  content-understanding        Validate, plan and materialize bounded document
+                               analyzers through the selected workspace
+                               PublicAPI
   help [command]               display help for command
 
 Getting Started:
@@ -84,7 +231,7 @@ Development Workflows:
   # Define your types, validate them, then publish them
   eai types validate && eai types seed
 
-  # See what is published for the active tenant
+  # See what is published for the active workspace
   eai resources schema
   eai app create "My App" --template eai-app-template
 
@@ -97,7 +244,7 @@ Development Workflows:
   eai workflow status strategy-monitor
   eai workflow request strategy-monitor --reason "CEO strategy cockpit"
 
-  # Check login, tenant, and API connectivity
+  # Check login, workspace, and API connectivity
   eai verify && eai doctor
 
 Deployment:
@@ -115,7 +262,7 @@ Deployment:
 Machine-Readable Output:
   # Get structured JSON output for automation
   eai resources list User --format json
-  eai tenant list --format json | jq
+  eai workspace list --format json | jq
   eai verify calls --format json
   eai errors explain E101 --format json
 
@@ -164,6 +311,54 @@ Accessibility:
 
 ---
 
+eai init --help
+===============
+
+Usage: eai init [options] [name]
+
+Scaffold a new application
+
+Arguments:
+  name                                        Name for the app (kebab-case)
+
+Options:
+  --from <repo>                               GitHub repo URL or local path for template (default: "https://github.com/eai-support/eai-app-template.git")
+  --trust-template-scripts                    Allow a custom template to run its Object Type generator (default: false)
+  --skip-prompts                              Use defaults without interactive prompts (default: false)
+  --current-dir                               Scaffold into the current directory instead of creating ./<name> (default: false)
+  --tenant <id>                               Main company workspace ID (compatibility alias for --company-workspace)
+  --company-workspace, --company-tenant <id>  Main company workspace ID that owns this app
+  --parent-tenant <id>                        Immediate parent company workspace ID for the new child company
+  --child-tenant <name>                       Create or reuse a child company workspace display name for the app runtime boundary
+  --create-child-tenant                       Prompt for a child company workspace instead of using the selected company workspace
+  --no-gofer                                  Skip installing Gofer AI CLI assets
+  --no-install                                Skip installing the generated app dependencies
+  --package-profile <profile>                 Package profile to record for block catalog discovery: external, internal, or hybrid (default: "external")
+  --display-name <name>                       Display name for the app
+  --description <description>                 One-sentence description for the app
+  --binding-receipt <path>                    Write private init acknowledgement outside the project (explicit noninteractive use)
+  --binding-receipt-nonce <uuid>              Fresh UUID binding this invocation to its private receipt
+  --app-key <key>                             Bind the local project to an existing app instead of creating a new app
+  --template-version <tag>                    Scaffold from a specific published app-template release (for example v1.2.0)
+  --tool <tool>                               AI tool to prepare for: codex, claude, vscode, grok, or antigravity
+  --no-splash                                 Skip the interactive EAI wordmark
+  -h, --help                                  display help for command
+
+Gofer AI CLI assets are installed by default:
+  .specify/ commands, scripts, templates, hooks, and memory folders
+  .claude/ commands and agents for Claude CLI
+  AGENTS.md and .agents/skills for Google Antigravity and Codex CLI
+  .system/skills as a legacy Codex mirror
+  .github/prompts, .github/instructions, and .github/skills for GitHub Copilot
+
+The default public template is pinned to a published eai-app-template release.
+Use --template-version to select a different release, or --from to use another
+repo or local path.
+
+Use --no-gofer only when you need a bare app scaffold.
+
+---
+
 eai update --help
 =================
 
@@ -187,10 +382,12 @@ Notes:
   - Canonical package install: npm install -g @enterpriseai/cli
   - Static registry fallback: npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/
   - `eai update --check` previews CLI, Gofer, and app-template status without writing files.
-  - `eai update` upgrades the CLI, refreshes safe Gofer-managed files in the current EAI project, and reports app-template drift.
+  - `eai update` upgrades the CLI, force-refreshes Gofer-managed files with backups, and automatically runs a read-only app-template drift check.
   - Use `eai gofer refresh --check` to preview Gofer-managed file changes separately.
-  - App-template and UI files are not auto-merged; use `eai template check` to review them.
+  - The automatic `eai template check` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
+  - If another package owns the eai command (npm EEXIST), the CLI names it and shows how to remove it.
+  - EAI Setup pins its own CLI copy; `eai update` then explains how to run or install a newer version.
 
 ---
 
@@ -219,6 +416,103 @@ Notes:
 
 ---
 
+eai deploy app --help
+=====================
+
+Usage: eai deploy app [options] <app-key>
+
+Deploy local app source through EAI-maintained or customer-owned GitHub to
+TenantInfra
+
+Arguments:
+  app-key                             Existing EAI app key
+
+Options:
+  --target <target>                   Hosting target (eai)
+  --tenant-id <id>                    Company tenant that owns the app
+                                      enrollment
+  --target-tenant-id <id>             Required exact tenant that receives the
+                                      deployed runtime
+  --repo <owner/name>                 Exact GitHub repository
+  --source <source>                   Source ownership
+                                      (eai-managed|customer-owned); required
+                                      without an interactive prompt
+  --github-link-session <session-id>  Resume the exact EAI-account GitHub
+                                      browser verification
+  --installation-id <id>              Exact EAI GitHub App installation ID
+  --branch <branch>                   Exact branch to bind and dispatch
+                                      (default: "main")
+  --workflow <path>                   Canonical EAI workflow path (default:
+                                      ".github/workflows/eai-app.yml")
+  --environment <environment>         Deployment environment (default:
+                                      "preview")
+  --commit <sha>                      Expected exact 40 character commit SHA
+  --resume <operation-id>             Read and wait for one exact existing
+                                      operation
+  --retry <operation-id>              Retry evidence handoff, resume dispatched
+                                      work, or start an undispatched operation
+  --wait                              Poll the exact operation until it reaches
+                                      a terminal status (default: true)
+  --no-wait                           Return after dispatch instead of polling
+                                      the exact operation
+  --timeout <seconds>                 Maximum exact-operation polling time
+                                      (default: "1200")
+  --format <format>                   Output format (text|json) (default:
+                                      "text")
+  --json                              Output raw JSON (deprecated, use --format
+                                      json) (default: false)
+  -h, --help                          display help for command
+
+Examples:
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source eai-managed
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --source customer-owned --repo org/planning-portal --installation-id 12345
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
+
+---
+
+eai app delete --help
+=====================
+
+Usage: eai app delete [options] <key>
+
+Permanently delete an app and every manifest-owned child
+
+Options:
+  --tenant-id <id>         Company workspace that owns the app enrollment
+  --target-tenant-id <id>  Runtime child workspace to delete from the owning
+                           company app
+  --confirm <app-key>      Confirm the exact app key for automation
+  --non-interactive        Disable prompts; requires --confirm with the exact
+                           app key (default: false)
+  --format <format>        Output format (text|json) (default: "text")
+  --json                   Output raw JSON (deprecated, use --format json)
+                           (default: false)
+  -h, --help               display help for command
+
+For a parent-owned app with a separate runtime child:
+  eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+The plan and final receipt must match the owner, requested child and exact runtime targets.
+Omit --target-tenant-id for the existing same-workspace deletion flow.
+
+---
+
+eai deploy source validate --help
+=================================
+
+Usage: eai deploy source validate [options]
+
+Check local app source for EAI-managed publication without publishing
+
+Options:
+  --project-dir <path>  Exact generated-app directory (defaults to the current
+                        project)
+  --format <format>     Output format (text|json) (default: "text")
+  -h, --help            display help for command
+
+---
+
 eai errors --help
 =================
 
@@ -234,6 +528,55 @@ Commands:
   explain [options] <code-or-reason>  Explain why an error happens and what eai
                                       commands can recover it
   help [command]                      display help for command
+
+---
+
+eai support --help
+==================
+
+Usage: eai support [options]
+
+Review a redacted error report and hand it to the Support page with consent
+
+Options:
+  --format <format>                   Output format (text|json); JSON previews
+                                      until consent is given (default: "text")
+  --source <source>                   Report source (eai-cli|harness)
+  --tool <name>                       AI harness name; selects harness source
+                                      unless --source is set
+  --tool-version <version>            AI harness version, when known
+  --command <command>                 Failing command, with credentials omitted
+  --exit-code <code>                  Failing command exit code
+  --error-code <code-or-reason>       Error code or reason from eai errors list
+  --description <text>                Optional report description, redacted
+                                      locally
+  --decline                           Decline a preview and remove only its
+                                      CLI-owned context file; no report is sent
+  --create-context-file               Allocate a private CLI-owned file for a
+                                      harness summary; no report is sent
+  --context-file <path>               JSON session summary from the AI harness
+                                      (- reads stdin); redacted and capped
+                                      locally
+  --approved-digest <sha256>          bundleDigest of the previewed report the
+                                      person approved; required with --yes in
+                                      every mode
+  --organisation-location <location>  Where the organisation is based
+                                      (apac|emea|americas) when the session has
+                                      no active workspace
+  --no-last-error                     Leave the saved context of the last
+                                      failing command out of the report
+  --yes                               Send only when the person has already
+                                      explicitly consented to this report
+                                      (default: false)
+  --no-open                           Print the Support link without opening the
+                                      browser
+  -h, --help                          display help for command
+
+--create-context-file and --decline operate locally without sending a report.
+Without --yes, other JSON and noninteractive runs only preview the report and return previewText and bundleDigest.
+After the person approves that preview, rerun the same command with --yes --approved-digest <bundleDigest>.
+A changed report answers consent_stale and sends nothing. Only the draft id and one-time token appear in the link fragment.
+Without a draft (signed out, declined, region_required), the printed link opens the Support chat without prefill.
 
 ---
 
@@ -283,7 +626,9 @@ Examples:
 Notes:
   - Use this before improvising eai commands.
   - Prefer read-only diagnostics before commands marked [changes state].
-  - On failure, run eai errors explain <code-or-reason> --format json.
+  - If advertised, query eai errors explain <code-or-reason> --format json at most once for the original failure.
+  - Never retry or explain a failed eai errors explain command; report unavailable guidance, then stop and wait.
+  - Follow read-only diagnostics automatically; ask before changes, stop at the retry limit, then stop and wait.
 
 ---
 
@@ -348,6 +693,10 @@ Preview file-level template/UI drift without writing to the repo
 
 Options:
   --format <format>  Output format (text|json) (default: "text")
+  --ai-plan          Emit a structured, read-only EAI capability adoption plan
+                     for an AI agent (default: false)
+  --preserve-ui      Protect existing layout, styles, components, content, and
+                     interactions in the AI plan (default: true)
   -h, --help         display help for command
 
 Typical workflow:
@@ -357,4 +706,6 @@ Typical workflow:
 Notes:
   - This command never writes files to your repo.
   - Template/UI updates still require manual review and selective copy/diff.
+  - `--ai-plan` works in EAI, Git, and package repositories and emits JSON.
+  - AI plans preserve the existing UI and UX by default.
   - Use `eai gofer refresh --check` separately for Gofer-managed assets.

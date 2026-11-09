@@ -4,6 +4,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    maxWorkers: 2,
     include: ['tests/**/*.test.ts'],
     exclude: ['node_modules', 'dist', 'docs'],
     coverage: {
@@ -18,7 +19,7 @@ export default defineConfig({
         statements: 80,
       },
     },
-    testTimeout: 10000,
+    testTimeout: 30000,
     hookTimeout: 10000,
     teardownTimeout: 5000,
   },

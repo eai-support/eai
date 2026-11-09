@@ -22,7 +22,7 @@ app template for EnterpriseAI app-delivery work.
 3. The BFF or server helpers attach auth, tenant, and correlation headers.
 4. The frontend never receives direct downstream database, blob, search, or
    PublicAPI credentials.
-5. Prefer PublicAPI V4 surfaces; v3 route-family mapping is compatibility glue.
+5. Use PublicAPI V4 surfaces for direct platform calls.
 
 ## Implementation Contract
 

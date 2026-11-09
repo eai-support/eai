@@ -36,6 +36,22 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const TENANT_MEMBERSHIP_AUTH_MESSAGE =
   "Authentication is missing or expired. Run `eai login` to refresh your session.";
 
+export class TenantLoginRequiredError extends Error {
+  constructor() {
+    super("Not logged in. Run `eai login` to authenticate.");
+    this.name = "TenantLoginRequiredError";
+  }
+}
+
+export class TenantAuthConfigMismatchError extends Error {
+  readonly safeMessage = "Stored CLI login does not match the active auth configuration for this environment. Run `eai login` again for this environment before using workspace or provisioning commands.";
+
+  constructor(diagnostic: string) {
+    super(diagnostic);
+    this.name = "TenantAuthConfigMismatchError";
+  }
+}
+
 export class TenantMembershipAuthError extends Error {
   readonly status?: number;
 
@@ -111,6 +127,18 @@ export interface ActiveTenantContext {
   activeTenant: TenantMembership;
   memberships: TenantMembership[];
   publicApiEnvSync?: PublicApiEnvSyncResult;
+}
+
+export interface PublicApiRequestPolicy {
+  validateUrl?: (url: string) => string;
+  redirect?: RequestRedirect;
+}
+
+function applyPublicApiRequestPolicy(
+  value: string,
+  policy?: PublicApiRequestPolicy,
+): string {
+  return policy?.validateUrl ? policy.validateUrl(value) : value;
 }
 
 export type PublicApiEnvSyncResult =
@@ -227,8 +255,8 @@ export function buildPublicApiEnvSyncNotice(
     return {
       level: "warn",
       message:
-        "Active tenant homeRegion is missing; regional PublicAPI routing may fall back. " +
-        "Ask a tenant or platform admin to repair tenant metadata before provisioning resources.",
+        "Active workspace region is missing; regional PublicAPI routing may fall back. " +
+        "Ask a workspace or platform admin to repair workspace metadata before provisioning resources.",
     };
   }
 
@@ -239,14 +267,14 @@ export function buildPublicApiEnvSyncNotice(
     return {
       level: "warn",
       message:
-        `.env.local ${target} for active tenant homeRegion ${result.homeRegion} ` +
+        `.env.local ${target} for active workspace region ${result.homeRegion} ` +
         `(was ${result.previousPublicApiUrl}).`,
     };
   }
 
   return {
     level: "success",
-    message: `.env.local ${target} for active tenant homeRegion ${result.homeRegion}.`,
+    message: `.env.local ${target} for active workspace region ${result.homeRegion}.`,
   };
 }
 
@@ -303,13 +331,15 @@ function buildSessionResolveUrl(baseUrl: string): string {
 
 async function resolveRegionalPublicApiUrlFromSession(
   requestedTenantId?: string | null,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string | null> {
+  const bootstrapBaseUrl = applyPublicApiRequestPolicy(
+    process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
+      DEFAULT_PUBLIC_API_URL,
+    policy,
+  );
   const accessToken = await getAccessToken();
   if (!accessToken) return null;
-
-  const bootstrapBaseUrl =
-    process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
-    DEFAULT_PUBLIC_API_URL;
   try {
     const response = await fetch(buildSessionResolveUrl(bootstrapBaseUrl), {
       method: "POST",
@@ -321,6 +351,7 @@ async function resolveRegionalPublicApiUrlFromSession(
         product: "eai-cli",
         requestedTenantId: requestedTenantId || undefined,
       }),
+      ...(policy?.redirect ? { redirect: policy.redirect } : {}),
     });
     if (!response.ok) return null;
 
@@ -334,16 +365,20 @@ async function resolveRegionalPublicApiUrlFromSession(
 
 async function resolveRegionalPublicApiUrlFromTenantManagement(
   tokens: StoredTokens | null,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string | null> {
   if (!tokens?.activeTenantId) return null;
 
-  const bootstrapBaseUrl =
+  const bootstrapBaseUrl = applyPublicApiRequestPolicy(
     process.env.ROUTING_BOOTSTRAP_PUBLIC_API_URL?.trim() ||
-    DEFAULT_PUBLIC_API_URL;
+      DEFAULT_PUBLIC_API_URL,
+    policy,
+  );
   try {
     const client = new PlatformAPIClient(
       normalizeBaseUrl(bootstrapBaseUrl),
       tokens.activeTenantId,
+      { publicRequestRedirect: policy?.redirect },
     );
     const response = await client.getTenant(tokens.activeTenantId);
     if (!response.ok) return null;
@@ -390,7 +425,7 @@ async function readTenantManagementRecord(
 
   const payload = await response.json();
   if (!isRecord(payload)) {
-    throw new Error(`Tenant ${tenantId} returned an invalid response.`);
+    throw new Error(`Workspace ${tenantId} returned an invalid response.`);
   }
   return payload;
 }
@@ -398,8 +433,13 @@ async function readTenantManagementRecord(
 export async function resolveMainCompanyTenantId(
   publicApiUrl: string,
   tenantId: string,
+  requestPolicy?: PublicApiRequestPolicy,
 ): Promise<string> {
-  const client = new PlatformAPIClient(publicApiUrl, tenantId);
+  const client = new PlatformAPIClient(
+    applyPublicApiRequestPolicy(publicApiUrl, requestPolicy),
+    tenantId,
+    { publicRequestRedirect: requestPolicy?.redirect },
+  );
   await readTenantManagementRecord(client, tenantId);
   return tenantId;
 }
@@ -626,20 +666,21 @@ async function loadContextEnv(
 
 export async function resolvePublicApiUrl(
   projectRoot?: string,
+  policy?: PublicApiRequestPolicy,
 ): Promise<string> {
   // 1. Profile config (named profiles carry their own API URL)
   const profile = getActiveProfile();
   if (profile !== "default") {
     const config = await loadProfileConfig(profile);
     if (config?.publicApiUrl) {
-      return config.publicApiUrl;
+      return applyPublicApiRequestPolicy(config.publicApiUrl, policy);
     }
   }
 
   // 2. Preserve the existing project-aware override path for default profile usage.
   const env = await loadContextEnv(projectRoot);
   if (env.BASE_URL_PUBLIC_API) {
-    return env.BASE_URL_PUBLIC_API;
+    return applyPublicApiRequestPolicy(env.BASE_URL_PUBLIC_API, policy);
   }
 
   const tokens = await loadTokens();
@@ -647,23 +688,24 @@ export async function resolvePublicApiUrl(
     tokens?.activeTenantHomeRegion,
   );
   if (storedRegionalUrl) {
-    return storedRegionalUrl;
+    return applyPublicApiRequestPolicy(storedRegionalUrl, policy);
   }
 
   const tenantManagementRegionalUrl =
-    await resolveRegionalPublicApiUrlFromTenantManagement(tokens);
+    await resolveRegionalPublicApiUrlFromTenantManagement(tokens, policy);
   if (tenantManagementRegionalUrl) {
-    return tenantManagementRegionalUrl;
+    return applyPublicApiRequestPolicy(tenantManagementRegionalUrl, policy);
   }
 
   const routedUrl = await resolveRegionalPublicApiUrlFromSession(
     tokens?.activeTenantId,
+    policy,
   );
   if (routedUrl) {
-    return routedUrl;
+    return applyPublicApiRequestPolicy(routedUrl, policy);
   }
 
-  return DEFAULT_PUBLIC_API_URL;
+  return applyPublicApiRequestPolicy(DEFAULT_PUBLIC_API_URL, policy);
 }
 
 export function getStoredActiveTenant(
@@ -685,8 +727,15 @@ export function getStoredActiveTenant(
   };
 }
 
+/**
+ * Load the caller's active workspace memberships. Only tenant-admin
+ * memberships are returned unless `includeAllRoles` is set for read-only
+ * listing; selection and app management stay admin-only.
+ */
 export async function fetchTenantAdminMemberships(
   publicApiUrl?: string,
+  requestPolicy?: PublicApiRequestPolicy,
+  options?: { includeAllRoles?: boolean },
 ): Promise<{
   publicApiUrl: string;
   tokens: StoredTokens;
@@ -694,20 +743,24 @@ export async function fetchTenantAdminMemberships(
 }> {
   const tokens = await loadTokens();
   if (!tokens?.oid) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
   const authMismatch = await getActiveAuthConfigMismatch(tokens);
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
-  const resolvedPublicApiUrl = publicApiUrl || (await resolvePublicApiUrl());
+  const resolvedPublicApiUrl = publicApiUrl
+    ? applyPublicApiRequestPolicy(publicApiUrl, requestPolicy)
+    : await resolvePublicApiUrl(undefined, requestPolicy);
   const accessToken = await getAccessToken();
   if (!accessToken) {
     throw new TenantMembershipAuthError(401);
   }
 
-  const client = new PlatformAPIClient(resolvedPublicApiUrl, "system");
+  const client = new PlatformAPIClient(resolvedPublicApiUrl, "system", {
+    publicRequestRedirect: requestPolicy?.redirect,
+  });
   const response = await client.listCurrentUserTenants();
 
   if (!response.ok) {
@@ -716,16 +769,17 @@ export async function fetchTenantAdminMemberships(
       throw new TenantMembershipAuthError(response.status);
     }
     throw new Error(
-      `Failed to load tenant memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
+      `Failed to load workspace memberships: ${response.status} ${response.statusText}${body ? ` — ${body}` : ""}`,
     );
   }
 
-  const payload = await response.json();
+  const entries = normalizeTenantEntries(await response.json());
+  const visibleEntries = options?.includeAllRoles
+    ? entries.filter((entry) => entry.tenant?.isActive !== false)
+    : filterTenantAdminEntries(entries);
   const memberships = await hydrateTenantMembershipManagementDetails(
     client,
-    filterTenantAdminEntries(normalizeTenantEntries(payload)).map(
-      toTenantMembership,
-    ),
+    visibleEntries.map(toTenantMembership),
   );
 
   return {
@@ -742,7 +796,7 @@ export async function saveActiveTenantSelection(
 ): Promise<StoredTokens> {
   const tokens = existingTokens ?? (await loadTokens());
   if (!tokens) {
-    throw new Error("Not logged in. Run `eai login` to authenticate.");
+    throw new TenantLoginRequiredError();
   }
 
   const next: StoredTokens = {
@@ -818,7 +872,7 @@ async function promptForTenantSelection(
 
   const selected = memberships.find((tenant) => tenant.id === tenantId);
   if (!selected) {
-    throw new Error("Selected tenant was not found.");
+    throw new Error("Selected workspace was not found.");
   }
 
   return selected;
@@ -833,13 +887,15 @@ export async function resolveActiveTenantContext(options?: {
   forcePrompt?: boolean;
   forceRefresh?: boolean;
   tenantId?: string;
+  requestPolicy?: PublicApiRequestPolicy;
+  pinPublicApiUrl?: boolean;
 }): Promise<ActiveTenantContext> {
   const authMismatch = await getActiveAuthConfigMismatch(
     undefined,
     options?.projectRoot,
   );
   if (authMismatch) {
-    throw new Error(authMismatch);
+    throw new TenantAuthConfigMismatchError(authMismatch);
   }
 
   // Short-circuit: if tenant context is cached and TTL is valid, skip Admin API call
@@ -863,9 +919,9 @@ export async function resolveActiveTenantContext(options?: {
       };
       const publicApiUrl =
         options?.publicApiUrl ||
-        (await resolvePublicApiUrl(options?.projectRoot));
+        (await resolvePublicApiUrl(options?.projectRoot, options?.requestPolicy));
       return {
-        publicApiUrl,
+        publicApiUrl: applyPublicApiRequestPolicy(publicApiUrl, options?.requestPolicy),
         tokens: cached,
         activeTenant,
         memberships: [activeTenant],
@@ -874,13 +930,14 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const fetched = await fetchTenantAdminMemberships(
-    options?.publicApiUrl || (await resolvePublicApiUrl(options?.projectRoot)),
+    options?.publicApiUrl || (await resolvePublicApiUrl(options?.projectRoot, options?.requestPolicy)),
+    options?.requestPolicy,
   );
   const { tokens, memberships } = fetched;
 
   if (memberships.length === 0) {
     throw new Error(
-      "No active tenant-admin memberships found for the current login. Run `eai tenant list` to inspect your access.",
+      "No active workspace admin memberships found for the current login. Run `eai workspace list` to inspect your access.",
     );
   }
 
@@ -892,7 +949,7 @@ export async function resolveActiveTenantContext(options?: {
     );
     if (!selected) {
       throw new Error(
-        `Tenant "${options.tenantId}" is not available in your active tenant-admin memberships.`,
+        `Workspace "${options.tenantId}" is not available in your active workspace admin memberships.`,
       );
     }
   } else if (!options?.forcePrompt && tokens.activeTenantId) {
@@ -910,7 +967,7 @@ export async function resolveActiveTenantContext(options?: {
       !process.stdout.isTTY
     ) {
       throw new Error(
-        "Multiple active tenant-admin memberships found. Run `eai tenant select` to choose one.",
+        "Multiple active workspace admin memberships found. Run `eai workspace select` to choose one.",
       );
     } else {
       selected = await promptForTenantSelection(memberships, fetched.publicApiUrl);
@@ -918,14 +975,16 @@ export async function resolveActiveTenantContext(options?: {
   }
 
   const namedProfilePinsEndpoint = getActiveProfile() !== "default";
-  const publicApiEnvSync = namedProfilePinsEndpoint
+  const publicApiEnvSync = namedProfilePinsEndpoint || options?.pinPublicApiUrl
     ? undefined
     : await syncProjectPublicApiUrlForTenant(selected, options?.projectRoot);
-  const selectedPublicApiUrl =
+  const selectedPublicApiUrl = applyPublicApiRequestPolicy(
     publicApiEnvSync?.status === "updated" ||
     publicApiEnvSync?.status === "already-current"
       ? publicApiEnvSync.publicApiUrl
-      : fetched.publicApiUrl;
+      : fetched.publicApiUrl,
+    options?.requestPolicy,
+  );
   const updatedTokens = await saveActiveTenantSelection(
     selected,
     selectedPublicApiUrl,

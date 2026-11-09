@@ -12,7 +12,9 @@ const sidebars = {
       label: "Getting Started",
       collapsed: false,
       items: [
+        "installer-setup",
         "start-here",
+        "manual-and-managed-setup",
         "eai-cli",
         "eai-gofer",
         "eai-app-template",
@@ -22,7 +24,7 @@ const sidebars = {
     {
       type: "category",
       label: "EAI CLI",
-      items: ["configuration", "deploy-anywhere", "error-guidance", "api-reference"],
+      items: ["configuration", "content-understanding", "deploy-anywhere", "error-guidance", "api-reference"],
     },
     {
       type: "category",

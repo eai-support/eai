@@ -31,7 +31,7 @@ This scenario works best as a four-step, human-in-the-loop application. The exis
 - **Required data:** Proposal context such as the core workflow data.
 - **AI support:** Use chat to guide intake, generate clearer prompts, create accessible summaries, and assist with voice or vision-led capture when a form alone is not the best experience. EAI can support structured intake, chat workflows, and document-centred capture today; richer native multimodal capture may still need workflow extensions or connected services.
 - **Business impact:** Improve completion rate, reduce first-touch effort, and raise customer or staff confidence in the UX from the very first interaction.
-- **EAI delivery:** Model the intake as tenant-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
+- **EAI delivery:** Model the intake as workspace-isolated object types and resources, then use actions, chat workflows, and document indexing or classification to keep the initial record complete and usable.
 
 ### Step 2. Prepare the decision
 
@@ -45,7 +45,7 @@ This scenario works best as a four-step, human-in-the-loop application. The exis
 
 - **Goal:** Coordinate the actual work, handoffs, approvals, and user updates needed to deliver the service or outcome.
 - **Required data:** Award execution state.
-- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate tenant-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
+- **AI support:** Draft replies, produce work packets, monitor exceptions in the background, and surface the next action for each operator. EAI can orchestrate workspace-isolated records, actions, chats, and document workflows today; deeper system-to-system automation may require additional connectors or workflow capability.
 - **Business impact:** Increase operator productivity, reduce rework across handoffs, and improve service consistency across the application journey.
 - **EAI delivery:** Use linked object types, actions, resource updates, and workflow-triggered AI assistance so the team can execute in one model instead of splitting work across disconnected tools.
 
@@ -61,11 +61,11 @@ This scenario works best as a four-step, human-in-the-loop application. The exis
 
 ## EAI Platform Support By Step
 
-EAI provides the safe service boundary for Research Grants through Object Types, tenant-scoped resources, document processing, chat workflows, and CLI verification. For this scenario, the main records are `Proposal`, `Award`, and `BudgetItem`.
+EAI provides the safe service boundary for Research Grants through Object Types, workspace-scoped resources, document processing, chat workflows, and CLI verification. For this scenario, the main records are `Proposal`, `Award`, and `BudgetItem`.
 
 | Process step | What EAI provides | Calling pattern |
 | ------------ | ----------------- | --------------- |
-| Step 1. Capture demand and context | Tenant-scoped intake resources for Proposal context such as the core workflow data. Object Type validation, starter forms, optional document intake, and chat-guided capture keep the first record complete. | Define fields in `src/eai.config/object-types.ts`, run `eai types validate` and `eai types seed`, create initial `Proposal` records with `useResources('Proposal')` or `eai resources create Proposal`, and keep browser calls behind `/api/eai/...`. |
+| Step 1. Capture demand and context | Workspace-scoped intake resources for Proposal context such as the core workflow data. Object Type validation, starter forms, optional document intake, and chat-guided capture keep the first record complete. | Define fields in `src/eai.config/object-types.ts`, run `eai types validate` and `eai types seed`, create initial `Proposal` records with `useResources('Proposal')` or `eai resources create Proposal`, and keep browser calls behind `/api/eai/...`. |
 | Step 2. Prepare the decision | Linked resource queries over Proposal state and history. Search, schema checks, document classification or RAG indexing, and chat summaries turn raw context into a prepared decision. | Use `useResources('Proposal')` list/query/search patterns, verify shape with `eai resources schema`, use `useDocuments().upload/classify/ragIndex`, `eai docs upload`, `eai docs classify`, and `eai docs index` where supporting material exists, and send decision-support prompts through `useChat(workflowId, 'chat')` or `eai chat send`. |
 | Step 3. Execute and collaborate | Resource updates and actions for Award execution state. Status changes, assignments, notes, generated work packets, and chat support keep humans in control during execution. | Model actions in the Object Type code, call `client.resources.executeAction(type, id, action)` or the app hook equivalent, update records through the app service layer, and verify with `eai resources get/list/query`. |
 | Step 4. Resolve, explain, and improve | Outcome resources for final status, outcome, audit history, and follow-up signals across Proposal, Award, and BudgetItem. Audit-friendly links, indexed final documents, reporting snapshots, and answer generation make the result explainable and reusable. | Persist outcomes as resources, index final material with `eai docs index` or `useDocuments().ragIndex`, send explanation prompts with `useChat` or `eai chat stream`, and use `eai resources aggregate/search` for reporting checks. |
@@ -130,7 +130,7 @@ Use the EAI App Template. Model Research Grants with Object Types for Proposal, 
    ```
 
    ```
-   Tenant: research-grants
+   Workspace: research-grants
    ✔ Proposal — 5 props, 1 link, 3 actions
    ✔ Award — 4 props, 2 links, 3 actions
    ✔ BudgetItem — 4 props, 1 link, 3 actions

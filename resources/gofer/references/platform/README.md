@@ -6,10 +6,15 @@ that need platform, template, or deployment guidance while offline.
 Core files:
 
 - `eai.md` - CLI and platform fallback guidance
-- `eai-repo-contract.md` - repo-owned behavior contract for AI agents in EAI repos
-- `eai-error-catalog.yaml` - common EAI CLI/platform failure signatures and recovery paths
+- `eai-repo-contract.md` - repo-owned behavior contract for AI agents in EAI
+  repos
+- `eai-error-catalog.yaml` - common EAI CLI/platform failure signatures and
+  recovery paths
+- `eai-support.md` - the consent-gated `eai support` report flow an AI harness
+  follows only when the person asks for help
 - `vertical-template.md` - preferred fallback template guidance alias
-- `eai-app-template.md` - legacy fallback template guidance alias kept for compatibility
+- `eai-app-template.md` - legacy fallback template guidance alias kept for
+  compatibility
 - `deployment-repo.md` - fallback deployment guidance
 
 These files are intentionally public-safe. Private repositories can replace or

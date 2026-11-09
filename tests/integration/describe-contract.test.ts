@@ -37,15 +37,17 @@ const TOP_LEVEL_COMMANDS = [
   "logout",
   "env",
   "types",
-  "tenant",
+  "workspace",
   "user",
   "resources",
   "app",
   "classifier",
   "connection",
+  "content-understanding",
   "chat",
   "workflow",
   "docs",
+  "kb",
   "deploy",
   "runtime",
   "verify",
@@ -60,6 +62,7 @@ const TOP_LEVEL_COMMANDS = [
   "errors",
   "agent",
   "start",
+  "support",
 ] as const;
 
 const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
@@ -116,11 +119,13 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--ref",
     "--commit",
     "--config-hash",
+    "--handover-from-no-code",
     "--skip-validate",
     "--format",
     "--json",
   ],
   "workflow-evidence": [
+    "--evidence-file",
     "--repo",
     "--operation-id",
     "--nonce",
@@ -172,6 +177,27 @@ const SOURCE_UNKNOWN_APP_FLAGS: Readonly<Record<string, readonly string[]>> = {
     "--json",
   ],
 };
+
+const EAI_MANAGED_DEPLOY_FLAGS = [
+  '--source',
+  '--github-link-session',
+  '--target',
+  '--tenant-id',
+  '--target-tenant-id',
+  '--repo',
+  '--installation-id',
+  '--branch',
+  '--workflow',
+  '--environment',
+  '--commit',
+  '--resume',
+  '--retry',
+  '--wait',
+  '--no-wait',
+  '--timeout',
+  '--format',
+  '--json',
+] as const;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -262,7 +288,7 @@ function findCommand(
   return findCommand(child, tail);
 }
 
-function runCli(args: readonly string[], cwd: string): Promise<CliResult> {
+function runCli(args: readonly string[], cwd: string, overrides: NodeJS.ProcessEnv = {}): Promise<CliResult> {
   const env = {
     ...process.env,
     HOME: cwd,
@@ -271,6 +297,7 @@ function runCli(args: readonly string[], cwd: string): Promise<CliResult> {
     EAI_NON_INTERACTIVE: "1",
     EAI_PROFILE: "default",
     NO_UPDATE_NOTIFIER: "1",
+    ...overrides,
   };
 
   return new Promise((resolve, reject) => {
@@ -302,6 +329,30 @@ describe("built CLI discovery and error contracts", () => {
 
   afterEach(async () => {
     await testEnvironment.cleanup();
+  });
+
+  test.each([
+    { label: 'explicit separated selector', args: ['--profile', '../escape', 'whoami', '--format', 'json'], env: {} },
+    { label: 'explicit equals selector', args: ['--profile=.hidden', 'whoami', '--format=json'], env: {} },
+    { label: 'environment selector', args: ['whoami', '--format', 'json'], env: { EAI_PROFILE: '../escape' } },
+    { label: 'environment selector with JSON alias', args: ['whoami', '--json'], env: { EAI_PROFILE: '.hidden' } },
+  ])('invalid $label exits with the structured E006 envelope', async ({ args, env }) => {
+    const result = await runCli(args, testEnvironment.dir, env);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    const envelope = JSON.parse(result.stderr) as { error: { code: string; message: string; exitCode: number } };
+    expect(envelope.error.code).toBe('E006');
+    expect(envelope.error.exitCode).toBe(1);
+    expect(envelope.error.message).toContain('profile names');
+    expect(result.stderr).not.toContain('at setActiveProfile');
+  });
+
+  test('invalid profile text errors retain normal guidance without an uncaught stack', async () => {
+    const result = await runCli(['--profile', '../escape', 'whoami'], testEnvironment.dir);
+    expect(result.exitCode).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr).toContain('E006');
+    expect(result.stderr).not.toContain('at setActiveProfile');
   });
 
   test("--describe preserves the recursive command schema", async () => {
@@ -349,6 +400,17 @@ describe("built CLI discovery and error contracts", () => {
     }
   });
 
+  test("--describe preserves the EAI managed deploy contract", async () => {
+    const result = await runCli(["--describe"], testEnvironment.dir);
+    const schema = JSON.parse(result.stdout) as DescribeCommand;
+    const command = findCommand(schema, ["deploy", "app"]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(command).toBeDefined();
+    expect(optionNames(command ?? {}).sort()).toEqual([...EAI_MANAGED_DEPLOY_FLAGS].sort());
+  });
+
   test.each([
     {
       code: "E001",
@@ -358,7 +420,7 @@ describe("built CLI discovery and error contracts", () => {
     },
     {
       code: "E101",
-      args: ["tenant", "list"],
+      args: ["workspace", "list"],
       message: /not logged in/i,
       suggestion: /eai login/i,
     },

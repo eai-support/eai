@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { access, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { access, lstat, mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
 import { promisify } from "node:util";
@@ -14,6 +14,13 @@ import {
 } from "../lib/project-manifest.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
+import {
+  buildTemplateAiPlan,
+  resolveTemplateAssessmentRoot,
+  type TemplateAiPlan,
+  type TemplateAssessmentRoot,
+  type TemplateAiSourceItem,
+} from "../lib/template-ai-plan.js";
 import {
   describeCloneFailure,
   isDefaultTemplateSource,
@@ -41,7 +48,21 @@ const IGNORE_PREFIXES = [
   ".github/instructions/",
   ".github/prompts/",
   ".github/skills/",
+  ".specify-pro/",
+  "node_modules/",
+  ".next/",
+  "dist/",
+  "build/",
+  "coverage/",
+  ".cache/",
+  ".turbo/",
 ];
+const AI_PLAN_INCLUDED_PATHS = new Set([
+  "package.json",
+  "eai.runtime.json",
+  ".github/workflows/eai-app.yml",
+  "src/eai.config/object-types.ts",
+]);
 
 type TemplateCheckAction = "add" | "review";
 type TemplateCheckCategory = "ui" | "general";
@@ -65,6 +86,7 @@ interface TemplateCheckPlan {
   }[];
   readonly objectTypeNormalizationWarnings: readonly ObjectTypeNormalizationWarning[];
   readonly summary: TemplateCheckSummary;
+  readonly aiPlan?: TemplateAiPlan;
 }
 
 interface TemplateCheckSummary {
@@ -109,6 +131,19 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+async function pathContainsSymbolicLink(root: string, relativePath: string): Promise<boolean> {
+  let current = root;
+  for (const segment of relativePath.split("/")) {
+    current = join(current, segment);
+    try {
+      if ((await lstat(current)).isSymbolicLink()) return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
 function hashContents(contents: Buffer): string {
   return createHash("sha256").update(contents).digest("hex");
 }
@@ -122,9 +157,20 @@ function isUiPath(relativePath: string): boolean {
   );
 }
 
-function shouldIgnoreTemplatePath(relativePath: string): boolean {
+function shouldIgnoreTemplatePath(
+  relativePath: string,
+  aiPlan = false,
+): boolean {
   if (relativePath === ".git" || relativePath.startsWith(".git/")) {
     return true;
+  }
+
+  if (/(?:^|\/)\.env(?:\.|$)/.test(relativePath)) {
+    return true;
+  }
+
+  if (aiPlan && AI_PLAN_INCLUDED_PATHS.has(relativePath)) {
+    return false;
   }
 
   if (IGNORE_EXACT_PATHS.has(relativePath)) {
@@ -206,7 +252,11 @@ async function scanObjectTypeNormalizationWarnings(
   );
 }
 
-async function collectFiles(root: string, baseRoot = root): Promise<string[]> {
+async function collectFiles(
+  root: string,
+  baseRoot = root,
+  aiPlan = false,
+): Promise<string[]> {
   const results: string[] = [];
   const entries = await readdir(root, { withFileTypes: true });
 
@@ -216,12 +266,12 @@ async function collectFiles(root: string, baseRoot = root): Promise<string[]> {
       relative(baseRoot, absolutePath),
     );
 
-    if (shouldIgnoreTemplatePath(relativePath)) {
+    if (shouldIgnoreTemplatePath(relativePath, aiPlan)) {
       continue;
     }
 
     if (entry.isDirectory()) {
-      results.push(...(await collectFiles(absolutePath, baseRoot)));
+      results.push(...(await collectFiles(absolutePath, baseRoot, aiPlan)));
       continue;
     }
 
@@ -273,6 +323,11 @@ async function cloneTemplateSnapshot(
 
 async function planTemplateCheck(
   projectRoot: string,
+  options: {
+    readonly aiPlan?: boolean;
+    readonly preserveUi?: boolean;
+    readonly assessment?: TemplateAssessmentRoot;
+  } = {},
 ): Promise<
   | TemplateCheckPlan
   | {
@@ -291,7 +346,7 @@ async function planTemplateCheck(
   const objectTypeNormalizationWarnings =
     await scanObjectTypeNormalizationWarnings(projectRoot);
   const manifest = resolvedManifest.manifest;
-  if (!manifest?.template) {
+  if (!manifest?.template && !options.aiPlan) {
     out.error("This project does not record template provenance yet.");
     out.info(
       "Run `eai gofer refresh --check` once to adopt the current project snapshot, or add `.eai-manifest.json` from a freshly initialized project before checking template drift.",
@@ -305,16 +360,19 @@ async function planTemplateCheck(
     commit: bundledTemplate.pinnedCommit,
     displaySource: bundledTemplate.displaySource,
   });
-  const projectTemplateLabel = describeTemplateSnapshot(manifest.template);
+  const projectTemplateLabel = manifest?.template
+    ? describeTemplateSnapshot(manifest.template)
+    : "unbased repository";
   const usesBundledDefault = Boolean(
-    manifest.template.repo &&
+    manifest?.template?.repo &&
     (isDefaultTemplateSource(manifest.template.repo) ||
       manifest.template.repo === bundledTemplate.cloneSource),
   );
 
   if (
+    !options.aiPlan &&
     usesBundledDefault &&
-    manifest.template.commit &&
+    manifest?.template?.commit &&
     bundledTemplate.pinnedCommit &&
     manifest.template.commit === bundledTemplate.pinnedCommit
   ) {
@@ -327,9 +385,9 @@ async function planTemplateCheck(
       };
   }
 
-  const sourceToCheck = usesBundledDefault
+  const sourceToCheck = usesBundledDefault && manifest?.template
     ? DEFAULT_TEMPLATE_SOURCE
-    : manifest.template.repo || DEFAULT_TEMPLATE_SOURCE;
+    : manifest?.template?.repo || DEFAULT_TEMPLATE_SOURCE;
   const sourcePlan = resolveTemplateClonePlan(sourceToCheck);
   const sourceLabel = describeTemplateSnapshot({
     repo: sourcePlan.cloneSource,
@@ -352,14 +410,22 @@ async function planTemplateCheck(
     const items: TemplateCheckItem[] = [];
     let unchanged = 0;
 
-    for (const relativePath of await collectFiles(templateRoot)) {
+    const aiSourceItems: TemplateAiSourceItem[] = [];
+    for (const relativePath of await collectFiles(templateRoot, templateRoot, options.aiPlan)) {
       const desiredPath = join(templateRoot, relativePath);
       const currentPath = join(projectRoot, relativePath);
       const category: TemplateCheckCategory = isUiPath(relativePath)
         ? "ui"
         : "general";
 
+      if (options.aiPlan && await pathContainsSymbolicLink(projectRoot, relativePath)) {
+        aiSourceItems.push({ relativePath, state: "blocked-symlink" });
+        items.push({ relativePath, action: "review", category });
+        continue;
+      }
+
       if (!(await fileExists(currentPath))) {
+        aiSourceItems.push({ relativePath, state: "missing" });
         items.push({
           relativePath,
           action: "add",
@@ -374,10 +440,12 @@ async function planTemplateCheck(
       ]);
 
       if (hashContents(desiredContents) === hashContents(currentContents)) {
+        aiSourceItems.push({ relativePath, state: "unchanged" });
         unchanged += 1;
         continue;
       }
 
+      aiSourceItems.push({ relativePath, state: "modified" });
       items.push({
         relativePath,
         action: "review",
@@ -412,6 +480,23 @@ async function planTemplateCheck(
       },
     );
 
+    const aiPlan = options.aiPlan && options.assessment
+      ? await buildTemplateAiPlan({
+          assessment: options.assessment,
+          templateRoot,
+          templateRepo: sourcePlan.cloneSource,
+          templateRef: sourcePlan.pinnedVersion ?? sourcePlan.pinnedCommit?.slice(0, 7) ?? "current",
+          templateCommit: sourcePlan.pinnedCommit ?? null,
+          provenance: resolvedManifest.source === "file"
+            ? "recorded-template"
+            : resolvedManifest.source === "none"
+              ? "unbased-adoption"
+              : "inferred-template",
+          items: aiSourceItems,
+          preserveUi: options.preserveUi ?? true,
+        })
+      : undefined;
+
     return {
       manifestSource: resolvedManifest.source,
       sourceLabel,
@@ -422,6 +507,7 @@ async function planTemplateCheck(
       routeExportViolations,
       objectTypeNormalizationWarnings,
       summary,
+      aiPlan,
     };
   } finally {
     await rm(tempRoot, { recursive: true, force: true });
@@ -457,6 +543,16 @@ templateCommand
     "Preview file-level template/UI drift without writing to the repo",
   )
   .option("--format <format>", "Output format (text|json)", "text")
+  .option(
+    "--ai-plan",
+    "Emit a structured, read-only EAI capability adoption plan for an AI agent",
+    false,
+  )
+  .option(
+    "--preserve-ui",
+    "Protect existing layout, styles, components, content, and interactions in the AI plan",
+    true,
+  )
   .addHelpText(
     "after",
     `
@@ -467,16 +563,25 @@ Typical workflow:
 Notes:
   - This command never writes files to your repo.
   - Template/UI updates still require manual review and selective copy/diff.
+  - \`--ai-plan\` works in EAI, Git, and package repositories and emits JSON.
+  - AI plans preserve the existing UI and UX by default.
   - Use \`eai gofer refresh --check\` separately for Gofer-managed assets.
   `,
   )
-  .action(async (options: { format?: string }) => {
-    const root = await findProjectRoot();
+  .action(async (options: { format?: string; aiPlan?: boolean; preserveUi?: boolean }) => {
+    const assessment = options.aiPlan
+      ? await resolveTemplateAssessmentRoot()
+      : null;
+    const root = assessment?.root ?? await findProjectRoot();
     if (!root) {
       exitWithError(ErrorCode.E001);
     }
 
-    const plan = await planTemplateCheck(root);
+    const plan = await planTemplateCheck(root, {
+      aiPlan: options.aiPlan,
+      preserveUi: options.preserveUi,
+      assessment: assessment ?? undefined,
+    });
     if ("skipped" in plan) {
       if (options.format === "json") {
       out.json({
@@ -524,6 +629,14 @@ Notes:
           out.warn(`${warning.relativePath}: ${warning.message}`);
         }
       }
+      return;
+    }
+
+    if (options.aiPlan) {
+      if (!plan.aiPlan) {
+        throw new Error("The AI adoption plan could not be generated.");
+      }
+      out.json(plan.aiPlan);
       return;
     }
 

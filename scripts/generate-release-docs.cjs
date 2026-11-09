@@ -18,7 +18,9 @@ const CANONICAL_INSTALL_CMD = "npm install -g @enterpriseai/cli";
 const STATIC_FALLBACK_INSTALL_CMD =
   "npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/";
 const DOC_ORDER = [
+  "installer-setup.md",
   "start-here.md",
+  "manual-and-managed-setup.md",
   "eai-cli.md",
   "eai-gofer.md",
   "eai-app-template.md",
@@ -29,14 +31,25 @@ const DOC_ORDER = [
   "app-template/documents-and-files.md",
   "app-template/config-driven-ui.md",
   "configuration.md",
+  "content-understanding.md",
   "error-guidance.md",
   "api-reference.md",
 ];
 const HELP_COMMANDS = [
+  { label: "eai kb upload --help", args: ["dist/index.js", "kb", "upload", "--help"] },
+  { label: "eai content-understanding --help", args: ["dist/index.js", "content-understanding", "--help"] },
+  { label: "eai docs configure-type --help", args: ["dist/index.js", "docs", "configure-type", "--help"] },
+  { label: "eai docs job --help", args: ["dist/index.js", "docs", "job", "--help"] },
+  { label: "eai docs get --help", args: ["dist/index.js", "docs", "get", "--help"] },
   { label: "eai --help", args: ["dist/index.js", "--help"] },
+  { label: "eai init --help", args: ["dist/index.js", "init", "--help"] },
   { label: "eai update --help", args: ["dist/index.js", "update", "--help"] },
   { label: "eai doctor --help", args: ["dist/index.js", "doctor", "--help"] },
+  { label: "eai deploy app --help", args: ["dist/index.js", "deploy", "app", "--help"] },
+  { label: "eai app delete --help", args: ["dist/index.js", "app", "delete", "--help"] },
+  { label: "eai deploy source validate --help", args: ["dist/index.js", "deploy", "source", "validate", "--help"] },
   { label: "eai errors --help", args: ["dist/index.js", "errors", "--help"] },
+  { label: "eai support --help", args: ["dist/index.js", "support", "--help"] },
   {
     label: "eai errors explain --help",
     args: ["dist/index.js", "errors", "explain", "--help"],
@@ -96,11 +109,14 @@ function readDoc(filename) {
   const raw = fs.readFileSync(absolutePath, "utf-8");
   const { frontmatter, body } = parseFrontmatter(raw);
   const heading = body.match(/^#\s+(.+)$/m)?.[1];
+  const slug = filename.replace(/\.md$/, "");
   return {
     filename,
-    slug: filename.replace(/\.md$/, ""),
+    slug: slug === "examples/index" ? "examples" : slug,
     title: frontmatter.title || heading || filename.replace(/\.md$/, ""),
-    body,
+    body: body
+      .replace(/^import Link from ['"]@docusaurus\/Link['"];?\r?\n/gm, "")
+      .replace(/<Link to="([^"]+)">([^<]+)<\/Link>/g, "[$2]($1)"),
   };
 }
 
@@ -133,7 +149,7 @@ ${output}`,
     .join("\n\n---\n\n");
 
   return `# EAI CLI Help Snapshot
-Version: ${context.version}
+Package source version: ${context.version}
 
 Install / update the CLI:
 ${RECOMMENDED_INSTALL_CMD}
@@ -159,7 +175,7 @@ function buildLlmsIndex(context) {
 
   return `# EAI CLI Documentation
 
-> Release-aligned documentation surfaces for \`@enterpriseai/cli\` v${context.version}.
+> Source documentation surfaces for \`@enterpriseai/cli\` package source v${context.version}. This snapshot does not certify release-channel publication.
 
 ## Install
 
@@ -230,7 +246,7 @@ ${doc.body.trim()}`,
     .join("\n\n");
 
   return `# EAI CLI — Full Documentation
-> Release-aligned documentation bundle for \`@enterpriseai/cli\` v${context.version}.
+> Source documentation bundle for \`@enterpriseai/cli\` package source v${context.version}. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install

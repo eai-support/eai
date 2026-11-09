@@ -1,5 +1,5 @@
 /**
- * eai app — manage tenant app/product instances under the active company tenant.
+ * eai app — manage workspace app/product instances under the active company workspace.
  *
  * The platform data contract still stores app enrollment in legacy
  * tenant-vertical-* object types. Keep the wire/data names stable here while
@@ -13,6 +13,9 @@ import { join } from 'node:path';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import {
   PlatformAPIClient,
+  MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
+  isManagedPublicRequestTimeout,
+  readManagedPublicResponseText,
   type SourceUnknownAppRegistrationRequest,
   type SourceUnknownDeploymentRequest,
   type SourceUnknownSchemaProvenance,
@@ -23,6 +26,7 @@ import {
   resolveActiveTenantContext,
   resolveMainCompanyTenantId,
   resolvePublicApiUrl,
+  type PublicApiRequestPolicy,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
 import { loadRuntimeContract } from '../lib/runtime-contract.js';
@@ -34,6 +38,20 @@ import {
   toObjectTypeSlug,
 } from '../lib/utils.js';
 import * as out from '../lib/output.js';
+import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import {
+  safePlatformDiagnostics,
+  formatSafePlatformFailure,
+  type SafePlatformDiagnostics,
+} from '../lib/platform-diagnostics.js';
+import { readSourceUnknownEvidenceFile } from '../lib/source-unknown-evidence-file.js';
+import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
+import {
+  CLI_MANAGED_SOURCE_OPERATION_ID,
+  MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  requireManagedDeploymentIdentifier,
+  requireManagedScopeIdentifier,
+} from '../lib/eai-managed-identifiers.js';
 
 const VERTICAL_ENROLLMENT_TYPE = 'tenant-vertical-enrollment';
 const DEFAULT_VERTICAL_SOURCE = ['eai', 'cli'].join('-');
@@ -43,8 +61,23 @@ const DEFAULT_SOURCE_UNKNOWN_GITHUB_OIDC_AUDIENCE = 'api://enterprise-ai-publica
 const DEFAULT_SOURCE_UNKNOWN_RUNTIME_PATH = 'eai.runtime.json';
 const STORAGE_BINDINGS_PATH = join('.eai', 'storage-bindings.json');
 const GENERIC_APP_IDENTITY_MESSAGE = 'Not applicable: this generic app uses user-delegated PublicAPI access.';
+const APP_PROVISIONING_WAIT_MS = 900_000;
+const APP_PROVISIONING_POLL_MS = 2_000;
+const APP_PROVISIONING_READ_MAX_RETRIES = 3;
 const APP_DELETE_WARNING = 'This cannot be undone. All application data and metadata will be deleted.';
 const APP_DELETION_ENVIRONMENTS = ['preview', 'dev', 'test', 'prod'] as const;
+
+/** Scoped cleanup must retain the exact plan targets; legacy plans carry no target authority. */
+function isAppDeletionRuntimeTargetSet(value: unknown, companyTenantId: string, targetTenantId: string): value is string[] {
+  return Array.isArray(value) && value.length > 0 && value.every(target =>
+    typeof target === 'string' && target.length > 0 && target.length <= 256 && target.trim() === target,
+  ) && new Set(value).size === value.length && value.includes(companyTenantId) && value.includes(targetTenantId);
+}
+
+/** Older same-tenant providers may omit the target; an explicit request must be acknowledged. */
+function appDeletionTargetMatches(payload: Record<string, unknown>, targetTenantId: string, required: boolean): boolean {
+  return payload.targetTenantId === targetTenantId || (!required && !Object.hasOwn(payload, 'targetTenantId'));
+}
 
 /** Require the immutable deletion plan to cover every deployment environment exactly once. */
 export function isCompleteAppDeletionEnvironmentSet(value: unknown): value is string[] {
@@ -126,18 +159,21 @@ export interface AppWorkflowSetupOptions {
   ref?: string;
   commit?: string;
   configHash?: string;
+  handoverFromNoCode?: boolean;
   skipValidate?: boolean;
   format?: string;
   json?: boolean;
 }
 
-export interface AppWorkflowEvidenceOptions extends AppConnectExistingOptions {
-  operationId: string;
-  nonce: string;
+/** Submit collector JSON with OIDC; legacy proof-construction options are rejected. */
+export interface AppWorkflowEvidenceOptions extends Partial<AppConnectExistingOptions> {
+  evidenceFile: string;
+  operationId?: string;
+  nonce?: string;
   environment?: string;
-  configHash: string;
-  artifactDigest: string;
-  imageDigest: string;
+  configHash?: string;
+  artifactDigest?: string;
+  imageDigest?: string;
   workflowRunId?: string;
   workflowRunAttempt?: string;
   githubOidcToken?: string;
@@ -243,6 +279,112 @@ function normalizeGenericAppProvisioningPayload(payload: unknown, appKey: string
   });
 
   return { ...payload, steps };
+}
+
+/** A successful HTTP response is only an acknowledgement until the exact job is ready. */
+function validateAppProvisioningJob(
+  payload: unknown,
+  companyTenantId: string,
+  runtimeTenantId: string,
+  appKey: string,
+  expectedJobId?: string,
+): Record<string, unknown> {
+  if (!isRecord(payload)
+    || payload.tenantId !== companyTenantId
+    || payload.appKey !== appKey
+    || (payload.verticalKey !== undefined && payload.verticalKey !== appKey)
+    || typeof payload.jobId !== 'string' || !payload.jobId.trim() || payload.jobId.trim() !== payload.jobId
+    || (expectedJobId !== undefined && payload.jobId !== expectedJobId)
+    || typeof payload.status !== 'string'
+    || !isRecord(payload.enrollment)) {
+    throw new Error('Provisioning returned a mismatched or invalid app job; local configuration was not changed.');
+  }
+  const enrollment = payload.enrollment;
+  const metadata = isRecord(enrollment.metadata) ? enrollment.metadata : {};
+  const boundChildren = [enrollment.childTenantId, metadata.childTenantId]
+    .filter(value => value !== undefined && value !== null);
+  if (boundChildren.some(value => value !== runtimeTenantId)
+    || (runtimeTenantId !== companyTenantId && boundChildren.length === 0)
+    || (enrollment.tenantId !== undefined && enrollment.tenantId !== companyTenantId)
+    || (enrollment.verticalKey !== undefined && enrollment.verticalKey !== appKey)
+    || (payload.targetTenantId !== undefined && payload.targetTenantId !== runtimeTenantId)) {
+    throw new Error('Provisioning returned a different app runtime workspace; local configuration was not changed.');
+  }
+  return payload;
+}
+
+/** Only an exact job's GET may wait through a short dependency outage. */
+function isAppProvisioningReadUnavailable(response: Response, payload: unknown): boolean {
+  if (!isRecord(payload) || payload.jobId !== undefined || payload.status !== undefined
+    || !isRecord(payload.detail)
+    || response.headers.get('content-type')?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    return false;
+  }
+  return (response.status === 502 && payload.detail.error === 'EXTERNAL_SERVICE_ERROR')
+    || (response.status === 503 && payload.detail.error === 'PASSIVE_SCHEMA_MISMATCH');
+}
+
+async function waitForAppProvisioningReady(
+  client: PlatformAPIClient,
+  initialResponse: Response,
+  initialPayload: unknown,
+  companyTenantId: string,
+  runtimeTenantId: string,
+  appKey: string,
+  expectedJobId?: string,
+): Promise<Record<string, unknown>> {
+  const deadline = Date.now() + APP_PROVISIONING_WAIT_MS;
+  const acknowledged = initialResponse.ok
+    ? validateAppProvisioningJob(initialPayload, companyTenantId, runtimeTenantId, appKey, expectedJobId)
+    : undefined;
+  const jobId = (acknowledged?.jobId as string | undefined) || expectedJobId;
+  if (!jobId) {
+    throw new Error('Provisioning returned no exact app job; local configuration was not changed.');
+  }
+  let response = initialResponse;
+  let responsePayload = initialPayload;
+  let unavailableReads = 0;
+  const timedOut = (): Error => new Error(`Timed out after ${APP_PROVISIONING_WAIT_MS / 1000} seconds waiting for app provisioning job ${jobId}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
+
+  for (;;) {
+    if (!response.ok) {
+      if (!isAppProvisioningReadUnavailable(response, responsePayload)) {
+        throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed.`);
+      }
+      if (unavailableReads >= APP_PROVISIONING_READ_MAX_RETRIES) {
+        throw new Error(`Could not read app provisioning job ${jobId}: ${response.status} ${response.statusText}; local configuration was not changed. Remote provisioning may still be running. Rerun with --job-id ${jobId} to resume this exact job.`);
+      }
+      unavailableReads += 1;
+    } else {
+      const payload = validateAppProvisioningJob(responsePayload, companyTenantId, runtimeTenantId, appKey, jobId);
+      unavailableReads = 0;
+      if (payload.status === 'ready') return payload;
+      if (payload.status !== 'running') {
+        const failedSteps = Array.isArray(payload.steps)
+          ? payload.steps.filter(isRecord).filter(step => step.status === 'failed')
+            .map(step => step.key).filter((key): key is string => typeof key === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(key))
+          : [];
+        const status = /^[a-zA-Z0-9_-]{1,64}$/.test(String(payload.status)) ? payload.status : 'unknown';
+        throw new Error(`App provisioning job ${jobId} is ${status}${failedSteps.length ? ` (failed steps: ${failedSteps.join(', ')})` : ''}; local configuration was not changed.`);
+      }
+    }
+    const remaining = deadline - Date.now();
+    if (remaining <= 0) throw timedOut();
+    await new Promise<void>(resolve => setTimeout(resolve, Math.min(APP_PROVISIONING_POLL_MS, remaining)));
+    const requestBudget = deadline - Date.now();
+    if (requestBudget <= 0) throw timedOut();
+    try {
+      response = await client.getAppProvisioningJob(appKey, jobId, runtimeTenantId,
+        Math.min(requestBudget, MANAGED_PUBLIC_REQUEST_TIMEOUT_MS));
+      responsePayload = await readResponsePayload(response);
+    } catch (err) {
+      if (isManagedPublicRequestTimeout(err)) {
+        throw new Error(`Reading app provisioning job ${jobId} timed out; local configuration was not changed.`, { cause: err });
+      }
+      throw err;
+    }
+    if (Date.now() >= deadline) throw timedOut();
+  }
 }
 
 function buildStorageBindingContract(
@@ -465,88 +607,133 @@ export function buildSourceUnknownWorkflowSetupData(
   if (!environment) {
     throw new Error('Workflow setup environment is required.');
   }
+  if (options.handoverFromNoCode) {
+    assertGitCommitSha(options.commit?.trim() || '', '--commit');
+    assertSha256Digest(options.configHash?.trim() || '', '--config-hash');
+  }
   return {
     environment,
     workflowPath: options.workflow?.trim() || '.github/workflows/eai-app.yml',
     ...(options.ref?.trim() ? { ref: options.ref.trim() } : {}),
     ...(options.commit?.trim() ? { commitSha: options.commit.trim() } : {}),
     ...(options.configHash?.trim() ? { configHash: options.configHash.trim() } : {}),
+    ...(options.handoverFromNoCode ? { handoverIntent: 'no-code-to-cli' as const } : {}),
   };
 }
 
+/** Accept only legacy source-unknown evidence; CLI-managed evidence uses its operation-specific workflow route. */
 export function buildSourceUnknownWorkflowEvidenceData(
-  options: AppWorkflowEvidenceOptions,
+  value: unknown,
 ): SourceUnknownWorkflowEvidenceRequest {
-  const repo = parseRepositorySlug(options.repo);
-  const operationId = options.operationId?.trim();
-  const nonce = options.nonce?.trim();
-  const environment = (options.environment || 'preview').trim();
-  const defaultBranch = (options.branch || 'main').trim();
-  const workflowPath = options.workflow?.trim() || '.github/workflows/eai-app.yml';
-  const ref = options.ref?.trim() || `refs/heads/${defaultBranch}`;
-  const commitSha = options.commit?.trim();
-  const configHash = options.configHash?.trim();
-  const artifactDigest = options.artifactDigest?.trim();
-  const imageDigest = options.imageDigest?.trim();
-  if (!operationId) throw new Error('Workflow evidence operation ID is required.');
-  if (!nonce) throw new Error('Workflow evidence nonce is required.');
-  if (!environment) throw new Error('Workflow evidence environment is required.');
-  if (!defaultBranch) throw new Error('Default branch is required.');
-  if (!commitSha) throw new Error('Workflow evidence commit SHA is required.');
-  if (!configHash) throw new Error('Workflow evidence config hash is required.');
-  if (!artifactDigest) throw new Error('Workflow evidence artifact digest is required.');
-  if (!imageDigest) throw new Error('Workflow evidence image digest is required.');
-  assertSha256Digest(artifactDigest, '--artifact-digest');
-  assertSha256Digest(imageDigest, '--image-digest');
-  const schemaProvenance = buildSchemaProvenance(options);
-  if (!schemaProvenance) {
-    throw new Error('Workflow evidence requires schema provenance: provide --template-version, --schema-digest, --validator-digest, and an approved source anchor.');
+  function record(input: unknown, fields: string[], label: string): Record<string, unknown> {
+    if (!isRecord(input) || Object.keys(input).some(key => !fields.includes(key))) {
+      throw new Error(`${label} must contain only canonical collector fields.`);
+    }
+    return input;
   }
-  const workflowRun: Record<string, unknown> = {};
-  if (options.workflowRunId?.trim()) workflowRun.id = options.workflowRunId.trim();
-  if (options.workflowRunAttempt?.trim()) {
-    const attempt = Number(options.workflowRunAttempt.trim());
-    workflowRun.attempt = Number.isFinite(attempt) ? attempt : options.workflowRunAttempt.trim();
+  function text(input: unknown, label: string, pattern?: RegExp): string {
+    if (typeof input !== 'string' || !input || input.trim() !== input || (pattern && !pattern.test(input))) {
+      throw new Error(`${label} is missing or invalid in workflow evidence.`);
+    }
+    return input;
   }
-
+  function positiveId(input: unknown, label: string): string | number {
+    if ((typeof input !== 'string' && typeof input !== 'number')
+      || !/^[1-9][0-9]*$/.test(String(input))
+      || (typeof input === 'number' && !Number.isSafeInteger(input))) {
+      throw new Error(`${label} must be a positive integer.`);
+    }
+    return input;
+  }
+  const body = record(value, ['operationId', 'nonce', 'sourceMode', 'targetTenantId', 'environment',
+    'workflowPath', 'workflowBlobSha', 'collectorDigest', 'ref', 'commitSha', 'configHash',
+    'artifactDigest', 'imageArtifact', 'imageDigest', 'schemaProvenance', 'workflowRun',
+    'validationSummary'], 'Workflow evidence');
+  const sha = /^[a-f0-9]{40}$/;
+  const digest = /^sha256:[a-f0-9]{64}$/;
+  if (body.sourceMode === 'eai-cli-generated'
+    || (typeof body.operationId === 'string' && (CLI_MANAGED_SOURCE_OPERATION_ID.test(body.operationId)
+      || body.operationId.startsWith('cli-managed-source-')))) {
+    throw new Error('This workflow-evidence command accepts source-unknown evidence only. Use the canonical EAI managed deployment workflow for CLI-managed evidence.');
+  }
+  const sourceMode = body.sourceMode === undefined
+    ? undefined
+    : text(body.sourceMode, 'sourceMode', /^source-unknown$/);
+  const targetTenantId = body.targetTenantId === undefined
+    ? undefined
+    : text(body.targetTenantId, 'targetTenantId', /^[A-Za-z0-9](?:[A-Za-z0-9._:-]{0,254}[A-Za-z0-9])?$/);
+  const artifact = record(body.imageArtifact, ['id', 'name', 'archiveDigest'], 'imageArtifact');
+  if (artifact.name !== 'eai-generated-app-image') throw new Error('imageArtifact.name must be eai-generated-app-image.');
+  const run = record(body.workflowRun, ['id', 'attempt', 'workflow', 'job'], 'workflowRun');
+  const provenance = record(body.schemaProvenance, ['templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+    'approvedReleaseId', 'schemaDigest', 'validatorDigest'], 'schemaProvenance');
+  const validation = record(body.validationSummary, ['status'], 'validationSummary');
+  if (validation.status !== 'passed') throw new Error('validationSummary.status must be passed from the successful canonical workflow.');
+  if (!provenance.baseTemplateSha && !provenance.approvedSourceSha && !provenance.approvedReleaseId) {
+    throw new Error('Workflow evidence requires schema provenance with an approved source anchor.');
+  }
+  const operationId = text(
+    body.operationId,
+    'operationId',
+    MANAGED_DEPLOYMENT_IDENTIFIER_PATTERN,
+  );
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('operationId must use the source-unknown namespace.');
+  }
   return {
     operationId,
-    nonce,
-    environment,
-    workflowPath,
-    ref,
-    commitSha,
-    configHash,
-    artifactDigest,
-    imageDigest,
-    schemaProvenance,
-    ...(Object.keys(workflowRun).length > 0 ? { workflowRun } : {}),
-    oidcClaims: {
-      repository: `${repo.owner}/${repo.name}`,
-      ref,
-      sha: commitSha,
-      workflow_ref: `${repo.owner}/${repo.name}/${workflowPath}@${ref}`,
-      ...(workflowRun.id ? { run_id: String(workflowRun.id) } : {}),
-      ...(workflowRun.attempt ? { run_attempt: String(workflowRun.attempt) } : {}),
+    nonce: text(body.nonce, 'nonce'),
+    ...(sourceMode ? { sourceMode: 'source-unknown' as const } : {}),
+    ...(targetTenantId ? { targetTenantId } : {}),
+    environment: text(body.environment, 'environment', /^(preview|dev|test|prod|demo)$/),
+    workflowPath: text(body.workflowPath, 'workflowPath', /^\.github\/workflows\/[^/]+\.ya?ml$/),
+    workflowBlobSha: text(body.workflowBlobSha, 'workflowBlobSha', sha),
+    collectorDigest: text(body.collectorDigest, 'collectorDigest', digest),
+    ref: text(body.ref, 'ref', /^refs\/heads\/[A-Za-z0-9](?:[A-Za-z0-9._/-]{0,253}[A-Za-z0-9])?$/),
+    commitSha: text(body.commitSha, 'commitSha', sha),
+    configHash: text(body.configHash, 'configHash', digest),
+    artifactDigest: text(body.artifactDigest, 'artifactDigest', digest),
+    imageDigest: text(body.imageDigest, 'imageDigest', digest),
+    imageArtifact: {
+      id: positiveId(artifact.id, 'imageArtifact.id'), name: 'eai-generated-app-image',
+      archiveDigest: text(artifact.archiveDigest, 'imageArtifact.archiveDigest', digest),
     },
-    validationSummary: {
-      status: 'passed_by_cli',
-      appValidated: !options.skipValidate,
+    workflowRun: {
+      id: positiveId(run.id, 'workflowRun.id'), attempt: positiveId(run.attempt, 'workflowRun.attempt'),
+      ...(run.workflow !== undefined ? { workflow: text(run.workflow, 'workflowRun.workflow') } : {}),
+      ...(run.job !== undefined ? { job: text(run.job, 'workflowRun.job') } : {}),
     },
+    schemaProvenance: {
+      templateVersion: text(provenance.templateVersion, 'schemaProvenance.templateVersion'),
+      schemaDigest: text(provenance.schemaDigest, 'schemaProvenance.schemaDigest', digest),
+      validatorDigest: text(provenance.validatorDigest, 'schemaProvenance.validatorDigest', digest),
+      ...(provenance.baseTemplateSha !== undefined ? { baseTemplateSha: text(provenance.baseTemplateSha, 'schemaProvenance.baseTemplateSha', sha) } : {}),
+      ...(provenance.approvedSourceSha !== undefined ? { approvedSourceSha: text(provenance.approvedSourceSha, 'schemaProvenance.approvedSourceSha', sha) } : {}),
+      ...(provenance.approvedReleaseId !== undefined ? { approvedReleaseId: text(provenance.approvedReleaseId, 'schemaProvenance.approvedReleaseId') } : {}),
+    },
+    validationSummary: { status: validation.status },
   };
 }
 
 export function buildSourceUnknownDeploymentData(
   options: AppDeploySourceUnknownOptions,
 ): SourceUnknownDeploymentRequest {
-  const operationId = options.operationId?.trim();
+  if (!options.operationId?.trim()) {
+    throw new Error('Deployment handoff operation ID is required.');
+  }
+  const operationId = requireManagedDeploymentIdentifier(
+    options.operationId,
+    'Deployment handoff operation ID',
+  );
+  if (!operationId.startsWith('source-unknown-')) {
+    throw new Error('Deployment handoff requires an exact source-unknown operation ID.');
+  }
   const environment = (options.environment || 'preview').trim();
   const repo = options.repo?.trim() ? parseRepositorySlug(options.repo) : undefined;
   const workflowRunId = normaliseOptionalString(options.workflowRunId);
   const artifactDigest = options.artifactDigest?.trim();
   const imageDigest = options.imageDigest?.trim();
 
-  if (!operationId) throw new Error('Deployment handoff operation ID is required.');
   if (!environment) throw new Error('Deployment handoff environment is required.');
   if (artifactDigest) assertSha256Digest(artifactDigest, '--artifact-digest');
   if (imageDigest) assertSha256Digest(imageDigest, '--image-digest');
@@ -617,8 +804,31 @@ function extractDocs(payload: unknown): Array<{ id?: string; data?: Record<strin
   }));
 }
 
+/** Verify an authoritative first page before displaying an empty or partial app inventory. */
+function isValidAppInventory(payload: unknown): boolean {
+  if (!isRecord(payload) || !Array.isArray(payload.docs) || !payload.docs.every(doc => isRecord(doc)
+    && typeof doc.id === 'string' && doc.id.length > 0 && isRecord(doc.data))) return false;
+  const count = payload.totalDocs;
+  const limit = payload.limit;
+  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0
+    || typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1
+    || payload.page !== 1) return false;
+  const hasCursor = Object.hasOwn(payload, 'nextCursor');
+  const legacyFields = ['pagingCounter', 'prevPage', 'nextPage'];
+  const hasLegacy = legacyFields.some(key => Object.hasOwn(payload, key));
+  if (!hasCursor && !hasLegacy || hasLegacy && !legacyFields.every(key => Object.hasOwn(payload, key))) return false;
+  const pages = Math.max(1, Math.ceil(count / limit));
+  const hasNextPage = pages > 1;
+  if (!(payload.totalPages === pages || !hasCursor && count === 0 && payload.totalPages === 0)
+    || payload.docs.length !== Math.min(count, limit) || payload.hasPrevPage !== false
+    || payload.hasNextPage !== hasNextPage) return false;
+  if (hasCursor && (payload.nextCursor !== null && (typeof payload.nextCursor !== 'string' || !payload.nextCursor.length)
+    || !hasNextPage && payload.nextCursor !== null)) return false;
+  return !hasLegacy || payload.pagingCounter === 1 && payload.prevPage === null && payload.nextPage === (hasNextPage ? 2 : null);
+}
+
 async function readResponsePayload(res: Response): Promise<unknown> {
-  const text = await res.text();
+  const text = await readManagedPublicResponseText(res);
   if (!text) return {};
   try {
     return JSON.parse(text);
@@ -627,34 +837,103 @@ async function readResponsePayload(res: Response): Promise<unknown> {
   }
 }
 
-function fail(message: string): never {
+/** Output format, stable CLI code (default E203) and allowlisted HTTP diagnostics for an app command failure. */
+interface AppCommandFailure {
+  readonly format: string;
+  readonly code?: ErrorCode;
+  readonly diagnostics?: SafePlatformDiagnostics;
+}
+
+/** Exit an app command; a failure descriptor selects the standard text/JSON error envelope. */
+function fail(message: string, failure?: AppCommandFailure): never {
+  if (failure) {
+    const diagnostics = failure.diagnostics;
+    exitWithError(failure.code ?? ErrorCode.E203, { details: message }, failure.format === 'json' ? 'json' : 'text',
+      diagnostics && { status: diagnostics.status, serverCode: diagnostics.code, requestId: diagnostics.requestId });
+  }
   out.error(message);
   process.exit(1);
+}
+
+async function readAppDeletionResponse(
+  request: () => Promise<Response>,
+  format: string,
+  phase: 'plan' | 'delete',
+  onFailure?: () => void,
+): Promise<{ response: Response; payload: unknown }> {
+  let response: Response | undefined;
+  try {
+    response = await request();
+    return { response, payload: await readResponsePayload(response) };
+  } catch {
+    onFailure?.();
+    // SECURITY: Transport exceptions can contain credentials; retain only validated response metadata.
+    fail(phase === 'plan'
+      ? 'Could not prepare app deletion. No deletion request was sent.'
+      : 'App deletion could not be verified. Check the app status before retrying.', {
+      format,
+      diagnostics: response && safePlatformDiagnostics(response.status, undefined, response.headers),
+    });
+  }
 }
 
 async function resolveAppManagementContext(options?: {
   tenantId?: string;
   interactive?: boolean;
+  managed?: boolean;
 }) {
+  if (options?.managed && options.tenantId !== undefined) {
+    requireManagedScopeIdentifier(options.tenantId, 'Tenant ID');
+  }
   const root = await findProjectRoot();
-  const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+  const requestPolicy: PublicApiRequestPolicy | undefined = options?.managed
+    ? { validateUrl: requireManagedPublicApiUrl, redirect: 'error' }
+    : undefined;
+  const resolvedPublicApiUrl = await resolvePublicApiUrl(root ?? undefined, requestPolicy);
+  const publicApiUrl = requestPolicy?.validateUrl
+    ? requestPolicy.validateUrl(resolvedPublicApiUrl)
+    : resolvedPublicApiUrl;
   const context = await resolveActiveTenantContext({
     projectRoot: root ?? undefined,
     publicApiUrl,
     tenantId: options?.tenantId,
     interactive: options?.interactive,
+    requestPolicy,
   });
 
   return {
-    publicApiUrl: context.publicApiUrl,
+    publicApiUrl: requestPolicy?.validateUrl
+      ? requestPolicy.validateUrl(context.publicApiUrl)
+      : context.publicApiUrl,
     tenantId: context.activeTenant.id,
+    requestPolicy,
   };
+}
+
+type AppManagementContext = Awaited<ReturnType<typeof resolveAppManagementContext>>;
+
+async function resolveAppManagementCompanyTenantId(
+  context: AppManagementContext,
+  requestedTenantId?: string,
+): Promise<string> {
+  return requestedTenantId
+    ? context.tenantId
+    : resolveMainCompanyTenantId(context.publicApiUrl, context.tenantId, context.requestPolicy);
+}
+
+function createAppManagementClient(
+  context: AppManagementContext,
+  tenantId: string,
+): PlatformAPIClient {
+  return new PlatformAPIClient(context.publicApiUrl, tenantId, {
+    publicRequestRedirect: context.requestPolicy?.redirect,
+  });
 }
 
 async function validateVerticalEnrollment(
   verticalKey: string,
   client: Pick<PlatformAPIClient, 'listResources'>,
-): Promise<void> {
+): Promise<Record<string, unknown>> {
   const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
     limit: 1,
     where: { verticalKey },
@@ -666,27 +945,26 @@ async function validateVerticalEnrollment(
   if (docs.length === 0) {
     fail(`No app found for ${verticalKey}. Create it with \`eai app create\` first, or pass --skip-validate if the app is still being prepared.`);
   }
+  return docs[0];
 }
 
 export const appCommand = new Command('app')
   .alias('vertical')
-  .description('Manage apps under the active company tenant');
+  .description('Manage apps under the active company workspace');
 
 export const verticalCommand = appCommand;
 
 verticalCommand
   .command('list')
-  .description('List apps for the active company tenant')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .description('List apps for the active company workspace')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--limit <n>', 'Items per page', '50')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, 'Listing apps...');
 
@@ -698,7 +976,12 @@ verticalCommand
 
     if (!res.ok) {
       spinner?.fail('Failed to list apps');
-      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+      fail(formatSafePlatformFailure('App inventory', safePlatformDiagnostics(res.status, payload, res.headers)));
+    }
+
+    if (!isValidAppInventory(payload)) {
+      spinner?.fail('Failed to list apps');
+      fail('App inventory returned an invalid response. Existing workspace state has not changed.');
     }
 
     const docs = extractDocs(payload);
@@ -721,54 +1004,75 @@ verticalCommand
 verticalCommand
   .command('delete <key>')
   .description('Permanently delete an app and every manifest-owned child')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Company workspace that owns the app enrollment')
+  .option('--target-tenant-id <id>', 'Runtime child workspace to delete from the owning company app')
   .option('--confirm <app-key>', 'Confirm the exact app key for automation')
   .option('--non-interactive', 'Disable prompts; requires --confirm with the exact app key', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', `\nFor a parent-owned app with a separate runtime child:
+  eai app delete <app-key> --tenant-id <parent-id> --target-tenant-id <runtime-child-id> --confirm <app-key> --non-interactive --format json
+The plan and final receipt must match the owner, requested child and exact runtime targets.
+Omit --target-tenant-id for the existing same-workspace deletion flow.
+`)
   .action(async (key: string, options) => {
-    const appKey = key.trim();
-    if (!appKey) fail('App key is required.');
     if (options.json) options.format = 'json';
     const format = normalizeFormat(options);
+    const invalidInput: AppCommandFailure = { format, code: ErrorCode.E305 };
+    const appKey = key.trim();
+    if (!appKey) fail('App key is required.', invalidInput);
+    if (options.targetTenantId !== undefined) {
+      try {
+        requireManagedScopeIdentifier(options.targetTenantId, '--target-tenant-id');
+      } catch {
+        fail('--target-tenant-id must be a non-empty exact workspace identifier.', invalidInput);
+      }
+    }
     const ctx = await resolveAppManagementContext({
       tenantId: options.tenantId,
       interactive: !options.tenantId && !options.nonInteractive,
     });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
+    const explicitTarget = options.targetTenantId !== undefined;
+    const targetTenantId = options.targetTenantId ?? companyTenantId;
 
-    const planResponse = await client.getAppDeletionPlan(companyTenantId, appKey);
-    const plan = await readResponsePayload(planResponse);
+    const { response: planResponse, payload: plan } = await readAppDeletionResponse(
+      () => client.getAppDeletionPlan(companyTenantId, appKey, options.targetTenantId), format, 'plan',
+    );
     if (!planResponse.ok || !isRecord(plan)) {
-      fail(
-        isRecord(plan) && typeof plan.message === 'string'
-          ? plan.message
-          : `Could not prepare app deletion: ${planResponse.status} ${planResponse.statusText}`,
-      );
+      const diagnostics = safePlatformDiagnostics(planResponse.status, plan, planResponse.headers);
+      fail(formatSafePlatformFailure('App deletion plan', diagnostics), { format, diagnostics });
     }
     const manifestHash = typeof plan.ownershipManifestHash === 'string' ? plan.ownershipManifestHash : '';
     const environments = plan.environments;
+    const scopedCleanup = plan.cleanupContract === 'eai.app-scoped-cleanup.v2';
+    const runtimeTargets = plan.runtimeTenantIds;
     if (
+      plan.tenantId !== companyTenantId ||
       plan.appKey !== appKey ||
+      !appDeletionTargetMatches(plan, targetTenantId, explicitTarget) ||
       plan.confirmationRequired !== appKey ||
       !/^[a-f0-9]{64}$/.test(manifestHash) ||
-      !isCompleteAppDeletionEnvironmentSet(environments)
+      !isCompleteAppDeletionEnvironmentSet(environments) ||
+      (scopedCleanup
+        ? !isAppDeletionRuntimeTargetSet(runtimeTargets, companyTenantId, targetTenantId)
+        : explicitTarget || Object.hasOwn(plan, 'cleanupContract') || Object.hasOwn(plan, 'runtimeTenantIds'))
     ) {
-      fail('The platform returned an invalid app deletion ownership plan. No data was deleted.');
+      fail('The platform returned an invalid app deletion ownership plan. No data was deleted.', { format });
     }
+
+    const capturedRuntimeTargets = scopedCleanup ? [...runtimeTargets as string[]] : undefined;
 
     if (options.nonInteractive) {
       try {
         validateNonInteractiveAppDeleteConfirmation(appKey, options.confirm);
       } catch (error) {
-        fail(errMsg(error));
+        fail(errMsg(error), invalidInput);
       }
     } else {
       if (!process.stdin.isTTY) {
-        fail(`Interactive confirmation requires a terminal. Use --confirm ${appKey} --non-interactive.`);
+        fail(`Interactive confirmation requires a terminal. Use --confirm ${appKey} --non-interactive.`, invalidInput);
       }
       out.warn(APP_DELETE_WARNING);
       const { typedAppKey } = await (
@@ -781,36 +1085,42 @@ verticalCommand
           validate: (value: unknown) => value === appKey || `Type ${appKey} exactly to continue.`,
         },
       ]);
-      if (typedAppKey !== appKey) fail('App deletion confirmation did not match.');
+      if (typedAppKey !== appKey) fail('App deletion confirmation did not match.', invalidInput);
     }
 
     const spinner = makeSpinner(format, `Deleting app ${appKey}...`);
-    const response = await client.deleteApp(companyTenantId, appKey, {
-      confirmationAppKey: appKey,
-      ownershipManifestHash: manifestHash,
-      environments,
-    });
-    const receipt = await readResponsePayload(response);
+    const { response, payload: receipt } = await readAppDeletionResponse(
+      () => client.deleteApp(companyTenantId, appKey, {
+        confirmationAppKey: appKey,
+        ownershipManifestHash: manifestHash,
+        environments,
+        ...(explicitTarget ? { targetTenantId } : {}),
+      }), format, 'delete', () => { spinner?.fail('App deletion failed'); },
+    );
     if (!response.ok || !isRecord(receipt)) {
       spinner?.fail('App deletion failed');
-      fail(
-        isRecord(receipt) && typeof receipt.message === 'string'
-          ? receipt.message
-          : `${response.status} ${response.statusText}`,
-      );
+      const diagnostics = safePlatformDiagnostics(response.status, receipt, response.headers);
+      fail(formatSafePlatformFailure('App deletion', diagnostics), { format, diagnostics });
     }
+    const returnedRuntimeTargets = receipt.runtimeTenantIds;
     if (
       receipt.schemaVersion !== 'eai.app-deletion-receipt.v1' ||
       typeof receipt.operationId !== 'string' ||
       receipt.operationId.length === 0 ||
       receipt.planHash !== manifestHash ||
+      receipt.ownershipManifestHash !== manifestHash ||
       receipt.status !== 'deleted' ||
       receipt.verified !== true ||
       receipt.appKey !== appKey ||
-      receipt.tenantId !== companyTenantId
+      receipt.tenantId !== companyTenantId ||
+      !appDeletionTargetMatches(receipt, targetTenantId, explicitTarget || Object.hasOwn(plan, 'targetTenantId')) ||
+      (capturedRuntimeTargets
+        ? !Array.isArray(returnedRuntimeTargets) || returnedRuntimeTargets.length !== capturedRuntimeTargets.length ||
+          !capturedRuntimeTargets.every((target, index) => returnedRuntimeTargets[index] === target)
+        : Object.hasOwn(receipt, 'runtimeTenantIds'))
     ) {
       spinner?.fail('App deletion could not be verified');
-      fail('The platform did not return a verified app deletion receipt.');
+      fail('The platform did not return a verified app deletion receipt.', { format });
     }
 
     if (format === 'json') {
@@ -822,12 +1132,12 @@ verticalCommand
 
 const appAuthCommand = verticalCommand
   .command('auth')
-  .description('Inspect read-only tenant authorization for an app client');
+  .description('Inspect read-only workspace authorization for an app client');
 
 appAuthCommand
   .command('status <key>')
-  .description('Inspect app registration, consent, tenant allowlist, and runtime auth mode')
-  .requiredOption('--tenant-id <id>', 'Company tenant ID to inspect')
+  .description('Inspect app registration, consent, workspace allowlist, and runtime auth mode')
+  .requiredOption('--tenant-id <id>', 'Company workspace ID to inspect')
   .requiredOption('--client-id <id>', 'Entra application client ID to inspect')
   .option('--skip-validate', 'Skip app enrollment lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -862,7 +1172,7 @@ client ID matches the requested app; otherwise it is reported as not observable.
     const response = await client.getTenantAuthorizedApps(tenantId);
     const payload = await readResponsePayload(response);
     if (!response.ok) {
-      spinner?.fail('Failed to read tenant authorized apps');
+      spinner?.fail('Failed to read workspace authorized apps');
       fail(isRecord(payload) && typeof payload.message === 'string'
         ? payload.message
         : `${response.status} ${response.statusText}`);
@@ -962,11 +1272,11 @@ client ID matches the requested app; otherwise it is reported as not observable.
 
 verticalCommand
   .command('create <name>')
-  .description('Create an app under a company tenant')
-  .option('--tenant-id <id>', 'Main company tenant ID that owns this app')
-  .option('--parent-tenant <id>', 'Immediate parent company tenant ID for the new child company')
-  .option('--child-tenant <name>', 'Create or reuse a child company tenant display name')
-  .option('--child-tenant-slug <slug>', 'Child company tenant key')
+  .description('Create an app under a company workspace')
+  .option('--tenant-id <id>', 'Main company workspace ID that owns this app')
+  .option('--parent-tenant <id>', 'Immediate parent company workspace ID for the new child workspace')
+  .option('--child-tenant <name>', 'Create or reuse a child workspace display name')
+  .option('--child-tenant-slug <slug>', 'Child company workspace key')
   .option('--key <key>', 'Stable app key (defaults to kebab-case name)')
   .option('--template <templateKey>', 'Optional app-catalog template key')
   .option('--source <source>', 'Creation source', DEFAULT_VERTICAL_SOURCE)
@@ -976,9 +1286,7 @@ verticalCommand
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (name: string, options: VerticalCreateOptions & { tenantId?: string }) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
     const immediateParentTenantId =
       options.parentTenant?.trim() || (options.tenantId ? companyTenantId : ctx.tenantId);
     const format = normalizeFormat(options);
@@ -993,7 +1301,7 @@ verticalCommand
     }
     const spinner = makeSpinner(format, `Creating ${data.verticalKey}...`);
 
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const res = await client.createTenantApp(companyTenantId, {
       appDisplayName: String(data.displayName),
       verticalKey: String(data.verticalKey),
@@ -1017,14 +1325,14 @@ verticalCommand
     }
 
     spinner?.succeed(`Created app ${chalk.cyan(String(data.verticalKey))}`);
-    out.info(`Main company tenant: ${chalk.cyan(companyTenantId)}`);
+    out.info(`Main company workspace: ${chalk.cyan(companyTenantId)}`);
     if (immediateParentTenantId !== companyTenantId) {
       out.info(`Immediate parent company: ${chalk.cyan(immediateParentTenantId)}`);
     }
     if (isRecord(payload) && isRecord(payload.childTenant)) {
-      out.info(`Child tenant: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
+      out.info(`Child workspace: ${chalk.cyan(String(payload.childTenant.displayName ?? childTenantDisplayName))} · ${chalk.dim(String(payload.childTenant.id ?? ''))}`);
     } else {
-      out.info(`App tenant: ${chalk.cyan(immediateParentTenantId)}`);
+      out.info(`App workspace: ${chalk.cyan(immediateParentTenantId)}`);
     }
   });
 
@@ -1032,7 +1340,7 @@ verticalCommand
   .command('connect-existing <key>')
   .description('Register an existing app repository for managed deployment')
   .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
   .option('--branch <branch>', 'Default branch', 'main')
   .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
@@ -1050,11 +1358,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppConnectExistingOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1109,7 +1419,7 @@ verticalCommand
   .description('Import an already-running app as read-only observed infrastructure')
   .requiredOption('--repo <owner/repo>', 'GitHub repository to connect')
   .requiredOption('--url <url>', 'Currently active observed app URL')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--repo-url <url>', 'Repository URL when it differs from https://github.com/owner/repo')
   .option('--environment <environment>', 'Observed deployment environment', 'production')
   .option('--branch <branch>', 'Default branch', 'main')
@@ -1132,11 +1442,13 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppAdoptObservedOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1191,21 +1503,24 @@ verticalCommand
 verticalCommand
   .command('workflow-setup <key>')
   .description('Issue source-unknown workflow setup operation and nonce')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
   .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
   .option('--ref <ref>', 'Approved git ref')
   .option('--commit <sha>', 'Current commit SHA to bind')
   .option('--config-hash <hash>', 'Validated config hash to bind')
+  .option('--handover-from-no-code', 'Request validated no-code to CLI handover; requires --commit and --config-hash', false)
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppWorkflowSetupOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1264,27 +1579,28 @@ verticalCommand
 
 verticalCommand
   .command('workflow-evidence <key>')
-  .description('Submit source-unknown workflow evidence for a setup operation')
-  .requiredOption('--repo <owner/repo>', 'GitHub repository submitting evidence')
-  .requiredOption('--operation-id <id>', 'Source-unknown workflow setup operation ID')
-  .requiredOption('--nonce <nonce>', 'One-time setup nonce')
-  .requiredOption('--commit <sha>', 'Workflow commit SHA')
-  .requiredOption('--config-hash <hash>', 'Validated config hash')
-  .requiredOption('--artifact-digest <digest>', 'Workflow artifact digest in sha256:<hex> form')
-  .requiredOption('--image-digest <digest>', 'Immutable image digest in sha256:<hex> form')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
-  .option('--environment <environment>', 'Deployment environment to bind', 'preview')
-  .option('--branch <branch>', 'Default branch', 'main')
-  .option('--workflow <path>', 'GitHub Actions workflow path', '.github/workflows/eai-app.yml')
-  .option('--ref <ref>', 'Approved git ref (defaults to refs/heads/<branch>)')
-  .option('--template-version <version>', 'Approved schema/template version')
-  .option('--base-template-sha <sha>', 'Base eai-app-template commit SHA when known')
-  .option('--approved-source-sha <sha>', 'Approved source commit SHA for non-template apps')
-  .option('--approved-release <id>', 'Approved schema/validator release identifier')
-  .option('--schema-digest <digest>', 'Approved schema digest in sha256:<hex> form')
-  .option('--validator-digest <digest>', 'Approved validator digest in sha256:<hex> form')
-  .option('--workflow-run-id <id>', 'GitHub Actions run ID')
-  .option('--workflow-run-attempt <n>', 'GitHub Actions run attempt')
+  .description('Submit canonical collector evidence with GitHub Actions OIDC')
+  .requiredOption('--evidence-file <path>', 'JSON evidence produced by the canonical successful workflow collector')
+  .option('--repo <owner/repo>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--operation-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--nonce <nonce>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--commit <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--config-hash <hash>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--artifact-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--image-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
+  .option('--environment <environment>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--branch <branch>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow <path>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--ref <ref>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--template-version <version>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--base-template-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-source-sha <sha>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--approved-release <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--schema-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--validator-digest <digest>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-id <id>', 'Deprecated: supply the canonical --evidence-file instead')
+  .option('--workflow-run-attempt <n>', 'Deprecated: supply the canonical --evidence-file instead')
   .option('--github-oidc-token <token>', 'GitHub Actions OIDC token for workflow evidence submission')
   .option(
     '--github-oidc-audience <audience>',
@@ -1294,12 +1610,8 @@ verticalCommand
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
+  .addHelpText('after', '\nUse --evidence-file from scripts/source-unknown-deployment-evidence.mjs collect after workflow checks succeed. Legacy evidence flags cannot construct accepted proof. PublicAPI verifies the GitHub OIDC token against the exact operation.\n')
   .action(async (key: string, options: AppWorkflowEvidenceOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1309,10 +1621,26 @@ verticalCommand
 
     let evidenceRequest: SourceUnknownWorkflowEvidenceRequest;
     try {
-      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(options);
+      const legacy = ['repo', 'operationId', 'nonce', 'commit', 'configHash', 'artifactDigest', 'imageDigest',
+        'environment', 'branch', 'workflow', 'ref', 'templateVersion', 'baseTemplateSha', 'approvedSourceSha',
+        'approvedRelease', 'schemaDigest', 'validatorDigest', 'workflowRunId', 'workflowRunAttempt'];
+      if (legacy.some(key => (options as unknown as Record<string, unknown>)[key] !== undefined)) {
+        throw new Error('Legacy evidence flags cannot be combined with --evidence-file; use the unchanged canonical collector JSON.');
+      }
+      evidenceRequest = buildSourceUnknownWorkflowEvidenceData(
+        JSON.parse(await readSourceUnknownEvidenceFile(options.evidenceFile)),
+      );
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);
@@ -1355,7 +1683,7 @@ verticalCommand
   .command('deploy-source-unknown <key>')
   .description('Request a TenantInfra deployment handoff for a source-unknown app')
   .requiredOption('--operation-id <id>', 'Accepted source-unknown workflow evidence operation ID')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--environment <environment>', 'Deployment environment to bind', 'preview')
   .option('--repo <owner/name>', 'GitHub repository that produced the deployment evidence')
   .option('--workflow <path>', 'GitHub Actions workflow path')
@@ -1371,11 +1699,6 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1389,6 +1712,14 @@ verticalCommand
     } catch (err) {
       fail(errMsg(err));
     }
+
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
 
     if (!options.skipValidate) {
       await validateVerticalEnrollment(appKey, client);
@@ -1428,16 +1759,18 @@ verticalCommand
 verticalCommand
   .command('deploy-source-unknown-status <key>')
   .description('Read the latest source-unknown deployment handoff status')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Run against a specific company workspace')
   .option('--skip-validate', 'Skip app lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options: AppDeploySourceUnknownStatusOptions) => {
-    const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = options.tenantId
-      ? ctx.tenantId
-      : await resolveMainCompanyTenantId(ctx.publicApiUrl, ctx.tenantId);
-    const client = new PlatformAPIClient(ctx.publicApiUrl, companyTenantId);
+    const ctx = await resolveAppManagementContext({
+      tenantId: options.tenantId,
+      interactive: !options.tenantId,
+      managed: true,
+    });
+    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
+    const client = createAppManagementClient(ctx, companyTenantId);
     const format = normalizeFormat(options);
     const appKey = key.trim();
 
@@ -1482,7 +1815,7 @@ verticalCommand
 verticalCommand
   .command('select <key>')
   .description('Set EAI_APP_KEY in the current project .env.local')
-  .option('--tenant-id <id>', 'Validate against a specific company tenant')
+  .option('--tenant-id <id>', 'Validate against a specific company workspace')
   .option('--skip-validate', 'Skip remote lookup before writing .env.local', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1520,7 +1853,9 @@ verticalCommand
 verticalCommand
   .command('provision <key>')
   .description('Run the platform app provisioning job')
-  .option('--tenant-id <id>', 'Run against a specific company tenant')
+  .option('--tenant-id <id>', 'Runtime tenant receiving app storage bindings')
+  .option('--app-tenant-id <id>', 'Parent tenant that owns the app enrollment; --tenant-id remains the runtime child')
+  .option('--job-id <id>', 'Resume an exact provisioning job without starting another')
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
@@ -1529,16 +1864,35 @@ verticalCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (key: string, options) => {
+    if (options.appTenantId !== undefined &&
+      (typeof options.appTenantId !== 'string' || !options.appTenantId.trim()
+        || options.appTenantId.trim() !== options.appTenantId)) {
+      fail('--app-tenant-id must be a non-empty exact parent tenant ID.');
+    }
+    if (options.appTenantId && !options.tenantId) {
+      fail('--app-tenant-id requires an explicit runtime --tenant-id.');
+    }
+    if (options.jobId !== undefined &&
+      (typeof options.jobId !== 'string' || !options.jobId.trim()
+        || options.jobId.trim() !== options.jobId)) {
+      fail('--job-id must be a non-empty exact provisioning job ID.');
+    }
+    if (options.jobId && (!options.tenantId || options.dryRun)) {
+      fail('--job-id requires --tenant-id and cannot be combined with --dry-run.');
+    }
+    if (!options.dryRun && (options.backend !== 'all' || options.rebuildSearch)) {
+      fail('--backend and --rebuild-search apply only to --dry-run; the app provisioning job selects its own storage actions.');
+    }
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const format = normalizeFormat(options);
     const verticalKey = key.trim();
+    const appTenantId = options.appTenantId || ctx.tenantId;
+    const appClient = appTenantId === ctx.tenantId
+      ? ctx.client
+      : new PlatformAPIClient(ctx.publicApiUrl, appTenantId);
 
     if (!verticalKey) {
       fail('App key is required.');
-    }
-
-    if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx.client);
     }
 
     const spinner = makeSpinner(
@@ -1547,39 +1901,71 @@ verticalCommand
         ? `Planning app storage readiness for ${verticalKey}...`
         : `Provisioning app ${verticalKey}...`,
     );
+    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, appClient);
+    const enrollmentData = isRecord(enrollment?.data) ? enrollment.data : enrollment;
+    const enrollmentMetadata = isRecord(enrollmentData?.metadata) ? enrollmentData.metadata : {};
+    const declaredRuntimes = [enrollmentData?.childTenantId, enrollmentMetadata.childTenantId]
+      .filter(value => value !== undefined && value !== null);
+    if (declaredRuntimes.some(value => typeof value !== 'string' || !value.trim() || value.trim() !== value)
+      || new Set(declaredRuntimes).size > 1) {
+      fail('The app enrollment has an invalid runtime workspace binding.');
+    }
+    const declaredRuntime = declaredRuntimes[0];
+    if (options.appTenantId && declaredRuntime !== undefined && declaredRuntime !== ctx.tenantId) {
+      fail('The app enrollment is bound to a different runtime workspace.');
+    }
+    // An explicit parent/runtime pair pins the requested child. Existing company
+    // commands continue to retain their enrollment's exact child binding.
+    const runtimeTenantId = options.appTenantId ? ctx.tenantId
+      : typeof declaredRuntime === 'string' ? declaredRuntime : ctx.tenantId;
+    const runtimeClient = runtimeTenantId === ctx.tenantId
+      ? ctx.client : new PlatformAPIClient(ctx.publicApiUrl, runtimeTenantId);
     const res = options.dryRun
-      ? await ctx.client.provisionStorage({
+      ? await runtimeClient.provisionStorage({
         backend: options.backend,
         dryRun: true,
         rebuildSearch: Boolean(options.rebuildSearch),
       })
-      : await ctx.client.createAppProvisioningJob(verticalKey);
+      : options.jobId
+        ? await appClient.getAppProvisioningJob(verticalKey, options.jobId, runtimeTenantId)
+        : await appClient.createAppProvisioningJob(verticalKey, runtimeTenantId === appTenantId ? undefined : runtimeTenantId);
     const responsePayload = await readResponsePayload(res);
-    const payload = normalizeGenericAppProvisioningPayload(responsePayload, verticalKey);
 
-    if (!res.ok) {
+    if (!res.ok && !(options.jobId && isAppProvisioningReadUnavailable(res, responsePayload))) {
       spinner?.fail('Failed to prepare app storage');
       fail(isRecord(responsePayload) && typeof responsePayload.message === 'string'
         ? responsePayload.message
         : `${res.status} ${res.statusText}`);
     }
 
+    let completedPayload: unknown = responsePayload;
+    if (!options.dryRun) {
+      try {
+        completedPayload = await waitForAppProvisioningReady(appClient, res, responsePayload,
+          appTenantId, runtimeTenantId, verticalKey, options.jobId);
+      } catch (err) {
+        spinner?.fail('App provisioning did not complete');
+        fail(errMsg(err));
+      }
+    }
+    const payload = normalizeGenericAppProvisioningPayload(completedPayload, verticalKey);
+
     const storageContract = options.dryRun
       ? null
-      : buildStorageBindingContract(ctx.tenantId, verticalKey, payload);
+      : buildStorageBindingContract(runtimeTenantId, verticalKey, payload);
     if (storageContract) {
       await writeStorageBindingContract(ctx.root, storageContract);
     }
 
-    if (options.select || storageContract) {
+    if (!options.dryRun && (options.select || storageContract)) {
       const storagePrefixes = isRecord(storageContract?.storageNamePrefixes)
         ? storageContract.storageNamePrefixes
         : {};
       const envPatches: Record<string, string> = {
         [APP_KEY_ENV]: verticalKey,
         [LEGACY_VERTICAL_KEY_ENV]: verticalKey,
-        EAI_TENANT_ID: ctx.tenantId,
-        NEXT_PUBLIC_EAI_TENANT_ID: ctx.tenantId,
+        EAI_TENANT_ID: runtimeTenantId,
+        NEXT_PUBLIC_EAI_TENANT_ID: runtimeTenantId,
         NEXT_PUBLIC_EAI_APP_KEY: verticalKey,
       };
       if (typeof storagePrefixes.sql === 'string') {
@@ -1600,9 +1986,11 @@ verticalCommand
     if (format === 'json') {
       out.json({
         tenantId: ctx.tenantId,
+        targetTenantId: runtimeTenantId,
+        ...(appTenantId === ctx.tenantId ? {} : { appTenantId }),
         appKey: verticalKey,
         verticalKey,
-        selected: Boolean(options.select),
+        selected: Boolean(options.select) && !options.dryRun,
         storageBindingsPath: storageContract ? STORAGE_BINDINGS_PATH : undefined,
         ...(options.dryRun ? { dryRun: true, storagePlan: payload } : { provisioning: payload }),
       });
@@ -1610,7 +1998,7 @@ verticalCommand
     }
 
     spinner?.succeed(options.dryRun ? 'App storage readiness plan complete' : 'App provisioning complete');
-    out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company tenant.`);
+    out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company workspace.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {
         const objectType = typeof result.objectType === 'string' ? result.objectType : 'unknown';

@@ -5,7 +5,13 @@
 import { Command } from 'commander';
 import type { Ora } from 'ora';
 import chalk from 'chalk';
-import { PlatformAPIClient } from '../lib/api.js';
+import {
+  PlatformAPIClient,
+  RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
+  RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE,
+  validateResourceIndexObjectTypes,
+  withPublicRequestObservation,
+} from '../lib/api.js';
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
@@ -288,10 +294,10 @@ export function matchPublishedType(
 
 export function buildMissingPublishedTypeMessage(match: PublishedTypeMatch): string {
   if (match.publishedTypeNames.length === 0) {
-    return `No published object types were found for the active tenant. ${match.requestedType} cannot be listed until types are published remotely.`;
+    return `No published object types were found for the active workspace. ${match.requestedType} cannot be listed until types are published remotely.`;
   }
 
-  return `Object type "${match.requestedType}" is not published for the active tenant. Published types: ${match.publishedTypeNames.join(', ')}.`;
+  return `Object type "${match.requestedType}" is not published for the active workspace. Published types: ${match.publishedTypeNames.join(', ')}.`;
 }
 
 async function describeMissingPublishedType(
@@ -387,7 +393,7 @@ export const resourcesCommand = new Command('resources')
 resourcesCommand
   .command('list <type>')
   .description('List resources of a given type')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--page <n>', 'Page number', '1')
   .option('--limit <n>', 'Items per page', '20')
   .option('--sort <field>', 'Sort field (prefix with - for descending)', '-created_at')
@@ -474,7 +480,7 @@ Examples:
 resourcesCommand
   .command('batch-create <type>')
   .description('Create resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -494,7 +500,7 @@ resourcesCommand
       }
       const data = await res.json();
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         succeedCommand(spinner,`Batch create complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
@@ -507,7 +513,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-import <type>')
   .description('Import resources through the high-throughput bulk path')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--projection-mode <mode>', 'Search projection mode (deferred|sync)', 'deferred')
@@ -536,7 +542,7 @@ resourcesCommand
         outboxEnqueued?: number;
       };
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         const projection = data.projectionDeferred === true
           ? 'projection deferred'
@@ -555,7 +561,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-update <type>')
   .description('Update resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -588,7 +594,7 @@ resourcesCommand
 resourcesCommand
   .command('batch-delete <type>')
   .description('Delete resources in bulk')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--ids <csv>', 'Comma-separated ids to delete')
   .option('--data <json>', 'Batch payload as JSON array or object')
   .option('--file <path>', 'Read batch payload from JSON file')
@@ -611,7 +617,7 @@ resourcesCommand
       }
       const data = await res.json();
       if (options.format === 'json') {
-        out.json(data);
+        out.json(withPublicRequestObservation(data, res));
       } else {
         succeedCommand(spinner,`Batch delete complete (${data.succeeded} succeeded, ${data.failed} failed)`);
       }
@@ -624,7 +630,7 @@ resourcesCommand
 resourcesCommand
   .command('aggregate <type>')
   .description('Run a server-side aggregate query')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .requiredOption('--group-by <fields>', 'Comma-separated groupBy fields')
   .requiredOption('--metrics <json>', 'Aggregate metrics JSON')
   .option('--where <json>', 'Structured where filter as JSON')
@@ -666,7 +672,7 @@ resourcesCommand
 resourcesCommand
   .command('get <type> <id>')
   .description('Get a single resource')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, options) => {
@@ -699,7 +705,7 @@ resourcesCommand
 resourcesCommand
   .command('create <type>')
   .description('Create a new resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Resource data as JSON string')
   .option('--file <path>', 'Read data from JSON file')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -739,7 +745,7 @@ Examples:
       const output = buildCreateResourceOutput(type, data, created);
 
       if (options.format === 'json') {
-        out.json(output);
+        out.json(withPublicRequestObservation(output, res));
       } else {
         const createdId = typeof output.id === 'string' ? output.id : undefined;
         succeedCommand(spinner,`Created ${type} ${chalk.dim(createdId ?? '')}`);
@@ -755,7 +761,7 @@ Examples:
 resourcesCommand
   .command('update <type> <id>')
   .description('Update a resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--data <json>', 'Updated data as JSON string')
   .option('--version <n>', 'Resource version (for optimistic locking)')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -807,7 +813,7 @@ resourcesCommand
 resourcesCommand
   .command('delete <type> <id>')
   .description('Delete a resource')
-  .option('--tenant-id <id>', 'Run the mutation against a specific tenant')
+  .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
   .option('--force', 'Skip confirmation', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -843,7 +849,7 @@ resourcesCommand
       }
 
       if (options.format === 'json') {
-        out.json({ type, id, deleted: true });
+        out.json(withPublicRequestObservation({ type, id, deleted: true }, res));
       } else {
         succeedCommand(spinner,`Deleted ${type} ${chalk.dim(id)}`);
       }
@@ -858,7 +864,7 @@ resourcesCommand
 resourcesCommand
   .command('query')
   .description('Cross-type query')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .requiredOption('--types <types>', 'Comma-separated object type names')
   .option('--where <json>', 'Filter conditions as JSON')
   .option('--limit <n>', 'Max results', '20')
@@ -907,7 +913,7 @@ const storageCommand = resourcesCommand
 storageCommand
   .command('status')
   .description('Show storage routing and provisioning status')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -937,7 +943,7 @@ storageCommand
       return;
     }
 
-    succeedCommand(spinner, `Storage status for tenant ${payload.tenantId || ctx.tenantId}`);
+    succeedCommand(spinner, `Storage status for workspace ${payload.tenantId || ctx.tenantId}`);
     for (const item of payload.objectTypes || []) {
       const status = item.isReady ? chalk.green('ready') : chalk.yellow('not ready');
       out.info(`${chalk.cyan(item.objectType)} ${chalk.dim(item.backend)} ${status}`);
@@ -954,7 +960,7 @@ storageCommand
 storageCommand
   .command('doctor')
   .description('Run storage diagnostics')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1010,8 +1016,8 @@ storageCommand
 
 resourcesCommand
   .command('search <query>')
-  .description('Search tenant resource projections')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .description('Search workspace resource projections')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--types <types>', 'Comma-separated object type names')
   .option('--mode <mode>', 'Search mode: fulltext|hybrid|vector', 'hybrid')
   .option('--hybrid', 'Use hybrid full-text + vector search', false)
@@ -1073,7 +1079,8 @@ when the file is a document to process, classify, or index for AI/RAG.
 fileCommand
   .command('upload <type> <id> <property> <path>')
   .description('Upload a file to a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--content-type <mime>', 'Override the media type inferred from the filename (for example application/pdf)')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (type, id, property, filePath, options) => {
@@ -1081,7 +1088,7 @@ fileCommand
     options.format = normalizeFormat(options);
 
     const spinner = makeSpinner(options.format, `Uploading ${filePath}...`);
-    const res = await ctx.client.uploadResourceFile(type, id, property, filePath);
+    const res = await ctx.client.uploadResourceFile(type, id, property, filePath, options.contentType);
     if (!res.ok) {
       failCommand(spinner, await formatResponseError(res));
       process.exit(1);
@@ -1105,7 +1112,7 @@ fileCommand
 fileCommand
   .command('get <type> <id> <property>')
   .description('Download a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--output <path>', 'Write to a specific file path')
   .action(async (type, id, property, options) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
@@ -1128,7 +1135,7 @@ fileCommand
 fileCommand
   .command('delete <type> <id> <property>')
   .description('Delete a resource file property')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--force', 'Skip confirmation', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1170,8 +1177,8 @@ fileCommand
 
 resourcesCommand
   .command('schema')
-  .description('Show published Object Types for tenant')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .description('Show published Object Types for the workspace')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1207,8 +1214,8 @@ resourcesCommand
 
 resourcesCommand
   .command('performance-status')
-  .description('Show tenant-scoped resource schema and performance readiness')
-  .option('--tenant-id <id>', 'Run the read-only query against a specific tenant')
+  .description('Show workspace resource schema and performance readiness')
+  .option('--tenant-id <id>', 'Run the read-only query against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
@@ -1227,15 +1234,17 @@ resourcesCommand
           ...payload,
           rawSqlAllowed: false,
           tenantAdminOperations: ['read_status', 'plan_index_change'],
-          systemAdminOperations: ['apply_index_change', 'force_cache_refresh'],
+          systemAdminOperations: ['force_cache_refresh'],
+          unsupportedOperations: ['apply_index_change'],
         });
         return;
       }
       const state = typeof payload.state === 'string' ? payload.state : 'unknown';
       const count = typeof payload.objectTypeCount === 'number' ? payload.objectTypeCount : 0;
       succeedCommand(spinner, `Resource schema ${state} — ${count} Object Types visible`);
-      out.info('Tenant-admin: read status and request an index plan.');
-      out.info('Platform-admin only: apply index changes and force cache refresh.');
+      out.info('Workspace admin access (role ID tenant-admin): read status and request an index plan.');
+      out.info('Platform-admin only: force cache refresh.');
+      out.info('Index apply: unavailable through PublicAPI.');
       out.info('Raw SQL: disabled.');
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
@@ -1246,12 +1255,17 @@ resourcesCommand
 resourcesCommand
   .command('indexes-plan')
   .description('Plan validated resource storage/index changes without applying them')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
-  .option('--object-type <slug...>', 'Limit the plan to published Object Type slugs')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
+  .requiredOption('--object-type <slug...>', 'Exact published Object Type slugs to plan (1–1,000)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     options.format = normalizeFormat(options);
+    try {
+      options.objectType = validateResourceIndexObjectTypes(options.objectType);
+    } catch (err) {
+      exitWithError(ErrorCode.E305, { details: err instanceof Error ? err.message : String(err) }, options.format);
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const spinner = makeSpinner(options.format, 'Planning resource indexes...');
     const response = await ctx.client.planResourceIndexes(options.objectType);
     if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
@@ -1262,29 +1276,32 @@ resourcesCommand
 
 resourcesCommand
   .command('indexes-apply')
-  .description('Apply validated resource storage/index changes')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .description('Unavailable: resource index apply is not exposed by PublicAPI')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the apply to published Object Type slugs')
   .option('--format <format>', 'Output format (text|json)', 'text')
-  .option('--confirm', 'Confirm the tenant-scoped apply', false)
+  .option('--confirm', 'Confirm the workspace apply', false)
   .action(async (options) => {
     options.format = normalizeFormat(options);
-    if (!options.confirm) {
-      exitWithError(ErrorCode.E303, { field: '--confirm' }, options.format);
+    if (options.format === 'json') {
+      console.error(JSON.stringify({
+        status: 'unsupported',
+        error: {
+          code: RESOURCE_INDEX_APPLY_UNSUPPORTED_CODE,
+          message: RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE,
+          exitCode: 1,
+        },
+      }, null, 2));
+    } else {
+      out.error(RESOURCE_INDEX_APPLY_UNSUPPORTED_MESSAGE);
     }
-    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const spinner = makeSpinner(options.format, 'Applying resource indexes...');
-    const response = await ctx.client.applyResourceIndexes(options.objectType);
-    if (!response.ok) { failCommand(spinner, `${response.status} ${response.statusText}`); process.exit(1); }
-    const payload = await response.json();
-    if (options.format === 'json') { out.json(payload); return; }
-    succeedCommand(spinner, 'Resource index apply completed.');
+    process.exit(1);
   });
 
 resourcesCommand
   .command('cache-refresh')
   .description('Force a resource cache refresh (system-admin operation)')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--object-type <slug...>', 'Limit the refresh to Object Type slugs')
   .requiredOption('--reason <reason>', 'Audited reason or change ticket')
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -1306,7 +1323,7 @@ resourcesCommand
 resourcesCommand
   .command('sync-schema')
   .description('Provision or reconcile storage resources from published Object Type metadata')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--backend <backend>', 'Limit to a backend (postgresql|documentdb|blob|search)')
   .option('--dry-run', 'Show the reconcile plan without mutating storage', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -1331,15 +1348,29 @@ resourcesCommand
         results: Array<{ objectType: string; backend: string; status: string; actions?: string[] }>;
       };
 
+      if (!Array.isArray(payload.results) || payload.results.some(result =>
+        !result || typeof result.objectType !== 'string' || typeof result.backend !== 'string'
+        || !['planned', 'provisioned', 'skipped', 'applied', 'already_applied', 'failed'].includes(result.status)
+        || (result.actions !== undefined && (!Array.isArray(result.actions)
+          || result.actions.some(action => typeof action !== 'string'))))) {
+        throw new Error('Storage schema sync returned an invalid results contract.');
+      }
+      const failedResults = payload.results.filter(result => result.status === 'failed');
+
       if (options.format === 'json') {
         out.json(payload);
       } else {
-        succeedCommand(spinner, `${payload.results.length} storage binding${payload.results.length === 1 ? '' : 's'} processed`);
+        if (failedResults.length > 0) {
+          failCommand(spinner, `${failedResults.length} storage binding${failedResults.length === 1 ? '' : 's'} failed to sync`);
+        } else {
+          succeedCommand(spinner, `${payload.results.length} storage binding${payload.results.length === 1 ? '' : 's'} processed`);
+        }
         for (const result of payload.results) {
           const actions = result.actions?.length ? chalk.dim(` — ${result.actions.join(', ')}`) : '';
           out.info(`${chalk.cyan(result.objectType)} [${result.backend}] ${result.status}${actions}`);
         }
       }
+      if (failedResults.length > 0) process.exit(1);
     } catch (err) {
       failCommand(spinner, err instanceof Error ? err.message : String(err));
       process.exit(1);
@@ -1348,8 +1379,8 @@ resourcesCommand
 
 resourcesCommand
   .command('doctor')
-  .description('Inspect storage readiness for the active tenant')
-  .option('--tenant-id <id>', 'Run against a specific tenant')
+  .description('Inspect storage readiness for the active workspace')
+  .option('--tenant-id <id>', 'Run against a specific workspace')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options) => {
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });

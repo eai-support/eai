@@ -1,6 +1,19 @@
 name: Deploy Docs
 
 on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".tech-docs/**"
+      - "docs-site/**"
+      - "scripts/generate-release-docs.cjs"
+      - "scripts/generate-registry.cjs"
+      - "scripts/generate-llms-full.cjs"
+      - "scripts/generate-docs-experience-assets.cjs"
+      - "scripts/verify-docs-experience-assets.cjs"
+      - "scripts/verify-docs-publication.cjs"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/release.yml"
   push:
     branches: [main]
     paths:
@@ -9,20 +22,115 @@ on:
       - "scripts/generate-release-docs.cjs"
       - "scripts/generate-registry.cjs"
       - "scripts/generate-llms-full.cjs"
+      - "scripts/generate-docs-experience-assets.cjs"
+      - "scripts/verify-docs-experience-assets.cjs"
+      - "scripts/verify-docs-publication.cjs"
+      - ".github/workflows/docs.yml"
+      - ".github/workflows/release.yml"
+  workflow_call:
+    inputs:
+      publish_github_pages:
+        description: Publish only a qualified canonical release
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
+    inputs:
+      publish_github_pages:
+        description: Publish the public GitHub Pages copy (not required for Website-hosted Dev)
+        required: true
+        default: false
+        type: boolean
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
+  validate:
+    name: Validate Docs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs-site/package-lock.json
+
+      - name: Verify generated documentation experience assets
+        run: |
+          npm run docs:experience-assets:check
+          npm run docs:experience-assets:verify
+
+      - name: Install docs-site dependencies
+        run: cd docs-site && npm ci
+
+      - name: Build Docusaurus docs site
+        env:
+          EAI_DOCS_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://eai-support.github.io/api/chat
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
+
+      - name: Verify Docs assistant source and generated bundle
+        run: cd docs-site && npm run test:assistant
+
+      - name: Verify required public assets
+        run: |
+          test -f docs-site/build/index.html
+          test -f docs-site/build/docs/start-here.html
+          test -f docs-site/build/docs/api-reference.html
+          test -f docs-site/build/docs-search-index.json
+          test -f docs-site/build/docs-capabilities.json
+
+  publication:
+    name: Verify canonical package publication
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      allowed: ${{ steps.publication.outputs.allowed }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Require matching published canonical archive
+        id: publication
+        env:
+          REQUIRE_PUBLISHED_RELEASE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        run: |
+          if node scripts/verify-docs-publication.cjs; then
+            echo "allowed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "allowed=false" >> "$GITHUB_OUTPUT"
+            if [[ "$REQUIRE_PUBLISHED_RELEASE" == "true" ]]; then
+              echo "::error::Canonical release publication does not match its prepared archive."
+              exit 1
+            fi
+          fi
+
   deploy:
     name: Build & Deploy Docs
+    needs: [validate, publication]
+    if: needs.publication.outputs.allowed == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
 
     environment:
       name: github-pages
@@ -42,8 +150,19 @@ jobs:
       - name: Install docs-site dependencies
         run: cd docs-site && npm ci
 
+      - name: Verify documentation experience assets
+        run: |
+          npm run docs:experience-assets:check
+          npm run docs:experience-assets:verify
+
       - name: Build Docusaurus docs site
-        run: cd docs-site && npm run build
+        env:
+          EAI_DOCS_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
 
       - name: Verify generated site
         run: |
@@ -54,6 +173,8 @@ jobs:
             "docs-site/build/llms.txt"
             "docs-site/build/llms-full.txt"
             "docs-site/build/cli-help.txt"
+            "docs-site/build/docs-search-index.json"
+            "docs-site/build/docs-capabilities.json"
           )
 
           for file in "${REQUIRED_FILES[@]}"; do
@@ -73,6 +194,7 @@ jobs:
 
       - name: Deploy to GitHub Pages
         id: deployment
+        if: ${{ inputs.publish_github_pages && (github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')) }}
         uses: actions/deploy-pages@v5
 
       - name: Mint website docs PR token
@@ -99,9 +221,25 @@ jobs:
       - name: Build website-hosted Docusaurus copy
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
         env:
+          # Hosted Docs must call the website API on the same origin. This avoids
+          # a separate CORS and environment-endpoint deployment dependency.
+          EAI_DOCS_ASSISTANT_API_URL: /api/chat
+          EAI_DOCS_EXPECTED_ASSISTANT_API_URL: /api/chat
+          EAI_DOCS_FORBIDDEN_ASSISTANT_API_URL: https://www.enterpriseaigroup.com/api/chat
           EAI_DOCS_SITE_URL: https://www.enterpriseaigroup.com
           EAI_DOCS_BASE_URL: /docs/eai/
-        run: cd docs-site && npm run build
+        run: |
+          cd docs-site
+          npm run build
+          npm run test:assistant:bundle
+
+      - name: Verify hosted Docs use the same-origin assistant API
+        if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''
+        run: |
+          if ! grep --recursive --fixed-strings --quiet '/api/chat' docs-site/build; then
+            echo "Hosted Docs did not include the same-origin assistant endpoint." >&2
+            exit 1
+          fi
 
       - name: Sync generated EAI docs into website repo
         if: steps.website-token.outcome == 'success' && steps.website-token.outputs.token != ''

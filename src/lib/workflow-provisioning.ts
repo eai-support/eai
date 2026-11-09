@@ -147,7 +147,7 @@ export function buildWorkflowProvisionPayloads(
   const source = input.source?.trim() || "eai-cli";
 
   if (!input.tenantId.trim()) {
-    throw new Error("Tenant id is required.");
+    throw new Error("Workspace ID is required.");
   }
   if (!workflowKey) {
     throw new Error("Workflow key is required.");

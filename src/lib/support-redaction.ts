@@ -1,0 +1,274 @@
+import { stripVTControlCharacters } from 'node:util';
+
+const sensitiveKey = /token|secret|password|passwd|pwd|api[_-]?key|access[_-]?key(?:[_-]?id)?|account[_-]?key|cookie|credential|connection[_-]?string|private[_-]?key/i;
+// eslint-disable-next-line no-control-regex -- Keep this cleanup identical before credential matching and final support output.
+const UNSAFE_CONTROL_PATTERN = /[\u0000-\u0008\u000b-\u001f\u007f]/g;
+
+/**
+ * "Authorization" names a credential only as a header or flag (Authorization,
+ * Proxy-Authorization, X-*-Authorization, --authorization, authorizationHeader,
+ * authorizationCode), optionally under a dotted path, or as an opaque tenant
+ * (de)authorization receipt. Diagnostics such as authorizationReadiness or
+ * resourceAuthorization are not credentials and stay readable.
+ */
+export const SENSITIVE_AUTHORIZATION_KEY =
+  /(?:^|\.)(?:--)?(?:(?:proxy[_-]?|x[_-](?:[a-z0-9]+[_-])*)?authorization(?:[_-]?(?:header|code|auxiliary))?|tenant[_-]?(?:de)?authorization)$/i;
+
+/** A key-name heuristic; opaque credentials under unrelated keys still need explicit sensitive values. */
+export function isSupportSensitiveKey(key: string): boolean {
+  const normalized = normalizeCredentialKey(key);
+  return sensitiveKey.test(normalized) || SENSITIVE_AUTHORIZATION_KEY.test(normalized);
+}
+
+/** Normalize terminal effects and unsafe controls before recognizing a credential key; retain line breaks and tabs. */
+export function normalizeCredentialKey(key: string): string {
+  return stripVTControlCharacters(key).replace(UNSAFE_CONTROL_PATTERN, '');
+}
+
+// SECURITY: decode only candidate key spelling for recognition; reviewed text and value boundaries remain literal.
+function decodeCredentialKey(key: string): string {
+  const parts: string[] = [];
+  let copiedUntil = 0;
+  let index = 0;
+  while (index < key.length) {
+    if (key[index] !== '\\') { index++; continue; }
+    const runStart = index;
+    while (key[index] === '\\') index++;
+    const code = key.slice(index + 1, index + 5);
+    if (key[index] === 'u' && /^[0-9a-f]{4}$/i.test(code)) {
+      parts.push(key.slice(copiedUntil, runStart), String.fromCharCode(Number.parseInt(code, 16)));
+      index += 5;
+      copiedUntil = index;
+    }
+  }
+  parts.push(key.slice(copiedUntil));
+  return parts.join('');
+}
+
+interface CredentialField { readonly key: string; readonly start: number; readonly tokenStart: number; readonly quotedKeyEnd: number }
+
+function redactCredentialValues(source: string, isSensitiveKey = isSupportSensitiveKey): string {
+  const plainText = normalizeCredentialKey(source);
+  // Retain color styling; other terminal controls cannot hide part of a credential key.
+  // eslint-disable-next-line no-control-regex -- Only SGR styling may survive CLI output redaction.
+  if (plainText !== source.replace(/\u001b\[[0-9;:]*m/g, '')) source = plainText;
+  let text = source;
+  let sourceOffsets: number[] | undefined;
+  if (source.includes('\u001b[')) {
+    const plain: string[] = [];
+    sourceOffsets = [];
+    let copiedUntil = 0;
+    // eslint-disable-next-line no-control-regex -- Parse through styling without letting escape bytes disguise a credential key.
+    for (const control of source.matchAll(/\u001b\[[0-?]*[ -/]*[@-~]/g)) {
+      plain.push(source.slice(copiedUntil, control.index));
+      for (let index = copiedUntil; index < control.index; index++) sourceOffsets.push(index);
+      copiedUntil = control.index + control[0].length;
+    }
+    plain.push(source.slice(copiedUntil));
+    for (let index = copiedUntil; index < source.length; index++) sourceOffsets.push(index);
+    text = plain.join('');
+  }
+  const escaped = new Uint8Array(text.length);
+  const quoteEnds = new Uint32Array(text.length);
+  const closingEnds = new Uint32Array(text.length);
+  const quotes: { start: number; end: number; key: string }[] = [];
+  let slashRun = 0;
+  for (let index = 0; index < text.length; index++) {
+    escaped[index] = slashRun % 2;
+    if (text[index] === '"' || text[index] === "'") {
+      const depth = slashRun % 2 ? slashRun : 0;
+      quotes.push({ start: index - slashRun, end: index + 1, key: `${text[index]}:${depth}` });
+    }
+    slashRun = text[index] === '\\' ? slashRun + 1 : 0;
+  }
+  // SECURITY: serialized wrappers close at their own escape depth; inner quotes cannot expose a value tail.
+  const nearestQuoteEnd = new Map<string, number>();
+  for (let index = quotes.length - 1; index >= 0; index--) {
+    const quote = quotes[index];
+    quoteEnds[quote.start] = quote.end;
+    closingEnds[quote.start] = nearestQuoteEnd.get(quote.key) ?? text.length;
+    nearestQuoteEnd.set(quote.key, quote.end);
+  }
+  // SECURITY: a boundary quote must close an enclosing wrapper, not open an attached credential suffix.
+  const wrapperStarts = new Uint32Array(text.length);
+  const openWrappers = new Map<string, number>();
+  for (const quote of quotes) {
+    const opening = openWrappers.get(quote.key);
+    if (opening === undefined) openWrappers.set(quote.key, quote.start + 1);
+    else { wrapperStarts[quote.start] = opening; openWrappers.delete(quote.key); }
+  }
+  const closingWrapper = new Uint32Array(text.length + 1);
+  const wrapperEnds = new Uint32Array(text.length + 1);
+  for (let index = text.length - 1; index >= 0; index--) {
+    const afterQuote = quoteEnds[index];
+    if (!wrapperStarts[index]) continue;
+    if (quoteEnds[afterQuote]) {
+      if (closingWrapper[afterQuote]) closingWrapper[index] = Math.max(wrapperStarts[index], closingWrapper[afterQuote]);
+    } else if (/^[\s&,;}\]]?$/.test(text[afterQuote] ?? '')) closingWrapper[index] = wrapperStarts[index];
+    if (closingWrapper[index]) wrapperEnds[index] = quoteEnds[afterQuote] ? wrapperEnds[afterQuote] : afterQuote;
+  }
+
+  // SECURITY: every position is cached, including containers inside serialized outer quotes.
+  const containerEnds = new Uint32Array(text.length);
+  const nextDelimiter = new Uint32Array(text.length + 1);
+  nextDelimiter[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    if (quoteEnds[index]) nextDelimiter[index] = nextDelimiter[closingEnds[index]];
+    else if (text[index] === ']' || text[index] === '}') nextDelimiter[index] = index;
+    else if (text[index] === '[' || text[index] === '{') {
+      const close = nextDelimiter[index + 1];
+      const expected = text[index] === '[' ? ']' : '}';
+      containerEnds[index] = text[close] === expected ? close + 1 : text.length;
+      nextDelimiter[index] = nextDelimiter[containerEnds[index]];
+    } else nextDelimiter[index] = nextDelimiter[index + 1];
+  }
+
+  const quoteStartsByEnd = new Map(quotes.map(quote => [quote.end, quote.start]));
+  const invalidKeyQuotes = new Uint8Array(text.length);
+  const invalidFieldStarts = new Set<number>();
+  const fields: CredentialField[] = [];
+  for (const match of text.matchAll(/[\w.\\-]+/g)) {
+    const rawKey = match[0];
+    const fullEnd = match.index + rawKey.length;
+    let keyEnd = fullEnd;
+    if (text[fullEnd] === '"' || text[fullEnd] === "'") {
+      while (keyEnd > match.index && text[keyEnd - 1] === '\\') keyEnd--;
+    }
+    const key = decodeCredentialKey(text.slice(match.index, keyEnd));
+    let start = keyEnd;
+    const quotedKeyEnd = quoteEnds[keyEnd] || (keyEnd < fullEnd ? quoteEnds[fullEnd] : 0);
+    if (quotedKeyEnd) start = quotedKeyEnd;
+    const separator = start;
+    while (start < text.length && /\s/.test(text[start])) start++;
+    if (text[start] === '=' || text[start] === ':') start++;
+    else if (!key.startsWith('--') || start === separator) continue;
+    // SECURITY: an unpaired key closer cannot make a private value tail look like another field.
+    if (quotedKeyEnd) {
+      const opening = quoteStartsByEnd.get(match.index);
+      if (opening === undefined || closingEnds[opening] !== quotedKeyEnd) {
+        invalidKeyQuotes[keyEnd] = 1;
+        invalidFieldStarts.add(match.index);
+        if (opening !== undefined) { invalidKeyQuotes[opening] = 1; invalidFieldStarts.add(opening); }
+      }
+    }
+    while (start < text.length && /\s/.test(text[start])) start++;
+    fields.push({ key, start, tokenStart: match.index, quotedKeyEnd });
+  }
+  // SECURITY: malformed sensitive assignments still need redaction, but cannot bound any other value.
+  const fieldStarts = new Set(fields.filter(field => !invalidFieldStarts.has(field.tokenStart)).map(field => field.tokenStart));
+  const firstValueCharacter = new Uint32Array(text.length + 1);
+  firstValueCharacter[text.length] = text.length;
+  const stops = new Uint32Array(text.length + 1);
+  stops[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    firstValueCharacter[index] = !escaped[index] && /[&,;}]/.test(text[index]) ? firstValueCharacter[index + 1] : index;
+    if (quoteEnds[index] && !invalidKeyQuotes[index]) stops[index] = stops[closingEnds[index]];
+    else if (containerEnds[index]) stops[index] = stops[containerEnds[index]];
+    else if (!escaped[index] && /[\s&,;}]/.test(text[index])) stops[index] = index;
+    else stops[index] = stops[index + 1];
+  }
+  // SECURITY: a placeholder is not proof that the rest of a credential value was already removed.
+  const quotedFieldStarts = new Set(fieldStarts);
+  for (const field of fields) {
+    const quoteStart = quoteStartsByEnd.get(field.tokenStart);
+    if (quoteStart !== undefined && field.quotedKeyEnd && closingEnds[quoteStart] === field.quotedKeyEnd) quotedFieldStarts.add(quoteStart);
+  }
+  const markerContent = new Uint32Array(text.length + 1);
+  markerContent[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    markerContent[index] = /[ \t&,;}\]]/.test(text[index]) ? markerContent[index + 1] : index;
+  }
+  const markerTailEnds = new Uint32Array(text.length + 1);
+  markerTailEnds[text.length] = text.length;
+  for (let index = text.length - 1; index >= 0; index--) {
+    const content = markerContent[index];
+    if (content === text.length || quotedFieldStarts.has(content) || (closingWrapper[content] && !invalidKeyQuotes[content]) || /[\r\n]/.test(text[content])) markerTailEnds[index] = index;
+    else if (quoteEnds[index] && !invalidKeyQuotes[index]) markerTailEnds[index] = markerTailEnds[closingEnds[index]];
+    else if (containerEnds[index]) markerTailEnds[index] = markerTailEnds[containerEnds[index]];
+    else markerTailEnds[index] = markerTailEnds[index + 1];
+  }
+  // SECURITY: independently discovered value and continuation spans may overlap in any order.
+  const coverage = new Int32Array(text.length + 1);
+  function cover(start: number, end: number): void {
+    if (end > start) { coverage[start]++; coverage[end]--; }
+  }
+  for (const { key, start: fieldStart, tokenStart } of fields) {
+    if (!isSensitiveKey(key)) continue;
+    let start = fieldStart;
+    // Keep the non-secret scheme while masking even short opaque header credentials.
+    const scheme = SENSITIVE_AUTHORIZATION_KEY.test(key)
+      ? /^(?:Bearer|Basic)[ \t]+(?=\S)/i.exec(text.slice(start))
+      : null;
+    if (scheme) start += scheme[0].length;
+    const markerLength = text.startsWith('[redacted]', start) ? '[redacted]'.length : text.startsWith('[removed]', start) ? '[removed]'.length : 0;
+    const marker = markerLength > 0;
+    const markerEnd = start + markerLength;
+    const markerSuffix = marker ? markerContent[markerEnd] : start;
+    const stableMarker = marker && (markerSuffix === text.length || quotedFieldStarts.has(markerSuffix) || (closingWrapper[markerSuffix] && !invalidKeyQuotes[markerSuffix] && closingWrapper[markerSuffix] <= tokenStart) || /[\r\n]/.test(text[markerSuffix]));
+    const containerEnd = containerEnds[start];
+    const completeContainer = containerEnd && ((closingWrapper[containerEnd] && !invalidKeyQuotes[containerEnd] && closingWrapper[containerEnd] <= tokenStart) || /^[\s&,;}\]]?$/.test(text[containerEnd] ?? ''));
+    const end = stableMarker ? start : marker ? markerTailEnds[markerSuffix] : quoteEnds[start] ? closingEnds[start] : completeContainer ? containerEnd : stops[firstValueCharacter[start]];
+    cover(start, end);
+    const malformedContinuation = markerContent[end];
+    if (invalidFieldStarts.has(malformedContinuation)) cover(start, markerTailEnds[malformedContinuation]);
+    const boundary = stableMarker ? markerEnd : end;
+    const enclosingWrapper = closingWrapper[boundary] && !invalidKeyQuotes[boundary] && closingWrapper[boundary] <= tokenStart;
+    if (!enclosingWrapper && !completeContainer) continue;
+    const continuation = markerContent[enclosingWrapper ? wrapperEnds[boundary] : boundary];
+    // SECURITY: adjacent quoted text can be a private value continuation outside the enclosing wrapper.
+    if (quoteEnds[continuation] && !quotedFieldStarts.has(continuation) && !(closingWrapper[continuation] && closingWrapper[continuation] <= tokenStart)) {
+      cover(enclosingWrapper ? continuation : start, markerTailEnds[continuation]);
+    }
+  }
+  const parts: string[] = [];
+  let cursor = 0;
+  let active = 0;
+  for (let index = 0; index <= text.length; index++) {
+    const previous = active;
+    active += coverage[index];
+    if (!previous && active) parts.push(source.slice(cursor, sourceOffsets?.[index] ?? index), '[redacted]');
+    if (previous && !active) cursor = sourceOffsets ? sourceOffsets[index - 1] + 1 : index;
+  }
+  parts.push(source.slice(cursor));
+  return parts.join('');
+}
+
+/** Share normalized credential boundaries while preserving CLI styling and unrelated diagnostic keys. */
+export function redactCredentialAssignments(text: string, isSensitiveKey = isSupportSensitiveKey): string {
+  return redactCredentialValues(text, isSensitiveKey);
+}
+
+/**
+ * Removes known credential values, credential-shaped text and unsafe terminal controls before review.
+ * Supply values from every credential source: pattern matching alone cannot identify opaque secrets.
+ */
+export function redactSupportText(text: string, sensitiveValues: readonly string[] = []): string {
+  let safe = text;
+  for (const value of sensitiveValues) {
+    if (value) safe = safe.split(value).join('[redacted]');
+  }
+  safe = redactCredentialValues(safe);
+  return safe
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[redacted-private-key]')
+    .replace(/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]+/gi, '$1 [redacted]')
+    .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[redacted-jwt]')
+    .replace(/\b(?:gh[pousr]_[A-Za-z0-9_]+|github_pat_[A-Za-z0-9_]+|sk-[A-Za-z0-9_-]{16,})\b/g, '[redacted-key]')
+    .replace(/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/([?&](?:sig|signature|access_token|token|key|code)=)[^&#\s]*/gi, '$1[redacted]')
+    .replace(/#draft=[^\s"']+/gi, '#draft=[redacted]')
+    // eslint-disable-next-line no-control-regex -- Upstream terminal escapes must not execute during report review.
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, '')
+    .replace(UNSAFE_CONTROL_PATTERN, '');
+}
+
+/** Redacts a JSON-compatible tree without mutating it; sensitive-key values become placeholders and strings use text redaction. */
+export function redactSupportBundle<T>(value: T, sensitiveValues: readonly string[] = []): T {
+  if (typeof value === 'string') return redactSupportText(value, sensitiveValues) as T;
+  if (Array.isArray(value)) return value.map(item => redactSupportBundle(item, sensitiveValues)) as T;
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+      key, isSupportSensitiveKey(key) ? '[redacted]' : redactSupportBundle(item, sensitiveValues),
+    ])) as T;
+  }
+  return value;
+}

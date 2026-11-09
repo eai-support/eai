@@ -112,11 +112,13 @@ describe("eai workflow", () => {
   });
 
   test(
-    "status checks the public workflow status endpoint",
+    "status preserves the machine-readable workflow status contract",
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
 
       mockServer.server.use(
         http.get(
@@ -147,28 +149,62 @@ describe("eai workflow", () => {
   );
 
   test(
-    "readiness checks the public builder readiness endpoint",
+    "status labels the company ID as a workspace in text output",
+    { timeout: 10000 },
+    async () => {
+      mockServer.server.use(
+        http.get(
+          `${API_BASE}/v4/workflows/runtime/strategy-monitor/status`,
+          () =>
+            HttpResponse.json({
+              workflow_key: "strategy-monitor",
+              tenant_id: "test-tenant-id",
+              status: "operator_required",
+              reason_code: "runtime_workflow_not_bound",
+              reason_message: "Workflow is not bound.",
+            }),
+        ),
+      );
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await workflowCommand.parseAsync(["status", "strategy-monitor"], {
+        from: "user",
+      });
+
+      const output = outputSpy.mock.calls.flat().join("\n");
+      expect(output).toContain("Workspace");
+      expect(output).not.toContain("Tenant");
+    },
+  );
+
+  test(
+    "readiness preserves the machine-readable builder readiness contract",
     { timeout: 10000 },
     async () => {
       let requestUrl = "";
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
 
       mockServer.server.use(
-        http.get(`${API_BASE}/v4/integrations/builder/readiness`, ({ request }) => {
-          requestUrl = request.url;
-          return HttpResponse.json({
-            tenant_id: "test-tenant-id",
-            status: "operator_required",
-            checks: [
-              {
-                key: "workflow:strategy-monitor",
-                status: "operator_required",
-                reason_code: "runtime_workflow_not_bound",
-                reason_message: "Workflow is not bound.",
-              },
-            ],
-          });
-        }),
+        http.get(
+          `${API_BASE}/v4/integrations/builder/readiness`,
+          ({ request }) => {
+            requestUrl = request.url;
+            return HttpResponse.json({
+              tenant_id: "test-tenant-id",
+              status: "operator_required",
+              checks: [
+                {
+                  key: "workflow:strategy-monitor",
+                  status: "operator_required",
+                  reason_code: "runtime_workflow_not_bound",
+                  reason_message: "Workflow is not bound.",
+                },
+              ],
+            });
+          },
+        ),
       );
 
       await workflowCommand.parseAsync(
@@ -181,6 +217,104 @@ describe("eai workflow", () => {
       const output = outputSpy.mock.calls.flat().join("\n");
       expect(output).toContain('"tenantId": "test-tenant-id"');
       expect(output).toContain('"key": "workflow:strategy-monitor"');
+    },
+  );
+
+  test(
+    "readiness labels the company ID as a workspace in text output",
+    { timeout: 10000 },
+    async () => {
+      mockServer.server.use(
+        http.get(`${API_BASE}/v4/integrations/builder/readiness`, () =>
+          HttpResponse.json({
+            tenant_id: "test-tenant-id",
+            status: "operator_required",
+            checks: [
+              {
+                key: "workflow:strategy-monitor",
+                status: "operator_required",
+                reason_code: "runtime_workflow_not_bound",
+                reason_message: "Workflow is not bound.",
+              },
+            ],
+          }),
+        ),
+      );
+      const outputSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+      await workflowCommand.parseAsync(["readiness", "strategy-monitor"], {
+        from: "user",
+      });
+
+      const output = outputSpy.mock.calls.flat().join("\n");
+      expect(output).toContain("Workspace readiness: test-tenant-id");
+      expect(output).not.toContain("Tenant");
+    },
+  );
+
+  test(
+    "readiness outside an app folder still needs an explicit workspace",
+    { timeout: 10000 },
+    async () => {
+      const outside = await createTestEnvironment();
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        process.chdir(outside.dir);
+        await expect(
+          workflowCommand.parseAsync(["readiness"], { from: "user" }),
+        ).rejects.toThrow("process.exit called");
+        expect(exitSpy).toHaveBeenCalledWith(1);
+        expect(errSpy.mock.calls.flat().join(" ")).toContain("Not in an EAI project");
+      } finally {
+        process.chdir(env.dir);
+        await outside.cleanup();
+      }
+    },
+  );
+
+  test.each([
+    { name: "readiness", args: ["readiness", "--workspace", "test-tenant-id", "--format", "json"], path: "/v4/integrations/builder/readiness" },
+    { name: "status", args: ["status", "strategy-monitor", "--workspace", "test-tenant-id", "--format", "json"], path: "/v4/workflows/runtime/strategy-monitor/status" },
+  ])(
+    "$name runs outside an app folder when the workspace is explicit",
+    { timeout: 10000 },
+    async ({ args, path }) => {
+      const outside = await createTestEnvironment();
+      const originalBaseUrl = process.env.BASE_URL_PUBLIC_API;
+      process.env.BASE_URL_PUBLIC_API = API_BASE;
+      const requests: string[] = [];
+      mockServer.server.use(
+        http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({
+          tenants: [{ id: "test-tenant-id", slug: "test-tenant", displayName: "Test Tenant", roles: ["tenant-admin"] }],
+        })),
+        http.get(`${API_BASE}/v4/platform/tenants/test-tenant-id`, () => HttpResponse.json({
+          id: "test-tenant-id", slug: "test-tenant", displayName: "Test Tenant", parentId: null,
+        })),
+        http.get(`${API_BASE}${path}`, ({ request }) => {
+          requests.push(request.url);
+          return HttpResponse.json({
+            tenant_id: "test-tenant-id",
+            workflow_key: "strategy-monitor",
+            status: "ready",
+            checks: [],
+          });
+        }),
+      );
+      vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      try {
+        process.chdir(outside.dir);
+        await workflowCommand.parseAsync(args, { from: "user" });
+        expect(requests).toHaveLength(1);
+        expect(requests[0]).toContain("test-tenant-id");
+      } finally {
+        process.chdir(env.dir);
+        if (originalBaseUrl === undefined) delete process.env.BASE_URL_PUBLIC_API;
+        else process.env.BASE_URL_PUBLIC_API = originalBaseUrl;
+        await outside.cleanup();
+      }
     },
   );
 
@@ -231,7 +365,9 @@ describe("eai workflow", () => {
     "HP001 FL-WORKFLOW-001: provision creates shared workflow and vertical config records",
     { timeout: 10000 },
     async () => {
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
       const listRequests: string[] = [];
       let sharedCreateBody: unknown;
       let verticalCreateBody: unknown;
@@ -371,7 +507,9 @@ describe("eai workflow", () => {
     "HP002 FL-WORKFLOW-002: provision can bind AI runtime records for workflow stages",
     { timeout: 10000 },
     async () => {
-      const outputSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+      const outputSpy = vi
+        .spyOn(process.stdout, "write")
+        .mockImplementation(() => true);
       const createdProfiles: unknown[] = [];
       const createdPrompts: unknown[] = [];
 
@@ -487,7 +625,9 @@ describe("eai workflow", () => {
         }),
       });
       expect(createdPrompts).toHaveLength(3);
-      const deprecatedOverrideFieldsKey = ["allowed", "OverrideFields"].join("");
+      const deprecatedOverrideFieldsKey = ["allowed", "OverrideFields"].join(
+        "",
+      );
       for (const createdPrompt of createdPrompts) {
         expect(createdPrompt.data).toMatchObject({
           customizableFields: [
@@ -497,7 +637,9 @@ describe("eai workflow", () => {
             "toolPolicy",
           ],
         });
-        expect(createdPrompt.data).not.toHaveProperty(deprecatedOverrideFieldsKey);
+        expect(createdPrompt.data).not.toHaveProperty(
+          deprecatedOverrideFieldsKey,
+        );
       }
       expect(createdPrompts).toEqual(
         expect.arrayContaining([
@@ -618,6 +760,46 @@ describe("eai workflow", () => {
 
       expect(exitSpy).toHaveBeenCalledWith(1);
       expect(errSpy.mock.calls.flat().join(" ")).toContain(message);
+      expect(resourceRequests).toEqual([]);
+    },
+    10000,
+  );
+
+  test("provision help marks --stage as required and shows no empty default", () => {
+    const provision = workflowCommand.commands.find((command) => command.name() === "provision");
+    const stage = provision?.options.find((option) => option.long === "--stage");
+    expect(stage?.description).toMatch(/^Required\. /);
+    expect(stage?.defaultValue).toBeUndefined();
+    const help = provision?.helpInformation() ?? "";
+    const stageHelp = help.slice(help.indexOf("--stage <stage>"), help.indexOf("--stage-env"));
+    expect(stageHelp).toContain("Required.");
+    expect(stageHelp).not.toContain("default:");
+  });
+
+  test(
+    "provision without --stage fails before any resource write",
+    async () => {
+      const resourceRequests: string[] = [];
+      const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+        throw new Error("process.exit called");
+      }) as never);
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      mockServer.server.use(
+        http.all(`${API_BASE}/v4/data/resources/test-tenant-id/:objectType`, ({ request }) => {
+          resourceRequests.push(`${request.method} ${request.url}`);
+          return HttpResponse.json({ docs: [], totalDocs: 0, page: 1, totalPages: 0 });
+        }),
+      );
+
+      await expect(
+        workflowCommand.parseAsync(
+          ["provision", "configurator", "--app", "no-code-builder", "--format", "json"],
+          { from: "user" },
+        ),
+      ).rejects.toThrow("process.exit called");
+
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(errSpy.mock.calls.flat().join(" ")).toContain("At least one --stage is required.");
       expect(resourceRequests).toEqual([]);
     },
     10000,

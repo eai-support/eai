@@ -30,7 +30,7 @@ produced by any committed generator** — [`scripts/generate-release-docs.cjs`](
 only bundles `.tech-docs/*` into `llms*.txt`/`cli-help.txt`, and
 [`scripts/update-release-doc-metadata.cjs`](scripts/update-release-doc-metadata.cjs)
 only re-stamps overview/changelog/architecture/dependencies. That is why the
-reference silently drifted from `/v3/*` to `/v4/*` across a PublicAPI migration.
+reference previously drifted away from the supported PublicAPI contract.
 
 The fix is a **route-drift verifier**, not a full-document generator: the docs
 are hand-curated (per-command "what it does", behavior notes, error tables) and

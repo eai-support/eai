@@ -134,15 +134,15 @@ function tailorTenantAppAuthorizationGuidance(
 
   return {
     ...guidance,
-    title: 'You need tenant-admin access to create an EAI app.',
+    title: 'Workspace admin access is required to create an EAI app.',
     appliesTo: ['tenant app create'],
     why: [
-      'The selected EAI workspace requires tenant-admin access to create an app.',
+      'The selected EAI workspace requires workspace admin access to create an app.',
       'You are signed in, but this account does not currently have the required role in that workspace.',
     ],
     evidenceToCheck: [
       'The signed-in account and selected workspace shown by eai whoami.',
-      'Workspace memberships and roles returned by eai tenant list --all --format json.',
+      'Workspace memberships and roles returned by eai workspace list --all --format json.',
     ],
     diagnostics: [
       {
@@ -151,33 +151,33 @@ function tailorTenantAppAuthorizationGuidance(
         mutates: false,
       },
       {
-        command: 'eai tenant list --all --format json',
-        purpose: 'Check whether the account has tenant-admin access to the selected workspace.',
+        command: 'eai workspace list --all --format json',
+        purpose: 'Check whether the account has workspace admin access to the selected workspace.',
         mutates: false,
       },
     ],
     fixes: [
       {
-        command: 'eai tenant select <tenant>',
-        purpose: 'Select a workspace where the account has tenant-admin access.',
+        command: 'eai workspace select <workspace>',
+        purpose: 'Select a workspace where the account has workspace admin access.',
         mutates: true,
       },
       {
-        command: 'Ask the workspace tenant-admin to grant your account tenant-admin access',
-        purpose: 'A tenant administrator must update the membership before app creation can succeed.',
+        command: 'Ask a workspace admin to grant your account workspace admin access',
+        purpose: 'A workspace admin must update the membership before app creation can succeed.',
         mutates: false,
       },
     ],
     retry: {
       allowed: false,
       stopWhen: [
-        'The account still does not have tenant-admin access after selecting the correct workspace or receiving an updated membership.',
+        'The account still does not have workspace admin access after selecting the correct workspace or receiving an updated membership.',
       ],
     },
     escalation: {
       audience: 'tenant-admin',
       neededWhen: [
-        'The expected workspace is not visible or the tenant-admin role cannot be granted.',
+        'The expected workspace is not visible or workspace admin access cannot be granted.',
       ],
       include: ['signed-in email', 'workspace ID', 'CLI version', 'request ID if present'],
     },

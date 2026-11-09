@@ -64,11 +64,14 @@ Examples:
     const spinner = ora(`Pulling config from ${store} (label: ${label})`).start();
 
     try {
-      const { patches, secretRefs } = await pullCloudEnvValues({
+      const cloudValues = await pullCloudEnvValues({
         environment: options.env,
         label,
         includeSecrets: options.includeSecrets,
       });
+      // This is a workstation-local CLI selector, never cloud app configuration.
+      const patches = Object.fromEntries(Object.entries(cloudValues.patches).filter(([key]) => key !== 'EAI_PROFILE'));
+      const secretRefs = cloudValues.secretRefs.filter((ref) => ref.key !== 'EAI_PROFILE');
       spinner.succeed(`Found ${Object.keys(patches).length + (!options.includeSecrets ? secretRefs.length : 0)} config values`);
 
       for (const [key, value] of Object.entries(patches)) {
@@ -181,7 +184,11 @@ envCommand
       exitWithError(ErrorCode.E303, { field: '--label or NEXT_PUBLIC_APP_NAME' });
     }
 
-    const keysToSync = options.key ? [options.key] : Object.keys(env);
+    if (options.key === 'EAI_PROFILE') {
+      out.info('EAI_PROFILE is a local CLI selector and is not synced to cloud configuration.');
+      return;
+    }
+    const keysToSync = (options.key ? [options.key] : Object.keys(env)).filter((key) => key !== 'EAI_PROFILE');
     let store: string;
     try {
       store = resolveAppConfigStore(options.env);
@@ -193,6 +200,7 @@ envCommand
     const spinner = ora(`Pushing ${keysToSync.length} values to ${store} (label: ${label})`).start();
 
     let pushed = 0;
+    const failedKeys: string[] = [];
     for (const key of keysToSync) {
       if (!env[key]) continue;
       // Skip comments and empty values
@@ -209,8 +217,14 @@ envCommand
         ]);
         pushed++;
       } catch (_err) {
+        failedKeys.push(key);
         spinner.warn(`Failed to push ${key}`);
       }
+    }
+
+    if (failedKeys.length > 0) {
+      spinner.fail(`Pushed ${pushed} values to ${store} (label: ${label}); ${failedKeys.length} failed: ${failedKeys.join(', ')}`);
+      process.exit(1);
     }
 
     spinner.succeed(`Pushed ${pushed} values to ${store} (label: ${label})`);

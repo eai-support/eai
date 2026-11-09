@@ -4,14 +4,14 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
-import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig } from '../lib/auth.js';
+import { browserLogin, clearTokens, storeTokens, resolveAuthConfig, validateResolvedAuthConfig, getActiveAuthConfigMismatch } from '../lib/auth.js';
 import { findProjectRoot } from '../lib/config.js';
 import {
   buildPublicApiEnvSyncNotice,
   resolveActiveTenantContext,
   resolvePublicApiUrl,
 } from '../lib/tenant-context.js';
-import { getActiveProfile } from '../lib/profile.js';
+import { assertActiveProfileApiCoherence, getActiveProfile } from '../lib/profile.js';
 import * as out from '../lib/output.js';
 
 function parseCallbackPort(value: string | undefined): number | undefined {
@@ -25,25 +25,29 @@ function parseCallbackPort(value: string | undefined): number | undefined {
   return port;
 }
 
+/** `eai login`: browser PKCE sign-in against the configured Entra CIAM directory, then active workspace resolution. */
 export const loginCommand = new Command('login')
-  .description('Authenticate with Entra CIAM')
+  .description('Authenticate with Entra CIAM using your configured sign-in directory')
   .option('--tenant-name <name>', 'CIAM tenant name')
   .option('--tenant-id <id>', 'CIAM tenant ID')
   .option('--scope <scope>', 'OAuth scopes')
   .option('--callback-port <port>', 'Localhost port to listen on for the OAuth callback')
+  .option('--switch-account', 'Ask the browser which account to use, even when it is already signed in')
   .addHelpText('after', `
 Examples:
   $ eai login
   $ eai login --tenant-name myorg --tenant-id 12345678-abcd-efgh-ijkl-123456789012
   $ eai login --callback-port 3476
+  $ eai login --switch-account
   $ eai whoami
 
 What happens next:
   - The CLI opens your browser to sign you in.
+  - With --switch-account, the browser shows its account picker instead of reusing the signed-in session.
   - With --callback-port, the CLI still uses localhost and listens on that exact port.
   - For Codespaces, run 'gh codespace ports forward -c <codespace> 3476:3476' on your local machine and keep it running while you sign in.
-  - If you only have one tenant-admin membership, it becomes active automatically.
-  - If you have more than one, run 'eai tenant select' to choose the tenant to work with.
+  - If you only have one workspace admin membership, it becomes active automatically.
+  - If you have more than one, run 'eai workspace select' to choose the workspace to work with.
   `)
   .action(async (options) => {
     const profile = getActiveProfile();
@@ -70,7 +74,7 @@ What happens next:
     if (profile !== 'default') {
       out.info(`Profile: ${chalk.cyan(profile)}`);
     }
-    out.info(`Tenant: ${chalk.cyan(tenantName)}`);
+    out.info(`Sign-in directory: ${chalk.cyan(tenantName)}`);
     out.info('Opening your browser to complete sign-in...');
 
     try {
@@ -82,6 +86,7 @@ What happens next:
         scope,
         {
           callbackPort,
+          prompt: options.switchAccount ? 'select_account' : undefined,
           onAuthorizeUrl: callbackPort === undefined
             ? undefined
             : (url) => out.info(`Open this URL in your local browser: ${chalk.cyan(url)}`),
@@ -97,13 +102,16 @@ What happens next:
 
       try {
         const projectRoot = await findProjectRoot();
+        await assertActiveProfileApiCoherence(projectRoot || undefined);
+        const mismatch = await getActiveAuthConfigMismatch(tokens, projectRoot || undefined);
+        if (mismatch) throw new Error(mismatch);
         const publicApiUrl = await resolvePublicApiUrl(projectRoot || undefined);
         const context = await resolveActiveTenantContext({
           projectRoot: projectRoot || undefined,
           publicApiUrl,
           interactive: true,
         });
-        out.info(`Active tenant: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
+        out.info(`Active workspace: ${chalk.cyan(context.activeTenant.displayName)} ${chalk.dim(`(${context.activeTenant.slug})`)}`);
         const notice = buildPublicApiEnvSyncNotice(context.publicApiEnvSync);
         if (notice?.level === 'warn') {
           out.warn(notice.message);
@@ -112,7 +120,7 @@ What happens next:
         }
       } catch (selectionError) {
         out.warn(selectionError instanceof Error ? selectionError.message : String(selectionError));
-        out.info(`Run ${chalk.cyan('eai tenant select')} after login to choose the tenant to work with.`);
+        out.info(`Run ${chalk.cyan('eai workspace select')} after login to choose the workspace to work with.`);
       }
     } catch (err) {
       out.error(`Login failed: ${err instanceof Error ? err.message : String(err)}`);

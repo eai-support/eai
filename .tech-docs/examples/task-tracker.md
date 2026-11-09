@@ -8,6 +8,9 @@ title: Build A Task Tracker
 This example creates a small task tracker using the EAI CLI, EAI App Template,
 Object Types, and ResourceAPI hooks.
 
+The template keeps `tenantId`, `tenants`, and `tenantConfigs` as code contract
+names. Their values and configurations represent EAI workspaces.
+
 ## 1. Scaffold
 
 ```bash
@@ -16,16 +19,16 @@ cd task-tracker
 npm install
 ```
 
-## 2. Connect A Tenant
+## 2. Connect A Workspace
 
 ```bash
 eai login
-eai tenant list --format json
-eai tenant select <tenant-slug>
+eai workspace list --format json
+eai workspace select <workspace-slug>
 eai whoami
 ```
 
-## 3. Configure The Tenant
+## 3. Configure The Workspace
 
 Create `src/eai.config/tenants/tracker.config.ts`:
 
@@ -33,7 +36,7 @@ Create `src/eai.config/tenants/tracker.config.ts`:
 import { defineConfig } from "@enterpriseaigroup/core/config/server";
 
 export const trackerConfig = defineConfig({
-  tenantId: "task-tracker",
+  tenantId: "task-tracker", // Stable field name; this value identifies the EAI workspace.
   workflowId: "task-workflow",
   defaultEmail: "support@example.com",
   meta: {
@@ -153,10 +156,10 @@ export const objectTypes = {
 
 ```bash
 eai types validate
-eai types diff --tenant-key task-tracker --tenant-id <tenant-id>
-eai types seed --tenant-key task-tracker --tenant-id <tenant-id> --format json
-eai resources schema --tenant-id <tenant-id> --format json
-eai verify calls --tenant-id <tenant-id> --resource-type task
+eai types diff --tenant-key task-tracker --tenant-id <workspace-id>
+eai types seed --tenant-key task-tracker --tenant-id <workspace-id> --format json
+eai resources schema --tenant-id <workspace-id> --format json
+eai verify calls --tenant-id <workspace-id> --resource-type task
 ```
 
 Do not continue until the diff is clean.

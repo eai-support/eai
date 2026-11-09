@@ -46,13 +46,21 @@ describe('CLI help output', () => {
     expect(result.stdout).toContain('eai publicapi get /v4/identity/me --format json');
   });
 
+  test('support help requires approved-digest with --yes in every mode', async () => {
+    const result = await runCommand(ctx, 'eai support --help');
+    expect(result.exitCode).toBe(0);
+    const help = result.stdout.replace(/\s+/g, ' ');
+    expect(help).toContain('required with --yes in every mode');
+    expect(help).not.toContain('required with --yes in JSON or noninteractive runs');
+  });
+
   test('login help explains the sign-in and tenant selection flow', async () => {
     const result = await runCommand(ctx, 'eai login --help');
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Examples:');
     expect(result.stdout).toContain('eai login --tenant-name myorg --tenant-id');
-    expect(result.stdout).toContain("run 'eai tenant select' to choose the tenant");
+    expect(result.stdout).toContain("run 'eai workspace select' to choose the workspace");
   });
 
   test('create help explains the guided first-run flow', async () => {
@@ -120,6 +128,7 @@ describe('CLI help output', () => {
     const doctorResult = await runCommand(ctx, 'eai doctor --help');
     const goferResult = await runCommand(ctx, 'eai gofer --help');
     const templateResult = await runCommand(ctx, 'eai template --help');
+    const templateCheckResult = await runCommand(ctx, 'eai template check --help');
     const publicApiResult = await runCommand(ctx, 'eai publicapi --help');
     const updateResult = await runCommand(ctx, 'eai update --help');
     const errorsResult = await runCommand(ctx, 'eai errors --help');
@@ -144,6 +153,10 @@ describe('CLI help output', () => {
 
     expect(templateResult.exitCode).toBe(0);
     expect(templateResult.stdout).toContain('check');
+    expect(templateCheckResult.exitCode).toBe(0);
+    expect(templateCheckResult.stdout).toContain('--ai-plan');
+    expect(templateCheckResult.stdout).toContain('--preserve-ui');
+    expect(templateCheckResult.stdout).toContain('works in EAI, Git, and package repositories');
 
     expect(publicApiResult.exitCode).toBe(0);
     expect(publicApiResult.stdout).toContain('eai publicapi get /v4/identity/me');
@@ -165,5 +178,25 @@ describe('CLI help output', () => {
     expect(agentResult.exitCode).toBe(0);
     expect(agentResult.stdout).toContain('eai agent guide --format json');
     expect(agentResult.stdout).toContain('eai errors explain <code-or-reason> --format json');
+    expect(agentResult.stdout).not.toContain('On failure, run eai errors explain');
+    expect(agentResult.stdout).toContain('at most once for the original failure');
+    expect(agentResult.stdout).toContain('Never retry or explain a failed eai errors explain');
+    expect(agentResult.stdout).toContain('then stop and wait');
   }, 30_000);
+
+  test('managed deploy help exposes exact EAI target, resume, retry, and JSON controls', async () => {
+    const result = await runCommand(ctx, 'eai deploy app --help');
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('Deploy local app source through EAI-maintained or customer-owned GitHub');
+    expect(result.stdout).toContain('--source <source>');
+    expect(result.stdout).toContain('--github-link-session <session-id>');
+    expect(result.stdout).toContain('--target <target>');
+    expect(result.stdout).toContain('--installation-id <id>');
+    expect(result.stdout).toContain('--resume <operation-id>');
+    expect(result.stdout).toContain('--retry <operation-id>');
+    expect(result.stdout).toContain('--wait');
+    expect(result.stdout).toContain('--no-wait');
+    expect(result.stdout).toContain('--format <format>');
+  });
 });

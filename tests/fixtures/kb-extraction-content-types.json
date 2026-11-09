@@ -1,0 +1,30 @@
+{
+  "schema": "eai.kb-extraction-content-types.v1",
+  "sourceRepository": "enterpriseaigroup/AICore",
+  "sourceVersions": {
+    "4579589abac987955d3d9c8bf006b11ce76cb7bc": {
+      "path": "src/services/document_extraction_service.py",
+      "sha256": "1b05728c78ef95159b10f71bf96d10aa6c6f1719f51d3ed3d6649abfb049fa50"
+    }
+  },
+  "extractableContentTypes": [
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "image/bmp",
+    "image/heic",
+    "image/heif",
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/tiff",
+    "text/html"
+  ],
+  "textContentTypes": [
+    "text/markdown",
+    "text/plain",
+    "text/x-markdown"
+  ],
+  "scope": "Genuine committed backend source contract only; client normalizes text/x-markdown to canonical text/markdown. No deployed or provider acceptance."
+}
