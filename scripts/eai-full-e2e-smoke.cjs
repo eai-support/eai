@@ -95,6 +95,11 @@ const TRACEABILITY_BASE = [
   ['eai connection suspend', 'update', 'covered-by-cli', 'Immediately blocks a connection while preserving its audit record.'],
   ['eai connection revoke', 'delete', 'covered-by-cli', 'Irreversibly revokes runtime use while retaining the management and audit record.'],
   ['eai connection rotate-key', 'update', 'covered-by-cli', 'Rotates a Standard key and redacts the one-time replacement unless explicitly revealed.'],
+  ['eai app package init', 'create-local', 'covered-by-cli', 'Creates a local deterministic application-package descriptor; focused integration tests own file-system behavior.'],
+  ['eai app package validate', 'read-local', 'covered-by-cli', 'Validates the local application package without a platform mutation.'],
+  ['eai app package build', 'create-local', 'covered-by-cli', 'Builds canonical package bytes and a digest locally; focused tests own deterministic output.'],
+  ['eai app package submit', 'create/update', 'covered-by-cli', 'Submits immutable package bytes through the dedicated regional PublicAPI publisher ingress; live submission remains approval-gated.'],
+  ['eai app package status', 'read', 'covered-by-cli', 'Reads submission status through the dedicated regional PublicAPI publisher ingress.'],
   ['eai classifier delete', 'delete', 'covered-by-cli', 'Permanently removes only a disabled unpublished draft after exact classifier-key confirmation; command integration tests mock the API boundary.'],
   ['eai classifier disable', 'update', 'covered-by-cli', 'Reversibly disables classifier mutation, targeting, and runtime use while retaining immutable history; command integration tests mock the API boundary.'],
   ['eai classifier enable', 'update', 'covered-by-cli', 'Re-enables a disabled classifier at its prior draft or published lifecycle state; command integration tests mock the API boundary.'],
@@ -389,6 +394,21 @@ const SMOKE_CALLS = {
   ],
   'eai connection rotate-key': [
     'eai connection rotate-key <connection-id> --expected-version 1 --tenant-id <tenant-id> --format json --json --reveal-key',
+  ],
+  'eai app package init': [
+    'eai app package init --app-key <app-key> --display-name <display-name> --publisher-ref <publisher-ref> --format json',
+  ],
+  'eai app package validate': [
+    'eai app package validate --path eai.application.json --format json',
+  ],
+  'eai app package build': [
+    'eai app package build --path eai.application.json --format json',
+  ],
+  'eai app package submit': [
+    'eai app package submit --path eai.application.json --tenant-id <tenant-id> --idempotency-key <idempotency-key> --format json',
+  ],
+  'eai app package status': [
+    'eai app package status <submission-id> --tenant-id <tenant-id> --format json',
   ],
   'eai classifier delete': [
     'eai classifier delete <classifier-key> --confirm <classifier-key> --tenant-id <workspace-id> --format json',

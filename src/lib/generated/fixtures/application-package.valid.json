@@ -1,0 +1,93 @@
+{
+  "appKey": "testing-studio",
+  "artifact": {
+    "digest": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "provenanceRef": "evidence/provenance.json",
+    "repository": "ghcr.io/enterpriseaigroup/testing-studio",
+    "sbomRef": "evidence/sbom.spdx.json",
+    "signatureRef": "evidence/signature.json"
+  },
+  "callbacks": [
+    {
+      "authMode": "signed-workload",
+      "id": "test-complete",
+      "idempotencyRequired": true,
+      "path": "/callbacks/test-complete",
+      "replayWindowSeconds": 120
+    }
+  ],
+  "capabilities": {
+    "contractVersion": "eai.app_capabilities.v1",
+    "interactive": ["resource.read", "test.execute"],
+    "workload": ["audit.write", "test.execute"]
+  },
+  "commercial": {
+    "meterRef": "meters/test-run",
+    "model": "usage",
+    "termsRef": "legal/terms.md"
+  },
+  "compatibility": {
+    "minimumTemplateVersion": "1.0.0",
+    "platformContract": "eai.app-marketplace/v1"
+  },
+  "dataGovernance": {
+    "classifications": ["internal", "personal"],
+    "deletionPolicyRef": "legal/deletion.md",
+    "export": "none",
+    "purposes": ["Application quality assurance"],
+    "residency": ["AU"],
+    "retentionDays": 30
+  },
+  "displayName": "Testing Studio",
+  "distribution": { "visibility": "distributable" },
+  "evidence": {
+    "accessibilityRef": "evidence/accessibility.json",
+    "ciRef": "evidence/ci.json",
+    "securityRef": "evidence/security.json",
+    "tenantIsolationRef": "evidence/tenant-isolation.json"
+  },
+  "lifecycle": {
+    "installRef": "lifecycle/install.json",
+    "migrationRef": "lifecycle/migrate.json",
+    "rollbackRef": "lifecycle/rollback.json",
+    "uninstallRef": "lifecycle/uninstall.json",
+    "updateRef": "lifecycle/update.json"
+  },
+  "manifestDigest": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+  "objectTypes": [
+    {
+      "manifestRef": "object-types/test-run.json",
+      "name": "TestRun",
+      "slug": "test-run"
+    }
+  ],
+  "packageId": "testing-studio",
+  "publisher": {
+    "displayName": "Example Partner",
+    "id": "example-partner",
+    "kind": "partner"
+  },
+  "routes": [
+    { "id": "testing.home", "methods": ["GET"], "path": "/testing" }
+  ],
+  "runtime": {
+    "healthPath": "/health",
+    "topology": "eai-hosted",
+    "type": "isolated-hosted"
+  },
+  "schemaVersion": "eai.application-package.v1",
+  "services": [
+    { "id": "curate", "minimumContractVersion": "v4" },
+    { "id": "public-api", "minimumContractVersion": "v4" }
+  ],
+  "source": {
+    "digest": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "repository": "https://github.com/example/testing-studio"
+  },
+  "support": {
+    "owner": "Example Partner Support",
+    "runbookRef": "support/runbook.md",
+    "slaRef": "support/sla.md"
+  },
+  "version": "1.0.0"
+}
