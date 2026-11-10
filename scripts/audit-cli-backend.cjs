@@ -10,7 +10,7 @@ const ROOT = resolve(__dirname, '..');
 const { requiresProtectedScope, observedScopeVerified } = require('./cli-qa-execution-scope.cjs');
 
 const CONTRACTS = {
-  connection: { routes: ['/v4/platform/tenants/{tenantId}/connections'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Configurator'] },
+  connection: { routes: ['/v4/platform/connections/tenants/{tenantId}'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Configurator'] },
   workspace: { routes: ['/v4/identity/tenants', '/v4/platform/tenants', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'ResourceAPI'] },
   user: { routes: ['/v4/platform/users', '/v4/platform/tenants/{tenantId}/users', '/v4/platform/tenants/{tenantId}/role-definitions'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'CIAM'] },
   app: { routes: ['/v4/platform', '/v4/data/resources'], services: ['PublicAPI', 'Authz', 'AdminAPI', 'Admin Portal provisioning', 'Configurator', 'ResourceAPI', 'TenantInfra'] },

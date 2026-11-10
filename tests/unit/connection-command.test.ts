@@ -3,12 +3,21 @@ import { describe, expect, it } from "vitest";
 import {
   buildConnectionCreatePayload,
   buildConnectionListSuffix,
+  buildConnectionPath,
   connectionRowsForOutput,
   connectionCommand,
   resultForOutput,
 } from "../../src/commands/connection.js";
 
 describe("connection command", () => {
+  it("uses the bounded connection capability route with an encoded tenant", () => {
+    expect(buildConnectionPath("tenant one/child")).toBe(
+      "/v4/platform/connections/tenants/tenant%20one%2Fchild",
+    );
+    expect(buildConnectionPath("tenant-1", "/connection-1/regional-activation")).toBe(
+      "/v4/platform/connections/tenants/tenant-1/connection-1/regional-activation",
+    );
+  });
   it("builds a least-privilege Standard API Key request", () => {
     expect(
       buildConnectionCreatePayload({

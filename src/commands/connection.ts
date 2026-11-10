@@ -95,8 +95,8 @@ async function context(options: CommonOptions): Promise<ConnectionContext> {
   };
 }
 
-function path(tenantId: string, suffix = ""): string {
-  return `/v4/platform/tenants/${encodeURIComponent(tenantId)}/connections${suffix}`;
+export function buildConnectionPath(tenantId: string, suffix = ""): string {
+  return `/v4/platform/connections/tenants/${encodeURIComponent(tenantId)}${suffix}`;
 }
 
 function positiveVersion(value: string): number {
@@ -240,7 +240,7 @@ async function request(
 ): Promise<Record<string, unknown> | unknown[]> {
   const ctx = await context(options);
   const response = await ctx.client.requestPublicApi(
-    path(ctx.tenantId, suffix),
+    buildConnectionPath(ctx.tenantId, suffix),
     { method, body },
   );
   if (!response.ok) {
