@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "gofer": {
     "repo": "https://github.com/eai-support/eai-gofer.git",
-    "commit": "200d49f184fe1b7cd2e797246afdc666827e47e0",
-    "describe": "200d49f",
+    "commit": "4edac9afba6c61f85e53eecfbfd5d58e2e7beee7",
+    "describe": "4edac9a",
     "version": "3.14.5",
-    "resourceTreeSha256": "sha256:7b2b5e3d7a2b8b467c3daff72f2b1f75caa75d05ac34a17d36c1d49485dd65f5"
+    "resourceTreeSha256": "sha256:1076e8ddc2dc34e071f0a390fe7835889ca29e57833afb19198f39ef22adc539"
   },
   "appTemplate": {
     "repo": "https://github.com/eai-support/eai-app-template.git",
