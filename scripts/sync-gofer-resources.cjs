@@ -24,6 +24,7 @@ const { execFileSync } = require('node:child_process');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { goferResourceTreeSha256 } = require('./lib/gofer-bundle-identity.cjs');
 
 const REPO = 'https://github.com/eai-support/eai-gofer.git';
 const ROOT = path.resolve(__dirname, '..');
@@ -138,12 +139,14 @@ function syncDir(workdir, sourceRelativeDir, targetRelativeDir) {
   console.log(`▸ Synced ${sourceRelativeDir} → ${path.relative(ROOT, targetDir)}`);
 }
 
-function writeSyncMetadata({ sha, describe, source, dirty }) {
+function writeSyncMetadata({ sha, describe, source, dirty, version }) {
   const metadata = {
     commit: sha,
     describe,
+    version,
     source,
     dirty,
+    resourceTreeSha256: goferResourceTreeSha256(TARGET),
     synced_at: new Date().toISOString().replace(/\.\d{3}Z$/, 'Z'),
   };
   fs.writeFileSync(path.join(TARGET, '.gofer-version'), JSON.stringify(metadata, null, 2) + '\n');
@@ -156,13 +159,17 @@ function syncFromCheckout(workdir, source) {
   }
 
   const sha = resolvedSha(workdir);
+  const version = JSON.parse(fs.readFileSync(path.join(workdir, 'extension/package.json'), 'utf8')).version;
+  if (typeof version !== 'string' || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error('Gofer source must declare an exact extension package version.');
+  }
   const describe = resolvedDescribe(workdir);
   const dirty = hasUncommittedChanges(workdir);
   mirror(workdir, BASE_RESOURCE_DIR, TARGET);
   for (const [sourceRelativeDir, targetRelativeDir] of EXTRA_RESOURCE_MAPPINGS) {
     syncDir(workdir, sourceRelativeDir, targetRelativeDir);
   }
-  writeSyncMetadata({ sha, describe, source, dirty });
+  writeSyncMetadata({ sha, describe, source, dirty, version });
 
   const fileCount = countFiles(TARGET);
   console.log(`▸ Mirrored ${fileCount} files into ${path.relative(ROOT, TARGET)}/`);

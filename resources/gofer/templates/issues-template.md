@@ -15,7 +15,9 @@ follows the Requirements Ticket template from enterpriseaigroup/Issues2025.
 ## Issue #1: [Task ID] - [Task Title]
 
 **Labels**: `enhancement`, `phase-1-setup`, `[story-label]` **Assignees**:
-@MikeNowosadko **Title**: [Feature]: [Task Description]
+@MikeNowosadko **Title**: Prevent [risk] for [user or system] by [needed capability]
+
+Replace this placeholder before you open the issue. Read `.specify/references/issue-and-pr-titles.md`.
 
 ### Screen described (Mike)
 

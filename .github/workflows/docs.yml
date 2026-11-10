@@ -14,6 +14,8 @@ on:
       - "scripts/verify-docs-publication.cjs"
       - ".github/workflows/docs.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/sync-linked-sources.yml"
+      - "scripts/lib/gofer-bundle-identity.cjs"
   push:
     branches: [main]
     paths:
@@ -27,6 +29,8 @@ on:
       - "scripts/verify-docs-publication.cjs"
       - ".github/workflows/docs.yml"
       - ".github/workflows/release.yml"
+      - ".github/workflows/sync-linked-sources.yml"
+      - "scripts/lib/gofer-bundle-identity.cjs"
   workflow_call:
     inputs:
       publish_github_pages:

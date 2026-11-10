@@ -6,6 +6,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import producerVerifier from "./verify-managed-deploy-producer-pin.cjs";
+import bundleIdentity from "./lib/gofer-bundle-identity.cjs";
+
+const { goferResourceTreeSha256 } = bundleIdentity;
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 export const GOFER_REPO = "https://github.com/eai-support/eai-gofer.git";
@@ -14,6 +18,7 @@ const ENTERPRISE_SCOPE = "@enterpriseaigroup";
 const GOFER_PIN_FILE = path.join(ROOT, ".gofer-version");
 const GOFER_RESOURCES_TARGET = path.join(ROOT, "resources", "gofer");
 const LINKED_SOURCES_FILE = path.join(ROOT, "resources", "linked-sources.json");
+const PRODUCER_ROOT = path.join(ROOT, "resources", "deploy", "eai-app-template");
 const GOFER_BASE_RESOURCE_DIR = path.join("extension", "resources");
 export const GOFER_EXTRA_RESOURCE_MAPPINGS = [
   [".specify/config", "config"],
@@ -186,7 +191,7 @@ export function assertCrossPlatformTemplateLifecycleScripts(packageJson) {
   }
 }
 
-function readGoferResourceCommit() {
+function readGoferResourceMetadata() {
   const metadataPath = path.join(GOFER_RESOURCES_TARGET, ".gofer-version");
   if (!fs.existsSync(metadataPath)) {
     return null;
@@ -194,13 +199,13 @@ function readGoferResourceCommit() {
 
   try {
     const metadata = readJson(metadataPath);
-    return typeof metadata?.commit === "string" ? metadata.commit : null;
+    return typeof metadata?.commit === "string" ? metadata : null;
   } catch {
     return null;
   }
 }
 
-function buildTemplateMetadata(workdir, version) {
+export function buildTemplateMetadata(workdir, version) {
   const packageJson = readJson(path.join(workdir, "package.json"));
   assertCrossPlatformTemplateLifecycleScripts(packageJson);
   const packageLockPath = path.join(workdir, "package-lock.json");
@@ -246,35 +251,81 @@ function mirrorDirectory(sourceDir, targetDir) {
   copyDir(sourceDir, targetDir);
 }
 
-function syncDirectoryIfPresent(workdir, sourceRelativeDir, targetRelativeDir) {
+function syncDirectoryIfPresent(workdir, sourceRelativeDir, targetRelativeDir, targetRoot) {
   const sourceDir = path.join(workdir, sourceRelativeDir);
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     return;
   }
 
-  const targetDir = path.join(GOFER_RESOURCES_TARGET, targetRelativeDir);
+  const targetDir = path.join(targetRoot, targetRelativeDir);
   fs.mkdirSync(targetDir, { recursive: true });
   copyDir(sourceDir, targetDir);
 }
 
-function syncGoferResourcesFromCheckout(workdir, commit, describe) {
+export function syncGoferResourcesFromCheckout(workdir, commit, describe, targetRoot = GOFER_RESOURCES_TARGET) {
+  const version = readJson(path.join(workdir, "extension", "package.json")).version;
+  if (typeof version !== "string" || !/^\d+\.\d+\.\d+$/.test(version)) {
+    throw new Error("Gofer source must declare an exact extension package version.");
+  }
   const sourceDir = path.join(workdir, GOFER_BASE_RESOURCE_DIR);
   if (!fs.existsSync(sourceDir) || !fs.statSync(sourceDir).isDirectory()) {
     throw new Error(`gofer checkout is missing ${GOFER_BASE_RESOURCE_DIR}/`);
   }
 
-  mirrorDirectory(sourceDir, GOFER_RESOURCES_TARGET);
+  mirrorDirectory(sourceDir, targetRoot);
   for (const [
     sourceRelativeDir,
     targetRelativeDir,
   ] of GOFER_EXTRA_RESOURCE_MAPPINGS) {
-    syncDirectoryIfPresent(workdir, sourceRelativeDir, targetRelativeDir);
+    syncDirectoryIfPresent(workdir, sourceRelativeDir, targetRelativeDir, targetRoot);
   }
 
-  writeJson(path.join(GOFER_RESOURCES_TARGET, ".gofer-version"), {
+  const metadata = {
     commit,
     describe,
-  });
+    version,
+    source: `${GOFER_REPO}@${commit}`,
+    dirty: false,
+    resourceTreeSha256: goferResourceTreeSha256(targetRoot),
+  };
+  writeJson(path.join(targetRoot, ".gofer-version"), metadata);
+  return metadata;
+}
+
+/** Capture the producer from the same immutable release as template metadata. */
+export function buildManagedDeployProducerBundle(workdir, tag) {
+  if (!/^v\d+\.\d+\.\d+$/.test(tag)) throw new Error("Template producer requires a release tag.");
+  const commit = resolveSha(workdir);
+  if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error("Template producer requires an exact source commit.");
+  const taggedCommit = run("git", ["-C", workdir, "rev-parse", `refs/tags/${tag}^{commit}`]);
+  if (taggedCommit !== commit) throw new Error("Template producer checkout must match its exact release tag.");
+  const files = Object.fromEntries(Object.entries(producerVerifier.PRODUCER_FILES).map(([key, relative]) => {
+    const bytes = execFileSync("git", ["-C", workdir, "show", `${commit}:${relative}`], {
+      encoding: null, stdio: ["ignore", "pipe", "pipe"],
+    });
+    return [key, { path: relative, bytes, sha256: `sha256:${crypto.createHash("sha256").update(bytes).digest("hex")}` }];
+  }));
+  const pin = {
+    schemaVersion: "eai.managed-deploy-producer-pin.v1",
+    repository: "eai-support/eai-app-template",
+    candidate: { commit, ...Object.fromEntries(Object.entries(files).map(([key, file]) => [key, { path: file.path, sha256: file.sha256 }])) },
+    releaseGate: { status: "released", tag, commit },
+    githubProducerIdentity: { profile: "github-environment-v1", templateCommitSha: commit, workflowSha256: files.workflow.sha256 },
+  };
+  producerVerifier.assertCanonicalProducerPaths(pin);
+  producerVerifier.assertProducerIdentity(pin);
+  producerVerifier.assertEnvironmentProducerWorkflow(files.workflow.bytes.toString("utf8"));
+  producerVerifier.assertProducerDispatchInputs(files.workflow.bytes.toString("utf8"));
+  return { pin, files };
+}
+
+export function writeManagedDeployProducerBundle(bundle, targetRoot = PRODUCER_ROOT) {
+  for (const file of Object.values(bundle.files)) {
+    const destination = path.join(targetRoot, file.path);
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, file.bytes);
+  }
+  writeJson(path.join(targetRoot, "producer-pin.json"), bundle.pin);
 }
 
 function main() {
@@ -291,15 +342,21 @@ function main() {
 
     const goferCommit = resolveSha(goferDir);
     const goferDescribe = resolveDescribe(goferDir);
+    const stagedGofer = path.join(tmpRoot, "gofer-bundle");
+    const goferMetadata = syncGoferResourcesFromCheckout(goferDir, goferCommit, goferDescribe, stagedGofer);
+    const producerBundle = buildManagedDeployProducerBundle(templateDir, templateVersion);
     const nextManifest = {
       schemaVersion: 1,
       gofer: {
         repo: GOFER_REPO,
         commit: goferCommit,
         describe: goferDescribe,
+        version: goferMetadata.version,
+        resourceTreeSha256: goferMetadata.resourceTreeSha256,
       },
       appTemplate: buildTemplateMetadata(templateDir, templateVersion),
     };
+    producerVerifier.assertLinkedTemplateRelease(producerBundle.pin, nextManifest);
 
     const currentManifest = fs.existsSync(LINKED_SOURCES_FILE)
       ? readJson(LINKED_SOURCES_FILE)
@@ -307,14 +364,24 @@ function main() {
     const currentGoferPin = fs.existsSync(GOFER_PIN_FILE)
       ? fs.readFileSync(GOFER_PIN_FILE, "utf-8").trim()
       : null;
-    const currentGoferResourceCommit = readGoferResourceCommit();
+    const currentGoferMetadata = readGoferResourceMetadata();
 
     const manifestChanged =
       JSON.stringify(currentManifest) !== JSON.stringify(nextManifest);
     const goferChanged = currentGoferPin !== goferCommit;
-    const goferResourcesChanged = currentGoferResourceCommit !== goferCommit;
+    const goferResourcesChanged = currentGoferMetadata?.commit !== goferCommit ||
+      !fs.existsSync(GOFER_RESOURCES_TARGET) ||
+      goferResourceTreeSha256(GOFER_RESOURCES_TARGET) !== goferMetadata.resourceTreeSha256 ||
+      currentGoferMetadata.resourceTreeSha256 !== goferMetadata.resourceTreeSha256 ||
+      currentGoferMetadata.version !== goferMetadata.version ||
+      currentGoferMetadata.describe !== goferMetadata.describe ||
+      currentGoferMetadata.source !== goferMetadata.source || currentGoferMetadata.dirty !== false;
+    const producerChanged = !fs.existsSync(path.join(PRODUCER_ROOT, "producer-pin.json")) ||
+      JSON.stringify(readJson(path.join(PRODUCER_ROOT, "producer-pin.json"))) !== JSON.stringify(producerBundle.pin) ||
+      Object.values(producerBundle.files).some(file => !fs.existsSync(path.join(PRODUCER_ROOT, file.path)) ||
+        !fs.readFileSync(path.join(PRODUCER_ROOT, file.path)).equals(file.bytes));
 
-    if (!manifestChanged && !goferChanged && !goferResourcesChanged) {
+    if (!manifestChanged && !goferChanged && !goferResourcesChanged && !producerChanged) {
       console.log("✓ Linked sources already match upstream HEADs");
       return;
     }
@@ -327,8 +394,10 @@ function main() {
     }
 
     if (goferChanged || goferResourcesChanged) {
-      syncGoferResourcesFromCheckout(goferDir, goferCommit, goferDescribe);
+      mirrorDirectory(stagedGofer, GOFER_RESOURCES_TARGET);
     }
+
+    if (producerChanged) writeManagedDeployProducerBundle(producerBundle);
 
     writeJson(LINKED_SOURCES_FILE, nextManifest);
     console.log(`▸ Wrote ${path.relative(ROOT, LINKED_SOURCES_FILE)}`);
