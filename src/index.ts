@@ -49,6 +49,7 @@ import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
 import { startCommand } from './commands/start.js';
 import { classifierCommand } from './commands/classifier.js';
+import { connectionCommand } from './commands/connection.js';
 import { contentUnderstandingCommand, contentUnderstandingPreflightOperationId } from './commands/content-understanding.js';
 import {
   checkForUpdate,
@@ -155,6 +156,7 @@ program.addCommand(supportCommand);
 program.addCommand(agentCommand);
 program.addCommand(startCommand);
 program.addCommand(classifierCommand);
+program.addCommand(connectionCommand);
 program.addCommand(contentUnderstandingCommand);
 
 // Custom help footer

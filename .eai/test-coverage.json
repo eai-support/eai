@@ -115,6 +115,29 @@
           "required_deployed_contracts": []
         },
         {
+          "id": "tenant-machine-connections-cli",
+          "description": "Tenant-admin CLI lifecycle for Standard API Key and Advanced Security connections with redacted-by-default text and JSON output.",
+          "owned_paths": [
+            "src/commands/connection.ts",
+            "src/index.ts",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "tests/unit/connection-command.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_repo_tests": [
+            "tests/unit/connection-command.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts"
+          ],
+          "required_ci_checks": ["ci/eai-cli-tests"],
+          "required_cross_service_surfaces": ["machine-connections"],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/backend/machine-connections.spec.ts"
+            }
+          ]
+        },
+        {
           "id": "eai-cli-tenant-workflow-classifiers",
           "description": "CLI users validate and save reusable classifier JSON, publish immutable versions, separately associate exact published versions with app workflows, reversibly disable or enable classifiers, and permanently delete only disabled unpublished drafts through PublicAPI v4.",
           "owned_paths": [
@@ -302,6 +325,40 @@
               "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
               "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
               "owner": "eai-cli"
+            }
+          ]
+        },
+        {
+          "id": "eai-cli-app-marketplace-package",
+          "description": "Tenant administrators prepare deterministic credential-free application packages locally and submit them through the dedicated regional PublicAPI publisher ingress for authoritative review.",
+          "owned_paths": [
+            ".eai/test-coverage.json",
+            "src/commands/vertical.ts",
+            "src/lib/application-package.ts",
+            "src/lib/agent-guide.ts",
+            "tests/integration/app-package.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "scripts/eai-full-e2e-smoke.cjs",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "package.json"
+          ],
+          "required_repo_tests": [
+            "tests/integration/app-package.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/agent-guide.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "eai-cli",
+            "publicapi-platform"
+          ],
+          "required_deployed_contracts": [
+            {
+              "repository": "eai-testing-dev",
+              "path": "tests/cross-service/contracts/app-marketplace/publisher-ingress.spec.ts"
             }
           ]
         },

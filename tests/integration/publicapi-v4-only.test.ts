@@ -6,16 +6,19 @@ import { describe, expect, test } from 'vitest';
 const execFileAsync = promisify(execFile);
 const olderPublicApiRoute = /\/v(?:1|2|3)\//;
 const externalTypeSafeEndpoint = 'https://api.typesafe.ai/v1/systemone';
+const applicationPackageSchemaId = 'https://contracts.enterpriseai.group/app-marketplace/v1/application-package.schema.json';
 const maintainedSurface = /(?:^|\/)(?:src|tests|scripts|resources\/gofer|\.agents|\.specify|\.tech-docs|docs-site\/static)\//;
 const textSurface = /\.(?:md|mdx|txt|ts|tsx|js|cjs|mjs|json|ya?ml|sh)$/;
 
 function hasOlderPublicApiRoute(content: string): boolean {
-  return olderPublicApiRoute.test(content.replaceAll(externalTypeSafeEndpoint, ''));
+  return olderPublicApiRoute.test(content.replaceAll(externalTypeSafeEndpoint, '').replaceAll(applicationPackageSchemaId, ''));
 }
 
 describe('PublicAPI V4 contract guard', () => {
   test('retains old PublicAPI route rejection while excluding the exact external TypeSafe endpoint', () => {
     expect(hasOlderPublicApiRoute('https://api.typesafe.ai/v1/systemone')).toBe(false);
+    expect(hasOlderPublicApiRoute(applicationPackageSchemaId)).toBe(false);
+    expect(hasOlderPublicApiRoute(`${applicationPackageSchemaId}\n/v${3}/platform/tenants`)).toBe(true);
     expect(hasOlderPublicApiRoute(`const route = "/v${3}/platform/tenants";`)).toBe(true);
   });
 

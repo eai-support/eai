@@ -57,6 +57,7 @@ const guide: AgentGuide = {
     'For resource create, batch-create, batch-import, delete and batch-delete JSON, resource-mutation-response-scope-v1 supplies request.publicApiUrl, request.tenantId and request.proofKind=transport-response from the exact transport response. Verify that scope before adopting returned IDs or certifying cleanup; missing or mismatched proof requires reconciliation without guessed deletion.',
     'Protected CLI qualification requires an exact execution-bound response scope. Selected flags, cached workspace state and matching request metadata alone do not prove it. QA uses a private UUID-bound transport pipe, primary-route matching and foreign-scope rejection; domain acknowledgments permit only their documented owned cleanup protocol. Global identity/profile commands such as whoami and workspace list/info/select retain their actual null/system namespace and remain incomplete until a separate authenticated identity/profile-scope audit contract is implemented. Doctor and login also need that source contract; live tests alone cannot close this gap.',
     'Use named eai commands before calling eai publicapi directly.',
+    'Use eai app package for distributable application preparation and submission; local files never approve or publish an app.',
     'Before Object Type publication, require app-manifest-name-slug-negotiation-v1. The CLI preserves source slugs and selects a safe deployed request shape. A dry-run preferred shape does not prove that the deployed platform accepts that shape.',
     'When calling eai publicapi directly, only use /v4 paths.',
     'If a platform user lookup or membership prerequisite returns MISSING_TENANT or "Tenant context required for app tokens", reuse the original-failure guidance for app_token_tenant_context_required; only if it has not been queried, run eai errors explain app_token_tenant_context_required --format json at most once when advertised and retry through /v4/platform/tenants/<tenant-id>/... routes before changing workspace members, Entra, or role definitions.',
@@ -218,6 +219,18 @@ const guide: AgentGuide = {
       commands: [
         { command: 'eai provision entra --deauthorize --client-id <client-id> --force', mutates: true, purpose: 'Remove workspace authorization, delete the app registration, and remove local Entra credentials.' },
         { command: 'eai env list', mutates: false, purpose: 'Confirm local project env no longer contains the removed Entra credential keys.' },
+      ],
+    },
+    {
+      step: 7,
+      title: 'Prepare a distributable app',
+      instruction: 'Create and validate a credential-free application package locally, build deterministic review bytes, then submit it through the regional PublicAPI publisher ingress. Platform review remains authoritative.',
+      commands: [
+        { command: 'eai app package init --app-key <key> --display-name <name> --publisher-ref <ref>', mutates: true, purpose: 'Create the local package draft.' },
+        { command: 'eai app package validate --format json', mutates: false, purpose: 'Reject unsafe or incomplete local package declarations.' },
+        { command: 'eai app package build --format json', mutates: true, purpose: 'Create deterministic content-addressed review bytes.' },
+        { command: 'eai app package submit --format json', mutates: true, purpose: 'Submit through regional PublicAPI for governed platform review.' },
+        { command: 'eai app package status <submission-id> --format json', mutates: false, purpose: 'Read the authoritative platform review status.' },
       ],
     },
   ],
