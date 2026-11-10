@@ -7,6 +7,7 @@ import type {
 } from "../lib/api.js";
 import type { CommandContext } from "../lib/context.js";
 import { readManagedPublicResponseText } from "../lib/api.js";
+import { apiErrorCode, creditsExhaustedNextAction } from "../lib/credits-exhausted.js";
 import type { CliManagedSourceScope } from "../lib/eai-managed-source-client.js";
 import type { ManagedDeployState } from "../lib/eai-managed-deploy.js";
 
@@ -140,12 +141,15 @@ export function apiMessage(
   return fallback;
 }
 
+/** `message` carries the API error code when the caller has one (a 402 `CREDITS_EXHAUSTED`). */
 export function repositoryNextAction(
   status: number,
   message: string,
   tenantId: string,
   repo: string,
 ): string {
+  const exhausted = creditsExhaustedNextAction(status, message);
+  if (exhausted) return exhausted;
   const normalized = message.toLowerCase();
   if (status === 401)
     return "Run `eai login`, confirm the account with `eai whoami`, then retry.";
@@ -173,10 +177,12 @@ export async function requireApiSuccess(
 ): Promise<Record<string, unknown>> {
   const payload = await responsePayload(response);
   if (!response.ok) {
+    // Out of credits is the same answer on every deploy step, so it wins over the caller's own advice.
+    const exhausted = creditsExhaustedNextAction(response.status, apiErrorCode(payload));
     fail(
       code,
       apiMessage(payload, `${response.status} ${response.statusText}`),
-      nextAction(payload, response.status),
+      exhausted ?? nextAction(payload, response.status),
     );
   }
   return payload;
