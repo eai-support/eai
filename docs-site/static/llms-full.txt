@@ -1059,7 +1059,7 @@ and gofer asset refresh.
 | Version | 3.20.13 |
 | Released | 2026-11-11 |
 | Last Material Change | CLI and data repairs for issue 3625 |
-| Source Commit | `2e5c7add990d872817b7663fcb23fd94e63ae423` |
+| Source Commit | `51718a71545ade57079c2d78f6eb976e1c04b8f0` |
 
 
 ## Install

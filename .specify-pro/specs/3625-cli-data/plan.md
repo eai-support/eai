@@ -125,7 +125,7 @@ Release the coordinated API/schema support through the normal reviewed environme
 
 | Owner | Evidence |
 | --- | --- |
-| CLI | Full suite: 5,078 passed, 4 skipped, 90 files. Required `test:eai-cli:ci`: 5,000 passed, 3 skipped, 81 files, plus its docs-site checks. Build, typecheck and source lint passed. |
+| CLI | Final local full suite: 5,085 passed, 4 skipped, 90 files. Build, typecheck and source lint passed. Required `test:eai-cli:ci` and native OS-matrix results are retained in the owning PR. |
 | PublicAPI | Native unit selection: 13,910 passed, 1 skipped. Security/OPA/V4 contract selection: 1,436 passed. After formatting, 175 action/proxy tests passed; repository Ruff lint and formatting passed. |
 | ResourceAPI | Full unit suite: 3,131 passed, 22 skipped. After formatting, 45 relationship/schema tests passed. Native integration: 820 passed, 15 skipped, 1 baseline-proven missing-PostGIS fixture failure. With local fixture dependencies supplied, the dedicated storage case and all 11 signed-scope receivers passed separately; four intentional provider/performance opt-ins remain. Both new real-PostgreSQL regressions passed inside the full run. |
 | AdminAPI | Full suite: 6,286 passed and 7 subtests passed. After test formatting, 301 storage/manifest tests passed. |
@@ -133,7 +133,9 @@ Release the coordinated API/schema support through the normal reviewed environme
 | Authz | All 1,089 OPA tests and policy/schema checks passed; role rules are unchanged. |
 | App template | All 3 generator tests passed; native template CI also passed its validation, portability/build/health and CodeQL checks. |
 
-The CLI candidate contains the runtime from source commit `2e5c7add990d872817b7663fcb23fd94e63ae423`. The prepared 3.20.13 archive matches all 911 packaged runtime files; SHA-1 is `7577def627924debc0a696897e0117504c705449`. Historical archives remain intact. Generated help, error guidance, documentation assets and smoke traceability are checked; traceability covers all 128 executable CLI entries, with 52 planned live rows rather than a claim of live execution.
+The CLI candidate contains the runtime from source commit `51718a71545ade57079c2d78f6eb976e1c04b8f0`. The prepared 3.20.13 archive matches all 911 packaged runtime files; SHA-1 is `f6705ab3ef2f6de8e07c04c08e59a30dafb51be0`. Historical archives remain intact. Generated help, error guidance, documentation assets and smoke traceability are checked; traceability covers all 128 executable CLI entries, with 52 planned live rows rather than a claim of live execution.
+
+Native macOS qualification exposed a filesystem alias issue (`/var` resolves through `/private/var`). Module entry/config lookup and ownership checks now use canonical filesystem paths. The compiler, transitive import freshness, diagnostics and dependency-cache scenarios run against both direct and symlinked project roots; the focused loader/preflight/types selection passed all 224 tests.
 
 Additional baseline comparisons were retained without changing unrelated features: combined PublicAPI unit+security collection has the same nine order-dependent failures on unchanged main and this branch, while native unit CI passes; Configurator's local security selection has the same two Civica forwarded-header assertion failures on unchanged main and this branch. These are not new feature failures.
 
