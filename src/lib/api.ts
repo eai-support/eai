@@ -99,6 +99,68 @@ export async function readManagedPublicResponseText(response: Response): Promise
   }
 }
 
+/**
+ * Stream-limit a managed response body to `maxBytes` UTF-8 bytes before buffering;
+ * cancels and returns `undefined` on overflow while retaining the managed timeout reason.
+ */
+export async function readManagedPublicResponseTextBounded(
+  response: Response,
+  maxBytes: number,
+): Promise<string | undefined> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new RangeError('Managed response byte limit must be a non-negative safe integer.');
+  }
+  const signal = managedResponseSignals.get(response);
+  const readBounded = async (): Promise<string | undefined> => {
+    const declaredLength = response.headers.get('content-length');
+    if (declaredLength !== null && declaredLength.trim() !== '') {
+      const parsedLength = Number(declaredLength);
+      if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+        await response.body?.cancel().catch(() => undefined);
+        return undefined;
+      }
+    }
+    if (!response.body) {
+      const text = await response.text();
+      return Buffer.byteLength(text, 'utf8') <= maxBytes ? text : undefined;
+    }
+    const reader = response.body.getReader();
+    const cancelOnAbort = (): void => {
+      void reader.cancel(signal?.reason).catch(() => undefined);
+    };
+    signal?.addEventListener('abort', cancelOnAbort, { once: true });
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    let overflowed = false;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBytes) {
+          overflowed = true;
+          await reader.cancel().catch(() => undefined);
+          return undefined;
+        }
+        chunks.push(value);
+      }
+      return Buffer.concat(chunks, totalBytes).toString('utf8');
+    } finally {
+      signal?.removeEventListener('abort', cancelOnAbort);
+      if (!overflowed) {
+        try { reader.releaseLock(); } catch { /* already released or cancelled */ }
+      }
+    }
+  };
+  try {
+    return signal ? await awaitManagedRequestDeadline(signal, readBounded()) : await readBounded();
+  } catch (error) {
+    if (signal?.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+    throw error;
+  }
+}
+
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
   const authorized = captureProfileConfig(getActiveProfile())?.managedDeploymentApiUrl !== undefined;
   const endpoint = authorized ? requireManagedPublicApiUrl(baseUrl) : baseUrl;
@@ -2109,6 +2171,24 @@ export class PlatformAPIClient {
       `${this.cliManagedSourcePath(tenantId, appKey, sessionId)}/github-link-sessions/${encodeURIComponent(sessionId)}?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
       'GET',
       undefined, { timeoutMs },
+    );
+  }
+
+  /** Read this environment's approved app template pin; callers must fail open when it is unavailable. */
+  async getCliManagedTemplateRequirement(
+    tenantId: string,
+    appKey: string,
+    targetTenantId: string,
+    environment: CliManagedGithubLinkRequest['environment'],
+    timeoutMs?: number,
+  ): Promise<Response> {
+    if (!isManagedScopeIdentifier(targetTenantId)) throw new Error('Managed source target must be a safe path identifier.');
+    if (environment !== 'preview' && environment !== 'dev' && environment !== 'test' && environment !== 'prod') {
+      throw new Error('Managed source environment must be preview, dev, test, or prod.');
+    }
+    return this.managedPublicRequest(
+      `${this.cliManagedSourcePath(tenantId, appKey)}/template-requirement?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
+      'GET', undefined, { timeoutMs },
     );
   }
 

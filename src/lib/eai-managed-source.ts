@@ -56,8 +56,17 @@ export interface CliManagedSourceBundle {
 
 /** Stable failure codes keep unsupported local source separate from server deployment failure. */
 export class ManagedSourceError extends Error {
-  constructor(readonly code: string, message: string) {
+  readonly nextAction?: string;
+  readonly details?: Readonly<Record<string, unknown>>;
+
+  constructor(
+    readonly code: string,
+    message: string,
+    options: { nextAction?: string; details?: Record<string, unknown> } = {},
+  ) {
     super(message);
+    this.nextAction = options.nextAction;
+    this.details = options.details;
   }
 }
 
