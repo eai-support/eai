@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.10** (2026-11-05): Add eai login --switch-account for EAI Setup account switching.
+The current CLI release is **v3.20.12** (2026-11-11): Recover EAI-maintained reviews whose required checks failed and explain active-publish conflicts.

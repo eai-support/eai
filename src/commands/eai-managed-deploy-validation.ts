@@ -79,6 +79,7 @@ export interface ValidatedManagedDeployInput {
   timeoutSeconds: number;
   resumeOperationId?: string;
   retryOperationId?: string;
+  recoverReviewOperationId?: string;
 }
 
 /** Reject unsafe caller-controlled scope, recovery and repository identifiers before authentication or I/O. */
@@ -105,6 +106,38 @@ export function validateManagedDeployInput(
       "DEPLOY_MODE_CONFLICT",
       "--resume and --retry cannot be used together.",
       "Choose one exact operation action.",
+    );
+  }
+  if (options.recoverFailedReview !== undefined && (options.resume || options.retry)) {
+    fail(
+      "DEPLOY_MODE_CONFLICT",
+      "--recover-failed-review cannot be combined with --resume or --retry.",
+      "Recover the failed review first, then publish again without an operation ID.",
+    );
+  }
+  if (
+    options.recoverFailedReview !== undefined &&
+    !/^cli-managed-[a-f0-9]{32}$/.test(options.recoverFailedReview)
+  ) {
+    fail(
+      "SOURCE_OPERATION_ID_INVALID",
+      "--recover-failed-review needs an exact EAI-maintained operation ID.",
+      "Use the cli-managed-... operation ID returned by the earlier publish.",
+    );
+  }
+  if (
+    options.recoverFailedReview !== undefined &&
+    (options.source !== undefined ||
+      options.repo !== undefined ||
+      options.githubLinkSession !== undefined ||
+      options.installationId !== undefined ||
+      options.commit !== undefined ||
+      options.branch !== "main")
+  ) {
+    fail(
+      "RECOVERY_OPTION_CONFLICT",
+      "--recover-failed-review uses the source recorded by the exact operation.",
+      "Omit --source, --repo, --github-link-session, --installation-id, --branch and --commit when recovering a failed review.",
     );
   }
   let resumeOperationId: string | undefined;
@@ -207,5 +240,6 @@ export function validateManagedDeployInput(
     timeoutSeconds,
     resumeOperationId,
     retryOperationId,
+    recoverReviewOperationId: options.recoverFailedReview,
   };
 }

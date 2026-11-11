@@ -63,6 +63,25 @@
           "number": 3598
         }
       ]
+    },
+    {
+      "requirement_id": "3676-managed-review-failure-recovery",
+      "criterion_text": "eai deploy app --recover-failed-review <operation-id> asks the approved regional Portal, with the signed-in CLI actor, to close one EAI-maintained review whose required checks failed; it prints the failing checks and the publish-again command, is safe to repeat, and refuses an unapproved Portal or non-EAI-maintained operation before sending anything. An active earlier publish, an ambiguous predecessor and the recovery limit are reported with stable codes and next steps instead of a generic unavailable error.",
+      "feature_ids": [
+        "eai-cli-managed-tenantinfra-deploy"
+      ],
+      "source_refs": [
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3676
+        },
+        {
+          "source_kind": "issue",
+          "repository": "enterpriseaigroup/Issues2025",
+          "number": 3637
+        }
+      ]
     }
   ]
 }
