@@ -44,6 +44,7 @@ function printRecovery(
 export async function recoverFailedManagedReview(
   execution: ManagedDeployExecutionContext,
   operationId: string,
+  explicitEnvironment?: string,
 ): Promise<void> {
   const { client, context, managedScope, appKey, targetTenantId, spinner } = execution;
   const operation = await readUnifiedExactOperation(
@@ -61,6 +62,13 @@ export async function recoverFailedManagedReview(
       "SOURCE_OPERATION_ENVIRONMENT_INVALID",
       "The operation has no supported environment binding.",
       "Contact EAI support with the operation ID.",
+    );
+  }
+  if (explicitEnvironment !== undefined && explicitEnvironment !== operation.environment) {
+    fail(
+      "RECOVERY_ENVIRONMENT_MISMATCH",
+      "The requested environment conflicts with the sealed operation.",
+      "Omit --environment or use the original operation's environment.",
     );
   }
   const scope: CliManagedSourceScope = {

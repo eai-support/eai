@@ -125,6 +125,21 @@ export function validateManagedDeployInput(
       "Use the cli-managed-... operation ID returned by the earlier publish.",
     );
   }
+  if (
+    options.recoverFailedReview !== undefined &&
+    (options.source !== undefined ||
+      options.repo !== undefined ||
+      options.githubLinkSession !== undefined ||
+      options.installationId !== undefined ||
+      options.commit !== undefined ||
+      options.branch !== "main")
+  ) {
+    fail(
+      "RECOVERY_OPTION_CONFLICT",
+      "--recover-failed-review uses the source recorded by the exact operation.",
+      "Omit --source, --repo, --github-link-session, --installation-id, --branch and --commit when recovering a failed review.",
+    );
+  }
   let resumeOperationId: string | undefined;
   let retryOperationId: string | undefined;
   try {

@@ -182,7 +182,11 @@ Examples:
       };
 
       if (recoverReviewOperationId) {
-        await recoverFailedManagedReview(execution, recoverReviewOperationId);
+        await recoverFailedManagedReview(
+          execution,
+          recoverReviewOperationId,
+          command.getOptionValueSource("environment") === "default" ? undefined : options.environment,
+        );
         return;
       }
 

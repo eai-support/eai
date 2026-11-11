@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
-import { PlatformAPIClient, readManagedPublicResponseText } from "./api.js";
+import { PlatformAPIClient, isManagedPublicRequestTimeout, readManagedPublicResponseText } from "./api.js";
 import { CLI_MANAGED_SOURCE_LIMITS, ManagedSourceError, isManagedAppSourcePath } from "./eai-managed-source.js";
 import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type {
@@ -230,9 +230,12 @@ async function safeConflict(response: Response): Promise<ManagedSourceError | un
     const body = await readManagedPublicResponseText(response);
     if (body.length > 1024) return undefined;
     const parsed = JSON.parse(body) as { error?: unknown };
-    const guidance = typeof parsed.error === "string" ? SAFE_CONFLICT_GUIDANCE[parsed.error] : undefined;
-    return guidance ? new ManagedSourceError(parsed.error as string, guidance) : undefined;
-  } catch {
+    const code = typeof parsed.error === "string" && Object.hasOwn(SAFE_CONFLICT_GUIDANCE, parsed.error)
+      ? parsed.error
+      : undefined;
+    return code ? new ManagedSourceError(code, SAFE_CONFLICT_GUIDANCE[code]) : undefined;
+  } catch (error) {
+    if (isManagedPublicRequestTimeout(error)) throw error;
     return undefined;
   }
 }

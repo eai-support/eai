@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
-import { PlatformAPIClient } from '../../src/lib/api.js';
+import { PlatformAPIClient, isManagedPublicRequestTimeout } from '../../src/lib/api.js';
 import * as auth from '../../src/lib/auth.js';
 import * as profile from '../../src/lib/profile.js';
 import { responseOperation } from '../../src/lib/eai-managed-source-operation-client.js';
@@ -115,6 +115,29 @@ describe('safe managed-source conflicts (Issues2025#3637)', () => {
       { error: 'CLI_MANAGED_SOURCE_UPSTREAM_REJECTED', message: 'The managed source request was rejected.' }, 409,
     ))).rejects.toMatchObject({ code: 'MANAGED_SOURCE_UNAVAILABLE' });
   });
+
+  test.each(['__proto__', 'constructor', 'toString', 'hasOwnProperty'])('does not read inherited guidance for %s', async code => {
+    await expect(responseOperation(json({ error: code }, 409))).rejects.toMatchObject({
+      code: 'MANAGED_SOURCE_UNAVAILABLE',
+      message: expect.stringContaining('Managed source operation is unavailable (409)'),
+    });
+  });
+
+  test('keeps the managed request timeout when a 409 body read expires', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
+      const signal = init!.signal!;
+      const body = new ReadableStream<Uint8Array>({ start(controller) {
+        const alive = setInterval(() => {}, 1000);
+        signal.addEventListener('abort', () => { clearInterval(alive); controller.error(signal.reason); }, { once: true });
+      } });
+      return new Response(body, { status: 409 });
+    });
+    const response = await new PlatformAPIClient('https://example.test', 'tenant-parent')
+      .getAppProvisioningJob('planning-portal', 'app-prov-owned', 'runtime-child', 25);
+    let error: unknown;
+    try { await responseOperation(response); } catch (caught) { error = caught; }
+    expect(isManagedPublicRequestTimeout(error)).toBe(true);
+  });
 });
 
 describe('--recover-failed-review input', () => {
@@ -132,6 +155,13 @@ describe('--recover-failed-review input', () => {
     [{ recoverFailedReview: operationId, resume: operationId }, 'DEPLOY_MODE_CONFLICT'],
     [{ recoverFailedReview: operationId, retry: operationId }, 'DEPLOY_MODE_CONFLICT'],
     [{ recoverFailedReview: 'source-unknown-abc123' }, 'SOURCE_OPERATION_ID_INVALID'],
+    [{ recoverFailedReview: operationId, source: 'eai-managed' }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, source: 'customer-owned' }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, repo: 'customer/app' }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, githubLinkSession: 'github-link-123' }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, installationId: '123' }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, commit: 'a'.repeat(40) }, 'RECOVERY_OPTION_CONFLICT'],
+    [{ recoverFailedReview: operationId, branch: 'release' }, 'RECOVERY_OPTION_CONFLICT'],
   ])('rejects %o', (changes, code) => {
     expect(() => validateManagedDeployInput('my-app', { ...base, ...changes } as ManagedDeployOptions))
       .toThrow(expect.objectContaining({ code }));
