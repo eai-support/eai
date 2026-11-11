@@ -121,6 +121,24 @@ Backend qualification uses owning native suites and disposable local data stores
 
 Release the coordinated API/schema support through the normal reviewed environment flow before adopting the template and publishing CLI 3.20.13. Existing legacy relationship definitions require an explicit target before republishing, without automatic record repair. Controlled TEST journey validation and cleanup remain release evidence; local tests and prepared archives do not prove deployment. This implementation does not deploy services, publish npm, create release tags, or mutate PROD/TEST data.
 
+### Qualification recorded on 2026-11-11
+
+| Owner | Evidence |
+| --- | --- |
+| CLI | Full suite: 5,078 passed, 4 skipped, 90 files. Required `test:eai-cli:ci`: 5,000 passed, 3 skipped, 81 files, plus its docs-site checks. Build, typecheck and source lint passed. |
+| PublicAPI | Native unit selection: 13,910 passed, 1 skipped. Security/OPA/V4 contract selection: 1,436 passed. After formatting, 175 action/proxy tests passed; repository Ruff lint and formatting passed. |
+| ResourceAPI | Full unit suite: 3,131 passed, 22 skipped. After formatting, 45 relationship/schema tests passed. Native integration: 820 passed, 15 skipped, 1 baseline-proven missing-PostGIS fixture failure. With local fixture dependencies supplied, the dedicated storage case and all 11 signed-scope receivers passed separately; four intentional provider/performance opt-ins remain. Both new real-PostgreSQL regressions passed inside the full run. |
+| AdminAPI | Full suite: 6,286 passed and 7 subtests passed. After test formatting, 301 storage/manifest tests passed. |
+| Configurator | Full native Jest unit selection: 4,979 passed, 1 skipped, 378 suites. Object Type/publication/hydration selection: 42 passed. Default-value fixtures now declare valid targets and retain their existing assertions. Typecheck and focused ESLint passed. |
+| Authz | All 1,089 OPA tests and policy/schema checks passed; role rules are unchanged. |
+| App template | All 3 generator tests passed; native template CI also passed its validation, portability/build/health and CodeQL checks. |
+
+The CLI candidate contains the runtime from source commit `2e5c7add990d872817b7663fcb23fd94e63ae423`. The prepared 3.20.13 archive matches all 911 packaged runtime files; SHA-1 is `7577def627924debc0a696897e0117504c705449`. Historical archives remain intact. Generated help, error guidance, documentation assets and smoke traceability are checked; traceability covers all 128 executable CLI entries, with 52 planned live rows rather than a claim of live execution.
+
+Additional baseline comparisons were retained without changing unrelated features: combined PublicAPI unit+security collection has the same nine order-dependent failures on unchanged main and this branch, while native unit CI passes; Configurator's local security selection has the same two Civica forwarded-header assertion failures on unchanged main and this branch. These are not new feature failures.
+
+Before enabling the relationship contract in an environment, audit parent schemas that will be inherited into newly created children. Existing child rows and unchanged legacy edits remain compatible, but a newly materialized child schema is a new definition and needs explicit targets. Built-in platform/starter/Gofer/attachment Object Type seeds currently contain no scalar relationship properties requiring backfill. No targets are inferred from names or links.
+
 ## 14. MVP negotiation (80:20)
 
 ### In MVP
