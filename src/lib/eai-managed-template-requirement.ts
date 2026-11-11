@@ -1,5 +1,5 @@
-import { constants } from "node:fs";
-import { open } from "node:fs/promises";
+import { constants, type Stats } from "node:fs";
+import { lstat, open } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { join } from "node:path";
 import type { PlatformAPIClient } from "./api.js";
@@ -93,6 +93,10 @@ function serverCode(value: unknown): string | undefined {
     : undefined;
 }
 
+function templateVersion(value: unknown): string | undefined {
+  return typeof value === "string" && VERSION.test(value) ? value : undefined;
+}
+
 function templateComparison(
   details: unknown,
 ): TemplatePinComparison | undefined {
@@ -100,6 +104,7 @@ function templateComparison(
     return undefined;
   const {
     currentTemplateCommitSha,
+    currentTemplateVersion,
     requiredTemplateCommitSha,
     requiredTemplateVersion,
   } = details as Record<string, unknown>;
@@ -110,13 +115,13 @@ function templateComparison(
     !COMMIT.test(requiredTemplateCommitSha)
   )
     return undefined;
+  const currentVersion = templateVersion(currentTemplateVersion);
+  const requiredVersion = templateVersion(requiredTemplateVersion);
   return {
     currentTemplateCommitSha,
+    ...(currentVersion ? { currentTemplateVersion: currentVersion } : {}),
     requiredTemplateCommitSha,
-    ...(typeof requiredTemplateVersion === "string" &&
-    VERSION.test(requiredTemplateVersion)
-      ? { requiredTemplateVersion }
-      : {}),
+    ...(requiredVersion ? { requiredTemplateVersion: requiredVersion } : {}),
   };
 }
 
@@ -171,18 +176,53 @@ export async function managedSourceResponseError(
   );
 }
 
+function sameOpenedManifest(expected: Stats, opened: Stats): boolean {
+  const devMatches =
+    expected.dev === 0 || opened.dev === 0 || opened.dev === expected.dev;
+  if (expected.ino !== 0 && opened.ino !== 0) {
+    return devMatches && opened.ino === expected.ino;
+  }
+  return (
+    devMatches &&
+    opened.size === expected.size &&
+    opened.mtimeMs === expected.mtimeMs
+  );
+}
+
 async function projectTemplatePin(
   root: string,
+  fsCapabilities: { O_NOFOLLOW?: number } = constants,
 ): Promise<{ commit: string; version?: string } | undefined> {
-  // SECURITY: open .eai-manifest.json with O_NOFOLLOW and cap reads at 64 KiB so symlinks or oversized files fail open.
+  // SECURITY: reject symlinks via lstat + opened-file identity verification (for Windows where O_NOFOLLOW is 0) and cap reads at 64 KiB.
   let handle;
   try {
+    const rootStats = await lstat(root);
+    if (rootStats.isSymbolicLink() || !rootStats.isDirectory())
+      return undefined;
+    const manifestPath = join(root, ".eai-manifest.json");
+    const linkStats = await lstat(manifestPath);
+    if (
+      linkStats.isSymbolicLink() ||
+      !linkStats.isFile() ||
+      linkStats.size > MAX_PROJECT_MANIFEST_BYTES
+    )
+      return undefined;
     handle = await open(
-      join(root, ".eai-manifest.json"),
-      constants.O_RDONLY | (constants.O_NOFOLLOW || 0),
+      manifestPath,
+      constants.O_RDONLY | (fsCapabilities.O_NOFOLLOW || 0),
     );
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > MAX_PROJECT_MANIFEST_BYTES)
+    const [handleStats, reboundStats] = await Promise.all([
+      handle.stat(),
+      lstat(manifestPath),
+    ]);
+    if (
+      !handleStats.isFile() ||
+      handleStats.size > MAX_PROJECT_MANIFEST_BYTES ||
+      reboundStats.isSymbolicLink() ||
+      !reboundStats.isFile() ||
+      !sameOpenedManifest(linkStats, handleStats) ||
+      !sameOpenedManifest(reboundStats, handleStats)
+    )
       return undefined;
     const buffer = Buffer.alloc(MAX_PROJECT_MANIFEST_BYTES + 1);
     let length = 0;
@@ -203,13 +243,11 @@ async function projectTemplatePin(
       template?: { commit?: unknown; version?: unknown };
     };
     const commit = manifest.template?.commit;
-    const version = manifest.template?.version;
+    const version = templateVersion(manifest.template?.version);
     if (typeof commit !== "string" || !COMMIT.test(commit)) return undefined;
     return {
       commit,
-      ...(typeof version === "string" && VERSION.test(version)
-        ? { version }
-        : {}),
+      ...(version ? { version } : {}),
     };
   } catch {
     return undefined;
@@ -242,7 +280,7 @@ async function approvedTemplate(
     if (text === undefined) return undefined;
     const value = JSON.parse(text) as Record<string, unknown>;
     const commit = value.requiredTemplateCommitSha;
-    const version = value.requiredTemplateVersion;
+    const version = templateVersion(value.requiredTemplateVersion);
     if (
       value.schemaVersion !== "eai.cli_managed_template_requirement.v1" ||
       value.tenantId !== scope.tenantId ||
@@ -253,9 +291,7 @@ async function approvedTemplate(
       return undefined;
     return {
       commit,
-      ...(typeof version === "string" && VERSION.test(version)
-        ? { version }
-        : {}),
+      ...(version ? { version } : {}),
     };
   } catch {
     return undefined;
@@ -271,8 +307,9 @@ export async function assertProjectTemplateApproved(
   scope: CliManagedSourceScope,
   root: string,
   timeoutMs: number,
+  fsCapabilities: { O_NOFOLLOW?: number } = constants,
 ): Promise<void> {
-  const current = await projectTemplatePin(root);
+  const current = await projectTemplatePin(root, fsCapabilities);
   if (!current) return;
   const required = await approvedTemplate(client, scope, timeoutMs);
   if (!required || required.commit === current.commit) return;

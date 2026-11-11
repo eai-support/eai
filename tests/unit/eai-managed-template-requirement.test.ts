@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,60 @@ describe("managed source operation errors keep the server reason (Issues2025#357
     });
   });
 
+  test("a 409 carrying details.currentTemplateVersion surfaces vX and ignores invalid version tags", async () => {
+    const future = "f".repeat(40);
+    const withCurrentVersion = await caught(
+      responseOperation(
+        json(
+          {
+            error: "TEMPLATE_VERSION_NOT_APPROVED",
+            details: {
+              currentTemplateCommitSha: OLD,
+              currentTemplateVersion: "v1.0.7",
+              requiredTemplateCommitSha: future,
+              requiredTemplateVersion: "v9.0.0",
+            },
+          },
+          409,
+        ),
+      ),
+    );
+    expect(withCurrentVersion.code).toBe("TEMPLATE_VERSION_NOT_APPROVED");
+    expect(withCurrentVersion.message).toBe(
+      "Your project uses app template v1.0.7 (3af817f); this environment requires v9.0.0 (fffffff).",
+    );
+    expect(withCurrentVersion.details).toMatchObject({
+      httpStatus: 409,
+      currentTemplateCommitSha: OLD,
+      currentTemplateVersion: "v1.0.7",
+      requiredTemplateCommitSha: future,
+      requiredTemplateVersion: "v9.0.0",
+    });
+
+    const malformedCurrentVersion = await caught(
+      responseOperation(
+        json(
+          {
+            error: "TEMPLATE_VERSION_NOT_APPROVED",
+            details: {
+              currentTemplateCommitSha: OLD,
+              currentTemplateVersion: "v1.0.7\u001b[31m",
+              requiredTemplateCommitSha: future,
+              requiredTemplateVersion: "v9.0.0",
+            },
+          },
+          409,
+        ),
+      ),
+    );
+    expect(malformedCurrentVersion.message).toBe(
+      "Your project uses app template 3af817f; this environment requires v9.0.0 (fffffff).",
+    );
+    expect(malformedCurrentVersion.details).not.toHaveProperty(
+      "currentTemplateVersion",
+    );
+  });
+
   test("FastAPI-wrapped stale templates tell an up-to-date CLI to migrate the project", async () => {
     const error = await caught(
       responseOperation(
@@ -115,6 +169,7 @@ describe("managed source operation errors keep the server reason (Issues2025#357
               error: "TEMPLATE_VERSION_NOT_APPROVED",
               details: {
                 currentTemplateCommitSha: OLD,
+                currentTemplateVersion: "v1.0.7",
                 requiredTemplateCommitSha: BUNDLED.commit,
                 requiredTemplateVersion: BUNDLED.version,
               },
@@ -125,6 +180,9 @@ describe("managed source operation errors keep the server reason (Issues2025#357
       ),
     );
     expect(error.code).toBe("TEMPLATE_VERSION_NOT_APPROVED");
+    expect(error.message).toBe(
+      `Your project uses app template v1.0.7 (3af817f); this environment requires ${BUNDLED_LABEL}.`,
+    );
     expect(error.nextAction).toContain(
       `This CLI already bundles app template ${BUNDLED_LABEL}: create a new project`,
     );
@@ -532,12 +590,14 @@ describe("template preflight before the GitHub link step", () => {
     ).resolves.toBeUndefined();
   });
 
-  test("fails open without network reads when .eai-manifest.json is oversized or a symlink", async () => {
+  test("fails open without network reads when .eai-manifest.json is oversized or a symlink, including without O_NOFOLLOW", async () => {
     const client = new PlatformAPIClient(
       "https://api.example.test/public",
       scope.tenantId,
     );
-    const read = vi.spyOn(client, "getCliManagedTemplateRequirement");
+    const read = vi
+      .spyOn(client, "getCliManagedTemplateRequirement")
+      .mockResolvedValue(json(requirement()));
 
     const oversizedDir = await project(undefined);
     await writeFile(
@@ -562,6 +622,30 @@ describe("template preflight before the GitHub link step", () => {
     await symlink(outside, join(symlinkDir, ".eai-manifest.json"));
     await expect(
       assertProjectTemplateApproved(client, scope, symlinkDir, 1000),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertProjectTemplateApproved(client, scope, symlinkDir, 1000, {
+        O_NOFOLLOW: 0,
+      }),
+    ).resolves.toBeUndefined();
+    await expect(
+      assertProjectTemplateApproved(client, scope, symlinkDir, 1000, {
+        O_NOFOLLOW: undefined,
+      }),
+    ).resolves.toBeUndefined();
+
+    const realProject = join(symlinkDir, "real-project");
+    await mkdir(realProject);
+    await writeFile(
+      join(realProject, ".eai-manifest.json"),
+      JSON.stringify({ template: { version: "v1.0.7", commit: OLD } }),
+    );
+    const linkedRoot = join(symlinkDir, "linked-project-root");
+    await symlink(realProject, linkedRoot);
+    await expect(
+      assertProjectTemplateApproved(client, scope, linkedRoot, 1000, {
+        O_NOFOLLOW: undefined,
+      }),
     ).resolves.toBeUndefined();
 
     expect(read).not.toHaveBeenCalled();
