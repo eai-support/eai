@@ -4,6 +4,7 @@ import { capacityGuidance } from './catalog-capacity.js';
 import { appOwnershipGuidance } from './catalog-app-ownership.js';
 import { capabilityGuidance } from './catalog-capability.js';
 import type { ErrorGuidance } from './types.js';
+import { typesProvisioningGuidance } from './catalog-types-provisioning.js';
 
 export const errorGuidanceCatalog = [
   {
@@ -1293,6 +1294,7 @@ export const errorGuidanceCatalog = [
   ...billingGuidance,
   ...appOwnershipGuidance,
   ...appOwnershipScopeGuidance,
+  typesProvisioningGuidance,
 ] satisfies ErrorGuidance[];
 
 export function listErrorGuidance(): ErrorGuidance[] {

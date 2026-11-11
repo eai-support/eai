@@ -22,6 +22,7 @@ vi.mock("node:fs/promises", async importOriginal => {
   };
 });
 import {
+  buildAppProvisionCommand,
   describeAppCreationFailure,
   describeAppCreationTimeout,
   describeCloneFailure,
@@ -606,6 +607,16 @@ describe("eai init", () => {
         "--binding-receipt-nonce", "12345678-1234-4234-8234-123456789abc"], { from: "user" });
       if (failScaffold) await expect(run).rejects.toThrow("controlled-init-exit"); else await run;
       expect(createSpy).toHaveBeenCalledTimes(select ? 0 : 1);
+      if (!select) {
+        expect(output.stdout.join('\n')).toContain(`${createdApp ? 'Created app' : 'Reused existing app'} receipt-app (id original-enrollment)`);
+        if (!createdApp) expect(output.stdout.join('\n')).toContain('Another local folder may already be bound');
+      }
+      if (!failScaffold) {
+        const text = output.stdout.join('\n');
+        expect(text).toContain('Created local project');
+        expect(text).toContain('eai app provision receipt-app --tenant-id parent');
+        expect(text.indexOf('eai app provision')).toBeLessThan(text.indexOf('eai types seed'));
+      }
       expect(listSpy).toHaveBeenCalledTimes(select ? 1 : 0);
       for (const spy of hostingSpies) expect(spy).not.toHaveBeenCalled();
       const receipt = JSON.parse(await readFile(receiptPath, "utf8"));
@@ -894,7 +905,7 @@ describe("eai init", () => {
       "my-app/.eai-manifest.json",
       '"displaySource":',
     );
-    expect(consoleCapture.stdout.join("\n")).toContain("Created My App");
+    expect(consoleCapture.stdout.join("\n")).toContain("Created local project My App");
   }, 30_000);
 
   test("HP002: Initialize into the current empty folder when selected", async () => {
@@ -1116,7 +1127,7 @@ describe("eai init", () => {
     await expectFileExists(ctx, "src/eai.config/object-types.ts");
     await expectFileExists(ctx, ".eai-manifest.json");
     await expectFileNotExists(ctx, "existing-work/package.json");
-    expect(consoleCapture.stdout.join("\n")).toContain("Created Existing Work");
+    expect(consoleCapture.stdout.join("\n")).toContain("Created local project Existing Work");
   });
 
   test("HP003: init shows workspace hierarchy when choosing another main company workspace", async () => {
@@ -2002,6 +2013,13 @@ void contractType;
   // TC008: Generated object-types.ts is valid
   // TC009: Generated deployment workflow is valid
   // TC010: Init creates initial git commit
+});
+
+test('create guidance pins the enrollment owner and runtime child when provisioning', () => {
+  expect(buildAppProvisionCommand('trust-admin', 'company-id', 'child-id'))
+    .toBe('eai app provision trust-admin --tenant-id child-id --app-tenant-id company-id');
+  expect(buildAppProvisionCommand('trust-admin', 'child-id', 'child-id'))
+    .toBe('eai app provision trust-admin --tenant-id child-id');
 });
 
 describe("existing app selection", () => {

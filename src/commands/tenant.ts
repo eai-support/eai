@@ -6,6 +6,7 @@ import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
 import { findProjectRoot } from "../lib/config.js";
+import { isRecord } from "../lib/utils.js";
 import {
   PlatformAPIClient,
   parseApiError,
@@ -554,40 +555,61 @@ tenantCommand
     }
   });
 
-// ─── eai workspace info <id> ─────────────────────────────────────────────────
+// ─── eai workspace info [id] ─────────────────────────────────────────────────
 
 tenantCommand
-  .command("info <id>")
-  .description("Show workspace details")
+  .command("info [id]")
+  .description("Show workspace details (defaults to the selected workspace)")
   .option("--format <format>", "Output format (text|json)", "text")
   .option("--json", "Output raw JSON (deprecated, use --format json)", false)
   .action(async (id, options) => {
     if (options.json) options.format = "json";
 
-    const root = await findProjectRoot();
-    const publicApiUrl = await resolvePublicApiUrl(root || undefined);
     const spinner =
       options.format === "json" ? null : ora("Fetching workspace...").start();
 
     try {
-      const memberships = await fetchTenantAdminMemberships(publicApiUrl);
-      const tenant = memberships.memberships.find(
-        (entry) => entry.id === id || entry.slug === id,
-      );
-
-      if (!tenant) {
+      const root = await findProjectRoot();
+      const publicApiUrl = await resolvePublicApiUrl(root ?? undefined);
+      const context = await fetchTenantAdminMemberships(publicApiUrl);
+      const requestedId = id ?? context.tokens.activeTenantId;
+      const membership = requestedId
+        ? context.memberships.find(entry => entry.id === requestedId || entry.slug === requestedId)
+        : context.memberships.length === 1 ? context.memberships[0] : undefined;
+      if (!membership) {
         spinner?.stop();
-        exitWithError(
-          ErrorCode.E202,
-          { resource: "Workspace" },
-          options.format === "json" ? "json" : "text",
-        );
+        if (!requestedId && context.memberships.length > 1) {
+          throw new Error('Multiple active workspace admin memberships found. Run `eai workspace select` to choose one.');
+        }
+        exitWithError(ErrorCode.E202, { resource: "Workspace" }, options.format === "json" ? "json" : "text");
       }
+      const client = new PlatformAPIClient(context.publicApiUrl, membership.id);
+      const response = await client.getTenant(membership.id);
+      if (!response.ok) throw new Error(`Could not read workspace details: ${response.status} ${response.statusText}`);
+      const payload: unknown = await response.json();
+      const details = isRecord(payload) && isRecord(payload.tenant) ? payload.tenant : payload;
+      if (!isRecord(details) || details.id !== membership.id) throw new Error("Workspace details returned a different or invalid workspace.");
+      const parent = details.parentTenantId ?? details.parentId ?? details.parentTenant ?? details.parent;
+      const parentId = typeof parent === "string" ? parent
+        : isRecord(parent) && typeof parent.id === "string" ? parent.id : membership.parentId ?? null;
+      const tenant = {
+        ...membership,
+        parentId,
+        tier: typeof details.tier === "string" ? details.tier : null,
+        homeRegion: typeof details.homeRegion === "string" ? details.homeRegion : membership.homeRegion ?? null,
+      };
 
       if (options.format === "json") {
         out.json(tenant);
       } else {
         spinner!.succeed(`Workspace: ${chalk.cyan(tenant.displayName)}`);
+        out.table([
+          ["ID", tenant.id],
+          ["Slug", tenant.slug],
+          ["Parent", tenant.parentId ?? "none"],
+          ["Tier", tenant.tier ?? "not available"],
+          ["Region", tenant.homeRegion ?? "not available"],
+        ]);
       }
     } catch (err) {
       if (spinner)

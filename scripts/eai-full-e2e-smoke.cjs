@@ -35,6 +35,7 @@ const TRACEABILITY_BASE = [
   ['eai env push', 'update', 'covered-by-cli', 'Controlled command tests; live runner blocks env mutations until an isolated config fixture and teardown exist.'],
   ['eai types seed', 'create/update', 'live', 'Publishes PostgreSQL, DocumentDB, Blob, and Search smoke Object Types.'],
   ['eai types validate', 'read', 'live', 'Validates local Object Types before publishing.'],
+  ['eai types actions', 'read', 'covered-by-cli', 'Owning command tests verify published action discovery, role/status/side-effect output and empty lists; this runner does not claim deployed action-schema qualification.'],
   ['eai types diff', 'read', 'live', 'Compares local and remote Object Types after seed.'],
   ['eai types pull', 'read', 'live', 'Downloads remote Object Types into the disposable workspace.'],
   ['eai types define', 'create', 'unsupported', 'Explicit unsupported error is covered by owning CLI tests; it exits nonzero before authentication or network access.'],
@@ -60,6 +61,7 @@ const TRACEABILITY_BASE = [
   ['eai resources get', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created resources.'],
   ['eai resources create', 'create', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 because it depends on run-specific storage schema.'],
   ['eai resources update', 'update', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 against smoke-created resources.'],
+  ['eai resources action', 'update', 'covered-by-cli', 'Owning command tests verify encoded action transport, object parameters and role/status errors; live action execution requires an approved run-owned action fixture and verified cleanup.'],
   ['eai resources delete', 'delete', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1 during cleanup.'],
   ['eai resources query', 'read', 'live-optional', 'Runs when EAI_E2E_SYNC_SCHEMA_APPLY=1; queries compatible backend placements separately and verifies exact run-created rows and persisted data.'],
   ['eai resources storage status', 'read', 'live', 'Checks routing and provisioning status.'],
@@ -188,6 +190,9 @@ const SMOKE_CALLS = {
     'eai types validate',
     'eai types validate --tenant-id <workspace-id> --tenant-key <app-name>',
   ],
+  'eai types actions': [
+    'eai types actions <object-type> --tenant-id <workspace-id> --format json',
+  ],
   'eai types diff': [
     'eai types diff --tenant-id <workspace-id> --tenant-key <app-name> --format json',
   ],
@@ -269,6 +274,9 @@ const SMOKE_CALLS = {
   ],
   'eai resources update': [
     'eai resources update <object-type> <resource-id> --tenant-id <workspace-id> --data {"title":"updated","status":"updated"} --version 1 --format json',
+  ],
+  'eai resources action': [
+    'eai resources action <object-type> <resource-id> <action> --tenant-id <workspace-id> --params {"comment":"ready"} --format json',
   ],
   'eai resources delete': [
     'eai resources delete <object-type> <resource-id> --tenant-id <workspace-id> --force --format json',
@@ -885,6 +893,11 @@ const ARTIFACT_CLEANUP = {
     createsExternalArtifact: 'Updates ResourceAPI rows',
     cleanupMechanism: 'Rows deleted after smoke',
     cleanupVerified: 'Requires explicit ResourceAPI GET 404 after finally cleanup',
+  },
+  'eai resources action': {
+    createsExternalArtifact: 'Updates resource data/version and action audit history',
+    cleanupMechanism: 'Controlled command tests use mocked API responses; no live action is submitted by this runner',
+    cleanupVerified: 'No - live acceptance requires a run-owned action/resource fixture and verified cleanup',
   },
   'eai resources delete': {
     createsExternalArtifact: 'No - cleanup command',

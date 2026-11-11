@@ -1,16 +1,12 @@
 /**
  * Config loader — reads eai.config.ts from project root.
  *
- * Uses a lightweight approach: transpile TypeScript to JS using Node's
- * native import() with a temporary .mjs file. This avoids requiring
- * ts-node or tsx as dependencies.
+ * Evaluates Object Types with the TypeScript compiler and scoped module hooks.
  */
 
-import { readFile, writeFile, unlink, access } from "node:fs/promises";
+import { readFile, writeFile, access } from "node:fs/promises";
 import { resolve, join } from "node:path";
-import { tmpdir } from "node:os";
-import { randomUUID } from "node:crypto";
-import { pathToFileURL } from "node:url";
+import { importTypeScriptModule } from './typescript-module.js';
 import {
   ObjectTypeIdentifierError,
   isCanonicalObjectTypeSlug,
@@ -41,6 +37,8 @@ export interface ObjectTypeProperty {
   defaultValue?: JsonValue;
   options?: Array<{ label: string; value: string }>;
   description?: string;
+  /** Exact stored target slug; same-manifest model names resolve before publication. */
+  targetObjectType?: string;
 }
 
 export interface ObjectTypeLinkType {
@@ -151,10 +149,22 @@ export function canonicalizeObjectTypeRelationshipTargets(
           .map((type) => [type.name, type.slug]),
       );
 
+      const targetSlug = (value: string | undefined, type: string, field: string): string => {
+        const declaredSlug = value ? slugByName.get(value) : undefined;
+        if (declaredSlug) return declaredSlug;
+        if (typeof value === 'string' && isCanonicalObjectTypeSlug(value)) return value;
+        throw new ObjectTypeIdentifierError(
+          'OBJECT_TYPE_LINK_TARGET_UNRESOLVED',
+          `OBJECT_TYPE_LINK_TARGET_UNRESOLVED: [${tenantKey}/${type}/${field}] Relationship target "${value ?? ''}" must be an exact canonical slug or the name of an Object Type declared in the same manifest.`,
+        );
+      };
       return [
         tenantKey,
         types.map((type) => ({
           ...type,
+          properties: type.properties.map((property) => property.type === 'relationship'
+            ? { ...property, targetObjectType: targetSlug(property.targetObjectType, type.name, property.name) }
+            : { ...property }),
           linkTypes: type.linkTypes.map((link) => {
             const declaredSlug = slugByName.get(link.targetObjectType);
             if (declaredSlug) {
@@ -259,8 +269,7 @@ export async function findProjectRoot(from?: string): Promise<string | null> {
 /**
  * Load object types from the project's object-types.ts file.
  *
- * Strips TypeScript-specific syntax (type annotations, interfaces, enums,
- * import/export type statements) and evaluates the resulting JS.
+ * Compiler-based evaluation supports normal TypeScript syntax and imports.
  */
 export async function loadObjectTypes(
   projectRoot: string,
@@ -288,28 +297,23 @@ export async function loadObjectTypes(
     }
   }
 
-  const source = await readFile(objectTypesPath, "utf-8");
-
-  // Strip TypeScript constructs to produce evaluable JS
-  const jsSource = stripTypeScript(source);
-
-  // Write to a temp .mjs file and import it
-  const tempFile = join(tmpdir(), `eai-object-types-${randomUUID()}.mjs`);
-  const evaluationEnv = await loadObjectTypeEvaluationEnv(projectRoot);
-  const restoredEnv = applyTemporaryEnv(evaluationEnv);
+  const previousEvaluation = objectTypeEvaluation;
+  let release!: () => void;
+  objectTypeEvaluation = new Promise<void>((resolve) => { release = resolve; });
+  await previousEvaluation;
+  let restoredEnv: TemporaryEnvRestore = [];
   try {
-    await writeFile(tempFile, jsSource, "utf-8");
-    const module = await import(pathToFileURL(tempFile).href);
-    return module.objectTypes || module.default?.objectTypes || {};
+    restoredEnv = applyTemporaryEnv(await loadObjectTypeEvaluationEnv(projectRoot));
+    const module = await importTypeScriptModule(objectTypesPath, projectRoot);
+    const defaults = module.default as { objectTypes?: Record<string, ObjectTypeDefinition[]> } | undefined;
+    return (module.objectTypes as Record<string, ObjectTypeDefinition[]> | undefined) || defaults?.objectTypes || {};
   } finally {
     restoreTemporaryEnv(restoredEnv);
-    try {
-      await unlink(tempFile);
-    } catch {
-      /* cleanup best-effort */
-    }
+    release();
   }
 }
+
+let objectTypeEvaluation = Promise.resolve();
 
 type TemporaryEnvRestore = Array<[string, string | undefined]>;
 
@@ -479,38 +483,4 @@ export function patchEnvContent(content: string, patches: Record<string, string>
 
   const trailingNewline = content.endsWith("\n") ? "\n" : "";
   return updatedLines.join("\n") + trailingNewline;
-}
-
-/**
- * Strip TypeScript-specific syntax to produce evaluable JS.
- * Based on eai-app-template's generate-object-types-json.mjs approach.
- */
-function stripTypeScript(source: string): string {
-  let js = source;
-
-  // Remove import statements
-  js = js.replace(/^import\s+.*$/gm, "");
-
-  // Remove export type / export interface blocks
-  js = js.replace(/^export\s+type\s+\w+\s*=\s*[^;]+;/gm, "");
-  js = js.replace(/^export\s+interface\s+\w+\s*\{[\s\S]*?\n\}/gm, "");
-  js = js.replace(/^interface\s+\w+\s*\{[\s\S]*?\n\}/gm, "");
-  js = js.replace(/^type\s+\w+\s*=\s*[^;]+;/gm, "");
-
-  // Remove type annotations from variable declarations: `: TypeName` after identifiers
-  // e.g., `const x: Record<string, Foo[]> = {` → `const x = {`
-  js = js.replace(
-    /:\s*(?:Record|Array|Map|Set)<[^>]+>(?:\[\])?(?:\s*=)/g,
-    " =",
-  );
-  js = js.replace(/:\s*\w+(?:\[\])?\s*(?==)/g, " =");
-
-  // Remove `as const` assertions
-  js = js.replace(/\s+as\s+const/g, "");
-
-  // Change `export const` to just `export const` (keep for module)
-  // Actually, wrap in an export for ESM
-  js = js.replace(/^export\s+const\s+/gm, "export const ");
-
-  return js;
 }

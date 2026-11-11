@@ -933,19 +933,38 @@ function createAppManagementClient(
 async function validateVerticalEnrollment(
   verticalKey: string,
   client: Pick<PlatformAPIClient, 'listResources'>,
+  requireUnique = false,
 ): Promise<Record<string, unknown>> {
   const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
-    limit: 1,
+    limit: requireUnique ? 2 : 1,
     where: { verticalKey },
   });
   if (!res.ok) {
     fail(`Could not validate ${verticalKey}: ${res.status} ${res.statusText}`);
   }
-  const docs = extractDocs(await readResponsePayload(res));
+  const payload = await readResponsePayload(res);
+  const docs = extractDocs(payload);
   if (docs.length === 0) {
     fail(`No app found for ${verticalKey}. Create it with \`eai app create\` first, or pass --skip-validate if the app is still being prepared.`);
   }
+  if (requireUnique && (docs.length !== 1 || (isRecord(payload) &&
+    (payload.hasNextPage === true || (typeof payload.totalDocs === 'number' && payload.totalDocs !== 1))))) {
+    fail(`The app enrollment for ${verticalKey} is ambiguous. Inspect the workspace app enrollments before checking authorization.`);
+  }
   return docs[0];
+}
+
+/** Resolve only the exact enrollment's declared child, rejecting competing bindings. */
+function enrollmentRuntimeTenantId(enrollment: Record<string, unknown> | undefined): string | undefined {
+  const data = isRecord(enrollment?.data) ? enrollment.data : enrollment;
+  const metadata = isRecord(data?.metadata) ? data.metadata : {};
+  const candidates = [data?.childTenantId, metadata.childTenantId]
+    .filter(value => value !== undefined && value !== null);
+  if (candidates.some(value => typeof value !== 'string' || !value.trim() || value.trim() !== value)
+    || new Set(candidates).size > 1) {
+    fail('The app enrollment has an invalid runtime workspace binding.');
+  }
+  return candidates[0] as string | undefined;
 }
 
 export const appCommand = new Command('app')
@@ -1137,7 +1156,7 @@ const appAuthCommand = verticalCommand
 appAuthCommand
   .command('status <key>')
   .description('Inspect app registration, consent, workspace allowlist, and runtime auth mode')
-  .requiredOption('--tenant-id <id>', 'Company workspace ID to inspect')
+  .requiredOption('--tenant-id <id>', 'App enrollment workspace ID; its declared runtime child is resolved automatically')
   .requiredOption('--client-id <id>', 'Entra application client ID to inspect')
   .option('--skip-validate', 'Skip app enrollment lookup', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
@@ -1148,6 +1167,8 @@ or create an app-only credential. Entra permission and consent details are
 reported as not observable when the platform has no read-only Graph endpoint.
 Local runtime mode is reported only when the current project's app key or
 client ID matches the requested app; otherwise it is reported as not observable.
+The enrollment workspace and runtime authorization workspace are reported separately.
+With --skip-validate, --tenant-id is the exact runtime workspace to inspect.
 `)
   .action(async (key: string, options) => {
     const appKey = key.trim();
@@ -1159,17 +1180,22 @@ client ID matches the requested app; otherwise it is reported as not observable.
     const ctx = await resolveCommandContext({
       tenantId: requestedTenantId,
       interactive: false,
+      allowOutsideProject: true,
     });
     const tenantId = ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, `Inspecting authorization for ${appKey}...`);
 
-    if (!options.skipValidate) {
-      await validateVerticalEnrollment(appKey, client);
+    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(appKey, client, true);
+    const enrollmentData = isRecord(enrollment?.data) ? enrollment.data : enrollment;
+    if (enrollmentData && (enrollmentData.tenantId !== tenantId || enrollmentData.verticalKey !== appKey
+      || (enrollment?.tenantId !== undefined && enrollment.tenantId !== tenantId))) {
+      fail('The app enrollment does not match the requested workspace and app.');
     }
-
-    const response = await client.getTenantAuthorizedApps(tenantId);
+    const runtimeTenantId = enrollmentRuntimeTenantId(enrollment) ?? tenantId;
+    const runtimeClient = runtimeTenantId === tenantId ? client : new PlatformAPIClient(ctx.publicApiUrl, runtimeTenantId);
+    const response = await runtimeClient.getTenantAuthorizedApps(runtimeTenantId);
     const payload = await readResponsePayload(response);
     if (!response.ok) {
       spinner?.fail('Failed to read workspace authorized apps');
@@ -1185,21 +1211,23 @@ client ID matches the requested app; otherwise it is reported as not observable.
       (entry) => typeof entry.appId === 'string' && entry.appId.toLowerCase() === clientId.toLowerCase(),
     );
 
-    const localEnv = await loadEnvFile(ctx.root);
+    const localEnv: Record<string, string> = ctx.root ? await loadEnvFile(ctx.root) : {};
     const locallyConfiguredClientId = localEnv.ENTRA_CLIENT_ID?.trim();
     const locallyConfiguredAppKey = (localEnv[APP_KEY_ENV] || localEnv[LEGACY_VERTICAL_KEY_ENV])?.trim();
     const localClientIdMatches = locallyConfiguredClientId?.toLowerCase() === clientId.toLowerCase();
     const localAppKeyMatches = locallyConfiguredAppKey?.toLowerCase() === appKey.toLowerCase();
+    const locallyConfiguredTenantId = localEnv.EAI_TENANT_ID?.trim();
     const localRuntimeIdentityMatches = Boolean(locallyConfiguredClientId || locallyConfiguredAppKey)
       && (locallyConfiguredClientId ? localClientIdMatches : true)
-      && (locallyConfiguredAppKey ? localAppKeyMatches : true);
+      && (locallyConfiguredAppKey ? localAppKeyMatches : true)
+      && (!locallyConfiguredTenantId || locallyConfiguredTenantId === runtimeTenantId);
     const registrationStatus = localClientIdMatches
       ? 'configured-locally'
       : 'not-observable';
     let runtimeMode: 'user-delegated' | 'app-only' | 'not-observable' = 'not-observable';
     let runtimeContract = 'not-observable';
-    let runtimeEvidence = 'The local project identifiers do not match the requested app and client ID.';
-    if (localRuntimeIdentityMatches) {
+    let runtimeEvidence = 'The local project identifiers do not match the requested app, client ID and runtime workspace.';
+    if (localRuntimeIdentityMatches && ctx.root) {
       runtimeMode = 'user-delegated';
       runtimeContract = 'generic-app-default';
       runtimeEvidence = 'The local project identity matches the requested app; generic apps default to delegated user access.';
@@ -1216,6 +1244,8 @@ client ID matches the requested app; otherwise it is reported as not observable.
     const result = {
       readOnly: true,
       tenantId,
+      enrollmentTenantId: options.skipValidate ? null : tenantId,
+      runtimeTenantId,
       appKey,
       clientId,
       entraRegistration: {
@@ -1233,6 +1263,7 @@ client ID matches the requested app; otherwise it is reported as not observable.
         evidence: 'No read-only Graph consent endpoint is available to this command.',
       },
       tenantAuthorizedApps: {
+        tenantId: runtimeTenantId,
         status: authorized ? 'authorized' : 'not-authorized',
         authorizedAppsCount: isRecord(payload) && typeof payload.authorizedAppsCount === 'number'
           ? payload.authorizedAppsCount
@@ -1259,6 +1290,8 @@ client ID matches the requested app; otherwise it is reported as not observable.
 
     spinner?.succeed(`Authorization status loaded for ${appKey}`);
     out.table([
+      ['Enrollment workspace', result.enrollmentTenantId ?? 'not checked (--skip-validate)'],
+      ['Runtime workspace', result.runtimeTenantId],
       ['Entra registration', result.entraRegistration.status],
       ['Delegated PublicAPI permission', result.delegatedPublicApiPermission.status],
       ['Admin consent', result.adminConsent.status],
@@ -1902,15 +1935,7 @@ verticalCommand
         : `Provisioning app ${verticalKey}...`,
     );
     const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, appClient);
-    const enrollmentData = isRecord(enrollment?.data) ? enrollment.data : enrollment;
-    const enrollmentMetadata = isRecord(enrollmentData?.metadata) ? enrollmentData.metadata : {};
-    const declaredRuntimes = [enrollmentData?.childTenantId, enrollmentMetadata.childTenantId]
-      .filter(value => value !== undefined && value !== null);
-    if (declaredRuntimes.some(value => typeof value !== 'string' || !value.trim() || value.trim() !== value)
-      || new Set(declaredRuntimes).size > 1) {
-      fail('The app enrollment has an invalid runtime workspace binding.');
-    }
-    const declaredRuntime = declaredRuntimes[0];
+    const declaredRuntime = enrollmentRuntimeTenantId(enrollment);
     if (options.appTenantId && declaredRuntime !== undefined && declaredRuntime !== ctx.tenantId) {
       fail('The app enrollment is bound to a different runtime workspace.');
     }

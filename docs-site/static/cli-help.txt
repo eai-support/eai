@@ -1,5 +1,5 @@
 # EAI CLI Help Snapshot
-Package source version: 3.20.12
+Package source version: 3.20.13
 
 Install / update the CLI:
 npm install -g eai-cli
@@ -13,6 +13,184 @@ npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.gi
 Persistent static fallback setup:
 npm config set @enterpriseai:registry https://eai-support.github.io/eai/registry/ --location=user
 npm install -g @enterpriseai/cli
+
+eai types --help
+================
+
+Usage: eai types [options] [command]
+
+Manage Object Type definitions
+
+Options:
+  -h, --help                display help for command
+
+Commands:
+  actions [options] <type>  List published actions, required roles/statuses and
+                            side effects for an Object Type
+  seed [options]            Push Object Types to platform
+  validate [options]        Validate Object Types against platform schema rules
+  diff [options]            Compare local Object Types with remote platform
+  pull [options]            Download remote Object Types to local TypeScript
+  define [options]          Interactive Object Type builder (unsupported)
+  help [command]            display help for command
+
+Workflow:
+  1. Validate local definitions:
+       eai types validate
+  2. Login and select the active workspace:
+       eai login
+       eai workspace select
+  3. Preview remote differences:
+       eai types diff --tenant-key <key>
+  4. Publish:
+       eai types seed --tenant-key <key>
+  5. Verify published schema:
+       eai resources schema
+
+---
+
+eai types seed --help
+=====================
+
+Usage: eai types seed [options]
+
+Push Object Types to platform
+
+Options:
+  --env <label>         Optional deployment label for compatibility
+  --tenant-key <key>    Workspace scope key from object-types.ts (current option
+                        name)
+  --tenant-id <id>      Override the resolved workspace ID (use with
+                        --tenant-key)
+  --app-tenant-id <id>  Parent tenant that owns this app enrollment; --tenant-id
+                        remains the runtime child
+  --dry-run             Show what would be seeded without making changes
+                        (default: false)
+  --format <format>     Output format (text|json) (default: "text")
+  --json                Output raw JSON (deprecated, use --format json)
+                        (default: false)
+  -h, --help            display help for command
+
+Examples:
+  $ eai types seed
+  $ eai types seed --dry-run
+  $ eai types seed --tenant-key trial-portal
+  $ eai types seed --tenant-key template --tenant-id 00000000-0000-4000-8000-000000000000
+  $ eai types seed --tenant-key template --tenant-id <runtime-child-id> --app-tenant-id <parent-id>
+  $ eai types seed --format json | jq
+
+---
+
+eai types actions --help
+========================
+
+Usage: eai types actions [options] <type>
+
+List published actions, required roles/statuses and side effects for an Object
+Type
+
+Options:
+  --tenant-id <id>   Read actions from a specific workspace
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+---
+
+eai resources action --help
+===========================
+
+Usage: eai resources action [options] <type> <id> <action>
+
+Execute a published Object Type action with its role and status requirements
+
+Options:
+  --tenant-id <id>   Run the action against a specific workspace
+  --params <json>    Action parameters as a JSON object (default: "{}")
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+List available actions first: eai types actions <type>
+
+---
+
+eai resources update --help
+===========================
+
+Usage: eai resources update [options] <type> <id>
+
+Replace resource data in full; include every required field
+
+Options:
+  --tenant-id <id>   Run the mutation against a specific workspace
+  --data <json>      Complete replacement data as JSON; omitted fields are
+                     removed
+  --version <n>      Resource version (for optimistic locking)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+---
+
+eai workspace info --help
+=========================
+
+Usage: eai workspace info [options] [id]
+
+Show workspace details (defaults to the selected workspace)
+
+Options:
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+---
+
+eai app auth status --help
+==========================
+
+Usage: eai app auth status [options] <key>
+
+Inspect app registration, consent, workspace allowlist, and runtime auth mode
+
+Options:
+  --tenant-id <id>   App enrollment workspace ID; its declared runtime child is
+                     resolved automatically
+  --client-id <id>   Entra application client ID to inspect
+  --skip-validate    Skip app enrollment lookup (default: false)
+  --format <format>  Output format (text|json) (default: "text")
+  --json             Output raw JSON (deprecated, use --format json) (default:
+                     false)
+  -h, --help         display help for command
+
+This is a read-only check. It does not provision Entra, alter authorizedApps,
+or create an app-only credential. Entra permission and consent details are
+reported as not observable when the platform has no read-only Graph endpoint.
+Local runtime mode is reported only when the current project's app key or
+client ID matches the requested app; otherwise it is reported as not observable.
+The enrollment workspace and runtime authorization workspace are reported separately.
+With --skip-validate, --tenant-id is the exact runtime workspace to inspect.
+
+---
+
+eai content-understanding capabilities --help
+=============================================
+
+Usage: eai content-understanding capabilities [options]
+
+Read actual selected-workspace typed mode, prerequisites and readiness
+
+Options:
+  --tenant-id <id>   Workspace UUID (defaults to the selected workspace)
+  --format <format>  Output format (choices: "text", "json", default: "text")
+  -h, --help         display help for command
+
+---
 
 eai kb upload --help
 ====================

@@ -13,6 +13,7 @@ import * as config from '../../src/lib/config.js';
 import * as profile from '../../src/lib/profile.js';
 import * as tenantContext from '../../src/lib/tenant-context.js';
 import { tenantCommand } from '../../src/commands/tenant.js';
+import { PlatformAPIClient } from '../../src/lib/api.js';
 import {
   buildTenantBootstrapAdminStatusMessages,
   buildTenantHierarchy,
@@ -119,6 +120,40 @@ afterEach(() => {
   vi.unstubAllGlobals();
   restoreEnv('BASE_URL_PUBLIC_API', originalBaseUrlPublicApi);
   restoreEnv('ROUTING_BOOTSTRAP_PUBLIC_API_URL', originalRoutingBootstrapPublicApiUrl);
+});
+
+describe('workspace info', () => {
+  test.each([undefined, 'other-slug'])('resolves the selected workspace or explicit override %s outside a project', async id => {
+    const tenant = { id: id ? 'other-id' : 'selected-id', slug: id ?? 'selected', displayName: 'Workspace',
+      isActive: true, roles: ['tenant-admin'], parentId: 'parent-id', homeRegion: 'au' };
+    const context = vi.spyOn(tenantContext, 'fetchTenantAdminMemberships').mockResolvedValue({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL, tokens: storedTokens({ activeTenantId: 'selected-id' }),
+      memberships: id ? [{ ...tenant, id: 'selected-id', slug: 'selected' }, tenant] : [tenant],
+    });
+    const read = vi.spyOn(PlatformAPIClient.prototype, 'getTenant').mockResolvedValue(Response.json({
+      id: tenant.id, tier: 'enterprise', parentTenantId: 'parent-id', homeRegion: 'au', ignoredSecret: 'omitted',
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await tenantCommand.parseAsync(['info', ...(id ? [id] : []), '--format', 'json'], { from: 'user' });
+    expect(context).toHaveBeenCalledWith(expect.any(String));
+    expect(read).toHaveBeenCalledWith(tenant.id);
+    const result = JSON.parse(output.mock.calls.flat().join(''));
+    expect(result).toMatchObject({ id: tenant.id, slug: tenant.slug, tier: 'enterprise', parentId: 'parent-id', homeRegion: 'au' });
+    expect(result).not.toHaveProperty('ignoredSecret');
+  });
+
+  test('renders IDs and available metadata without guessing an unavailable tier', async () => {
+    const tenant = { id: 'selected-id', slug: 'selected', displayName: 'Workspace', isActive: true, roles: ['tenant-admin'], parentId: null, homeRegion: 'eu' };
+    vi.spyOn(tenantContext, 'fetchTenantAdminMemberships').mockResolvedValue({
+      publicApiUrl: DEFAULT_PUBLIC_API_URL, tokens: storedTokens({ activeTenantId: tenant.id }), memberships: [tenant],
+    });
+    vi.spyOn(PlatformAPIClient.prototype, 'getTenant').mockResolvedValue(Response.json({ id: tenant.id, homeRegion: 'eu' }));
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await tenantCommand.parseAsync(['info', '--format', 'text'], { from: 'user' });
+    expect(output.mock.calls.flat().join('\n')).toContain('selected-id');
+    expect(output.mock.calls.flat().join('\n')).toContain('not available');
+    expect(output.mock.calls.flat().join('\n')).toContain('eu');
+  });
 });
 
 describe('tenant list filtering', () => {
@@ -1365,6 +1400,7 @@ describe('workspace info', () => {
       tokens: storedTokens({ oid: 'user-oid' }),
       memberships: [{ id: 'known-tenant', displayName: 'Known Workspace', slug: 'known', isActive: true, roles: ['tenant-admin'] }],
     });
+    vi.spyOn(PlatformAPIClient.prototype, 'getTenant').mockResolvedValue(Response.json({ id: 'known-tenant' }));
     vi.spyOn(process, 'exit').mockImplementation(((exitCode?: string | number | null) => {
       throw new Error(`process.exit ${exitCode}`);
     }) as never);

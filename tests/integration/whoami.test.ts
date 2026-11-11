@@ -7,6 +7,7 @@
 import { createCipheriv, createHash, randomBytes } from 'node:crypto';
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
@@ -27,6 +28,7 @@ import {
 } from '../helpers/assert-dsl.js';
 import { storeTokens, clearTokens } from '../../src/lib/auth.js';
 import { whoamiCommand } from '../../src/commands/whoami.js';
+import { findProjectRoot } from '../../src/lib/config.js';
 
 const STORED_API_BASE = 'https://test-api.example.com';
 const RESOLVED_API_BASE = 'https://current-api.example.com';
@@ -263,10 +265,34 @@ describe('eai whoami', () => {
     await chmod(join(env.dir, '.eai', 'config.json'), 0o600);
     await writeStoredTokens(env.dir, '.eai/tokens/test.json', 'profile-test@example.com');
 
-    const result = await runCommand(ctx, 'eai --profile test classifier list --format json');
+    const transport = join(env.dir, 'profile-workspace-transport.mjs');
+    await writeFile(transport, `
+      globalThis.fetch = async (input, options) => {
+        const url = new URL(String(input));
+        if (url.origin !== 'https://test-api.example.com') throw new Error('Wrong profile gateway');
+        if (url.pathname === '/public/v4/identity/tenants') return Response.json({ tenants: [{
+          id: 'profile-workspace', displayName: 'Profile Workspace', slug: 'profile-workspace',
+          isActive: true, roles: ['tenant-admin'], homeRegion: 'au', parentId: null,
+        }] });
+        if (url.pathname === '/public/v4/platform/tenants/profile-workspace/management') return Response.json({
+          id: 'profile-workspace', homeRegion: 'au', parentTenantId: null,
+        });
+        if (url.pathname === '/public/v4/platform/tenants/profile-workspace/role-definitions') {
+          if (new Headers(options.headers).get('X-Tenant-Id') !== 'profile-workspace') throw new Error('Wrong workspace scope');
+          return Response.json({ data: [{ id: 'profile-role', label: 'Named profile role', value: 'tenant-builder' }], total: 1 });
+        }
+        throw new Error('Unexpected profile request');
+      };
+    `);
+    ctx.env.NODE_OPTIONS = `--import ${pathToFileURL(transport).href}`;
+    ctx.env.EAI_ACCESS_TOKEN = '<fixture-access-token>';
+    expect(await findProjectRoot(env.dir)).toBeNull();
+    const result = await runCommand(ctx, 'eai --profile test user roles --format json');
 
+    expectCommandSucceeded(result);
+    expect(JSON.parse(result.stdout)).toMatchObject({ data: [{ id: 'profile-role', label: 'Named profile role' }] });
     expect(result.stderr).not.toContain('Not logged in');
-    expect(result.stderr).toContain('Not in an EAI project');
+    expect(result.stderr).not.toContain('Not in an EAI project');
   });
 
   test('TC018: Whoami when not logged in', { timeout: 15000 }, async () => {
