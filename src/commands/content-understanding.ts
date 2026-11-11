@@ -64,6 +64,14 @@ async function contextFor(id: string, allowOutsideProject = false): Promise<Work
   if (context.tenantId !== id) throw new ContentUnderstandingError('CU_TENANT_MISMATCH', 'Resolved workspace differs from the requested workspace.');
   return context;
 }
+
+/** Capabilities is a workspace read, so it can use the selected workspace without a manifest or project. */
+async function capabilitiesContext(options: CuOptions): Promise<WorkspaceCommandContext> {
+  if (options.tenantId !== undefined) return contextFor(tenantId(options), true);
+  return resolveCommandContext({ allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true, interactive: false, forceRefresh: true,
+    validatePublicApiUrl: requireManagedPublicApiUrl, pinPublicApiUrl: true,
+    onError: (code, message) => { throw new ContentUnderstandingError(code, message ?? errorCatalog[code].message); } });
+}
 function print(options: CuOptions, value: CuOutput | ContentUnderstandingPlanFile): void {
   if (options.format === 'json') out.json(value);
   else if (!value.ok) {
@@ -202,8 +210,9 @@ outputOptions(contentUnderstandingCommand.command('validate').description('Valid
   .action(action(async options => { const input = await readManifest(options.file); return { ok: true, body: { valid: true, kind: input.manifest.kind,
     schemaVersion: input.manifest.schemaVersion, bundleKey: input.manifest.bundleKey, manifestSha256: input.manifestSha256,
     documentTypes: input.manifest.documentTypes.map(doc => doc.code) } }; }));
-workspaceOptions(contentUnderstandingCommand.command('capabilities').description('Read actual selected-workspace typed mode, prerequisites and readiness'))
-  .action(action(async options => ({ ok: true, body: await capabilities(await contextFor(tenantId(options), true)) })));
+outputOptions(contentUnderstandingCommand.command('capabilities').description('Read actual selected-workspace typed mode, prerequisites and readiness')
+  .option('--tenant-id <id>', 'Workspace UUID (defaults to the selected workspace)'))
+  .action(action(async options => ({ ok: true, body: await capabilities(await capabilitiesContext(options)) })));
 workspaceOptions(contentUnderstandingCommand.command('plan').description('Read prerequisites and return a scope-bound configuration plan; writes nothing')
   .requiredOption('--file <path>', 'Declarative document configuration JSON'))
   .action(action(async options => {

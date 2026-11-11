@@ -31,7 +31,7 @@ export interface CommandContext {
   tokens: StoredTokens;
 }
 
-/** Context for a read-only, workspace-scoped command that may run outside an app folder. */
+/** Context for a workspace-scoped command that may run before an app exists. */
 export interface WorkspaceCommandContext extends Omit<CommandContext, 'root'> {
   /** The app folder, or null when the command runs outside one. */
   root: string | null;
@@ -44,6 +44,8 @@ export interface ResolveCommandContextOptions {
   validatePublicApiUrl?: (url: string) => string;
   publicApiUrl?: string;
   pinPublicApiUrl?: boolean;
+  /** Workspace administration may use the selected workspace before an app exists. Requires allowOutsideProject. */
+  allowSelectedWorkspaceOutsideProject?: boolean;
   /** Let an owning command retain operation identity instead of exiting here. */
   onError?: (code: ErrorCode, message?: string) => never;
 }
@@ -54,9 +56,11 @@ export interface ResolveCommandContextOptions {
  * Before: 4 lines of boilerplate copy-pasted 9 times.
  * After: one call.
  *
- * With `allowOutsideProject`, a read-only command that names its workspace
- * explicitly (`tenantId`) runs without an app folder; the Public API URL then
- * comes from the active profile and stored login, as for `eai workspace`.
+ * `allowOutsideProject` permits an explicit `tenantId` without an app folder.
+ * Workspace administration additionally opts into
+ * `allowSelectedWorkspaceOutsideProject` to use the selected workspace there.
+ * The Public API URL comes from the profile and stored login when there is no
+ * app folder. App commands retain their existing project requirements.
  */
 export async function resolveCommandContext(
   options: ResolveCommandContextOptions & { allowOutsideProject: true },
@@ -68,7 +72,7 @@ export async function resolveCommandContext(
   options?: ResolveCommandContextOptions & { allowOutsideProject?: boolean },
 ): Promise<CommandContext | WorkspaceCommandContext> {
   const root = await findProjectRoot();
-  if (!root && !(options?.allowOutsideProject && options.tenantId)) {
+  if (!root && !(options?.allowOutsideProject && (options.tenantId || options.allowSelectedWorkspaceOutsideProject))) {
     options?.onError?.(ErrorCode.E001);
     exitWithError(ErrorCode.E001);
   }

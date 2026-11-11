@@ -27,6 +27,9 @@ import { isRecord, toObjectTypeSlug } from "../lib/utils.js";
 import * as out from "../lib/output.js";
 import { ErrorCode, exitWithError } from "../lib/error-codes.js";
 import { readConsistentObjectTypes } from "../lib/object-type-export.js";
+import { extractPublishedSchemaTypes, matchPublishedType, failResourceResponse, buildMissingPublishedTypeMessage } from './resources.js';
+import { normalizeFormat } from '../lib/context.js';
+import { checkTypeSeedPreflight, resolveTypeSeedBinding, TypeSeedPreflightError, type TypeSeedBinding } from '../lib/type-seed-preflight.js';
 
 export interface TenantResolution {
   tenantId?: string;
@@ -62,6 +65,14 @@ export interface TypeSeedResult {
   resourceApiSchemaSync?: Record<string, unknown>;
   appManifestFallbackReason?: string;
   error?: string;
+  errorCode?: string;
+  preflight?: { ready: boolean; appKey: string; ownerTenantId: string; runtimeTenantId: string; recoveryCommand?: string };
+}
+
+interface TypeSeedPublishOutcome {
+  result?: TypeSeedResult;
+  fallbackReason?: string;
+  expectedDefinitions?: ObjectTypeDefinition[];
 }
 
 export interface TypeDiffEntry {
@@ -70,6 +81,7 @@ export interface TypeDiffEntry {
   addedProperties: string[];
   removedProperties: string[];
   unchangedProperties: string[];
+  changedProperties?: string[];
 }
 
 export interface TypeDiffResult {
@@ -104,12 +116,12 @@ export interface RemoteObjectTypeDocument {
 /** Treats dry runs as plans and completed runs as successful only after convergence. */
 export function shouldFailTypeSeedRun(
   results: Array<
-    Pick<TypeSeedResult, "dryRun" | "verification" | "resourceApiSchemaSync">
+    Pick<TypeSeedResult, "dryRun" | "verification" | "resourceApiSchemaSync" | "error" | "preflight">
   >,
 ): boolean {
   return results.some((result) => {
     if (result.dryRun) {
-      return false;
+      return Boolean(result.error) || result.preflight?.ready === false;
     }
     const syncStatus = isRecord(result.resourceApiSchemaSync)
       ? String(result.resourceApiSchemaSync.status ?? "").toLowerCase()
@@ -122,8 +134,6 @@ export function shouldFailTypeSeedRun(
 }
 
 const RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES = new Set([
-  "pending",
-  "queued",
   "synced",
 ]);
 const RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES = new Set(["pending", "queued"]);
@@ -145,7 +155,7 @@ function isBlockingResourceApiSchemaSyncStatus(
   status: string | undefined,
 ): boolean {
   if (status === undefined || status === "") {
-    return false;
+    return true;
   }
   return !RESOURCEAPI_SCHEMA_SYNC_NON_FAILURE_STATUSES.has(status);
 }
@@ -913,7 +923,17 @@ export function diffObjectTypesForTenant(
       unchangedProperties,
     );
 
-    if (addedProperties.length === 0 && removedProperties.length === 0) {
+    const changedProperties = localType.properties.filter(property => {
+      if (property.type !== 'relationship') return false;
+      const remoteProperty = remote.properties.find(value => isRecord(value) && value.name === property.name);
+      return isRecord(remoteProperty) && remoteProperty.targetObjectType !== property.targetObjectType;
+    }).map(property => property.name);
+    if (changedProperties.length) {
+      entry.changedProperties = changedProperties;
+      entry.unchangedProperties = unchangedProperties.filter(property => !changedProperties.includes(property));
+    }
+
+    if (addedProperties.length === 0 && removedProperties.length === 0 && changedProperties.length === 0) {
       result.unchanged.push(entry);
     } else {
       result.changed.push(entry);
@@ -1253,7 +1273,8 @@ export async function trySeedViaAppManifestPublish(
   tenantId: string,
   types: ObjectTypeDefinition[],
   runtimeTenantId: string = tenantId,
-): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  allowDirectFallback = true,
+): Promise<TypeSeedPublishOutcome> {
   const splitTenantScope = runtimeTenantId !== tenantId;
   if (splitTenantScope) {
     const bindingResponse = await client.getBoundAppProvisioningJobs(tenantKey, runtimeTenantId);
@@ -1278,12 +1299,14 @@ export async function trySeedViaAppManifestPublish(
     toAppManifestObjectTypes(types),
     splitTenantScope ? runtimeTenantId : undefined,
   );
+  const provisioningBinding: TypeSeedBinding = { appKey: tenantKey, ownerTenantId: tenantId, runtimeTenantId, appBound: !allowDirectFallback || splitTenantScope };
+  await throwIfTypeProvisioningRequired(manifestResponse, provisioningBinding);
   const manifestFallbackReason = await appObjectTypePublishFallbackReason(
     manifestResponse,
     "save",
   );
   if (manifestFallbackReason) {
-    if (splitTenantScope) {
+    if (splitTenantScope || !allowDirectFallback) {
       throw new Error(`app manifest save failed for bound runtime tenant: ${manifestFallbackReason}`);
     }
     return { fallbackReason: manifestFallbackReason };
@@ -1343,12 +1366,13 @@ export async function trySeedViaAppManifestPublish(
   const publishResponse = await client.publishAppObjectTypes(
     tenantKey, splitTenantScope ? runtimeTenantId : undefined,
   );
+  await throwIfTypeProvisioningRequired(publishResponse, provisioningBinding);
   const publishFallbackReason = await appObjectTypePublishFallbackReason(
     publishResponse,
     "publish",
   );
   if (publishFallbackReason) {
-    if (splitTenantScope) {
+    if (splitTenantScope || !allowDirectFallback) {
       throw new Error(`app manifest publish failed for bound runtime tenant: ${publishFallbackReason}`);
     }
     return { fallbackReason: publishFallbackReason };
@@ -1375,7 +1399,33 @@ export async function trySeedViaAppManifestPublish(
     appManifestRequestShape,
   );
 
-  return { result };
+  // The saved manifest contains server-owned canonical bindings that may differ
+  // from source shorthand. Keep this expected projection out of CLI result JSON.
+  const configRecord = isRecord(publishPayload) && isRecord(publishPayload.config) ? publishPayload.config : {};
+  const configData = isRecord(configRecord.data) ? configRecord.data : configRecord;
+  const manifest = isRecord(configData.config) ? configData.config : {};
+  const publishedDefinitions = Array.isArray(manifest.objectTypes) ? manifest.objectTypes.filter(isRecord) : [];
+  const expectedDefinitions = types.map(type => {
+    const definition = publishedDefinitions.find(item => item.slug === type.slug && item.name === type.name);
+    // Only physical storage bindings are server-owned. A stale/dropped feature
+    // field in a legacy manifest response must not replace the requested fields.
+    return definition && Object.hasOwn(definition, 'storageBinding')
+      ? { ...type, storageBinding: (definition as unknown as ObjectTypeDefinition).storageBinding }
+      : type;
+  });
+  return { result, expectedDefinitions };
+}
+
+async function throwIfTypeProvisioningRequired(response: Response, binding: TypeSeedBinding): Promise<void> {
+  if (response.status !== 409) return;
+  const payload: unknown = await response.clone().json().catch(() => undefined);
+  const detail = isRecord(payload) ? payload.detail ?? payload.error : undefined;
+  const code = isRecord(detail) ? detail.error ?? detail.code : undefined;
+  const message = isRecord(detail) ? detail.message : detail;
+  if (code === 'EAI_PROVISION_REQUIRED_FOR_TYPES'
+    || (typeof message === 'string' && /^App resources must be provisioned before publishing object types\.?$/i.test(message))) {
+    throw new TypeSeedPreflightError(binding, 'App resources must be provisioned before publishing Object Types.');
+  }
 }
 
 export async function publishAppObjectTypesForRuntime(
@@ -1385,17 +1435,22 @@ export async function publishAppObjectTypesForRuntime(
   appTenantId: string,
   runtimeTenantId: string,
   types: ObjectTypeDefinition[],
-): Promise<{ result?: TypeSeedResult; fallbackReason?: string }> {
+  allowDirectFallback = true,
+): Promise<TypeSeedPublishOutcome> {
   const outcome = await trySeedViaAppManifestPublish(
-    appClient, tenantKey, appTenantId, types, runtimeTenantId,
+    appClient, tenantKey, appTenantId, types, runtimeTenantId, allowDirectFallback,
   );
   if (outcome.result) {
     outcome.result.resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(
       runtimeClient,
       runtimeTenantId,
-      types.map((type) => type.name),
+      types.map((type) => type.slug!),
       outcome.result.resourceApiSchemaSync,
+      { expectedDefinitions: outcome.expectedDefinitions ?? types },
     );
+    if (outcome.result.verification && shouldFailTypeSeedRun([outcome.result])) {
+      outcome.result.verification.converged = false;
+    }
   }
   return outcome;
 }
@@ -1638,6 +1693,84 @@ export async function verifyTypeSeedConvergenceWithRetry(
   throw new Error("schema verification did not produce a result");
 }
 
+function schemaFields(value: unknown, defaults: Record<string, unknown>): Record<string, unknown> {
+  const row = isRecord(value) ? value : {};
+  return Object.fromEntries(Object.entries(defaults).map(([key, fallback]) => [key, row[key] ?? fallback]));
+}
+
+function schemaArray(value: unknown): unknown[] { return Array.isArray(value) ? value : []; }
+
+function canonicalSchemaJson(value: unknown): string {
+  const ordered = (item: unknown): unknown => Array.isArray(item) ? item.map(ordered)
+    : isRecord(item) ? Object.fromEntries(Object.keys(item).sort().map(key => [key, ordered(item[key])])) : item;
+  return JSON.stringify(ordered(value));
+}
+
+/** Normalize the published read contract's defaults, excluding IDs and timestamps. */
+function canonicalInstalledDefinition(value: unknown): string {
+  const row = isRecord(value) ? value : {};
+  const named = (items: unknown, project: (item: Record<string, unknown>) => unknown): unknown[] => schemaArray(items)
+    .filter(isRecord).sort((left, right) => String(left.name).localeCompare(String(right.name))).map(project);
+  const strings = (items: unknown): unknown[] => (typeof items === 'string' ? [items] : schemaArray(items)).slice().sort();
+  const indexes = (items: unknown): unknown[] => schemaArray(items).map(item => schemaFields(item, { name: null, fields: [], unique: false }));
+  const binding = isRecord(row.storageBinding) ? row.storageBinding : {};
+  const scope = (name: string, required: string[], defaults: Record<string, unknown>): unknown => {
+    const item = binding[name];
+    if (!isRecord(item) || required.some(key => !item[key])) return null;
+    return { ...schemaFields(item, defaults), ...('indexes' in defaults ? { indexes: indexes(item.indexes) } : {}) };
+  };
+  return canonicalSchemaJson({
+    ...schemaFields(row, { name: '', slug: '', displayName: '', description: null, storageBackend: 'postgresql',
+      schemaVersion: 1, storageMetadataStatus: 'draft', status: 'draft', provisioningHints: {} }),
+    properties: named(row.properties, property => ({
+      ...schemaFields(property, { name: '', type: '', required: false, indexed: false, defaultValue: null,
+        description: null, targetObjectType: null, customizationEligibility: null }),
+      options: schemaArray(property.options).map(option => schemaFields(option, { label: '', value: '' })),
+    })),
+    linkTypes: named(row.linkTypes, link => schemaFields(link, { name: '', targetObjectType: '', cardinality: '', cascadeDelete: false })),
+    actions: named(row.actions, action => {
+      const rules = isRecord(action.validationRules) ? action.validationRules : {};
+      return { ...schemaFields(action, { name: '', displayName: '', requiredRole: null }),
+        validationRules: { requiredFields: strings(rules.requiredFields), requiredStatus: strings(rules.requiredStatus), custom: schemaArray(rules.custom) },
+        sideEffects: schemaArray(action.sideEffects).map(effect => schemaFields(effect, { type: '', field: '', value: null })),
+      };
+    }),
+    storageBinding: {
+      sql: scope('sql', ['databaseAlias', 'tableName'], { databaseAlias: null, tenantSchemaStrategy: 'per-tenant-schema', schemaName: null, tableName: null, indexes: [] }),
+      documentdb: scope('documentdb', ['databaseAlias', 'databaseName', 'collectionName'], { databaseAlias: null, databaseName: null, collectionName: null, partitionKey: 'tenantId', indexes: [] }),
+      blob: scope('blob', ['storageAccountAlias', 'containerName'], { storageAccountAlias: null, containerName: null, blobPrefix: null, metadataSchema: null }),
+      search: scope('search', ['searchServiceAlias'], { searchServiceAlias: null, indexName: 'aicore-chunks-002', sourceObjectTypes: null, fieldMappings: null }),
+    },
+    authorization: schemaFields(row.authorization, { privacyClass: 'tenant_public', organizationWideDefault: null,
+      spiceDbResourceType: 'resourceapi/resource', permissionMap: {}, filePermissionMap: {}, linkPermissionMap: {} }),
+    indexes: schemaArray(row.indexes),
+  });
+}
+
+function verifyInstalledTypeDefinitions(
+  tenantId: string,
+  requestedTypes: string[],
+  payload: unknown,
+  expectedDefinitions: readonly ObjectTypeDefinition[],
+): TypeSeedVerificationResult {
+  const body = isRecord(payload) ? payload : {};
+  const rows = schemaArray(body.objectTypes ?? body.object_types ?? body.docs).filter(isRecord);
+  const scopeMatches = (body.tenantId === undefined || body.tenantId === tenantId)
+    && (body.tenant_id === undefined || body.tenant_id === tenantId);
+  const matchedTypes: string[] = [], missingTypes: string[] = [], driftedTypes: string[] = [];
+  for (const requested of requestedTypes) {
+    const expected = expectedDefinitions.find(type => type.slug === requested || type.name === requested);
+    if (!expected?.slug || !scopeMatches) { driftedTypes.push(requested); continue; }
+    const installed = rows.filter(type => type.slug === expected.slug);
+    if (!installed.length) missingTypes.push(requested);
+    else if (installed.length !== 1 || canonicalInstalledDefinition(installed[0]) !== canonicalInstalledDefinition(expected)) driftedTypes.push(requested);
+    else matchedTypes.push(requested);
+  }
+  return { tenantId, requestedTypes, matchedTypes, missingTypes, driftedTypes,
+    createdCount: 0, updatedCount: 0, failedCount: 0,
+    converged: requestedTypes.length > 0 && matchedTypes.length === requestedTypes.length };
+}
+
 export async function waitForResourceApiSchemaVisibility(
   client: PlatformAPIClient,
   tenantId: string,
@@ -1646,12 +1779,13 @@ export async function waitForResourceApiSchemaVisibility(
   options?: {
     attempts?: number;
     delayMs?: number;
+    expectedDefinitions?: readonly ObjectTypeDefinition[];
   },
 ): Promise<Record<string, unknown> | undefined> {
   const status = isRecord(resourceApiSchemaSync)
     ? String(resourceApiSchemaSync.status ?? "").toLowerCase()
     : "";
-  if (!RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES.has(status)) {
+  if (!RESOURCEAPI_SCHEMA_SYNC_ASYNC_STATUSES.has(status) && status !== 'synced') {
     return resourceApiSchemaSync;
   }
 
@@ -1659,16 +1793,21 @@ export async function waitForResourceApiSchemaVisibility(
   const delayMs = Math.max(options?.delayMs ?? 1000, 0);
   let lastVerification: TypeSeedVerificationResult | undefined;
   let lastError: string | undefined;
+  const expectedHash = resourceApiSchemaSync?.schemaHash;
+  const expectedInstall = resourceApiSchemaSync?.installId;
+  const hasExpectedHash = expectedHash !== undefined && expectedHash !== null;
+  const hasExpectedInstall = expectedInstall !== undefined && expectedInstall !== null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     try {
-      const schemaStatusResponse =
-        await client.getResourceStorageSchemaStatus();
+      const schemaStatusResponse = await client.getResourceStorageSchemaStatus();
+      let observedStatus: unknown;
       if (schemaStatusResponse.ok) {
+        observedStatus = await schemaStatusResponse.json();
         const verification = verifyTypeSeedConvergence(
           tenantId,
           requestedTypes,
-          (await schemaStatusResponse.json()) as unknown,
+          observedStatus,
           {
             createdCount: 0,
             updatedCount: 0,
@@ -1676,38 +1815,53 @@ export async function waitForResourceApiSchemaVisibility(
           },
         );
         lastVerification = verification;
-        if (verification.converged) {
+        const activeScope = isRecord(observedStatus) && observedStatus.tenantId === tenantId
+          && observedStatus.available === true && observedStatus.state === 'active';
+        const installMatches = !hasExpectedInstall || (typeof expectedInstall === 'string' && expectedInstall.length > 0
+          && isRecord(observedStatus) && observedStatus.installId === expectedInstall);
+        if (verification.converged && activeScope && installMatches && hasExpectedHash
+          && typeof expectedHash === 'string' && expectedHash.length > 0
+          && isRecord(observedStatus) && observedStatus.schemaHash === expectedHash) {
           return {
             ...resourceApiSchemaSync,
             status: "synced",
             schemaVisibility: "visible",
             schemaVisibilitySource: "storage.schema-status",
+            schemaVerification: 'hash',
           };
         }
+        lastError = 'The active runtime snapshot does not match the published install/schema boundary.';
       } else {
         lastError = `schema-status re-fetch failed: ${schemaStatusResponse.status} ${schemaStatusResponse.statusText}`;
       }
 
+      // A known expected hash is authoritative: matching definitions from an
+      // unrelated/stale snapshot must never override a mismatched receipt.
+      if (hasExpectedHash) {
+        if (attempt < attempts) await new Promise(resolve => setTimeout(resolve, delayMs));
+        continue;
+      }
+      const installMatches = !hasExpectedInstall || (typeof expectedInstall === 'string' && expectedInstall.length > 0
+        && isRecord(observedStatus) && observedStatus.tenantId === tenantId
+        && observedStatus.available === true && observedStatus.state === 'active' && observedStatus.installId === expectedInstall);
       const schemaResponse = await client.getSchema();
       if (!schemaResponse.ok) {
         lastError = `schema re-fetch failed: ${schemaResponse.status} ${schemaResponse.statusText}`;
       } else {
-        const verification = verifyTypeSeedConvergence(
+        const verification = verifyInstalledTypeDefinitions(
           tenantId,
           requestedTypes,
           (await schemaResponse.json()) as unknown,
-          {
-            createdCount: 0,
-            updatedCount: 0,
-            failedCount: 0,
-          },
+          options?.expectedDefinitions ?? [],
         );
         lastVerification = verification;
-        if (verification.converged) {
+        if (verification.converged && installMatches) {
           return {
             ...resourceApiSchemaSync,
             status: "synced",
             schemaVisibility: "visible",
+            schemaVisibilitySource: 'schema',
+            schemaVerification: 'definitions',
           };
         }
       }
@@ -1725,9 +1879,10 @@ export async function waitForResourceApiSchemaVisibility(
     status: "failed",
     errorCode: RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT,
     message:
-      "Platform schema sync was queued, but requested Object Types were not visible from the platform schema read path before the CLI timeout.",
+      "The published schema did not match the active runtime snapshot or installed Object Type definitions before the CLI timeout.",
     details: {
       requestedTypes,
+      verificationMode: hasExpectedHash ? 'hash' : 'definitions',
       ...(lastVerification
         ? {
             matchedTypes: lastVerification.matchedTypes,
@@ -1793,6 +1948,47 @@ Workflow:
        eai resources schema
   `,
   );
+
+typesCommand
+  .command('actions <type>')
+  .description('List published actions, required roles/statuses and side effects for an Object Type')
+  .option('--tenant-id <id>', 'Read actions from a specific workspace')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output JSON (deprecated, use --format json)', false)
+  .action(async (type: string, options) => {
+    const format = normalizeFormat(options);
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId, allowOutsideProject: true });
+    const response = await ctx.client.getSchema();
+    if (!response.ok) {
+      await failResourceResponse(response, format, null, 'types.actions');
+      process.exitCode = 1;
+      return;
+    }
+    const match = matchPublishedType(type, extractPublishedSchemaTypes(await response.json()));
+    if (!match.matchedType) {
+      if (format === 'json') out.json({ error: { code: 'E270', message: buildMissingPublishedTypeMessage(match), suggestion: 'Run eai resources schema --format json', exitCode: 1 } });
+      else out.error(buildMissingPublishedTypeMessage(match));
+      process.exitCode = 1;
+      return;
+    }
+    const actions = match.matchedType.actions.filter(isRecord);
+    if (format === 'json') {
+      out.json({ type: match.matchedType.slug ?? match.matchedType.name, tenantId: ctx.tenantId, actions });
+      return;
+    }
+    out.heading(`${match.matchedType.name}: ${actions.length} action(s)`);
+    if (!actions.length) out.info('No actions are defined for this Object Type.');
+    for (const action of actions) {
+      const rules = isRecord(action.validationRules) ? action.validationRules : {};
+      const status = Array.isArray(rules.requiredStatus) ? rules.requiredStatus.join(', ') : rules.requiredStatus;
+      out.info(`${String(action.name)} — ${String(action.displayName ?? action.name)}`);
+      out.info(`  Role: ${typeof action.requiredRole === 'string' ? action.requiredRole : 'not configured (unavailable)'}`);
+      out.info(`  Required status: ${typeof status === 'string' && status ? status : 'any'}`);
+      if (Array.isArray(rules.requiredFields) && rules.requiredFields.length) out.info(`  Required fields: ${rules.requiredFields.join(', ')}`);
+      const effects = Array.isArray(action.sideEffects) ? action.sideEffects.filter(isRecord) : [];
+      for (const effect of effects) out.info(`  Side effect: ${String(effect.type)} ${String(effect.field)}${effect.type === 'set_field' ? ` = ${JSON.stringify(effect.value)}` : ''}`);
+    }
+  });
 
 // ─── eai types seed ────────────────────────────────────────────────────────
 
@@ -1994,12 +2190,29 @@ Examples:
         );
       }
 
+      let binding: TypeSeedBinding;
+      let client: PlatformAPIClient;
+      let appClient: PlatformAPIClient;
+      try {
+        binding = await resolveTypeSeedBinding(root, tenantKey, tenantId, options.appTenantId);
+        client = new PlatformAPIClient(publicApiUrl, tenantId);
+        appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
+        await checkTypeSeedPreflight(appClient, binding);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (options.format !== 'json') out.error(message);
+        jsonResults.push({ tenantKey, tenantId, dryRun: options.dryRun === true, created: 0, updated: 0, failed: types.length,
+          error: message, ...(error instanceof TypeSeedPreflightError ? { errorCode: error.code } : {}) });
+        continue;
+      }
+
       if (options.dryRun) {
         const dryRunResult = buildTypeSeedDryRunResult(
           tenantKey,
           tenantId,
           types,
         );
+        dryRunResult.preflight = { ready: true, appKey: binding.appKey, ownerTenantId: binding.ownerTenantId, runtimeTenantId: tenantId };
         if (options.format !== "json") {
           for (const type of types) {
             out.info(`Would publish: ${chalk.cyan(type.name)}`);
@@ -2013,10 +2226,6 @@ Examples:
         continue;
       }
 
-      const client = new PlatformAPIClient(publicApiUrl, tenantId);
-      const appClient = options.appTenantId
-        ? new PlatformAPIClient(publicApiUrl, options.appTenantId)
-        : client;
       let created = 0,
         updated = 0,
         failed = 0;
@@ -2027,19 +2236,20 @@ Examples:
         const appPublishOutcome = await publishAppObjectTypesForRuntime(
           appClient,
           client,
-          tenantKey,
-          options.appTenantId ?? tenantId,
+          binding.appKey,
+          binding.ownerTenantId,
           tenantId,
           types,
+          !binding.appBound,
         );
         if (appPublishOutcome.result) {
           if (options.format !== "json") {
-            out.success("Published via app object-type manifest");
+            out.info("Published via app object-type manifest");
             out.info(
               `Result: ${chalk.green(`${appPublishOutcome.result.created} created`)}, ${chalk.cyan(`${appPublishOutcome.result.updated} updated`)}, ${chalk.red(`${appPublishOutcome.result.failed} failed`)}`,
             );
             const verification = appPublishOutcome.result.verification;
-            if (verification?.converged) {
+            if (verification?.converged && !shouldFailTypeSeedRun([appPublishOutcome.result])) {
               out.success(
                 `Verification: converged (${verification.matchedTypes.length}/${verification.requestedTypes.length} published remotely)`,
               );
@@ -2089,6 +2299,7 @@ Examples:
           failed: types.length,
           publishingMode: "app-manifest",
           error: message,
+          ...(err instanceof TypeSeedPreflightError ? { errorCode: err.code } : {}),
           verification: {
             tenantId,
             requestedTypes: types.map((type) => type.name),
@@ -2311,13 +2522,15 @@ Examples:
           }),
           types.map((type) => type.slug!),
         );
+        resourceApiSchemaSync = await waitForResourceApiSchemaVisibility(client, tenantId, types.map(type => type.slug!), resourceApiSchemaSync, { expectedDefinitions: types });
+        if (isBlockingResourceApiSchemaSyncStatus(optionalString(resourceApiSchemaSync?.status))) verification.converged = false;
       }
 
       if (options.format !== "json") {
         out.info(
           `Result: ${chalk.green(`${created} created`)}, ${chalk.cyan(`${updated} updated`)}, ${chalk.red(`${failed} failed`)}`,
         );
-        if (verification.converged) {
+        if (verification.converged && !isBlockingResourceApiSchemaSyncStatus(optionalString(resourceApiSchemaSync?.status))) {
           out.success(
             `Verification: converged (${verification.matchedTypes.length}/${verification.requestedTypes.length} published remotely)`,
           );
@@ -2753,6 +2966,7 @@ Examples:
           for (const property of entry.removedProperties) {
             out.info(`    ${out.symbols.removed} ${property}`);
           }
+          for (const property of entry.changedProperties ?? []) out.info(`    ${out.symbols.changed} ${property} — relationship target changed`);
           if (entry.unchangedProperties.length > 0) {
             out.dim(`    ${entry.unchangedProperties.length} unchanged`);
           }

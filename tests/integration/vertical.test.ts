@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
+import { PlatformAPIClient } from '../../src/lib/api.js';
 import type { TestContext } from '../helpers/setup-dsl.js';
 import { cleanupTestTokens, workingDirectoryIs } from '../helpers/setup-dsl.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
@@ -92,6 +93,8 @@ describe('eai app', () => {
   let originalAccessToken: string | undefined;
 
   beforeEach(async () => {
+    const status = appCommand.commands.find(command => command.name() === 'auth')!.commands.find(command => command.name() === 'status')!;
+    for (const option of status.options) status.setOptionValue(option.attributeName(), option.defaultValue);
     originalHome = process.env.HOME;
     originalUserProfile = process.env.USERPROFILE;
     originalBaseUrl = process.env.BASE_URL_PUBLIC_API;
@@ -799,7 +802,7 @@ describe('eai app', () => {
     expect(isCompleteAppDeletionEnvironmentSet(['preview', 'dev', 'test', 'prod', 'other'])).toBe(false);
   });
 
-  test('reports user-delegated app authorization without creating credentials or mutating state', async () => {
+  test.each([['same', COMPANY_TENANT_ID], ['child', 'runtime-child'], ['metadata', 'runtime-child']])('reports delegated authorization for %s runtime without mutations', async (binding, runtimeTenantId) => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
     await writeFile(join(env.dir, '.env.local'), [
@@ -845,13 +848,15 @@ describe('eai app', () => {
               tenantId: COMPANY_TENANT_ID,
               verticalKey: 'boardapp-og',
               displayName: 'BoardApp',
+              ...(binding === 'metadata' ? { metadata: { childTenantId: runtimeTenantId } }
+                : runtimeTenantId !== COMPANY_TENANT_ID ? { childTenantId: runtimeTenantId } : {}),
             },
           }],
         });
       }
 
       if (
-        url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/authorized-apps`
+        url === `${API_BASE}/v4/platform/tenants/${runtimeTenantId}/authorized-apps`
         && method === 'GET'
       ) {
         return jsonResponse({
@@ -879,12 +884,16 @@ describe('eai app', () => {
     const output = outputSpy.mock.calls.flat().join('');
     const result = JSON.parse(output) as {
       readOnly: boolean;
+      enrollmentTenantId: string;
+      runtimeTenantId: string;
       tenantAuthorizedApps: { status: string };
       runtimeAuth: { mode: string; userDelegated: string; appOnlyIdentity: string };
     };
     expect(result).toMatchObject({
       readOnly: true,
-      tenantAuthorizedApps: { status: 'authorized' },
+      enrollmentTenantId: COMPANY_TENANT_ID,
+      runtimeTenantId,
+      tenantAuthorizedApps: { status: 'authorized', tenantId: runtimeTenantId },
       runtimeAuth: {
         mode: 'user-delegated',
         userDelegated: 'authorized',
@@ -893,18 +902,69 @@ describe('eai app', () => {
     });
     expect(fetchMock.mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
     expect(fetchMock).toHaveBeenCalledWith(
-      `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/authorized-apps`,
+      `${API_BASE}/v4/platform/tenants/${runtimeTenantId}/authorized-apps`,
       expect.objectContaining({ method: 'GET' }),
     );
   });
 
-  test('does not attribute an unrelated local runtime contract to the requested app client', async () => {
+  test.each([
+    { data: { childTenantId: 'one', metadata: { childTenantId: 'two' } }, duplicate: false },
+    { data: { childTenantId: ' child ' }, duplicate: false },
+    { data: { tenantId: 'another-company' }, duplicate: false },
+    { data: { verticalKey: 'another-app' }, duplicate: false },
+    { data: { verticalKey: undefined }, duplicate: false },
+    { data: { tenantId: undefined }, duplicate: false },
+    { data: { childTenantId: 'one' }, duplicate: true },
+  ])('refuses ambiguous or mismatched runtime authorization bindings %j', async ({ data, duplicate }) => {
+    await seedLoggedInTenant();
+    await seedProjectRoot(env.dir);
+    vi.spyOn(PlatformAPIClient.prototype, 'listResources').mockResolvedValue(jsonResponse({ docs: [
+      { id: 'app-one', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'boardapp-og', ...data } },
+      ...(duplicate ? [{ id: 'app-two', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'boardapp-og' } }] : []),
+    ] }));
+    const allowlist = vi.spyOn(PlatformAPIClient.prototype, 'getTenantAuthorizedApps');
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      if (String(input).endsWith('/v4/identity/tenants')) return jsonResponse({ tenants: [{
+        id: COMPANY_TENANT_ID, displayName: 'Company', slug: 'company', isActive: true,
+        roles: ['tenant-admin'], homeRegion: 'au', parentId: null,
+      }] });
+      return jsonResponse({ id: COMPANY_TENANT_ID, homeRegion: 'au', parentTenantId: null });
+    }));
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('controlled-auth-status-exit'); });
+    await expect(appCommand.parseAsync(['auth', 'status', 'boardapp-og', '--tenant-id', COMPANY_TENANT_ID,
+      '--client-id', 'client-id', '--format', 'json'], { from: 'user' })).rejects.toThrow('controlled-auth-status-exit');
+    expect(allowlist).not.toHaveBeenCalled();
+  });
+
+  test('retains an exact child-only allowlist diagnostic with --skip-validate', async () => {
+    await seedLoggedInTenant();
+    const list = vi.spyOn(PlatformAPIClient.prototype, 'listResources');
+    const allowlist = vi.spyOn(PlatformAPIClient.prototype, 'getTenantAuthorizedApps').mockResolvedValue(jsonResponse({ authorizedApps: [{ appId: 'client-id' }] }));
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      if (String(input).endsWith('/v4/identity/tenants')) return jsonResponse({ tenants: [{
+        id: 'runtime-child', displayName: 'Child', slug: 'child', isActive: true,
+        roles: ['tenant-admin'], homeRegion: 'au', parentId: COMPANY_TENANT_ID,
+      }] });
+      return jsonResponse({ id: 'runtime-child', homeRegion: 'au', parentTenantId: COMPANY_TENANT_ID });
+    }));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await appCommand.parseAsync(['auth', 'status', 'boardapp-og', '--tenant-id', 'runtime-child', '--client-id', 'client-id', '--skip-validate', '--format', 'json'], { from: 'user' });
+    expect(list).not.toHaveBeenCalled();
+    expect(allowlist).toHaveBeenCalledWith('runtime-child');
+    expect(JSON.parse(output.mock.calls.flat().join(''))).toMatchObject({
+      tenantId: 'runtime-child', enrollmentTenantId: null, runtimeTenantId: 'runtime-child',
+      tenantAuthorizedApps: { tenantId: 'runtime-child', status: 'authorized' },
+    });
+  });
+
+  test.each(['identity', 'workspace'])('does not attribute a local runtime with unrelated %s to the app client', async mismatch => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
     await writeFile(join(env.dir, '.env.local'), [
       `BASE_URL_PUBLIC_API=${API_BASE}`,
-      'ENTRA_CLIENT_ID=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
-      'EAI_APP_KEY=another-app',
+      mismatch === 'identity' ? 'ENTRA_CLIENT_ID=aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa' : 'ENTRA_CLIENT_ID=1c1927cb-646c-45c6-9ec8-7f2473f4679e',
+      mismatch === 'identity' ? 'EAI_APP_KEY=another-app' : 'EAI_APP_KEY=boardapp-og',
+      ...(mismatch === 'workspace' ? ['EAI_TENANT_ID=another-workspace'] : []),
     ].join('\n'));
     await writeFile(join(env.dir, 'eai.runtime.json'), JSON.stringify({
       schemaVersion: 1,
@@ -987,7 +1047,7 @@ describe('eai app', () => {
       runtimeAuth: { mode: string; userDelegated: string; appOnlyIdentity: string; evidence: string };
     };
     expect(result).toMatchObject({
-      entraRegistration: { status: 'not-observable' },
+      entraRegistration: { status: mismatch === 'identity' ? 'not-observable' : 'configured-locally' },
       tenantAuthorizedApps: { status: 'authorized' },
       runtimeAuth: {
         mode: 'not-observable',

@@ -6,7 +6,7 @@ description: Public-safe EAI CLI error explanations and agent recovery commands.
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.12. The same catalog powers human stderr output, JSON output for AI
+v3.20.13. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they
@@ -49,6 +49,7 @@ are explicitly listed, and stop when a stop condition matches.
 | `E294` | `app_ownership_scope_unsafe` | The platform cannot safely register ownership of this app. |
 | `E295` | `app_ownership_scope_concurrent_change` | The app ownership record changed while it was being updated. |
 | `E296` | `app_ownership_scope_failed` | App ownership registration failed unexpectedly. |
+| `E262` | `provision_required_for_types` | App resources must be provisioned before publishing Object Types. |
 
 ## E001: Not in an EAI project.
 
@@ -1228,3 +1229,38 @@ None.
 - workspace ID
 - CLI version
 - command
+
+## E262: App resources must be provisioned before publishing Object Types.
+
+| Field | Value |
+| --- | --- |
+| Reason | `provision_required_for_types` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- Publishing needs the exact app enrollment and ready resources in its runtime workspace.
+- The app enrollment can belong to a company workspace while its resources belong to a child workspace.
+- No direct Object Type write can replace missing app provisioning.
+
+### Diagnostics
+
+- `eai types seed --dry-run --format json` (read-only) — Read app enrollment and provisioning readiness without changing platform state.
+- `eai app list --tenant-id <owner-workspace-id> --format json` (read-only) — Confirm that the app is enrolled in the owning workspace.
+
+### Fixes
+
+- `eai app provision <app-key> --tenant-id <runtime-workspace-id> --app-tenant-id <owner-workspace-id> --select --format json` (changes state) — Provision the exact enrollment and runtime binding shown by preflight; omit --app-tenant-id when both workspaces are the same.
+
+### Stop Conditions
+
+- App provisioning is not ready or the enrollment/runtime binding does not match.
+
+### Escalation Evidence
+
+- app key
+- owning workspace ID
+- runtime workspace ID
+- CLI version
+- request ID if available

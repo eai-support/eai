@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.12 |
+| Version | 3.20.13 |
 | Released | 2026-11-11 |
-| Last Material Change | Recover EAI-maintained reviews whose required checks failed and explain active-publish conflicts |
-| Source Commit | `a4890da7eaf118e15bd813618209d128427507de` |
+| Last Material Change | CLI and data repairs for issue 3625 |
+| Source Commit | `680ab4c733e505e447a847528becfdb2c8cc1e35` |
 
 
 ## Install
@@ -62,6 +62,7 @@ eai workspace list --format json
 eai workspace select <workspace-slug>
 eai whoami
 
+eai app provision <app-key> --tenant-id <workspace-id> --format json
 eai types validate
 eai types seed --tenant-key <scope-key> --tenant-id <workspace-id> --format json
 eai types diff --tenant-key <scope-key> --tenant-id <workspace-id>
@@ -70,12 +71,22 @@ eai resources schema --tenant-id <workspace-id> --format json
 eai dev
 ```
 
-For an app enrolled under a parent workspace with a separate runtime child, use
-`eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json`.
+For an app enrolled under a parent workspace with a separate runtime child, use:
+
+```bash
+eai app provision <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json
+eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json
+```
+
 The CLI checks the exact parent/app/child enrollment before publishing through
 the parent app route and reads schema visibility from the child. This mode
 stops if the manifest route or binding is unavailable; it does not switch to
 direct Object Type writes.
+
+`types seed --dry-run` also checks enrollment and provisioning readiness without
+writing. An unready app receives the exact provision command and an unsuccessful
+exit status. A real seed reports success only after publication and runtime
+schema verification complete; failed or timed-out synchronization is a failure.
 
 Delete that app through its owning parent and explicitly identify the runtime child:
 
@@ -116,7 +127,8 @@ Do not move every Object Type field to kebab-case. A definition keeps both a
 PascalCase source/model `name`, such as `BoardAppUser`, and an explicit exact
 transport/storage `slug`, such as `board-app-user`.
 
-Generated and persisted `linkTypes[].targetObjectType`, runtime `target_type`,
+Generated and persisted `properties[].targetObjectType` and
+`linkTypes[].targetObjectType`, runtime `target_type`,
 path parameters, and other governed v4 fields contain slugs. The CLI accepts a
 same-manifest PascalCase relationship target only as authoring shorthand and
 resolves it through that target's declared slug before diff or seed. An
@@ -126,6 +138,46 @@ For existing Object Types, the exact stored slug is authoritative even when
 today's derivation from the name would differ. Do not normalize or rename it.
 App code should use `useResources` or `client.resources` so the SDK owns route
 construction.
+
+## Relationships, Actions and Resource Errors
+
+A relationship property declares its target type explicitly:
+
+```typescript
+{ name: 'trustId', type: 'relationship', required: true, targetObjectType: 'trust' }
+```
+
+Resource writes validate that the target exists in that exact type and workspace.
+New or republished definitions require the target. Existing definitions remain
+readable; inspect `eai resources schema --format json` for relationship properties
+without `targetObjectType`, review each intended target, then update and republish
+the definitions. Link names and property names do not establish this mapping.
+This migration does not repair or delete existing records automatically.
+
+Discover and execute the actions installed in the selected workspace:
+
+```bash
+eai types actions trust --format json
+eai resources action trust <record-id> submitForReview --params '{}' --format json
+```
+
+The action list includes role requirements, status preconditions and side effects.
+Action execution uses the platform's role checks and installed schema.
+
+`resources update` replaces the complete record data, so include every required
+field. It retains optimistic version checking and does not merge partial input.
+Validation errors identify fields and rules in text. With `--format json`, HTTP
+failures from `resources create`, `resources update` and `resources action` emit
+one error object on stdout and exit unsuccessfully. Structured field errors are
+in `error.diagnostics.fields`, alongside status and safe request and server-code
+diagnostics. Other commands retain their existing error streams.
+
+Workspace commands such as `user list`, `user roles`, `user invite` and
+`classifier list` can run before an app project exists. Explicit workspace
+selection overrides the selected workspace. `workspace info` and
+`content-understanding capabilities` use the selected workspace when no override
+is supplied. `app auth status` identifies the enrollment owner and runtime
+authorization workspace separately.
 
 ## Command Groups
 
@@ -171,6 +223,7 @@ Prefer product-shaped commands before `eai publicapi`:
 | Publish Object Types | `eai types validate`, `eai types seed`, `eai types diff` |
 | Inspect schemas      | `eai resources schema --tenant-id <workspace-id>`           |
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
+| Discover or execute actions | `eai types actions <type>`, `eai resources action <type> <id> <action>` |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
 | Index a Knowledge Base file | `eai kb upload <file> --tenant-id <workspace-id>` |

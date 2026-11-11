@@ -15,7 +15,9 @@ import {
 import { resolveCommandContext, normalizeFormat, makeSpinner } from '../lib/context.js';
 import { isRecord, toObjectTypeSlug } from '../lib/utils.js';
 import * as out from '../lib/output.js';
-import { ErrorCode, exitWithError } from '../lib/error-codes.js';
+import { ErrorCode, exitWithError, formatErrorJSON } from '../lib/error-codes.js';
+import { redactSupportBundle, redactSupportText } from '../lib/support-redaction.js';
+import { safeSupportReference } from '../lib/platform-diagnostics.js';
 import { findGuidance } from '../lib/error-guidance/match.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
 
@@ -70,7 +72,7 @@ export function buildCreateResourceOutput(
   };
 }
 
-function extractPublishedSchemaTypes(payload: unknown): SchemaTypeSummary[] {
+export function extractPublishedSchemaTypes(payload: unknown): SchemaTypeSummary[] {
   if (!isRecord(payload)) {
     return [];
   }
@@ -150,7 +152,7 @@ function extractErrorPayload(payload: unknown): {
     return {};
   }
 
-  const nested = [payload.error, payload.detail, payload];
+  const nested = [payload.error, payload.detail, ...resourceErrorEnvelopes(payload)];
   const result: {
     message?: string;
     code?: string;
@@ -220,6 +222,72 @@ function withGuidance(
   return guidance ? `${message}\n\n${formatGuidanceText(guidance)}` : message;
 }
 
+export interface ResourceValidationIssue {
+  field: string;
+  rule: string;
+  message?: string;
+  allowedValues?: Array<string | number | boolean>;
+}
+
+function resourceErrorEnvelopes(payload: unknown): Record<string, unknown>[] {
+  const records: Record<string, unknown>[] = [];
+  let level: unknown[] = [payload];
+  for (let depth = 0; depth < 4 && records.length < 16; depth++) {
+    const next: unknown[] = [];
+    for (const item of level) {
+      if (!isRecord(item) || records.length >= 16) continue;
+      records.push(item);
+      next.push(item.error, item.detail, item.details);
+    }
+    level = next;
+  }
+  return records;
+}
+
+/** Retain only field diagnostics; upstream bodies, submitted values and internals stay private. */
+export function extractResourceValidationIssues(payload: unknown): ResourceValidationIssue[] {
+  if (!isRecord(payload)) return [];
+  const envelopes = resourceErrorEnvelopes(payload);
+  const candidates = envelopes.flatMap(value => [value.details, value.errors, value.fieldErrors]);
+  return candidates.filter(Array.isArray).flat().filter(isRecord).slice(0, 100).flatMap(value => {
+    const field = value.field ?? value.path;
+    const rule = value.rule ?? value.code;
+    if (typeof field !== 'string' || !/^[A-Za-z0-9_.[\]-]{1,200}$/.test(field)
+      || typeof rule !== 'string' || !/^[A-Za-z0-9_.-]{1,100}$/.test(rule)) return [];
+    const message = typeof value.message === 'string' ? redactSupportText(value.message.slice(0, 1000)) : undefined;
+    const allowed = value.allowedValues ?? value.allowed_values;
+    const allowedValues = Array.isArray(allowed) ? allowed.slice(0, 100).filter((entry): entry is string | number | boolean =>
+      typeof entry === 'string' || typeof entry === 'number' || typeof entry === 'boolean') : undefined;
+    return [{ field, rule, ...(message ? { message } : {}), ...(allowedValues ? { allowedValues } : {}) }];
+  });
+}
+
+/** Resource JSON failures use the pinned CLI envelope once on stdout. */
+export async function failResourceResponse(res: Response, format: string, spinner: Ora | null, operation?: string): Promise<void> {
+  if (format !== 'json') {
+    failCommand(spinner, await formatResponseError(res, operation));
+    return;
+  }
+  const payload: unknown = await res.json().catch(() => undefined);
+  const extracted = extractErrorPayload(payload);
+  const code = res.status === 403 ? ErrorCode.E204
+    : res.status === 409 ? ErrorCode.E205
+      : res.status === 400 || res.status === 422 ? ErrorCode.E302 : ErrorCode.E203;
+  const message = redactSupportText(extracted.message?.slice(0, 1000) || `${res.status} ${res.statusText}`);
+  const envelope = formatErrorJSON(code, { details: message }) as { error: Record<string, unknown> };
+  const requestId = safeSupportReference(res.headers.get('x-request-id'))
+    ?? safeSupportReference(res.headers.get('x-correlation-id'));
+  const serverCode = extracted.serverCode ?? extracted.code;
+  const fields = extractResourceValidationIssues(payload);
+  out.json(redactSupportBundle({ error: { ...envelope.error, diagnostics: {
+    status: res.status,
+    message,
+    ...(serverCode && /^[A-Z][A-Z0-9_]{0,100}$/.test(serverCode) ? { serverCode } : {}),
+    ...(requestId ? { requestId } : {}),
+    ...(fields.length ? { fields } : {}),
+  } } }));
+}
+
 async function formatResponseError(res: Response, operation?: string): Promise<string> {
   const text = await res.text();
   if (!text) {
@@ -234,21 +302,22 @@ async function formatResponseError(res: Response, operation?: string): Promise<s
     const payload = JSON.parse(text) as unknown;
     const errorPayload = extractErrorPayload(payload);
     const message = errorPayload.message;
-    const base = `${res.status} ${res.statusText}${message ? ` — ${message}` : ''}`;
+    const fields = extractResourceValidationIssues(payload);
+    const fieldText = fields.map(issue => `  ${issue.field}: ${issue.message || issue.rule}${issue.allowedValues ? ` (allowed: ${issue.allowedValues.join(', ')})` : ''}`);
+    const base = redactSupportText(`${res.status} ${res.statusText}${message ? ` — ${message}` : ''}${fieldText.length ? `\n${fieldText.join('\n')}` : ''}`);
     return withGuidance(base, {
       operation,
       status: res.status,
       code: errorPayload.code,
       reasonCode: errorPayload.reasonCode,
       serverCode: errorPayload.serverCode,
-      message: message || text.slice(0, 300),
+      message: message || res.statusText,
     });
   } catch {
-    const message = text.slice(0, 300);
-    return withGuidance(`${res.status} ${res.statusText} — ${message}`, {
+    return withGuidance(`${res.status} ${res.statusText}`, {
       operation,
       status: res.status,
-      message,
+      message: res.statusText,
     });
   }
 }
@@ -736,7 +805,7 @@ Examples:
     try {
       const res = await ctx.client.createResource(type, data);
       if (!res.ok) {
-        failCommand(spinner, await formatResponseError(res, 'resources.create'));
+        await failResourceResponse(res, options.format, spinner, 'resources.create');
         process.exit(1);
       }
 
@@ -759,10 +828,52 @@ Examples:
 // ─── eai resources update <type> <id> ────────────────────────────────────
 
 resourcesCommand
+  .command('action <type> <id> <action>')
+  .description('Execute a published Object Type action with its role and status requirements')
+  .option('--tenant-id <id>', 'Run the action against a specific workspace')
+  .option('--params <json>', 'Action parameters as a JSON object', '{}')
+  .option('--format <format>', 'Output format (text|json)', 'text')
+  .option('--json', 'Output JSON (deprecated, use --format json)', false)
+  .addHelpText('after', '\nList available actions first: eai types actions <type>\n')
+  .action(async (type: string, id: string, action: string, options) => {
+    const format = normalizeFormat(options);
+    let params: unknown;
+    try {
+      params = JSON.parse(options.params);
+      if (!isRecord(params)) throw new Error('--params must be a JSON object');
+    } catch {
+      const details = '--params must be a valid JSON object';
+      if (format === 'json') out.json(formatErrorJSON(ErrorCode.E302, { details }));
+      else out.error(details);
+      process.exitCode = 1;
+      return;
+    }
+    const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
+    const spinner = makeSpinner(format, `Running ${type}.${action}...`);
+    try {
+      const response = await ctx.client.executeAction(type, id, action, params);
+      if (!response.ok) {
+        await failResourceResponse(response, format, spinner, 'resources.action');
+        process.exitCode = 1;
+        return;
+      }
+      const payload: unknown = await response.json();
+      if (!isRecord(payload)) throw new Error('Action returned an invalid response');
+      if (format === 'json') out.json(withPublicRequestObservation(payload, response));
+      else succeedCommand(spinner, `Executed ${type}.${action} on ${id}${typeof payload.version === 'number' ? ` (version ${payload.version})` : ''}`);
+    } catch (error) {
+      const message = redactSupportText(error instanceof Error ? error.message : String(error));
+      if (format === 'json') out.json(formatErrorJSON(ErrorCode.E203, { details: message }));
+      else failCommand(spinner, message);
+      process.exitCode = 1;
+    }
+  });
+
+resourcesCommand
   .command('update <type> <id>')
-  .description('Update a resource')
+  .description('Replace resource data in full; include every required field')
   .option('--tenant-id <id>', 'Run the mutation against a specific workspace')
-  .option('--data <json>', 'Updated data as JSON string')
+  .option('--data <json>', 'Complete replacement data as JSON; omitted fields are removed')
   .option('--version <n>', 'Resource version (for optimistic locking)')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -793,7 +904,7 @@ resourcesCommand
     try {
       const res = await ctx.client.updateResource(type, id, data, version!);
       if (!res.ok) {
-        failCommand(spinner, await formatResponseError(res, 'resources.update'));
+        await failResourceResponse(res, options.format, spinner, 'resources.update');
         process.exit(1);
       }
 

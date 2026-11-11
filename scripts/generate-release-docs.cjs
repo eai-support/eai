@@ -36,6 +36,14 @@ const DOC_ORDER = [
   "api-reference.md",
 ];
 const HELP_COMMANDS = [
+  { label: "eai types --help", args: ["dist/index.js", "types", "--help"] },
+  { label: "eai types seed --help", args: ["dist/index.js", "types", "seed", "--help"] },
+  { label: "eai types actions --help", args: ["dist/index.js", "types", "actions", "--help"] },
+  { label: "eai resources action --help", args: ["dist/index.js", "resources", "action", "--help"] },
+  { label: "eai resources update --help", args: ["dist/index.js", "resources", "update", "--help"] },
+  { label: "eai workspace info --help", args: ["dist/index.js", "workspace", "info", "--help"] },
+  { label: "eai app auth status --help", args: ["dist/index.js", "app", "auth", "status", "--help"] },
+  { label: "eai content-understanding capabilities --help", args: ["dist/index.js", "content-understanding", "capabilities", "--help"] },
   { label: "eai kb upload --help", args: ["dist/index.js", "kb", "upload", "--help"] },
   { label: "eai content-understanding --help", args: ["dist/index.js", "content-understanding", "--help"] },
   { label: "eai docs configure-type --help", args: ["dist/index.js", "docs", "configure-type", "--help"] },

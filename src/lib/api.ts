@@ -1532,7 +1532,7 @@ export class PlatformAPIClient {
   ): Promise<Response> {
     const normalizedObjectType = toObjectTypeSlug(objectType);
     return this.fetchPublic(
-      `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${id}/actions/${action}`,
+      `${this.baseUrl}${PUBLIC_DATA_RESOURCES_PATH}/${this.tenantId}/${normalizedObjectType}/${encodeURIComponent(id)}/actions/${encodeURIComponent(action)}`,
       {
         method: 'POST',
         headers: await this.headers(),
