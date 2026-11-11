@@ -436,6 +436,38 @@ describe("template preflight before the GitHub link step", () => {
     ).resolves.toBeUndefined();
   });
 
+  test("cancels non-OK preflight response streams before failing open", async () => {
+    const client = new PlatformAPIClient(
+      "https://api.example.test/public",
+      scope.tenantId,
+    );
+    let cancelled = false;
+    vi.spyOn(client, "getCliManagedTemplateRequirement").mockResolvedValue(
+      new Response(
+        new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              new TextEncoder().encode('{"detail":"missing"}'),
+            );
+          },
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status: 404 },
+      ),
+    );
+    await expect(
+      assertProjectTemplateApproved(
+        client,
+        scope,
+        await project({ template: { version: "v1.0.7", commit: OLD } }),
+        1000,
+      ),
+    ).resolves.toBeUndefined();
+    expect(cancelled).toBe(true);
+  });
+
   test("fails open when the template-requirement stream exceeds 8 KiB or stalls past timeout", async () => {
     const client = new PlatformAPIClient(
       "https://dev-api.au.myenterprise.ai/public",

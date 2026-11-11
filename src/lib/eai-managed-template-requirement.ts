@@ -231,7 +231,10 @@ async function approvedTemplate(
       scope.environment,
       timeoutMs,
     );
-    if (!response.ok) return undefined;
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      return undefined;
+    }
     const text = await readManagedPublicResponseTextBounded(
       response,
       MAX_TEMPLATE_RESPONSE_BYTES,
