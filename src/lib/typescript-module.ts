@@ -1,6 +1,6 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { registerHooks } from 'node:module';
-import { dirname, extname, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, relative, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import ts from 'typescript';
@@ -32,7 +32,11 @@ function diagnosticText(diagnostic: ts.Diagnostic): string {
 /** Evaluate a fresh local module graph with compiler erasure and source-relative imports. */
 export async function importTypeScriptModule(filename: string, projectRoot: string): Promise<Record<string, unknown>> {
   const generation = randomUUID();
-  const configPath = ts.findConfigFile(dirname(filename), ts.sys.fileExists);
+  // Node resolves symlinks before invoking load hooks (including /var on macOS).
+  // Use that same filesystem identity for configuration lookup and containment.
+  const canonicalRoot = realpathSync(projectRoot);
+  const canonicalFilename = realpathSync(filename);
+  const configPath = ts.findConfigFile(dirname(canonicalFilename), ts.sys.fileExists);
   let compilerOptions: ts.CompilerOptions = {};
   if (configPath) {
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
@@ -41,11 +45,16 @@ export async function importTypeScriptModule(filename: string, projectRoot: stri
     // Missing framework plugins/types do not prevent transpiling a configuration module.
     compilerOptions = parsed.options;
   }
-  const ownedFile = (url: string): boolean => {
-    if (!url.startsWith('file:')) return false;
+  const ownedPath = (url: string): string | undefined => {
+    if (!url.startsWith('file:')) return undefined;
     const path = fileURLToPath(url);
-    return (path === resolve(projectRoot) || path.startsWith(`${resolve(projectRoot)}${sep}`))
-      && !path.split(sep).includes('node_modules');
+    let canonicalPath: string;
+    try { canonicalPath = realpathSync(path); }
+    catch { return undefined; }
+    const fromRoot = relative(canonicalRoot, canonicalPath);
+    if (fromRoot === '..' || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot)) return undefined;
+    if (path.split(sep).includes('node_modules') || canonicalPath.split(sep).includes('node_modules')) return undefined;
+    return canonicalPath;
   };
   const generationUrl = (url: string): string => {
     const value = new URL(url);
@@ -66,12 +75,12 @@ export async function importTypeScriptModule(filename: string, projectRoot: stri
         if (!match || match.resolvedFileName.endsWith('.d.ts')) throw error;
         resolved = { url: pathToFileURL(match.resolvedFileName).href, shortCircuit: true };
       }
-      return ownedFile(resolved.url) ? { ...resolved, url: generationUrl(resolved.url) } : resolved;
+      return ownedPath(resolved.url) ? { ...resolved, url: generationUrl(resolved.url) } : resolved;
     },
     load(url, context, nextLoad) {
-      if (!url.includes(`eaiObjectTypes=${generation}`) || !ownedFile(url)) return nextLoad(url, context);
-      const path = fileURLToPath(url);
-      if (!/\.[cm]?tsx?$/.test(extname(path))) return nextLoad(url, context);
+      if (!url.includes(`eaiObjectTypes=${generation}`)) return nextLoad(url, context);
+      const path = ownedPath(url);
+      if (!path || !/\.[cm]?tsx?$/.test(extname(path))) return nextLoad(url, context);
       const source = readFileSync(path, 'utf8');
       const result = ts.transpileModule(source, {
         fileName: path,
@@ -95,7 +104,7 @@ export async function importTypeScriptModule(filename: string, projectRoot: stri
     },
   });
   try {
-    return await importNativeModule(generationUrl(pathToFileURL(filename).href));
+    return await importNativeModule(generationUrl(pathToFileURL(canonicalFilename).href));
   } catch (error) {
     const rawDetail = error instanceof Error ? error.stack ?? error.message : String(error);
     const detail = rawDetail.replace(new RegExp(`[?&]eaiObjectTypes=${generation}`, 'g'), '');
@@ -104,9 +113,10 @@ export async function importTypeScriptModule(filename: string, projectRoot: stri
     if (frame) {
       const location = frame[0].replace(/:\d+:\d+$/, '');
       const sourceUrl = location.startsWith('file:') ? location : pathToFileURL(location).href;
-      if (ownedFile(sourceUrl)) {
+      const sourcePath = ownedPath(sourceUrl);
+      if (sourcePath) {
         try {
-          const line = readFileSync(fileURLToPath(sourceUrl), 'utf8').split(/\r?\n/)[Number(frame[1]) - 1];
+          const line = readFileSync(sourcePath, 'utf8').split(/\r?\n/)[Number(frame[1]) - 1];
           if (line !== undefined) snippet = `\n${line.slice(0, 1000)}\n${' '.repeat(Math.min(Number(frame[2]) - 1, 200))}^`;
         } catch { /* Retain the original failure when the source is no longer readable. */ }
       }
