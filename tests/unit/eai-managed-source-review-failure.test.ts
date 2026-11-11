@@ -165,6 +165,16 @@ describe('safe managed-source conflicts (Issues2025#3637)', () => {
     });
   });
 
+  test.each([
+    ['CLI_MANAGED_SOURCE_PREDECESSOR_AMBIGUOUS', 'More than one earlier failed EAI publish could be continued'],
+    ['CLI_MANAGED_REVIEW_FAILURE_LIMIT', 'reached the limit of failed EAI reviews'],
+  ])('maps %s to fixed support guidance', async (code, text) => {
+    await expect(responseOperation(json({ error: code, message: 'Upstream detail.' }, 409))).rejects.toMatchObject({
+      code,
+      message: expect.stringMatching(new RegExp(`${text}.*Contact EAI support with the app key; no source was uploaded\\.$`)),
+    });
+  });
+
   test('keeps unknown rejections generic', async () => {
     await expect(responseOperation(json(
       { error: 'CLI_MANAGED_SOURCE_UPSTREAM_REJECTED', message: 'The managed source request was rejected.' }, 409,
