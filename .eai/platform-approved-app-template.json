@@ -1,0 +1,53 @@
+{
+  "schema": "eai.platform_approved_app_template.v1",
+  "description": "Platform-approved generated-app template per Infra2025 environment and region. CI fails when resources/linked-sources.json drifts from these pins. Refresh from Infra2025 whenever either side changes (Issues2025#3574).",
+  "source": {
+    "repository": "enterpriseaigroup/Infra2025",
+    "ref": "b2ca67cd0d4c39155851208e0f2aee6dbded0052",
+    "verifiedAt": "2026-11-11",
+    "files": [
+      "config/app-config/dev-ae.json",
+      "config/app-config/test-ae.json",
+      "config/app-config/test-cc.json",
+      "config/app-config/test-gwc.json",
+      "config/app-config/prod-ae.json",
+      "config/app-config/prod-cc.json",
+      "config/app-config/prod-gwc.json"
+    ],
+    "keys": [
+      "ADMIN_EAI_GENERATED_APP_TEMPLATE_RUNTIME_COMMIT_SHA",
+      "EAI_GENERATED_APP_TEMPLATE_RUNTIME_COMMIT_SHA",
+      "EAI_GENERATED_APP_TEMPLATE_RUNTIME_VERSION"
+    ]
+  },
+  "environments": {
+    "dev-ae": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "test-ae": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "test-cc": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "test-gwc": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "prod-ae": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "prod-cc": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    },
+    "prod-gwc": {
+      "version": "v1.0.23",
+      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+    }
+  }
+}
