@@ -1,4 +1,4 @@
-import { PlatformAPIClient, awaitManagedRequestDeadline } from "./api.js";
+import { PlatformAPIClient, awaitManagedRequestDeadline, readManagedPublicResponseTextBounded } from "./api.js";
 import { getAccessToken } from "./auth.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
 import type { CliManagedSourceScope } from "./eai-managed-source-client-types.js";
@@ -7,6 +7,8 @@ import { isApprovedManagedPortalOrigin } from "./eai-managed-source-link-client.
 const OPERATION_ID = /^cli-managed-[a-f0-9]{32}$/;
 const RECOVERY_PATH = "/api/platform/generated-apps/cli-managed-source/managed-review-failure";
 export const MANAGED_REVIEW_FAILURE_CODE = "managed_review_checks_failed";
+// 20 checks of at most ~700 bytes each plus the envelope; anything larger is not a valid recovery result.
+const MAX_RECOVERY_RESPONSE_BYTES = 32 * 1024;
 
 export interface ManagedReviewFailedCheck {
   readonly name: string;
@@ -38,9 +40,9 @@ function portalMessage(body: string): string | undefined {
   }
 }
 
-// Check names come from the app's own workflows; strip terminal control sequences before printing.
-// eslint-disable-next-line no-control-regex -- matching control characters is the purpose.
-const CONTROL_CHARACTERS = /[\u0000-\u001f\u007f-\u009f]/g;
+// SECURITY: check names come from the app's own workflows; strip C0/DEL/C1 controls (Cc) and
+// bidi/zero-width format characters (Cf) before printing, as readableServerText does.
+const CONTROL_CHARACTERS = /[\p{Cc}\p{Cf}]/gu;
 const GITHUB_URL = /^https:\/\/github\.com\/[\x21-\x7e]{1,400}$/;
 
 function failedChecks(value: unknown): ManagedReviewFailedCheck[] | undefined {
@@ -57,6 +59,13 @@ function failedChecks(value: unknown): ManagedReviewFailedCheck[] | undefined {
       : undefined;
   });
   return checks.every(Boolean) ? (checks as ManagedReviewFailedCheck[]) : undefined;
+}
+
+function uncertainRecovery(operationId: string): ManagedSourceError {
+  return new ManagedSourceError(
+    "MANAGED_REVIEW_RECOVERY_UNCERTAIN",
+    `The recovery did not return a confirmed result. Run the same --recover-failed-review ${operationId} command again; it is safe to repeat.`,
+  );
 }
 
 /**
@@ -103,23 +112,30 @@ export async function recoverFailedCliManagedReview(
     });
   } catch (error) {
     if (error instanceof ManagedSourceError) throw error;
-    throw new ManagedSourceError(
-      "MANAGED_REVIEW_RECOVERY_UNCERTAIN",
-      `The recovery did not return a confirmed result. Run the same --recover-failed-review ${operationId} command again; it is safe to repeat.`,
-    );
+    throw uncertainRecovery(operationId);
   }
-  const body = await awaitManagedRequestDeadline(signal, response.text()).catch(() => "");
+  let body: string;
+  try {
+    // The Portal may already have acted, so a failed or timed-out body read is uncertain; an oversized body is empty.
+    body = (await awaitManagedRequestDeadline(
+      signal,
+      readManagedPublicResponseTextBounded(response, MAX_RECOVERY_RESPONSE_BYTES),
+    )) ?? "";
+  } catch {
+    throw uncertainRecovery(operationId);
+  }
   if (!response.ok) {
     throw new ManagedSourceError(
       response.status === 409 ? "MANAGED_REVIEW_RECOVERY_REFUSED" : "MANAGED_REVIEW_RECOVERY_UNAVAILABLE",
       portalMessage(body) ?? `The EAI review could not be recovered (${response.status}). Nothing else was changed.`,
     );
   }
-  let parsed: { operationId?: unknown; status?: unknown; error?: { code?: unknown; failedChecks?: unknown } };
+  let parsed: { operationId?: unknown; status?: unknown; error?: { code?: unknown; failedChecks?: unknown } } = {};
   try {
-    parsed = JSON.parse(body) as typeof parsed;
+    const value: unknown = JSON.parse(body);
+    if (value && typeof value === "object" && !Array.isArray(value)) parsed = value as typeof parsed;
   } catch {
-    parsed = {};
+    // An unreadable success body is handled as an uncertain result below.
   }
   const checks = failedChecks(parsed.error?.failedChecks);
   if (

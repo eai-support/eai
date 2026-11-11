@@ -79,6 +79,61 @@ describe('EAI-managed review failure recovery', () => {
     });
   });
 
+  test('strips Unicode format and bidi characters from check names', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({
+      operationId, status: 'failed',
+      error: { code: 'managed_review_checks_failed', failedChecks: [{ ...failedChecks[0], name: 'Validate\u202e\u200b\u2066 source\ufeff', conclusion: 'fail\u200dure' }] },
+    }));
+    const result = await recoverFailedCliManagedReview(client(), scope, operationId, portal);
+    expect(result.failedChecks[0]).toMatchObject({ name: 'Validate source', conclusion: 'failure' });
+  });
+
+  test.each(['null', '[]', '"failed"', '42'])('treats a successful non-object body %s as uncertain', async body => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(body, { status: 200 }));
+    await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
+      code: 'MANAGED_REVIEW_RECOVERY_UNCERTAIN',
+    });
+  });
+
+  test.each([200, 409, 503])('treats a failed body read after a %i response as uncertain', async status => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new TypeError('socket reset')); },
+    }), { status }));
+    await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
+      code: 'MANAGED_REVIEW_RECOVERY_UNCERTAIN',
+      message: expect.stringContaining(`--recover-failed-review ${operationId}`),
+    });
+  });
+
+  test('treats a body read that outlives the managed deadline as uncertain', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(new ReadableStream<Uint8Array>({
+      start() { /* never delivers */ },
+    }), { status: 409 }));
+    const managed = client();
+    const controller = new AbortController();
+    vi.spyOn(managed, 'managedSourceUploadSignal').mockReturnValue(controller.signal);
+    const pending = recoverFailedCliManagedReview(managed, scope, operationId, portal);
+    setTimeout(() => controller.abort(new Error('deadline')), 10);
+    await expect(pending).rejects.toMatchObject({ code: 'MANAGED_REVIEW_RECOVERY_UNCERTAIN' });
+  });
+
+  test('stops reading an oversized Portal response instead of buffering it', async () => {
+    let pulled = 0;
+    const chunk = new Uint8Array(16 * 1024).fill(0x20);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(new ReadableStream<Uint8Array>({
+      pull(controller) { pulled += 1; controller.enqueue(chunk); },
+    }), { status: 200 }));
+    await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
+      code: 'MANAGED_REVIEW_RECOVERY_UNCERTAIN',
+    });
+    expect(pulled).toBeLessThan(10);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('x'.repeat(1024 * 1024), { status: 409 }));
+    await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
+      code: 'MANAGED_REVIEW_RECOVERY_REFUSED',
+      message: 'The EAI review could not be recovered (409). Nothing else was changed.',
+    });
+  });
+
   test('treats a mismatched result as uncertain', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(json({
       operationId: 'cli-managed-' + 'f'.repeat(32), status: 'failed', error: { code: 'managed_review_checks_failed', failedChecks },
