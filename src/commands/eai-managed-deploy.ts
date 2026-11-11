@@ -28,6 +28,7 @@ import {
   resumeManagedSource,
 } from "./eai-managed-deploy-managed-source.js";
 import { printFailure } from "./eai-managed-deploy-output.js";
+import { recoverFailedManagedReview } from "./eai-managed-deploy-review-failure.js";
 import { readUnifiedExactOperation } from "./eai-managed-deploy-operation.js";
 import {
   resumeCustomerSource,
@@ -87,6 +88,10 @@ export const eaiManagedDeployCommand = new Command("app")
     "Retry evidence handoff, resume dispatched work, or start an undispatched operation",
   )
   .option(
+    "--recover-failed-review <operation-id>",
+    "Close an EAI-maintained review whose required checks failed so the next publish can open a new review",
+  )
+  .option(
     "--wait",
     "Poll the exact operation until it reaches a terminal status",
     true,
@@ -111,6 +116,7 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --environment preview --source eai-managed --resume cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
+  $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --recover-failed-review cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 `,
   )
   .action(async (appKeyValue: string, options: ManagedDeployOptions, command: Command) => {
@@ -124,6 +130,7 @@ Examples:
         timeoutSeconds,
         resumeOperationId,
         retryOperationId,
+        recoverReviewOperationId,
       } = validateManagedDeployInput(appKeyValue, options);
       const recoveryOperationId = resumeOperationId || retryOperationId;
       const retryAuthority = retryOperationId
@@ -173,6 +180,11 @@ Examples:
         retryState,
         missingCliSourceRetryAuthority: Boolean(retryOperationId && !retryAuthority),
       };
+
+      if (recoverReviewOperationId) {
+        await recoverFailedManagedReview(execution, recoverReviewOperationId);
+        return;
+      }
 
       let recoverySource = options.source;
       if (recoveryOperationId) {

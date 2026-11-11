@@ -191,6 +191,7 @@ const EAI_MANAGED_DEPLOY_FLAGS = [
   '--commit',
   '--resume',
   '--retry',
+  '--recover-failed-review',
   '--wait',
   '--no-wait',
   '--timeout',

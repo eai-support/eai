@@ -408,6 +408,7 @@ const SMOKE_CALLS = {
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --source eai-managed --environment preview --resume <managed-operation-id> --wait --format json',
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --resume <operation-id> --wait --format json',
     'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <target-tenant-id> --retry <operation-id> --no-wait --format json',
+    'eai deploy app <app-key> --target eai --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --recover-failed-review <managed-operation-id> --format json',
   ],
   'eai deploy source move': [
     'eai deploy source move <app-key> --tenant-id <tenant-id> --target-tenant-id <runtime-tenant-id> --environment preview --source-operation <cli-managed-operation-id> --no-open --format json',

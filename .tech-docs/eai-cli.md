@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.10 |
-| Released | 2026-11-05 |
-| Last Material Change | Add eai login --switch-account for EAI Setup account switching |
-| Source Commit | `70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea` |
+| Version | 3.20.12 |
+| Released | 2026-11-11 |
+| Last Material Change | Recover EAI-maintained reviews whose required checks failed and explain active-publish conflicts |
+| Source Commit | `a4890da7eaf118e15bd813618209d128427507de` |
 
 
 ## Install

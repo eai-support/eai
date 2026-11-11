@@ -214,10 +214,35 @@ export function classifyCliManagedSourceOperation(
 }
 
 /** Publication parsing retains the request deadline through response-body consumption. */
+/** PublicAPI passes only these exact AdminAPI conflicts through (Issues2025#3637). */
+const SAFE_CONFLICT_GUIDANCE: Readonly<Record<string, string>> = {
+  CLI_MANAGED_SOURCE_OPERATION_ACTIVE:
+    "An earlier EAI-maintained publish for this app is still active. Check it with --resume <operation-id>; if its EAI review checks failed, run --recover-failed-review <operation-id>, then publish again. The operation ID is in the earlier publish output and in ~/.eai/managed-deployments.",
+  CLI_MANAGED_SOURCE_PREDECESSOR_AMBIGUOUS:
+    "More than one earlier failed EAI publish could be continued, so EAI cannot choose one safely. Contact EAI support with the app key; no source was uploaded.",
+  CLI_MANAGED_REVIEW_FAILURE_LIMIT:
+    "This app has reached the limit of failed EAI reviews that can be recovered automatically. Contact EAI support with the app key; no source was uploaded.",
+};
+
+async function safeConflict(response: Response): Promise<ManagedSourceError | undefined> {
+  if (response.status !== 409) return undefined;
+  try {
+    const body = await readManagedPublicResponseText(response);
+    if (body.length > 1024) return undefined;
+    const parsed = JSON.parse(body) as { error?: unknown };
+    const guidance = typeof parsed.error === "string" ? SAFE_CONFLICT_GUIDANCE[parsed.error] : undefined;
+    return guidance ? new ManagedSourceError(parsed.error as string, guidance) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 export async function responseOperation(
   response: Response,
 ): Promise<CliManagedSourceOperation> {
   if (!response.ok) {
+    const conflict = await safeConflict(response);
+    if (conflict) throw conflict;
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UNAVAILABLE",
       `Managed source operation is unavailable (${response.status}). Repair the platform operation or app-source access, then retry the exact operation.`,
