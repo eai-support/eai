@@ -68,6 +68,15 @@ jobs:
         if: steps.drift.outputs.changed == 'true'
         run: |
           npm run build
+          npm run verify:managed-deploy-producer:release
+          # Tests verify the prepared archive against this package version and
+          # current runtime bytes, so refresh it before running those tests.
+          npm pack --ignore-scripts
+          node scripts/generate-registry.cjs
+          npm run docs:error-guidance
+          npm run docs:release-assets
+          npm run docs:experience-assets
+          node scripts/verify-docs-publication.cjs --prepared-source
           npm run lint
           npm run typecheck
           npm run test
@@ -99,7 +108,7 @@ jobs:
           VERSION="${{ env.next_version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .gofer-version package.json package-lock.json resources/linked-sources.json resources/gofer/
+          git add .gofer-version package.json package-lock.json resources/linked-sources.json resources/gofer/ resources/deploy/eai-app-template/ .tech-docs/error-guidance.md docs-site/static/registry/ docs-site/static/llms.txt docs-site/static/llms-full.txt docs-site/static/cli-help.txt docs-site/static/error-guidance.json docs-site/static/docs-search-index.json docs-site/static/docs-capabilities.json
           git commit -m "chore: sync linked sources for v${VERSION}"
           git tag "v${VERSION}"
           git push origin HEAD:main --follow-tags

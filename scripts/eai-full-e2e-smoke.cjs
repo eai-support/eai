@@ -101,6 +101,7 @@ const TRACEABILITY_BASE = [
   ['eai workflow status', 'read', 'live-optional', 'Runs for the exact workflow created by EAI_E2E_WORKFLOW_PROVISION=1; failures are not ignored.'],
   ['eai workflow request', 'create', 'covered-by-cli', 'Controlled command tests; operator request creation has no verified run-owned teardown.'],
   ['eai docs upload', 'create', 'covered-by-cli', 'Controlled command tests only; optional lifecycle submits once through classify.'],
+  ['eai kb upload', 'create/update', 'covered-by-cli', 'Owning tests cover resolved regional KB create/upload/committed-file-readback/index and pending or uncertain acknowledgements; this runner does not submit KB files or claim live indexing.'],
   ['eai docs configure-type', 'create/update', 'covered-by-cli', 'Owning command tests verify bounded tenant scope, provider status, analyzer readback and runtime sync. Manual DEV qualification is separate from this runner.'],
   ['eai docs classify', 'read/create', 'covered-by-cli', 'Controlled lifecycle helper tests use EAI_E2E_DOCS_TENANT_ID, EAI_E2E_DOCS_VERTICAL_KEY, EAI_E2E_DOCS_WORKFLOW_KEY, EAI_E2E_DOCS_FILE and EAI_E2E_DOCS_EXPECTED_TYPE. Full runner blocks EAI_E2E_DOCS=1 until a published business-document fixture can be created and verified in its isolated child.'],
   ['eai content-understanding schema', 'read-local', 'covered-by-cli', 'Local JSON schema is tested without a profile, token or network; schema describes semantic limits and does not imply deployed readiness.'],
@@ -537,6 +538,21 @@ const DOCUMENT_CONTEXT_OPTION_DECISIONS = {
 };
 
 const OPTION_DECISIONS = {
+  'eai login': {
+    '--switch-account': 'Interrupts single sign-on so the browser shows its account picker; the dedicated test profile signs in once and must not be asked to choose an account.',
+  },
+  'eai kb upload': {
+    '--tenant-id': 'Owning tests require exact workspace scope and same-environment regional session routing before mutation.',
+    '--title': 'Optional KB title is forwarded through the existing Portal resource contract; no live KB mutation in this runner.',
+    '--document-type': 'Optional KB category uses the existing record model; no schema or classification change.',
+    '--content-type': 'Owning MIME controls reject header injection and preserve PDF or Word upload media types.',
+    '--tag': 'Repeatable KB search tags are record metadata; retrieval acceptance remains separate.',
+    '--visible-to-children': 'Explicit descendant visibility remains off by default; this runner does not publish a KB document.',
+    '--format': 'Owning JSON controls retain failed, uncertain, pending and indexed outcomes without raw provider output.',
+  },
+  'eai resources file upload': {
+    '--content-type': 'Owning file transport tests use shared filename MIME inference or a validated explicit media type without changing bytes.',
+  },
   'eai app delete': {
     '--target-tenant-id': 'Parent-owned runtime-child cleanup is covered by exact plan/query/body and receipt integration tests; the live smoke uses a dedicated same-workspace app.',
   },

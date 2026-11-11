@@ -593,6 +593,18 @@ node .specify/scripts/node/generate-issues.js "$FEATURE_DIR"
 
 This creates `{FEATURE_DIR}/issues.md` with GitHub-ready issue definitions.
 
+### 6.1 Name each issue by the outcome needed
+
+Read `.specify/references/issue-and-pr-titles.md`.
+
+Replace the generated title placeholder before you open the issue. An issue describes the outcome needed:
+
+`Prevent [risk] for [user or system] by [needed capability]`
+
+Example from Issues2025 #3375: Prevent broken EAI app data links caused by inconsistent Object Type slugs.
+
+Keep the title concise and in business language. Use a prefix such as `CURATE:` only when it helps identify a programme. The prefix should not replace the outcome.
+
 ### 6.5 Update Working Backwards PR/FAQ Delivery Plan
 
 Before implementation:

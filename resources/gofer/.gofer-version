@@ -1,7 +1,8 @@
 {
-  "commit": "965833ad06c5bed1c76b2e493891036449e67561",
-  "describe": "v3.14.3",
-  "source": "https://github.com/eai-support/eai-gofer.git@v3.14.3",
+  "commit": "4edac9afba6c61f85e53eecfbfd5d58e2e7beee7",
+  "describe": "4edac9a",
+  "version": "3.14.5",
+  "source": "https://github.com/eai-support/eai-gofer.git@4edac9afba6c61f85e53eecfbfd5d58e2e7beee7",
   "dirty": false,
-  "synced_at": "2026-10-08T00:06:30Z"
+  "resourceTreeSha256": "sha256:1076e8ddc2dc34e071f0a390fe7835889ca29e57833afb19198f39ef22adc539"
 }

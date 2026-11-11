@@ -413,7 +413,7 @@ describe('eai deploy app --target eai', () => {
       },
     });
     expect(requests.find(url => url.includes('/template-requirement?'))).toBe(
-      `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/cli-managed-source/template-requirement?targetTenantId=${TENANT_ID}`,
+      `${API_BASE}/v4/platform/tenants/${TENANT_ID}/apps/planning-portal/cli-managed-source/template-requirement?targetTenantId=${TENANT_ID}&environment=preview`,
     );
     expect(requests.some(url => url.includes('/github-link-sessions') || url.endsWith('/preparations'))).toBe(false);
   });

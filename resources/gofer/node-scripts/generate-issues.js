@@ -134,7 +134,9 @@ function generateIssue(issueNumber, task, featureName, featureId) {
 
 **Labels**: \`${labels.join('`, `')}\`
 **Assignees**: @MikeNowosadko
-**Title**: [Feature]: ${taskId} - ${description}
+**Title**: Prevent [risk] for [user or system] by [needed capability]
+
+Replace this placeholder before you open the issue. Read .specify/references/issue-and-pr-titles.md.
 
 ### Screen described (Mike)
 

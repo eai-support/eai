@@ -31,6 +31,7 @@ type ResourceWhere = Record<string, unknown>;
 
 const PUBLIC_AI_PATH = '/v4/ai';
 const PUBLIC_DATA_DOCUMENTS_PATH = '/v4/data/documents';
+const PUBLIC_DATA_KNOWLEDGE_BASE_PATH = '/v4/data/knowledge-base';
 const PUBLIC_DATA_RESOURCES_PATH = '/v4/data/resources';
 const PUBLIC_GEO_PATH = '/v4/geo';
 const PUBLIC_IDENTITY_PATH = '/v4/identity';
@@ -98,6 +99,68 @@ export async function readManagedPublicResponseText(response: Response): Promise
   }
 }
 
+/**
+ * Stream-limit a managed response body to `maxBytes` UTF-8 bytes before buffering;
+ * cancels and returns `undefined` on overflow while retaining the managed timeout reason.
+ */
+export async function readManagedPublicResponseTextBounded(
+  response: Response,
+  maxBytes: number,
+): Promise<string | undefined> {
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 0) {
+    throw new RangeError('Managed response byte limit must be a non-negative safe integer.');
+  }
+  const signal = managedResponseSignals.get(response);
+  const readBounded = async (): Promise<string | undefined> => {
+    const declaredLength = response.headers.get('content-length');
+    if (declaredLength !== null && declaredLength.trim() !== '') {
+      const parsedLength = Number(declaredLength);
+      if (Number.isFinite(parsedLength) && parsedLength > maxBytes) {
+        await response.body?.cancel().catch(() => undefined);
+        return undefined;
+      }
+    }
+    if (!response.body) {
+      const text = await response.text();
+      return Buffer.byteLength(text, 'utf8') <= maxBytes ? text : undefined;
+    }
+    const reader = response.body.getReader();
+    const cancelOnAbort = (): void => {
+      void reader.cancel(signal?.reason).catch(() => undefined);
+    };
+    signal?.addEventListener('abort', cancelOnAbort, { once: true });
+    const chunks: Uint8Array[] = [];
+    let totalBytes = 0;
+    let overflowed = false;
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value || value.byteLength === 0) continue;
+        totalBytes += value.byteLength;
+        if (totalBytes > maxBytes) {
+          overflowed = true;
+          await reader.cancel().catch(() => undefined);
+          return undefined;
+        }
+        chunks.push(value);
+      }
+      return Buffer.concat(chunks, totalBytes).toString('utf8');
+    } finally {
+      signal?.removeEventListener('abort', cancelOnAbort);
+      if (!overflowed) {
+        try { reader.releaseLock(); } catch { /* already released or cancelled */ }
+      }
+    }
+  };
+  try {
+    return signal ? await awaitManagedRequestDeadline(signal, readBounded()) : await readBounded();
+  } catch (error) {
+    if (signal?.aborted && isManagedPublicRequestTimeout(signal.reason)) throw signal.reason;
+    throw error;
+  }
+}
+
 export function probePublicApiReachability(baseUrl: string, timeoutMs: number): Promise<Response> {
   const authorized = captureProfileConfig(getActiveProfile())?.managedDeploymentApiUrl !== undefined;
   const endpoint = authorized ? requireManagedPublicApiUrl(baseUrl) : baseUrl;
@@ -143,6 +206,35 @@ export interface PublicApiRequestOptions {
   method?: PlatformMethod;
   body?: unknown;
   params?: Record<string, unknown>;
+}
+
+/** Resolve file media types for resource and document uploads; never accept header parameters or newlines. */
+export function resolveUploadContentType(filePath: string, contentType?: string): string {
+  if (contentType !== undefined) {
+    if (contentType.length > 255 || !/^[a-z0-9][a-z0-9!#$&^_.+-]*\/[a-z0-9][a-z0-9!#$&^_.+-]*$/i.test(contentType)) {
+      throw new Error('Content type must be a MIME type such as application/pdf, without parameters.');
+    }
+    return contentType;
+  }
+  const extension = filePath.toLowerCase().slice(filePath.lastIndexOf('.'));
+  const contentTypes: Record<string, string> = {
+    '.csv': 'text/csv',
+    '.doc': 'application/msword',
+    '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    '.gif': 'image/gif',
+    '.jpeg': 'image/jpeg',
+    '.jpg': 'image/jpeg',
+    '.json': 'application/json',
+    '.md': 'text/markdown',
+    '.pdf': 'application/pdf',
+    '.png': 'image/png',
+    '.txt': 'text/plain',
+    '.webp': 'image/webp',
+    '.xls': 'application/vnd.ms-excel',
+    '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    '.xml': 'application/xml',
+  };
+  return contentTypes[extension] ?? 'application/octet-stream';
 }
 
 /**
@@ -875,7 +967,10 @@ function normalizePublicApiV4Path(path: string): string {
     throw new Error('Only PublicAPI V4 paths are supported. Start the path with /v4/.');
   }
 
-  const allowed = PUBLIC_API_V4_PATH_PREFIXES.some((prefix) => (
+  const knowledgeBasePath = normalized.split('?')[0];
+  const mountedKnowledgeBasePath = !normalized.includes('#') && ['documents', 'reconcile', 'resolve', 'reindex', 'deindex', 'delete']
+    .some(action => knowledgeBasePath === `${PUBLIC_DATA_KNOWLEDGE_BASE_PATH}/${action}`);
+  const allowed = mountedKnowledgeBasePath || PUBLIC_API_V4_PATH_PREFIXES.some((prefix) => (
     normalized === prefix || normalized.startsWith(`${prefix}/`)
   ));
   if (!allowed) {
@@ -1121,7 +1216,11 @@ export class PlatformAPIClient {
     const observation = Object.freeze({ publicApiUrl: this.baseUrl.replace(/\/$/, ''), tenantId,
       proofKind: 'transport-response' as const });
     // SECURITY: an explicitly authorized private gateway cannot redirect its credentials to another destination.
-    const response = await fetch(url, this.profileAuthorizedGateway ? { ...options, redirect: 'error' } : options);
+    const response = await fetch(url, this.profileAuthorizedGateway
+      ? { ...options, redirect: 'error' }
+      : this.requestOptions.publicRequestRedirect
+        ? { ...options, redirect: options.redirect ?? this.requestOptions.publicRequestRedirect }
+        : options);
     // A redirected, foreign or reused response handle cannot identify this
     // invocation, even if an earlier request once qualified the same handle.
     const observed = safeGateway && !response.redirected && (!response.url || response.url === new URL(url).href)
@@ -1649,13 +1748,15 @@ export class PlatformAPIClient {
     id: string,
     propertyName: string,
     filePath: string,
+    contentType?: string,
   ): Promise<Response> {
+    const mediaType = resolveUploadContentType(filePath, contentType);
     const { readFile } = await import('node:fs/promises');
     const { basename } = await import('node:path');
     const normalizedObjectType = toObjectTypeSlug(objectType);
     const content = await readFile(filePath);
     const h = await this.headers();
-    h['Content-Type'] = 'application/octet-stream';
+    h['Content-Type'] = mediaType;
 
     const filename = encodeURIComponent(basename(filePath));
     return this.fetchPublic(
@@ -1833,25 +1934,7 @@ export class PlatformAPIClient {
   // --------------- Documents ---------------
 
   private inferUploadContentType(filePath: string): string {
-    const extension = filePath.toLowerCase().slice(filePath.lastIndexOf("."));
-    const contentTypes: Record<string, string> = {
-      ".csv": "text/csv",
-      ".doc": "application/msword",
-      ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ".gif": "image/gif",
-      ".jpeg": "image/jpeg",
-      ".jpg": "image/jpeg",
-      ".json": "application/json",
-      ".md": "text/markdown",
-      ".pdf": "application/pdf",
-      ".png": "image/png",
-      ".txt": "text/plain",
-      ".webp": "image/webp",
-      ".xls": "application/vnd.ms-excel",
-      ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      ".xml": "application/xml",
-    };
-    return contentTypes[extension] ?? "application/octet-stream";
+    return resolveUploadContentType(filePath);
   }
 
   private async uploadDocumentBatch(
@@ -2092,10 +2175,19 @@ export class PlatformAPIClient {
   }
 
   /** Read this environment's approved app template pin; callers must fail open when it is unavailable. */
-  async getCliManagedTemplateRequirement(tenantId: string, appKey: string, targetTenantId: string, timeoutMs?: number): Promise<Response> {
+  async getCliManagedTemplateRequirement(
+    tenantId: string,
+    appKey: string,
+    targetTenantId: string,
+    environment: CliManagedGithubLinkRequest['environment'],
+    timeoutMs?: number,
+  ): Promise<Response> {
     if (!isManagedScopeIdentifier(targetTenantId)) throw new Error('Managed source target must be a safe path identifier.');
+    if (environment !== 'preview' && environment !== 'dev' && environment !== 'test' && environment !== 'prod') {
+      throw new Error('Managed source environment must be preview, dev, test, or prod.');
+    }
     return this.managedPublicRequest(
-      `${this.cliManagedSourcePath(tenantId, appKey)}/template-requirement?targetTenantId=${encodeURIComponent(targetTenantId)}`,
+      `${this.cliManagedSourcePath(tenantId, appKey)}/template-requirement?targetTenantId=${encodeURIComponent(targetTenantId)}&environment=${encodeURIComponent(environment)}`,
       'GET', undefined, { timeoutMs },
     );
   }

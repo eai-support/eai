@@ -230,24 +230,45 @@ export function formatErrorJSON(
 }
 
 /**
+ * Retained identifiers and allowlisted upstream HTTP diagnostics added beside
+ * the pinned envelope keys. Callers must never pass upstream bodies here.
+ */
+export interface ErrorExitDiagnostics {
+  readonly operationId?: string;
+  readonly status?: number;
+  readonly serverCode?: string;
+  readonly requestId?: string;
+}
+
+const DIAGNOSTIC_TEXT_LABELS: Record<keyof ErrorExitDiagnostics, string> = {
+  status: 'HTTP status',
+  serverCode: 'Server code',
+  requestId: 'Request ID',
+  operationId: 'Operation ID',
+};
+
+/**
  * Exit with error (text or JSON format)
  */
 export function exitWithError(
   code: ErrorCode,
   context?: Record<string, string>,
   format?: 'text' | 'json',
-  retainedOperationId?: string,
+  diagnostics: ErrorExitDiagnostics = {},
 ): never {
   recordSupportError({ code, message: formatError(code, context) });
+  const present = (Object.keys(DIAGNOSTIC_TEXT_LABELS) as Array<keyof ErrorExitDiagnostics>)
+    .filter(key => diagnostics[key] !== undefined && diagnostics[key] !== '');
   if (format === 'json') {
     const envelope = formatErrorJSON(code, context) as { error: Record<string, unknown> };
-    if (retainedOperationId) envelope.error.operationId = retainedOperationId;
-    console.error(JSON.stringify(redactSupportBundle(envelope), null, 2));
+    const fields = Object.fromEntries(present.map(key => [key, diagnostics[key]]));
+    console.error(JSON.stringify(redactSupportBundle({ error: { ...envelope.error, ...fields } }), null, 2));
   } else {
     // Import error symbol only when needed (avoids circular dependency)
     const errorSymbol = '✗';
     const errorMessage = redactSupportText(formatError(code, context));
-    console.error(`${errorSymbol} ${errorMessage}${retainedOperationId ? `\n\nOperation ID: ${retainedOperationId}` : ''}`);
+    const lines = present.map(key => `${DIAGNOSTIC_TEXT_LABELS[key]}: ${diagnostics[key]}`);
+    console.error(`${errorSymbol} ${errorMessage}${lines.length ? `\n\n${redactSupportText(lines.join('\n'))}` : ''}`);
   }
 
   process.exit(1);

@@ -4,6 +4,51 @@
     "eai": {
       "features": [
         {
+          "id": "knowledge-base-upload-index",
+          "description": "Tenant-explicit Knowledge Base uploads resolve a known same-environment regional API, share general filename MIME inference with resource files, enforce the KB-specific AICore extraction type contract before mutation, preserve the existing record/upload/committed-metadata-readback/reindex contract, and retain truthful pending/failed/unknown outcomes without replay or deletion. Exact identity-bound unsupported-type results reuse the existing fixed MIME guidance without exposing provider text or retrying. Markdown .md/.markdown filenames use canonical text/markdown, filename-limited empty/octet/plain fallback and explicit alias normalization; strict nonempty UTF-8 preflight preserves original bytes and file metadata without changing general resource/document or typed-CU policies.",
+          "owned_paths": [
+            "src/commands/knowledge-base.ts",
+            "src/commands/resources.ts",
+            "src/commands/publicapi.ts",
+            "src/lib/api.ts",
+            "src/index.ts",
+            "tests/integration/knowledge-base.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "README.md",
+            ".tech-docs/api-reference.md",
+            ".tech-docs/eai-cli.md",
+            "scripts/generate-release-docs.cjs",
+            "scripts/eai-full-e2e-smoke.cjs",
+            "tests/integration/resources.test.ts",
+            ".tech-docs/full-e2e-smoke-traceability.md",
+            "scripts/audit-cli-backend.cjs",
+            "tests/fixtures/kb-extraction-content-types.json",
+            "tests/fixtures/kb-supported-word.docx",
+            "tests/unit/knowledge-base-content-type.test.ts",
+            ".eai/srp-acceptance.json"
+          ],
+          "required_repo_tests": [
+            "tests/integration/knowledge-base.test.ts",
+            "tests/integration/publicapi.test.ts",
+            "tests/integration/resources-command.test.ts",
+            "tests/integration/platform-api-client.test.ts",
+            "tests/integration/docs-classify.test.ts",
+            "tests/integration/describe-contract.test.ts",
+            "tests/integration/resources.test.ts",
+            "tests/integration/full-e2e-smoke.test.ts",
+            "tests/integration/cli-backend-audit.test.ts",
+            "tests/integration/publicapi-v4-only.test.ts",
+            "tests/unit/knowledge-base-content-type.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
+          ],
+          "required_cross_service_surfaces": [
+            "backend"
+          ],
+          "required_deployed_contracts": []
+        },
+        {
           "id": "bounded-content-understanding",
           "description": "Local declarative typed-field validation, exact workspace typed/flat and advanced capability gates, canonical original-operation UUID recovery, safe API/auth errors, and ambiguity-safe camel/snake document job/result reads. Deployed readiness and release publication remain separately gated.",
           "owned_paths": [
@@ -32,7 +77,6 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "backend"
           ],
           "required_deployed_contracts": []
@@ -63,7 +107,6 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "backend"
           ],
           "required_deployed_contracts": []
@@ -87,7 +130,6 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "backend"
           ],
           "required_deployed_contracts": []
@@ -154,7 +196,6 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "backend"
           ],
           "required_deployed_contracts": [
@@ -166,7 +207,7 @@
         },
         {
           "id": "eai-cli-command-contracts",
-          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and deployed read-only CLI smoke. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged. Exact scoped local setup preserves existing credentials; optional create-local-secret requires enrolled-app/runtime access and exact issuer app/client/tenant proof. Private cooperative lock and pending/issued journal refuse uncertain automatic reissue, recover saved issuance, and require explicit reissue-local-secret consent. Existing deployed command schema and anonymous provisioning denial canaries cover the additive contract. Complete Object Type exports validate every page and compare two scans before atomic output replacement; legacy read DTOs remain lossless. Entra rotation binds the exact app and surfaces safe classified outcomes without repeating mutations. App inventory rejects malformed success payloads. Explicitly unsupported capabilities fail before authentication or network access. Explicit PublicAPI tenant UUIDs use the selected profile and gateway without local tenant-admin discovery or saved selection writes; backend authorization and exact HTTP failure status remain authoritative. Implicit workspace selection retains its existing resolver. Inline init and standalone provision entra share defensive scope validation and quoted persistence for both new and existing registrations; empty legacy metadata preserves the scaffold scopes. Controlled init integration covers the same app/client/secret and Auth URL invariants without provider permission changes. Returned scopes use a bounded OAuth token subset that refuses dollar signs because Next expands dotenv variables. Actual Next and plain dotenv loaders verify identical accepted scopes, including literal hash characters; malformed metadata cannot patch credentials, hydrate secrets or inject environment keys. The actual provisioning response adapter rejects every malformed present scope field or array member without filtering; absent scope metadata retains legacy empty-array behavior, with real-client init and provision coverage before credential writes, cloud secret hydration or local credential issuance. Provision loader controls compare actual Next, dotenv and CLI readers, preserving literal hash characters and empty legacy scopes.",
+          "description": "CLI command contracts, including safe immediate child workspace admission errors and synchronous existing-child reuse, local stack compatibility, and owner-native command/transport checks. Scoped app sign-in setup verifies the exact complete enrollment and fresh runtime workspace membership, preserves existing credentials without rotation, and retains private local callback settings. Existing PublicAPI enrollment, membership and provisioning wire contracts are unchanged. Exact scoped local setup preserves existing credentials; optional create-local-secret requires enrolled-app/runtime access and exact issuer app/client/tenant proof. Private cooperative lock and pending/issued journal refuse uncertain automatic reissue, recover saved issuance, and require explicit reissue-local-secret consent. Existing owner-native command schema and anonymous provisioning denial contracts cover the additive contract. Complete Object Type exports validate every page and compare two scans before atomic output replacement; legacy read DTOs remain lossless. Entra rotation binds the exact app and surfaces safe classified outcomes without repeating mutations. App inventory rejects malformed success payloads. Explicitly unsupported capabilities fail before authentication or network access. Explicit PublicAPI tenant UUIDs use the selected profile and gateway without local tenant-admin discovery or saved selection writes; backend authorization and exact HTTP failure status remain authoritative. Implicit workspace selection retains its existing resolver. Inline init and standalone provision entra share defensive scope validation and quoted persistence for both new and existing registrations; empty legacy metadata preserves the scaffold scopes. Controlled init integration covers the same app/client/secret and Auth URL invariants without provider permission changes. Returned scopes use a bounded OAuth token subset that refuses dollar signs because Next expands dotenv variables. Actual Next and plain dotenv loaders verify identical accepted scopes, including literal hash characters; malformed metadata cannot patch credentials, hydrate secrets or inject environment keys. The actual provisioning response adapter rejects every malformed present scope field or array member without filtering; absent scope metadata retains legacy empty-array behavior, with real-client init and provision coverage before credential writes, cloud secret hydration or local credential issuance. Provision loader controls compare actual Next, dotenv and CLI readers, preserving literal hash characters and empty legacy scopes.",
           "config_keys": [
             "BASE_URL_PUBLIC_API",
             "ROUTING_BOOTSTRAP_PUBLIC_API_URL"
@@ -187,7 +228,9 @@
             "scripts/smoke-resourceapi-schema-sync-lifecycle.sh",
             "release.sh",
             "resources/**",
-            "package.json"
+            "package.json",
+            "scripts/lib/gofer-bundle-identity.cjs",
+            ".github/workflows/sync-linked-sources.yml"
           ],
           "required_repo_tests": [
             "tests/integration/login.test.ts",
@@ -234,34 +277,20 @@
           "required_ci_checks": [
             "ci/eai-cli-tests"
           ],
-          "required_cross_service_surfaces": [
-            "eai-cli"
-          ],
-          "required_deployed_contracts": [
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
-            },
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
-            },
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/smoke/eai-cli/smoke.spec.ts"
-            }
-          ],
+          "required_cross_service_surfaces": [],
+          "required_deployed_contracts": [],
           "intentional_skipped_tests": [
             {
               "path": "eai-testing-dev deployed eai types seed -> ResourceAPI schema-sync handoff",
               "reason": "This mutates tenant Object Type metadata and ResourceAPI runtime schema; eai-cli integration tests cover the command contract until a stable disposable deployed fixture exists.",
               "owner": "eai-cli"
             }
-          ]
+          ],
+          "ci_only": true
         },
         {
           "id": "eai-cli-app-delete",
-          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt.",
+          "description": "The CLI obtains the immutable V4 deletion plan, requires exact app-key confirmation, invokes the verified deletion saga, and emits the machine-readable cleanup receipt. Request and response-body failures emit safe E203 JSON/text errors without retrying deletion or exposing transport details. HTTP failures discard upstream messages and status text while retaining HTTP status, allowlisted server codes, and validated request IDs.",
           "owned_paths": [
             ".eai/test-coverage.json",
             "src/commands/vertical.ts",
@@ -274,7 +303,6 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "publicapi-platform"
           ],
           "required_deployed_contracts": [
@@ -286,7 +314,7 @@
         },
         {
           "id": "eai-cli-managed-tenantinfra-deploy",
-          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate. Explicit deploy source authorize-commit records linked-customer exact-commit consent after provider verification, without uploaded bundle bytes or a GitHub approved-review claim; ordinary bundle publication and source-unknown paths remain unchanged. EAI-maintained deploys read the approved app template pin through regional PublicAPI before the GitHub link step and stop an outdated project with TEMPLATE_VERSION_NOT_APPROVED (fail open when the read is unavailable); managed-source operation errors print the server code, message and details; CI fails when the bundled template drifts from the checked-in platform-approved pins (Issues2025#3574).",
+          "description": "The CLI binds immutable repository evidence, prepares source-bound runtime identity before dispatch, submits canonical collector proof, and retries accepted evidence through the exact deployment handoff without reusing a consumed nonce. Embedded producer verification requires direct-dispatch local tunnel inputs; the installed collector binds local DEV/preview dispatch to the original operation and expiry while retaining the immutable producer release gate. The selected immutable template release identity uses its exact canonical evidence-test bytes while the CLI keeps its legitimate four-file fixture. Explicit deploy source authorize-commit records linked-customer exact-commit consent after provider verification, without uploaded bundle bytes or a GitHub approved-review claim; ordinary bundle publication and source-unknown paths remain unchanged. EAI-maintained deploys read the approved app template pin through regional PublicAPI before the GitHub link step and stop an outdated project with TEMPLATE_VERSION_NOT_APPROVED (fail open when the read is unavailable); managed-source operation errors print the server code, message and details; CI fails when the bundled template drifts from the checked-in platform-approved pins (Issues2025#3574).",
           "owned_paths": [
             ".eai/test-coverage.json",
             "docs-site/static/cli-help.txt",
@@ -295,6 +323,7 @@
             "package.json",
             "package-lock.json",
             "resources/deploy/eai-app-template/**",
+            "resources/linked-sources.json",
             "scripts/verify-managed-deploy-producer-pin.cjs",
             "scripts/eai-full-e2e-smoke.cjs",
             "src/commands/deploy.ts",
@@ -358,19 +387,13 @@
             "ci/eai-cli-tests"
           ],
           "required_cross_service_surfaces": [
-            "eai-cli",
             "backend"
           ],
-          "required_deployed_contracts": [
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/eai-managed-deploy.spec.ts"
-            }
-          ]
+          "required_deployed_contracts": []
         },
         {
           "id": "eai-cli-static-release-registry",
-          "description": "Release preparation stages every encoded packument alias from the canonical Git blob; the docs build emits the same bytes at each public fallback path without case-colliding during compilation.",
+          "description": "Release preparation stages every encoded packument alias from the canonical Git blob; the docs build emits the same bytes at each public fallback path without case-colliding during compilation. Scheduled linked-source refresh prepares matching package/lockfile, producer, Gofer identity, registry archives and release docs before native validation; this preparation does not establish npm or Docs publication.",
           "owned_paths": [
             "release.sh",
             "docs-site/docusaurus.config.js",
@@ -378,7 +401,10 @@
             "docs-site/scripts/build-site.mjs",
             "docs-site/scripts/build-site.test.mjs",
             "docs-site/static/registry/**",
-            "tests/integration/release-metadata.test.ts"
+            "tests/integration/release-metadata.test.ts",
+            ".github/workflows/sync-linked-sources.yml",
+            "scripts/lib/gofer-bundle-identity.cjs",
+            ".github/workflows/docs.yml"
           ],
           "required_repo_tests": [
             "tests/integration/release-metadata.test.ts",
@@ -388,9 +414,7 @@
             "ci/eai-cli-tests",
             "Validate Docs"
           ],
-          "required_cross_service_surfaces": [
-            "eai-cli"
-          ],
+          "required_cross_service_surfaces": [],
           "required_deployed_contracts": [],
           "intentional_skipped_tests": [
             {
@@ -398,11 +422,12 @@
               "reason": "Only the Git-index static registry staging case requires a POSIX /bin/bash release host; the other release metadata cases remain cross-platform.",
               "owner": "eai-cli"
             }
-          ]
+          ],
+          "ci_only": true
         },
         {
           "id": "eai-cli-support-report",
-          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback. Exact-tag bundled producers and real fresh bootstrap preserve one canonical support-on-request contract and bounded original-error guidance without retired section duplication.",
+          "description": "Locally redacted consent-gated draft handoff with CLI-allocated identity-bound context cleanup and plain Support link fallback. Shared authorization credential parsing protects text, tables, nested JSON and styled labels while preserving readiness diagnostics and safe receipt booleans. Exact-tag bundled producers and real fresh bootstrap preserve one canonical support-on-request contract and bounded original-error guidance without retired section duplication.",
           "owned_paths": [
             "src/commands/support.ts",
             "src/lib/support-report.ts",
@@ -437,6 +462,7 @@
             "tests/integration/support.test.ts",
             "tests/integration/support-context.test.ts",
             "tests/unit/support-report.test.ts",
+            "tests/integration/output.test.ts",
             "tests/integration/init.test.ts",
             "tests/integration/create.test.ts",
             "tests/integration/gofer.test.ts",
@@ -445,10 +471,9 @@
           "required_ci_checks": [
             "ci/eai-cli-tests"
           ],
-          "required_cross_service_surfaces": [
-            "eai-cli"
-          ],
-          "required_deployed_contracts": []
+          "required_cross_service_surfaces": [],
+          "required_deployed_contracts": [],
+          "ci_only": true
         },
         {
           "id": "eai-cli-owned-qualification",
@@ -503,18 +528,25 @@
           "required_ci_checks": [
             "ci/eai-cli-tests"
           ],
-          "required_cross_service_surfaces": [
-            "eai-cli"
+          "required_cross_service_surfaces": [],
+          "required_deployed_contracts": [],
+          "ci_only": true
+        },
+        {
+          "id": "eai-cli-login-switch-account",
+          "description": "eai login --switch-account sends prompt=select_account on the Entra authorize request so the browser shows its account picker instead of silently reusing the signed-in session; the default sign-in, the PKCE and state checks and token storage are unchanged. EAI Setup runs eai logout and then this command for its Use a different account action.",
+          "owned_paths": [
+            "src/commands/login.ts",
+            "src/lib/auth.ts",
+            "tests/integration/login.test.ts",
+            "README.md",
+            ".tech-docs/api-reference.md"
           ],
-          "required_deployed_contracts": [
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/describe-schema.spec.ts"
-            },
-            {
-              "repository": "eai-testing-dev",
-              "path": "tests/cross-service/contracts/eai-cli/error-codes.spec.ts"
-            }
+          "required_repo_tests": [
+            "tests/integration/login.test.ts"
+          ],
+          "required_ci_checks": [
+            "ci/eai-cli-tests"
           ]
         }
       ]

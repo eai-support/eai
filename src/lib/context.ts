@@ -31,13 +31,13 @@ export interface CommandContext {
   tokens: StoredTokens;
 }
 
-/**
- * Resolve the full command context needed by every authenticated command.
- *
- * Before: 4 lines of boilerplate copy-pasted 9 times.
- * After: one call.
- */
-export async function resolveCommandContext(options?: {
+/** Context for a read-only, workspace-scoped command that may run outside an app folder. */
+export interface WorkspaceCommandContext extends Omit<CommandContext, 'root'> {
+  /** The app folder, or null when the command runs outside one. */
+  root: string | null;
+}
+
+export interface ResolveCommandContextOptions {
   tenantId?: string;
   interactive?: boolean;
   forceRefresh?: boolean;
@@ -46,9 +46,29 @@ export async function resolveCommandContext(options?: {
   pinPublicApiUrl?: boolean;
   /** Let an owning command retain operation identity instead of exiting here. */
   onError?: (code: ErrorCode, message?: string) => never;
-}): Promise<CommandContext> {
+}
+
+/**
+ * Resolve the full command context needed by every authenticated command.
+ *
+ * Before: 4 lines of boilerplate copy-pasted 9 times.
+ * After: one call.
+ *
+ * With `allowOutsideProject`, a read-only command that names its workspace
+ * explicitly (`tenantId`) runs without an app folder; the Public API URL then
+ * comes from the active profile and stored login, as for `eai workspace`.
+ */
+export async function resolveCommandContext(
+  options: ResolveCommandContextOptions & { allowOutsideProject: true },
+): Promise<WorkspaceCommandContext>;
+export async function resolveCommandContext(
+  options?: ResolveCommandContextOptions,
+): Promise<CommandContext>;
+export async function resolveCommandContext(
+  options?: ResolveCommandContextOptions & { allowOutsideProject?: boolean },
+): Promise<CommandContext | WorkspaceCommandContext> {
   const root = await findProjectRoot();
-  if (!root) {
+  if (!root && !(options?.allowOutsideProject && options.tenantId)) {
     options?.onError?.(ErrorCode.E001);
     exitWithError(ErrorCode.E001);
   }
@@ -57,14 +77,14 @@ export async function resolveCommandContext(options?: {
     ? { validateUrl: options.validatePublicApiUrl, redirect: 'error' }
     : undefined;
   const resolvedPublicApiUrl = options?.publicApiUrl
-    ?? await resolvePublicApiUrl(root, requestPolicy);
+    ?? await resolvePublicApiUrl(root ?? undefined, requestPolicy);
   const publicApiUrl = options?.validatePublicApiUrl
     ? options.validatePublicApiUrl(resolvedPublicApiUrl)
     : resolvedPublicApiUrl;
   let context: ActiveTenantContext;
   try {
     context = await resolveActiveTenantContext({
-      projectRoot: root,
+      projectRoot: root ?? undefined,
       publicApiUrl,
       interactive: options?.interactive ?? true,
       tenantId: options?.tenantId,

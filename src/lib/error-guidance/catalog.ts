@@ -1,3 +1,8 @@
+import { appOwnershipScopeGuidance } from './catalog-app-ownership-scope.js';
+import { billingGuidance } from './catalog-billing.js';
+import { capacityGuidance } from './catalog-capacity.js';
+import { appOwnershipGuidance } from './catalog-app-ownership.js';
+import { capabilityGuidance } from './catalog-capability.js';
 import type { ErrorGuidance } from './types.js';
 
 export const errorGuidanceCatalog = [
@@ -1283,6 +1288,11 @@ export const errorGuidanceCatalog = [
       },
     ],
   },
+  ...capabilityGuidance,
+  ...capacityGuidance,
+  ...billingGuidance,
+  ...appOwnershipGuidance,
+  ...appOwnershipScopeGuidance,
 ] satisfies ErrorGuidance[];
 
 export function listErrorGuidance(): ErrorGuidance[] {
@@ -1294,11 +1304,33 @@ export function findGuidanceByCode(code: string): ErrorGuidance | undefined {
   return errorGuidanceCatalog.find((entry) => entry.code.toUpperCase() === normalized);
 }
 
+/** Case-insensitive form shared by reason code and server code lookups; hyphens read as underscores. */
+export function normalizeGuidanceIdentifier(value: string): string {
+  return value.trim().toLowerCase().replace(/-/g, '_');
+}
+
 export function findGuidanceByReason(reasonCode: string): ErrorGuidance | undefined {
-  const normalized = reasonCode.trim().toLowerCase().replace(/-/g, '_');
+  const normalized = normalizeGuidanceIdentifier(reasonCode);
   return errorGuidanceCatalog.find((entry) => entry.reasonCode.toLowerCase() === normalized);
 }
 
 export function findGuidanceByCodeOrReason(value: string): ErrorGuidance | undefined {
   return findGuidanceByCode(value) ?? findGuidanceByReason(value);
+}
+
+/** Resolve a server error code that an entry lists as an alias in `match[].serverCode`. */
+export function findGuidanceByServerCode(serverCode: string): ErrorGuidance | undefined {
+  const normalized = normalizeGuidanceIdentifier(serverCode);
+  if (!normalized) return undefined;
+  return listErrorGuidance().find((entry) =>
+    entry.match?.some(
+      (matcher) =>
+        matcher.serverCode !== undefined && normalizeGuidanceIdentifier(matcher.serverCode) === normalized,
+    ),
+  );
+}
+
+/** Resolve any identifier a user may copy from an error: guidance code, reason code, or server code alias. */
+export function findGuidanceByIdentifier(value: string): ErrorGuidance | undefined {
+  return findGuidanceByCodeOrReason(value) ?? findGuidanceByServerCode(value);
 }

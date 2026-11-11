@@ -38,6 +38,24 @@ describe('product-safe platform diagnostics', () => {
       .toEqual({ status: 503, code: 'ENTRA_ROTATION_FAILED', supportReference });
   });
 
+  // Configurator app deletion ownership codes, as PublicAPI forwards them in its flat { error, message } envelope.
+  test.each([
+    'APP_OWNERSHIP_ENROLLMENT_OWNER_AMBIGUOUS', 'APP_OWNERSHIP_MANIFEST_CONFLICT', 'APP_OWNERSHIP_MANIFEST_INCOMPLETE',
+    'APP_OWNERSHIP_MANIFEST_NOT_FOUND', 'APP_OWNERSHIP_OBJECT_TYPE_AMBIGUOUS', 'APP_OWNERSHIP_OBJECT_TYPE_INVALID',
+    'APP_OWNERSHIP_OBJECT_TYPE_NOT_FOUND', 'APP_OWNERSHIP_SCOPE_AMBIGUOUS', 'APP_OWNERSHIP_SCOPE_CONCURRENT_CHANGE',
+    'APP_OWNERSHIP_SCOPE_EXISTING_SCOPE_INVALID', 'APP_OWNERSHIP_SCOPE_FAILED', 'APP_OWNERSHIP_SCOPE_INSTALL_AMBIGUOUS',
+    'APP_OWNERSHIP_SCOPE_INSTALL_CONFLICT', 'APP_OWNERSHIP_SCOPE_INSTALL_INCOMPLETE', 'APP_OWNERSHIP_SCOPE_INSTALL_NOT_FOUND',
+    'APP_OWNERSHIP_SCOPE_INVALID_APP_KEY', 'APP_OWNERSHIP_SCOPE_INVALID_BODY', 'APP_OWNERSHIP_SCOPE_INVALID_OBJECT_TYPES',
+    'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_CONFLICT', 'APP_OWNERSHIP_SCOPE_OBJECT_TYPE_NOT_EXCLUSIVE',
+    'APP_OWNERSHIP_STORAGE_ROUTE_INVALID', 'APP_DELETION_TARGET_TENANT_FORBIDDEN',
+  ])('allowlists app deletion ownership code %s without echoing the message', code => {
+    expect(safePlatformDiagnostics(409, { error: code, message: 'PRIVATE upstream text' })).toEqual({ status: 409, code });
+  });
+
+  test('a bare app ownership prefix is not an allowlisted code', () => {
+    expect(safePlatformDiagnostics(409, { error: 'APP_OWNERSHIP_SCOPE_' })).toEqual({ status: 409 });
+  });
+
   test.each([null, 'PRIVATE', [], { error: null }, { detail: { detail: { detail: { detail: { code: 'ENTRA_ROTATION_FAILED' } } } } }])
     ('handles malformed or overly nested envelopes without echoing their content', payload => {
       expect(safePlatformDiagnostics(503, payload)).toEqual({ status: 503 });

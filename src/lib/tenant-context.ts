@@ -727,9 +727,15 @@ export function getStoredActiveTenant(
   };
 }
 
+/**
+ * Load the caller's active workspace memberships. Only tenant-admin
+ * memberships are returned unless `includeAllRoles` is set for read-only
+ * listing; selection and app management stay admin-only.
+ */
 export async function fetchTenantAdminMemberships(
   publicApiUrl?: string,
   requestPolicy?: PublicApiRequestPolicy,
+  options?: { includeAllRoles?: boolean },
 ): Promise<{
   publicApiUrl: string;
   tokens: StoredTokens;
@@ -767,12 +773,13 @@ export async function fetchTenantAdminMemberships(
     );
   }
 
-  const payload = await response.json();
+  const entries = normalizeTenantEntries(await response.json());
+  const visibleEntries = options?.includeAllRoles
+    ? entries.filter((entry) => entry.tenant?.isActive !== false)
+    : filterTenantAdminEntries(entries);
   const memberships = await hydrateTenantMembershipManagementDetails(
     client,
-    filterTenantAdminEntries(normalizeTenantEntries(payload)).map(
-      toTenantMembership,
-    ),
+    visibleEntries.map(toTenantMembership),
   );
 
   return {

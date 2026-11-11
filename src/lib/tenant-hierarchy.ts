@@ -371,8 +371,23 @@ export async function loadTenantHierarchy(options: {
     }
   }
 
+  // As in the root listing, the caller's own memberships inside the parent's
+  // subtree keep their roles and stay direct; other memberships stay out.
+  const subtreeIds = new Set(
+    childRecords.map((record) => tenantHierarchyItemFromRecord(record)?.id),
+  );
+  const subtreeMemberships = options.parentId
+    ? options.memberships.filter(
+        (membership) =>
+          membership !== parentMembership && subtreeIds.has(membership.id),
+      )
+    : [];
+
   return {
-    roots: buildTenantHierarchy(rootMemberships, childRecords),
+    roots: buildTenantHierarchy(
+      [...rootMemberships, ...subtreeMemberships],
+      childRecords,
+    ),
     warnings,
   };
 }

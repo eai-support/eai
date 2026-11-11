@@ -1,7 +1,7 @@
 ---
 generated: true
-generated_at: "2026-10-14T22:50:15.852Z"
-source_commit: "68d50619b1ea915a9230f984cbe3e566f67704dc"
+generated_at: "2026-11-05T02:17:50.218Z"
+source_commit: "70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea"
 ---
 # EAI CLI — API Reference
 
@@ -94,6 +94,7 @@ Authenticate with Entra CIAM using a browser-based PKCE flow.
 - `--tenant-id <id>` — CIAM tenant ID
 - `--scope <scopes>` — OAuth scopes
 - `--callback-port <port>` — localhost port to listen on for the callback server
+- `--switch-account` — send `prompt=select_account` so the browser shows its account picker instead of reusing the signed-in session
 
 **What it does**:
 1. Generates PKCE `code_verifier` / `code_challenge`
@@ -666,11 +667,12 @@ Manage binary file properties on a resource.
 **Options**:
 - `--tenant-id <id>` — Target workspace (default: active workspace)
 - `--output <path>` — (`file get`) write to a specific path
+- `--content-type <mime>` — (`file upload`) override the MIME type inferred from the filename; parameters and header newlines are rejected
 - `--force` — (`file delete`) skip confirmation
 - `--format <format>` — Output format (text|json, default: text)
 
 **Platform API Endpoints Used**:
-- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload (`application/octet-stream`)
+- `POST /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}?filename=...` — upload using the filename's MIME type (unknown extensions use `application/octet-stream`)
 - `GET /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — download
 - `DELETE /v4/data/resources/{tenantId}/{objectType}/{id}/files/{propertyName}` — delete
 
@@ -916,6 +918,70 @@ Index a document for RAG (two-step).
 - `POST /v4/data/documents/rag-index` — submit the indexing job
 
 ---
+
+### Knowledge Base Documents
+
+#### `eai kb upload <file> --tenant-id <id>`
+
+Upload and index a document through the existing Admin Portal Knowledge Base
+contract. Select the correct login profile before running the command. The
+workspace must already have a published `shared-kb-article` model and ready
+storage. Session routing must resolve that exact workspace to a supported
+regional HTTPS PublicAPI gateway in the selected environment; unresolved,
+foreign or cross-environment routes stop before upload.
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+**Options**:
+- `--tenant-id <id>` — required exact workspace UUID
+- `--title <title>` — title; defaults to the filename
+- `--document-type <type>` — category; defaults to `Other`
+- `--content-type <mime>` — valid supported KB MIME override; known extensions are inferred
+- `--tag <tag>` — repeatable search tag
+- `--visible-to-children` — explicitly allow descendant workspaces to retrieve this document; false by default
+- `--format <format>` — text or JSON
+
+Supported KB formats match AICore extraction: PDF, DOCX, XLSX, PPTX, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC, plus plain text and Markdown.
+Case-insensitive `.md`/`.markdown` filenames use canonical `text/markdown`;
+`text/x-markdown` is normalized to the same value. Empty, octet-stream or
+plain-text MIME fallback is allowed only for a known Markdown filename.
+Original bytes and filename are preserved in the upload, while record metadata,
+upload headers and committed-file verification use the same canonical MIME.
+Markdown must be nonempty strict UTF-8 text; decoding never replaces invalid
+bytes and the CLI does not render or fetch Markdown links/images.
+
+CSV and unknown media types stop with `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE`;
+invalid/blank Markdown uses `KB_UPLOAD_INVALID_MARKDOWN`, before record creation.
+Invalid MIME syntax and empty files retain their existing distinct safe input
+errors. Generic resource file uploads and configured document/classifier
+policies keep their existing behavior.
+
+An exact, identity-verified backend `KB_EXTRACTION_UNSUPPORTED_CONTENT_TYPE`
+result reuses `KB_UPLOAD_UNSUPPORTED_CONTENT_TYPE` and the same supported-format
+help. Its `phase: index` and known record/document IDs distinguish it from a
+pre-upload input rejection. The document may remain stored; the command does
+not repeat the request or delete it. Unknown backend errors keep generic safe
+messages and never expose provider response text.
+
+The command sends each create, raw file upload and KB reindex request once.
+Upload already stores the file link and metadata. An exact resource GET verifies
+the committed file, checksum, media type and metadata before indexing; no
+follow-up resource PUT replaces server-owned upload metadata. The JSON result distinguishes `indexed`, `in_progress`,
+`failed` and `outcome_unknown`, and retains only verified resource, document
+and operation IDs. HTTP 202 is pending, not indexed. A timeout may leave stored
+data; inspect the record and article key in the workspace's regional Knowledge
+Base before uploading again. No request is replayed or compensated by deletion.
+This command does not change `eai docs upload` or Curate document workflows.
+
+**Platform API Endpoints Used**:
+- `POST /v4/identity/session/resolve` — resolve the exact workspace and regional API
+- `POST /v4/data/resources/{tenantId}/shared-kb-article` — create the KB record
+- `POST /v4/data/resources/{tenantId}/shared-kb-article/{id}/files/file?filename=...` — upload the file with its MIME type
+- `GET /v4/data/resources/{tenantId}/shared-kb-article/{id}` — verify the committed file and server-owned metadata
+- `POST /v4/data/knowledge-base/reindex` — request AICore extraction and indexing for that exact record
 
 ### Advanced PublicAPI V4 Commands
 

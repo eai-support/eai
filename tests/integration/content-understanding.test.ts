@@ -435,6 +435,19 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(await cu(['plan', '--file', file, ...scoped])).toMatchObject({ ok: false, error: { code: 'CU_CAPABILITY_UNSUPPORTED' } });
     expect(resolveCommandContext).not.toHaveBeenCalled(); expect(fetchMock).not.toHaveBeenCalled(); expect(process.exitCode).toBe(1);
   });
+  test('only read-only capabilities and status may run outside an app folder', async () => {
+    const contextOptions = () => vi.mocked(resolveCommandContext).mock.calls.at(-1)?.[0];
+    await cu(['capabilities', ...scoped]);
+    expect(contextOptions()).toMatchObject({ tenantId, allowOutsideProject: true });
+    await cu(['status', '--operation-id', 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', ...scoped]);
+    expect(contextOptions()).toMatchObject({ tenantId, allowOutsideProject: true });
+    // A saved plan binds the PublicAPI URL that apply later requires; both stay project-bound.
+    await cu(['plan', '--file', file, ...scoped]);
+    expect(contextOptions()).not.toHaveProperty('allowOutsideProject');
+    await cu(applyArgs());
+    expect(contextOptions()).not.toHaveProperty('allowOutsideProject');
+  });
+
   test('capabilities reads the selected tenant with bounded trusted gateway forwarding', async () => {
     expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: readyCapabilities });
     expect(resolveCommandContext).toHaveBeenCalledWith(expect.objectContaining({ tenantId, interactive: false, forceRefresh: true, pinPublicApiUrl: true }));
@@ -563,7 +576,9 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
       expect(result.status).toBe(1); expect(result.signal).toBeNull();
       const output = result.stdout.trim() || result.stderr.trim();
       const payload = output.startsWith('{') ? JSON.parse(output) : null;
-      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? 'E001' : stage === 'missing-login' ? 'E101' : 'E102', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
+      // Read-only status runs outside an app folder, so its first failure there is the missing login.
+      const projectCode = command === 'status' ? 'E101' : 'E001';
+      expect(payload).toMatchObject({ error: { code: stage === 'profile' ? 'E006' : stage === 'project' ? projectCode : stage === 'missing-login' ? 'E101' : 'E102', operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } });
       expect(payload).not.toHaveProperty('body');
       const dispatched = existsSync(networkLog) ? (await readFile(networkLog, 'utf8')).trim().split('\n') : [];
       expect(dispatched).toEqual(stage === 'membership' ? ['/public/v4/identity/tenants'] : []);

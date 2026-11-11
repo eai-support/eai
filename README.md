@@ -215,6 +215,10 @@ OAuth callback; it just pins the port instead of choosing a random one. That
 keeps the public Entra app registration unchanged while allowing your local
 machine to tunnel the callback into the Codespace.
 
+If your browser is already signed in to the wrong account, run
+`eai logout` and then `eai login --switch-account`: the browser shows its
+account picker instead of reusing the existing session.
+
 ### Environment
 
 | Command | Description |
@@ -277,6 +281,35 @@ route construction.
 | `eai resources delete <type> <id>` | Delete (with confirmation) |
 | `eai resources query` | Cross-type query with `--types`, `--where`, and optional `--tenant-id` |
 | `eai resources schema` | Show published Object Types for the workspace (supports `--tenant-id`) |
+
+### Knowledge Base files
+
+Upload one file and request indexing through the same Knowledge Base flow as
+Admin Portal:
+
+```bash
+eai kb upload ./guide.pdf --tenant-id <workspace-uuid> --tag product-guide --format json
+```
+
+The command resolves the workspace's regional API using your selected login,
+then creates a `shared-kb-article`, uploads and verifies its server-committed file, and requests KB
+indexing. Supported KB formats are PDF, DOCX, XLSX, PPTX, plain text, Markdown, HTML,
+PNG, JPEG/JPG, BMP, TIFF, HEIF and HEIC. Media types are inferred from known
+extensions; use `--content-type` only when it correctly describes the file.
+Markdown `.md`/`.markdown` filenames are case-insensitive and use canonical
+`text/markdown`; the compatibility alias `text/x-markdown` is normalized.
+Empty/octet-stream/plain-text MIME fallback is limited to known Markdown
+filenames. The original file bytes and filename stay intact. Invalid or blank
+UTF-8 Markdown, CSV and unknown media types are rejected before record creation.
+Generic `eai resources file upload` keeps its existing MIME behavior.
+The workspace must already have the published Knowledge Base model and storage.
+
+`status: in_progress` means indexing is pending. A failed or uncertain operation
+may leave a stored record; the result retains verified IDs and the article key.
+Inspect that record in the workspace's regional Knowledge Base before uploading
+again. The command never retries or deletes it automatically. Child visibility
+requires the explicit `--visible-to-children` option. `eai docs upload` keeps its
+existing configured document lifecycle and Curate behavior.
 
 ### Workspaces
 

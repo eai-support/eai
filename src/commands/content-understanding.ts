@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Command, Option } from 'commander';
-import { resolveCommandContext, type CommandContext } from '../lib/context.js';
+import { resolveCommandContext, type ResolveCommandContextOptions, type WorkspaceCommandContext } from '../lib/context.js';
 import { requireManagedPublicApiUrl } from '../lib/managed-public-api.js';
 import { isRecord } from '../lib/utils.js';
 import * as out from '../lib/output.js';
@@ -53,10 +53,14 @@ function tenantId(options: CuOptions, manifest?: ContentUnderstandingManifest): 
   }
   return options.tenantId;
 }
-async function contextFor(id: string): Promise<CommandContext> {
-  const context = await resolveCommandContext({ tenantId: id, interactive: false, forceRefresh: true,
+/** Read-only commands (`capabilities`, `status`) also run outside an app folder; the explicit --tenant-id names the workspace. */
+async function contextFor(id: string, allowOutsideProject = false): Promise<WorkspaceCommandContext> {
+  const options: ResolveCommandContextOptions = { tenantId: id, interactive: false, forceRefresh: true,
     validatePublicApiUrl: requireManagedPublicApiUrl, pinPublicApiUrl: true,
-    onError: (code, message) => { throw new ContentUnderstandingError(code, message ?? errorCatalog[code].message); } });
+    onError: (code, message) => { throw new ContentUnderstandingError(code, message ?? errorCatalog[code].message); } };
+  const context = allowOutsideProject
+    ? await resolveCommandContext({ ...options, allowOutsideProject: true })
+    : await resolveCommandContext(options);
   if (context.tenantId !== id) throw new ContentUnderstandingError('CU_TENANT_MISMATCH', 'Resolved workspace differs from the requested workspace.');
   return context;
 }
@@ -102,7 +106,7 @@ function action(handler: (options: CuOptions) => Promise<CuOutput | ContentUnder
   };
 }
 
-async function capabilities(context: CommandContext, timeoutMs?: number): Promise<ContentUnderstandingCapabilities> {
+async function capabilities(context: WorkspaceCommandContext, timeoutMs?: number): Promise<ContentUnderstandingCapabilities> {
   return parseContentUnderstandingCapabilities(await readContentUnderstandingResponse(await context.client.getContentUnderstandingCapabilities(timeoutMs)), context.tenantId);
 }
 
@@ -126,7 +130,7 @@ function operationReadError(error: unknown, operationId: string): ContentUnderst
     : new ContentUnderstandingError('CU_OPERATION_READ_FAILED', 'Reading this operation failed. Keep its ID and inspect the original operation before resuming.', operationId);
 }
 
-async function waitForOperation(context: CommandContext, initial: ContentUnderstandingOperation, options: CuOptions,
+async function waitForOperation(context: WorkspaceCommandContext, initial: ContentUnderstandingOperation, options: CuOptions,
   deadline: number, resume?: (operationId: string, timeoutMs: number) => Promise<ContentUnderstandingOperation>): Promise<CuOutput> {
   let operation = initial;
   try {
@@ -199,7 +203,7 @@ outputOptions(contentUnderstandingCommand.command('validate').description('Valid
     schemaVersion: input.manifest.schemaVersion, bundleKey: input.manifest.bundleKey, manifestSha256: input.manifestSha256,
     documentTypes: input.manifest.documentTypes.map(doc => doc.code) } }; }));
 workspaceOptions(contentUnderstandingCommand.command('capabilities').description('Read actual selected-workspace typed mode, prerequisites and readiness'))
-  .action(action(async options => ({ ok: true, body: await capabilities(await contextFor(tenantId(options))) })));
+  .action(action(async options => ({ ok: true, body: await capabilities(await contextFor(tenantId(options), true)) })));
 workspaceOptions(contentUnderstandingCommand.command('plan').description('Read prerequisites and return a scope-bound configuration plan; writes nothing')
   .requiredOption('--file <path>', 'Declarative document configuration JSON'))
   .action(action(async options => {
@@ -252,7 +256,7 @@ waitOptions(workspaceOptions(contentUnderstandingCommand.command('apply').descri
 waitOptions(workspaceOptions(contentUnderstandingCommand.command('status').description('Read or wait for an existing operation; dispatches no provider mutation')
   .requiredOption('--operation-id <id>', 'Exact acknowledged canonical operation UUID')))
   .action(action(async options => {
-    const timeout = requireWaitTimeout(options.timeout), operationId = requireContentUnderstandingOperationId(options.operationId), context = await contextFor(tenantId(options));
+    const timeout = requireWaitTimeout(options.timeout), operationId = requireContentUnderstandingOperationId(options.operationId), context = await contextFor(tenantId(options), true);
     const deadline = Date.now() + timeout;
     let operation: ContentUnderstandingOperation;
     try { operation = parseContentUnderstandingOperation(await readContentUnderstandingResponse(await context.client.getContentUnderstandingOperation(operationId,

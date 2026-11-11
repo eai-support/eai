@@ -30,6 +30,8 @@ import { gunzipSync } from 'node:zlib';
 
 const canonicalWorkflowRelativePath = '.github/workflows/eai-app.yml';
 const fixtureDirectory = 'tests/fixtures/source-unknown';
+const currentWorkflowFixtureRelativePath =
+  `${fixtureDirectory}/current-eai-app.yml`;
 const canonicalDigest =
   'bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed';
 const currentWorkflowDigest =
@@ -783,6 +785,12 @@ function resolveDeploymentWorkflowContext(
     canonicalDigest,
     'Canonical source-unknown workflow fixture drifted.',
   );
+  const currentCanonicalPath = join(root, currentWorkflowFixtureRelativePath);
+  assert.equal(
+    digest(regularBytes(currentCanonicalPath)),
+    currentWorkflowDigest,
+    'Current canonical source-unknown workflow fixture drifted.',
+  );
   const operationBytes = regularBytes(
     join(root, '.eai/generated-source-operation.json'),
   );
@@ -803,7 +811,7 @@ function resolveDeploymentWorkflowContext(
     controlledProof,
     operationBytes,
   );
-  return { context: 'admin-portal-generated', workflowPath: canonicalPath };
+  return { context: 'admin-portal-generated', workflowPath: currentCanonicalPath };
 }
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const evidenceScript = join(
@@ -5833,6 +5841,7 @@ function contextFixture(t, manifest, workflow = canonical, operation) {
   mkdirSync(join(directory, 'tests/fixtures'), { recursive: true });
   mkdirSync(join(directory, fixtureDirectory), { recursive: true });
   writeFileSync(join(directory, fixtureDirectory, 'eai-app.yml'), legacyCanonical);
+  writeFileSync(join(directory, currentWorkflowFixtureRelativePath), canonical);
   writeFileSync(
     join(directory, fixtureDirectory, 'generated-eai-app.yml'),
     generated,
@@ -5959,7 +5968,7 @@ test('NCB validates its actual generated workflow and keeps all canonical collec
   );
   assert.deepEqual(resolveDeploymentWorkflowContext(directory), {
     context: 'admin-portal-generated',
-    workflowPath: join(directory, 'tests/fixtures/source-unknown/eai-app.yml'),
+    workflowPath: join(directory, currentWorkflowFixtureRelativePath),
   });
 });
 
@@ -6157,17 +6166,34 @@ test('fixture drift and template workflow drift fail closed', (t) => {
   );
   assert.throws(() => resolveDeploymentWorkflowContext(directory));
   const fixture = exportedFixture();
-  const generatedDirectory = contextFixture(
-    t,
-    fixture.manifest,
-    fixture.workflow,
-    fixture.operation,
+  for (const path of [
+    `${fixtureDirectory}/eai-app.yml`,
+    currentWorkflowFixtureRelativePath,
+  ]) {
+    const generatedDirectory = contextFixture(
+      t,
+      fixture.manifest,
+      fixture.workflow,
+      fixture.operation,
+    );
+    writeFileSync(join(generatedDirectory, path), 'name: changed\n');
+    assert.throws(() => resolveDeploymentWorkflowContext(generatedDirectory));
+  }
+});
+
+test('committed current canonical fixture retains its reviewed digest', () => {
+  if (!existsSync(join(repoRoot, fixtureDirectory))) {
+    assert.ok(
+      ['template', 'cli'].includes(
+        resolveDeploymentWorkflowContext(repoRoot).context,
+      ),
+    );
+    return;
+  }
+  assert.equal(
+    digest(regularBytes(join(repoRoot, currentWorkflowFixtureRelativePath))),
+    currentWorkflowDigest,
   );
-  writeFileSync(
-    join(generatedDirectory, 'tests/fixtures/source-unknown/eai-app.yml'),
-    'name: changed\n',
-  );
-  assert.throws(() => resolveDeploymentWorkflowContext(generatedDirectory));
 });
 
 test('generated contract fixture drift fails before comparison', () => {

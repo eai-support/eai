@@ -43,6 +43,7 @@ import { goferCommand } from './commands/gofer.js';
 import { templateCommand } from './commands/template.js';
 import { blocksCommand } from './commands/blocks.js';
 import { publicApiCommand } from './commands/publicapi.js';
+import { knowledgeBaseCommand } from './commands/knowledge-base.js';
 import { errorsCommand } from './commands/errors.js';
 import { supportCommand } from './commands/support.js';
 import { agentCommand } from './commands/agent.js';
@@ -118,7 +119,7 @@ program
       await activateCommandProfile(actionCommand);
     } catch (error) {
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        opts.format === 'json' || opts.json ? 'json' : 'text', retainedOperationId);
+        opts.format === 'json' || opts.json ? 'json' : 'text', { operationId: retainedOperationId });
     }
   });
 
@@ -148,6 +149,7 @@ program.addCommand(goferCommand);
 program.addCommand(templateCommand);
 program.addCommand(blocksCommand);
 program.addCommand(publicApiCommand);
+program.addCommand(knowledgeBaseCommand);
 program.addCommand(errorsCommand);
 program.addCommand(supportCommand);
 program.addCommand(agentCommand);
@@ -368,7 +370,7 @@ if (cliArgs.includes('--describe')) {
     } catch (error) {
       const retainedOperationId = readContentUnderstandingBootstrapOperationId(cliArgs);
       exitWithError(ErrorCode.E006, { details: error instanceof Error ? error.message : String(error) },
-        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', retainedOperationId);
+        isMachineReadableInvocation(cliArgs) ? 'json' : 'text', { operationId: retainedOperationId });
     }
   }
   const shouldForegroundCheckForUpdate = !isLocalContentUnderstanding && (isHelpInvocation(cliArgs) || isUnknownTopLevelCommand(cliArgs));

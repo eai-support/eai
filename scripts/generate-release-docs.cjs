@@ -36,6 +36,7 @@ const DOC_ORDER = [
   "api-reference.md",
 ];
 const HELP_COMMANDS = [
+  { label: "eai kb upload --help", args: ["dist/index.js", "kb", "upload", "--help"] },
   { label: "eai content-understanding --help", args: ["dist/index.js", "content-understanding", "--help"] },
   { label: "eai docs configure-type --help", args: ["dist/index.js", "docs", "configure-type", "--help"] },
   { label: "eai docs job --help", args: ["dist/index.js", "docs", "job", "--help"] },

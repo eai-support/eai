@@ -8,6 +8,11 @@
 import { Command, Option } from 'commander';
 import { createRequire } from 'node:module';
 import { execFile } from 'node:child_process';
+import { realpathSync } from 'node:fs';
+import { readFile, readlink } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import process from 'node:process';
 import ora from 'ora';
@@ -30,6 +35,7 @@ import {
 const exec = promisify(execFile);
 const require = createRequire(import.meta.url);
 const pkg = require('../../package.json') as { name?: string; version: string };
+const PACKAGE_ROOT = resolve(fileURLToPath(new URL('../..', import.meta.url)));
 
 const STATIC_SCOPE_REGISTRY_FLAG = `--@enterpriseai:registry=${STATIC_REGISTRY_URL}`;
 const NPMJS_REGISTRY_FLAG = `--registry=${NPMJS_REGISTRY_URL}`;
@@ -115,6 +121,105 @@ export function buildUpdatePermissionGuidance(
   ];
 }
 
+/**
+ * EAI Setup stages a pinned, checksum-verified CLI under ~/.eai-setup/toolchains
+ * and runs it through its ~/.eai-setup/bin/eai shim, so a global npm install
+ * cannot replace it. Returns the toolchains root when this CLI runs from there.
+ */
+export function findEaiSetupToolchain(
+  packageRoot: string = PACKAGE_ROOT,
+  homeDir: string = homedir(),
+): string | null {
+  let toolchainsRoot = join(homeDir, '.eai-setup', 'toolchains');
+  try {
+    // Node reports this module by its real path; match a home reached through a symlink.
+    toolchainsRoot = realpathSync(toolchainsRoot);
+  } catch {
+    // No EAI Setup toolchain on disk; the lexical comparison below still applies.
+  }
+  const pathInside = relative(toolchainsRoot, packageRoot);
+  if (!pathInside || pathInside.startsWith('..') || isAbsolute(pathInside)) {
+    return null;
+  }
+  return toolchainsRoot;
+}
+
+export function buildEaiSetupUpdateGuidance(current: string, latest: string): string[] {
+  return [
+    `EAI Setup manages this eai command and pins it to ${current}, so eai update cannot replace it.`,
+    `Run ${latest} without changing EAI Setup: npx -y @enterpriseai/cli@${latest} <command>`,
+    'To update the managed CLI, run a newer EAI Setup release. It installs the CLI version it bundles.',
+  ];
+}
+
+export interface UpdateBinConflict {
+  readonly binPath: string;
+  readonly ownerPackage?: string;
+  readonly ownerVersion?: string;
+}
+
+/**
+ * npm refuses to overwrite a bin that another global package owns (EEXIST),
+ * for example the retired @eai-tools/cli. Name that owner so the user can
+ * remove it instead of retrying the same failing install.
+ */
+export async function findUpdateBinConflict(message: string): Promise<UpdateBinConflict | null> {
+  if (!/\bEEXIST\b/.test(message)) return null;
+  const binPath = (/File exists: (.+)/.exec(message) ?? /npm (?:error|ERR!) path (.+)/.exec(message))?.[1]?.trim();
+  if (!binPath) return null;
+
+  try {
+    const target = resolve(dirname(binPath), await readlink(binPath));
+    const owner = /^(.*?[\\/]node_modules[\\/])((?:@[^\\/]+[\\/])?[^\\/]+)(?:[\\/]|$)/.exec(target);
+    if (!owner) return { binPath };
+    const ownerPackage = owner[2].replace(/\\/g, '/');
+    try {
+      const ownerManifest = JSON.parse(
+        await readFile(join(owner[1], owner[2], 'package.json'), 'utf-8'),
+      ) as { version?: unknown };
+      return typeof ownerManifest.version === 'string'
+        ? { binPath, ownerPackage, ownerVersion: ownerManifest.version }
+        : { binPath, ownerPackage };
+    } catch {
+      return { binPath, ownerPackage };
+    }
+  } catch {
+    return { binPath };
+  }
+}
+
+export function buildUpdateBinConflictGuidance(
+  conflict: UpdateBinConflict,
+  installCommand: string,
+): string[] {
+  if (!conflict.ownerPackage) {
+    return [
+      `The existing ${conflict.binPath} is not part of this CLI, so npm could not replace it.`,
+      `Remove the package or file that provides it, then install the update: ${installCommand}`,
+    ];
+  }
+
+  const owner = conflict.ownerVersion
+    ? `${conflict.ownerPackage} ${conflict.ownerVersion}`
+    : conflict.ownerPackage;
+  return [
+    `The existing ${conflict.binPath} belongs to ${owner}, so npm could not replace it.`,
+    `Remove that package: npm uninstall -g ${conflict.ownerPackage}`,
+    `Then install the update: ${installCommand}`,
+  ];
+}
+
+function printGuidance(lines: readonly string[]): void {
+  for (const line of lines) {
+    if (line.includes(': ')) {
+      const [prefix, ...rest] = line.split(': ');
+      out.info(`${prefix}: ${chalk.cyan(rest.join(': '))}`);
+    } else {
+      out.info(line);
+    }
+  }
+}
+
 export const updateCommand = new Command('update')
   .description('Check for and install CLI updates')
   .option('--check', 'Only check for updates without installing')
@@ -135,6 +240,8 @@ Notes:
   - Use \`eai gofer refresh --check\` to preview Gofer-managed file changes separately.
   - The automatic \`eai template check\` is read-only; app-template and UI files are never auto-merged.
   - If npm hits a permissions error, the CLI explains how to retry on your platform.
+  - If another package owns the eai command (npm EEXIST), the CLI names it and shows how to remove it.
+  - EAI Setup pins its own CLI copy; \`eai update\` then explains how to run or install a newer version.
   `)
   .action(async (options: { check?: boolean; projectRefresh?: boolean; projectMaintenanceOnly?: boolean }) => {
     if (options.projectMaintenanceOnly) {
@@ -173,15 +280,25 @@ Notes:
     }
 
     spinner.succeed(`Update available: ${chalk.dim(current)} → ${chalk.green(latest)}`);
+    const setupManaged = findEaiSetupToolchain() !== null;
 
     if (options.check) {
-      out.info(`Run ${chalk.cyan('eai update')} to install.`);
+      if (setupManaged) {
+        printGuidance(buildEaiSetupUpdateGuidance(current, latest));
+      } else {
+        out.info(`Run ${chalk.cyan('eai update')} to install.`);
+      }
       if (options.projectRefresh !== false) {
         await runProjectUpdateMaintenance({
           mode: 'check',
         });
       }
       return;
+    }
+
+    if (setupManaged) {
+      printGuidance(buildEaiSetupUpdateGuidance(current, latest));
+      process.exit(1);
     }
 
     const packageName = installedPackageName();
@@ -193,15 +310,14 @@ Notes:
     } catch (err) {
       installSpinner.fail('Update failed.');
       const message = err instanceof Error ? err.message : String(err);
-      if (isUpdatePermissionError(message)) {
-        for (const line of buildUpdatePermissionGuidance(latest, channel)) {
-          if (line.includes(': ')) {
-            const [prefix, ...rest] = line.split(': ');
-            out.info(`${prefix}: ${chalk.cyan(rest.join(': '))}`);
-          } else {
-            out.info(line);
-          }
-        }
+      const binConflict = await findUpdateBinConflict(message);
+      if (binConflict) {
+        printGuidance(buildUpdateBinConflictGuidance(
+          binConflict,
+          `npm ${buildUpdateInstallArgs(latest, channel, packageName).join(' ')}`,
+        ));
+      } else if (isUpdatePermissionError(message)) {
+        printGuidance(buildUpdatePermissionGuidance(latest, channel));
       } else {
         out.error(message);
         out.info(`Manual install: ${chalk.cyan(`npm ${buildUpdateInstallArgs(latest, channel, packageName).join(' ')}`)}`);

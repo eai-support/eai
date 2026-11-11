@@ -37,16 +37,16 @@ eai resources schema --tenant-id <workspace-id> --format json
 
 ## App Structure
 
-| Path                             | Purpose                                                                         |
-| -------------------------------- | ------------------------------------------------------------------------------- |
+| Path                             | Purpose                                                                            |
+| -------------------------------- | ---------------------------------------------------------------------------------- |
 | `src/eai.config/default.ts`      | Default workspace config, store slices, API paths, storage keys, and layout slots. |
-| `src/eai.config/index.ts`        | Workspace configuration key to config registry.                                                  |
-| `src/eai.config/object-types.ts` | Object Type definitions for ResourceAPI-backed data.                            |
-| `src/eai.blocks.tsx`             | Component registry and app-local block extension point.                         |
-| `src/hooks/useResources.ts`      | ResourceAPI-backed business data.                                               |
-| `src/hooks/useDocuments.ts`      | Document upload, classification, and RAG indexing.                              |
-| `src/hooks/useChat.ts`           | Streaming and non-streaming chat workflows.                                     |
-| `src/app/providers.tsx`          | Auth/session providers and EAI config runtime.                                  |
+| `src/eai.config/index.ts`        | Workspace configuration key to config registry.                                    |
+| `src/eai.config/object-types.ts` | Object Type definitions for ResourceAPI-backed data.                               |
+| `src/eai.blocks.tsx`             | Component registry and app-local block extension point.                            |
+| `src/hooks/useResources.ts`      | ResourceAPI-backed business data.                                                  |
+| `src/hooks/useDocuments.ts`      | Document upload, classification, and RAG indexing.                                 |
+| `src/hooks/useChat.ts`           | Streaming and non-streaming chat workflows.                                        |
+| `src/app/providers.tsx`          | Auth/session providers and EAI config runtime.                                     |
 
 ## Platform Boundary
 
@@ -95,13 +95,13 @@ See [Config-Driven UI](./app-template/config-driven-ui.md) for the full pattern.
 
 ## Service Hooks
 
-| Need                    | App Pattern                    | CLI Verification                                         |
-| ----------------------- | ------------------------------ | -------------------------------------------------------- |
+| Need                       | App Pattern                    | CLI Verification                                         |
+| -------------------------- | ------------------------------ | -------------------------------------------------------- |
 | Workspace business records | `useResources('<ObjectType>')` | `eai resources list/get/create/update/delete/query`      |
-| Documents and RAG       | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
-| Resource file property  | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
-| AI chat                 | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
-| Advanced route          | server helper or BFF route     | `eai publicapi <method> /v4/...`                         |
+| Documents and RAG          | `useDocuments()`               | `eai docs upload`, `eai docs classify`, `eai docs index` |
+| Resource file property     | `useResources().uploadFile`    | `eai resources file upload/get/delete`                   |
+| AI chat                    | `useChat(workflowId, stage)`   | `eai chat send`, `eai chat stream`                       |
+| Advanced route             | server helper or BFF route     | `eai publicapi <method> /v4/...`                         |
 
 ## Move An Existing Project To The Required Template
 
@@ -113,18 +113,23 @@ the approved one, the CLI stops before the GitHub link step with
 `TEMPLATE_VERSION_NOT_APPROVED`, for example:
 
 ```text
-TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.17 (3162df8).
+TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.23 (bdda42e).
 ```
 
 Updating the CLI does not change an existing project, because the template is
-recorded when the project is created. Choose one of these supported paths:
+recorded when the project is created. Install a CLI release that bundles the
+environment's required template (`npm install -g eai-cli@latest` once all
+environments are aligned, or the specific CLI release that bundles that
+environment's required template during a staged rollout), then choose one of
+these supported paths:
 
-1. **New project (simplest).** Run `npm install -g eai-cli@latest`, create a
-   new project with `eai create`, and move your app code into it.
+1. **New project (simplest).** Install the matching CLI release, create a new
+   project with `eai create`, and move your app code into it.
 2. **Template migration commit.** Keep the project and record the move to the
    required template in one reviewed commit:
 
    ```bash
+   # Install the CLI release that bundles the required template (usually eai-cli@latest)
    npm install -g eai-cli@latest
    eai template check            # compare the project template with the bundled one
    # Read the exact required commit from the deploy error (--format json shows

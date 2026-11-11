@@ -487,6 +487,7 @@ Diagnostics:
           ENTRA_CLIENT_ID: rotated.clientId,
           ENTRA_CLIENT_SECRET: rotated.clientSecret,
           EAI_TENANT_ID: rotated.tenantId,
+          NEXT_PUBLIC_EAI_TENANT_ID: rotated.tenantId,
         });
         out.success(`Entra client secret rotated for ${chalk.cyan(appName)}`);
         out.table([
@@ -573,7 +574,9 @@ Diagnostics:
       optionalEnv.ENTRA_ENVIRONMENT = result.environment;
     }
     if (scoped || result.tenantId) {
+      // The app template reads NEXT_PUBLIC_EAI_TENANT_ID first, so keep it equal to EAI_TENANT_ID.
       optionalEnv.EAI_TENANT_ID = scoped ? tenantId : result.tenantId!;
+      optionalEnv.NEXT_PUBLIC_EAI_TENANT_ID = optionalEnv.EAI_TENANT_ID;
     }
 
     // Persist the Entra directory (authority) tenant id + name from the

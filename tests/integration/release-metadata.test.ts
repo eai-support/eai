@@ -312,6 +312,17 @@ describe('public documentation release qualification', () => {
       expect(readFileSync(output, 'utf8')).toBe(`allowed=${allowed}\n`);
     } finally { rmSync(root, { recursive: true, force: true }); }
   });
+  test('release keeps package publication and Docs without the retired cross-service CLI dispatch', () => {
+    const release = readFileSync(path.join(repoRoot, '.github/workflows/release.yml'), 'utf8');
+    expect(release).toContain('npm publish --access public --provenance');
+    expect(release).toContain('npm publish .release/eai-cli-package --access public --provenance');
+    expect(release).toContain('needs: release\n    uses: ./.github/workflows/docs.yml');
+    expect(release).not.toContain('eai-testing-dev');
+    expect(release).not.toContain('repository-dispatch');
+    expect(release).not.toContain('EAI_TESTING_APP_ID');
+    expect(release).not.toContain('EAI_TESTING_APP_PRIVATE_KEY');
+  });
+
   test('owner release publishes the verified prepared archive before qualified Docs and never waits before tagging', () => {
     const release = readFileSync(path.join(repoRoot, '.github/workflows/release.yml'), 'utf8');
     expect(release).toContain('node scripts/verify-docs-publication.cjs --prepared-source');

@@ -27,6 +27,37 @@ function allStrings(value) {
   return [];
 }
 
+function normalizeIdentifier(value) {
+  return value.trim().toLowerCase().replace(/-/g, '_');
+}
+
+// `eai errors explain` resolves a server code to one entry, so an alias needs exactly one owner.
+function validateServerCodeAliases(entries) {
+  const issues = [];
+  const owners = new Map();
+
+  for (const entry of entries) {
+    for (const matcher of entry.match ?? []) {
+      if (!matcher.serverCode) continue;
+      const normalized = normalizeIdentifier(matcher.serverCode);
+      const owner = owners.get(normalized);
+      if (owner !== undefined && owner !== entry.code) {
+        issues.push(`${entry.code} claims server code ${matcher.serverCode} already used by ${owner}`);
+        continue;
+      }
+      owners.set(normalized, entry.code);
+
+      const shadowed = entries.find((other) => other.code !== entry.code
+        && (normalizeIdentifier(other.code) === normalized || normalizeIdentifier(other.reasonCode) === normalized));
+      if (shadowed) {
+        issues.push(`${entry.code} server code ${matcher.serverCode} shadows the code or reason of ${shadowed.code}`);
+      }
+    }
+  }
+
+  return issues;
+}
+
 function validate(entries) {
   const issues = [];
   const codes = new Set();
@@ -63,7 +94,7 @@ function validate(entries) {
     }
   }
 
-  return issues;
+  return [...issues, ...validateServerCodeAliases(entries)];
 }
 
 // Harness instructions were rewritten so an AI acts only when the person asks for help.

@@ -1,7 +1,7 @@
 {
   "name": "@enterpriseai/cli",
   "dist-tags": {
-    "latest": "3.20.5"
+    "latest": "3.20.12"
   },
   "versions": {
     "3.19.5": {
@@ -171,9 +171,177 @@
         "shasum": "3a5e78618d10fb8c13c6d427506639282e646dfd",
         "integrity": "sha512-Ej3iGKnu373/qDFzxht3DEFqZHITFXcvyjl18hM5qOCw7bQJXZgBhbjA4QKZOHCFYp9/RkEWH67Ey76dJO/PHA=="
       }
+    },
+    "3.20.6": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.6",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.6.tgz",
+        "shasum": "d2a9e5600f5e8f1dbe3c9cdc55f3d07936cd361f",
+        "integrity": "sha512-0AclsmE5v4GMOXVRGqpeJ0ZoHO4GZCryqPsmmSLK6wIxdKjTMikBrkyO/N9kLrkiCwJ+Q5wbaWNnti5t3KI/MQ=="
+      }
+    },
+    "3.20.7": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.7",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.7.tgz",
+        "shasum": "33a561cb84d10f681d96ef4f94afccfbd324fc8c",
+        "integrity": "sha512-MOuXLmS9l8R662k6GYGHhNiqWixL1MU63eAs1tklhMikBCETv+rZD0RD4RUgCxv4/OhLp9WKh9dIcjuBpLLF4g=="
+      }
+    },
+    "3.20.8": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.8",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.8.tgz",
+        "shasum": "b47814c4788740beccbb563e8915606d33991926",
+        "integrity": "sha512-grPt6QZAyiVY/+HuZGoSRAy03DaN8kwlctBoSsHzEE0vz7SCTVTlKXz3w07oKeqesQ55HQblwhvQffLR3oHYXQ=="
+      }
+    },
+    "3.20.9": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.9",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.9.tgz",
+        "shasum": "6802689546273c14075b91333a4767296599cd0f",
+        "integrity": "sha512-rxSh+MS0WVzvM/MySKIwSkgMGqoUmtXTiZxtQI2DVn3dpuDm/7m36xAAnQSvn2vRllM+qNnpw5fLB2IYJNXbEA=="
+      }
+    },
+    "3.20.10": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.10",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.10.tgz",
+        "shasum": "eb0616d95a13d8f9cb245232bca04195a28385e1",
+        "integrity": "sha512-rzp3Uahu+BHFJ6KTEWWqx9SM+DBmGZj2bHaPf4AYM8d/i+ipSEVda9Q8Z0jLOKMfRZbHNtXu2rCjQGFKv6wgJg=="
+      }
+    },
+    "3.20.11": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.11",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.11.tgz",
+        "shasum": "bfb790b7b1183bef9adc1603daa3241e1110ee2d",
+        "integrity": "sha512-ToB2X0YgGRhrBf/C1dUrHU4v/crHzOYKPGDY6/ej22Fweb8YZQFSk0RRT+Pz7jMKUNLu0V2IBZwk7iyIg+m6tQ=="
+      }
+    },
+    "3.20.12": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.12",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.12.tgz",
+        "shasum": "6bdaced80681a3503848151e776fe06325db67df",
+        "integrity": "sha512-X87JsR9Hx6XjPsP1D4CYLOqgd6xUp/m3QYt2pTgFZbLPOmGfbUbcmSPsxaoThjZBdqiaJ4n334QpK+RC3SVouQ=="
+      }
     }
   },
-  "modified": "2026-10-14T22:50:41.413Z",
+  "modified": "2026-11-11T01:10:04.254Z",
   "time": {
     "3.19.5": "2026-10-13T03:33:26.251Z",
     "3.20.0": "2026-10-14T02:38:51.024Z",
@@ -182,6 +350,13 @@
     "3.20.3": "2026-10-14T13:39:24.516Z",
     "3.20.4": "2026-10-14T19:58:19.440Z",
     "3.20.5": "2026-10-14T22:50:41.413Z",
-    "modified": "2026-10-14T22:50:41.413Z"
+    "3.20.6": "2026-10-19T06:03:42.959Z",
+    "3.20.7": "2026-10-22T02:19:30.903Z",
+    "3.20.8": "2026-11-02T03:10:02.948Z",
+    "3.20.9": "2026-11-02T23:50:20.206Z",
+    "3.20.10": "2026-11-05T02:58:48.376Z",
+    "3.20.11": "2026-11-10T06:42:54.345Z",
+    "3.20.12": "2026-11-11T01:10:04.254Z",
+    "modified": "2026-11-11T01:10:04.254Z"
   }
 }

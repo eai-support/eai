@@ -10,7 +10,7 @@ Choose the route that matches your situation. Do not complete every route.
 ## Set Up This Computer
 
 **Recommended for most people.** Use [EAI Setup](./installer-setup.md) on a new
-Windows, macOS, or Ubuntu/Debian computer.
+Windows computer (x64 or ARM64) or a new Mac with Apple Silicon.
 
 You download the installer, sign in in your browser, and name your first
 project. EAI Setup prepares the tools and creates the project.
@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.5** (2026-10-14): Pin parent-owned app deletion to its requested runtime child.
+The current CLI release is **v3.20.10** (2026-11-05): Add eai login --switch-account for EAI Setup account switching.

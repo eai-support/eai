@@ -4,6 +4,7 @@
 
 import chalk from 'chalk';
 import { recordSupportJsonError } from './support-context.js';
+import { normalizeCredentialKey, redactCredentialAssignments, SENSITIVE_AUTHORIZATION_KEY } from './support-redaction.js';
 
 // TTY and color detection
 function shouldUseColor(): boolean {
@@ -37,14 +38,19 @@ const useColor = shouldUseColor();
 const SENSITIVE_ASSIGNMENT_PATTERN =
   /((?:["']?[\w.-]*(?:token|secret|password|passwd|pwd|api[_-]?key|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)[\w.-]*["']?\s*[:=]\s*["']?))([^"',\s}]+)/gi;
 const SENSITIVE_KEY_PATTERN =
-  /(?:token|secret|password|passwd|pwd|api[_-]?key|authorization|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)/i;
+  /(?:token|secret|password|passwd|pwd|api[_-]?key|cookie|credential|client[_-]?secret|access[_-]?token|refresh[_-]?token|id[_-]?token)/i;
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = normalizeCredentialKey(key);
+  return SENSITIVE_KEY_PATTERN.test(normalized) || SENSITIVE_AUTHORIZATION_KEY.test(normalized);
+}
 const AUTH_HEADER_PATTERN = /\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi;
 const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g;
 // Strips userinfo credentials from connection URIs, e.g. mongodb://user:pass@host.
 const URI_CREDENTIAL_PATTERN = /\b([a-z][a-z0-9+.-]*:\/\/)[^:@\s/]+:[^@\s/]+@/gi;
 
 export function redactSensitiveText(msg: string): string {
-  return msg
+  return redactCredentialAssignments(msg, isSensitiveKey)
     .replace(AUTH_HEADER_PATTERN, '$1 [redacted]')
     .replace(JWT_PATTERN, '[redacted-jwt]')
     .replace(URI_CREDENTIAL_PATTERN, '$1[redacted]@')
@@ -81,7 +87,7 @@ export function redactSensitiveDeep<T>(value: T): T {
     const out: Record<string, unknown> = {};
     for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
       out[key] = safeTenantDeauthorization(key, item)
-        ?? (SENSITIVE_KEY_PATTERN.test(key) ? '[redacted]' : redactSensitiveDeep(item));
+        ?? (isSensitiveKey(key) ? '[redacted]' : redactSensitiveDeep(item));
     }
     return out as unknown as T;
   }
@@ -91,7 +97,7 @@ export function redactSensitiveDeep<T>(value: T): T {
 function redactingJsonReplacer(key: string, value: unknown): unknown {
   const summary = safeTenantDeauthorization(key, value);
   if (summary) return summary;
-  if (key && SENSITIVE_KEY_PATTERN.test(key)) {
+  if (key && isSensitiveKey(key)) {
     return '[redacted]';
   }
 
@@ -194,7 +200,8 @@ export function table(rows: Array<[string, string]>): void {
   const maxLabel = Math.max(...rows.map(([label]) => label.length));
   for (const [label, value] of rows) {
     const paddedLabel = redactSensitiveText(label.padEnd(maxLabel));
-    const safeValue = redactSensitiveText(value);
+    const key = normalizeCredentialKey(label).trim().replace(/\s*:$/, '');
+    const safeValue = isSensitiveKey(key) ? '[redacted]' : redactSensitiveText(value);
     if (useColor && !simpleMode) {
       console.log(`  ${chalk.dim(paddedLabel)}  ${safeValue}`);
     } else {

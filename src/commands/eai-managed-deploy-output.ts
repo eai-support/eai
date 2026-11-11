@@ -17,6 +17,7 @@ import {
   printOperation,
 } from "./eai-managed-deploy-operation.js";
 
+/** Emit structured JSON or human error output with optional server-supplied diagnostics and exit status 1. */
 export function printFailure(format: string, error: unknown): void {
   const failure =
     error instanceof ManagedDeployFailure
@@ -27,10 +28,11 @@ export function printFailure(format: string, error: unknown): void {
             : "EAI_MANAGED_DEPLOY_FAILED",
           error instanceof Error ? error.message : String(error),
           error instanceof ManagedSourceError
-            ? error.nextAction ?? error.message
+            ? (error.nextAction ?? error.message)
             : "Fix the reported problem, then retry the same exact command.",
         );
-  const details = error instanceof ManagedSourceError ? error.details : undefined;
+  const details =
+    error instanceof ManagedSourceError ? error.details : undefined;
   if (format === "json") {
     out.json({
       ok: false,
@@ -76,13 +78,17 @@ export function printManagedSourceOperation(
     configHash: operation.configHash,
     sourceBinding: {
       repository: `${operation.repository.owner}/${operation.repository.name}`,
-      commitSha: operation.sourceProvenance?.commitSha ?? operation.review?.mergedSha,
+      commitSha:
+        operation.sourceProvenance?.commitSha ?? operation.review?.mergedSha,
     },
     review: operation.review,
-    ...(operation.sourceProvenance ? {
-      sourceProvenance: operation.sourceProvenance, customerAuthorization: operation.customerAuthorization,
-      githubApprovedReviewClaim: false,
-    } : {}),
+    ...(operation.sourceProvenance
+      ? {
+          sourceProvenance: operation.sourceProvenance,
+          customerAuthorization: operation.customerAuthorization,
+          githubApprovedReviewClaim: false,
+        }
+      : {}),
     deploymentId: operation.deployment?.requestId,
     activeUrl: operation.deployment?.liveUrl,
     runtimeIdentity: operation.deployment?.runtimeIdentity,
@@ -130,7 +136,8 @@ export async function printManagedSourceCompletion(
   const revision = isRecord(operation.sourceRevision)
     ? operation.sourceRevision
     : undefined;
-  const mergedSha = publication.sourceProvenance?.commitSha ?? publication.review?.mergedSha;
+  const mergedSha =
+    publication.sourceProvenance?.commitSha ?? publication.review?.mergedSha;
   const hasExactMergedSha =
     typeof mergedSha === "string" && /^[a-f0-9]{40}$/.test(mergedSha);
   if (
@@ -153,11 +160,13 @@ export async function printManagedSourceCompletion(
     publicationStatus: publication.status,
     templateCommitSha: publication.templateCommitSha,
     bundleSha256: publication.bundleSha256,
-    ...(publication.sourceProvenance ? {
-      sourceProvenance: publication.sourceProvenance,
-      customerAuthorization: publication.customerAuthorization,
-      githubApprovedReviewClaim: false,
-    } : {}),
+    ...(publication.sourceProvenance
+      ? {
+          sourceProvenance: publication.sourceProvenance,
+          customerAuthorization: publication.customerAuthorization,
+          githubApprovedReviewClaim: false,
+        }
+      : {}),
   });
   if (classifyManagedOperationStatus(operation) === "failed")
     process.exitCode = 1;

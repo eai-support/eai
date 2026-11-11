@@ -14,18 +14,18 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.5 |
-| Released | 2026-10-14 |
-| Last Material Change | Pin parent-owned app deletion to its requested runtime child |
-| Source Commit | `68d50619b1ea915a9230f984cbe3e566f67704dc` |
+| Version | 3.20.10 |
+| Released | 2026-11-05 |
+| Last Material Change | Add eai login --switch-account for EAI Setup account switching |
+| Source Commit | `70ed29f7551d3f1bd540f35e5cbe8580ad4d21ea` |
 
 
 ## Install
 
 For a new desktop computer, use [EAI Setup](./installer-setup.md) first. It is
-the standard guided path for Windows, macOS, and Ubuntu/Debian users. It
-prepares prerequisites, installs the CLI, opens browser sign-in, creates the
-project, and installs its dependencies.
+the standard guided path for Windows (x64 and ARM64) and Apple Silicon Mac
+users. It prepares prerequisites, installs the CLI, opens browser sign-in,
+creates the project, and installs its dependencies.
 
 Use the commands below for CI, managed developer environments, or manual setup.
 
@@ -138,6 +138,7 @@ construction.
 | `eai types`                             | Validate, seed, diff, and pull Object Type definitions.                                   |
 | `eai resources`                         | List, get, create, update, delete, query, aggregate, search, and manage ResourceAPI data. |
 | `eai docs`                              | Upload, classify, and index documents for platform processing and RAG.                    |
+| `eai kb upload`                         | Upload and index one tenant-explicit Knowledge Base file using its resolved regional API. |
 | `eai chat`                              | Send or stream chat requests through configured AI workflows.                             |
 | `eai publicapi`                         | Call authorized PublicAPI V4 routes when a named command does not exist yet.              |
 | `eai runtime`                           | Validate the host-neutral `eai.runtime.json` app runtime contract.                        |
@@ -172,9 +173,18 @@ Prefer product-shaped commands before `eai publicapi`:
 | Work with resources  | `eai resources list/get/create/update/delete/query`      |
 | Search resources     | `eai resources search "<query>" --mode hybrid`           |
 | Work with documents  | `eai docs configure-type`, `eai docs upload`, `eai docs classify`, `eai docs job/get` |
+| Index a Knowledge Base file | `eai kb upload <file> --tenant-id <workspace-id>` |
 | Attach resource files | `eai resources file upload/get/delete`                   |
 | Use chat workflows   | `eai chat send`, `eai chat stream`                       |
 | Advanced route       | `eai publicapi <method> /v4/...`                         |
+
+`eai kb upload` accepts nonempty UTF-8 `.md`/`.markdown` files, including
+uppercase extensions. It preserves the original filename and bytes and sends
+canonical `text/markdown` in the record, upload and verification flow. The
+`text/x-markdown` alias is normalized; empty/octet/plain MIME fallback is
+limited to known Markdown filenames. It does not render or fetch links/images.
+General resource uploads and configured document/classifier behavior remain
+unchanged. See [the KB upload reference](api-reference.md#eai-kb-upload-file---tenant-id-id).
 
 For protected POSIX qualification, named `eai init <name> --skip-prompts` can
 optionally pair `--binding-receipt <absolute-path>` with
