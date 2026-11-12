@@ -59,7 +59,7 @@
         },
         {
           "id": "bounded-content-understanding",
-          "description": "Local declarative typed-field validation, exact workspace typed/flat and advanced capability gates, canonical original-operation UUID recovery, safe API/auth errors, and ambiguity-safe camel/snake document job/result reads. CU capabilities preserves the server's additive entitlement decision in JSON and apply refuses a denied readiness result after one GET. Deployed readiness and release publication remain separately gated.",
+          "description": "Local declarative typed-field validation, exact workspace typed/flat and advanced capability gates, canonical original-operation UUID recovery, safe API/auth errors, and ambiguity-safe camel/snake document job/result reads. The CU capabilities command preserves the server's additive entitlement decision in JSON, and apply refuses a denied readiness result after one GET. Deployed readiness and release publication remain separately gated.",
           "owned_paths": [
             "src/commands/content-understanding.ts",
             "src/lib/content-understanding-manifest.ts",
