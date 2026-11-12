@@ -71,15 +71,29 @@ interface TenantBootstrapAdminCommandOptions {
 }
 
 
+/** Unwraps nested create response envelopes (`doc` or `tenant`) into the flat workspace record. */
 export function extractCreatedTenantRecord(
   payload: Record<string, unknown>,
 ): Record<string, unknown> {
-  const nestedDoc = payload.doc;
-  if (nestedDoc && typeof nestedDoc === "object" && !Array.isArray(nestedDoc)) {
-    return nestedDoc as Record<string, unknown>;
+  for (const nested of [payload.doc, payload.tenant]) {
+    if (nested && typeof nested === "object" && !Array.isArray(nested)) {
+      return nested as Record<string, unknown>;
+    }
   }
 
   return payload;
+}
+
+/** Normalizes a created workspace ID, accepting only non-empty trimmed strings or finite numbers. */
+export function resolveCreatedTenantId(id: unknown): string | null {
+  if (typeof id === "string") {
+    const trimmed = id.trim();
+    return trimmed.length > 0 ? trimmed : null;
+  }
+  if (typeof id === "number" && Number.isFinite(id)) {
+    return String(id);
+  }
+  return null;
 }
 
 function normalizeTenantCreateHomeRegion(
@@ -739,7 +753,12 @@ tenantCommand
 
       const tenant = (await res.json()) as Record<string, unknown>;
       const createdTenant = extractCreatedTenantRecord(tenant);
-      const tenantId = String(createdTenant.id || "");
+      const resolvedId = resolveCreatedTenantId(createdTenant.id);
+      const resolvedSlug =
+        typeof createdTenant.slug === "string" && createdTenant.slug.trim().length > 0
+          ? createdTenant.slug.trim()
+          : String(options.slug);
+      const tenantId = resolvedId ?? "";
       let bootstrap: ChildTenantBootstrapResult | undefined;
       let bootstrapError: ParsedApiError | undefined;
       let bootstrapped = false;
@@ -833,6 +852,8 @@ tenantCommand
 
       if (options.format === "json") {
         out.json({
+          id: resolvedId,
+          slug: resolvedSlug,
           tenant,
           bootstrap: bootstrap || null,
           bootstrapError: bootstrapError || null,
@@ -840,8 +861,12 @@ tenantCommand
         });
       } else {
         spinner!.succeed(
-          `Created workspace ${chalk.cyan(String(createdTenant.slug || options.slug))} (${chalk.dim(String(createdTenant.id || tenantId))})`,
+          `Created workspace — id: ${chalk.cyan(resolvedId ?? "not available")}, slug: ${chalk.cyan(resolvedSlug)}`,
         );
+        out.table([
+          ["ID", resolvedId ?? "not available"],
+          ["Slug", resolvedSlug],
+        ]);
         for (const message of buildTenantCreateStatusMessages(outcome)) {
           if (
             message.startsWith("Usable: not yet confirmed") ||
