@@ -464,6 +464,21 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(calls[0].init).toMatchObject({ method: 'GET', redirect: 'error', headers: { 'X-Tenant-Id': tenantId, Authorization: 'Bearer <fixture-access-token>' } });
     expect(calls[0].init.signal).toBeInstanceOf(AbortSignal);
   });
+  test('denied entitlement stays in JSON and blocks apply after one readiness read', async () => {
+    const denied = { ...readyCapabilities, ready: false, blockers: ['capability_not_in_plan'], entitlement: {
+      outcome: 'upgrade-required', reasonCode: 'capability_not_in_plan',
+      reasonMessage: 'This capability is not included in the current plan.',
+      upgradeUrl: 'https://com.enterpriseaigroup/account/upgrade',
+    } };
+    routes = url => url.pathname.endsWith('/capabilities') ? Response.json(denied) : Response.json(operation('succeeded'));
+
+    expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: denied });
+    expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
+
+    calls.length = 0;
+    expect(await cu(applyArgs())).toMatchObject({ ok: false, error: { code: 'CU_NOT_READY' } });
+    expect(calls).toHaveLength(1); expect(calls[0].init.method).toBe('GET');
+  });
   test('reports disabled capabilities truthfully instead of asserting deployed readiness', async () => {
     routes = () => Response.json({ ...readyCapabilities, enabled: false, ready: false, modelBindingFingerprint: null, blockers: [{ code: 'CU_MODE_DISABLED' }] });
     expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: { enabled: false, ready: false, blockers: [{ code: 'CU_MODE_DISABLED' }] } });
