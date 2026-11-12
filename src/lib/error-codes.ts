@@ -40,6 +40,7 @@ export enum ErrorCode {
   E250 = 'E250',
   E260 = 'E260',
   E261 = 'E261',
+  E262 = 'E262',
   E270 = 'E270',
   E280 = 'E280',
 
@@ -142,6 +143,10 @@ export const errorCatalog: Record<ErrorCode, Omit<ErrorDefinition, 'code'>> = {
   [ErrorCode.E261]: {
     message: 'App Object Type manifest validation failed',
     suggestion: 'Run `eai update`, validate the Object Types, then retry `eai types seed` once',
+  },
+  [ErrorCode.E262]: {
+    message: 'App resources must be provisioned before publishing Object Types',
+    suggestion: 'Run the exact eai app provision command returned by eai types seed --dry-run',
   },
   [ErrorCode.E270]: {
     message: 'Object Type is not published for the active workspace',

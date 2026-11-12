@@ -197,8 +197,8 @@ workspace.
     assertTextOrJson(options.format);
     validateInviteRole(options);
 
-    const ctx = await resolveCommandContext({ interactive: false });
-    const tenantId = options.tenant || ctx.tenantId;
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: false, allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true });
+    const tenantId = ctx.tenantId;
 
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
     const jsonOutput = options.format === 'json';
@@ -277,8 +277,8 @@ userCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options: ListUsersCommandOptions) => {
     assertTextOrJson(options.format);
-    const ctx = await resolveCommandContext({ interactive: false });
-    const tenantId = options.tenant || ctx.tenantId;
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: false, allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true });
+    const tenantId = ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
 
     const response = await client.listTenantMembers(tenantId, {
@@ -320,8 +320,8 @@ userCommand
   .option('--format <format>', 'Output format (text|json)', 'text')
   .action(async (options: UserCommandOptions) => {
     assertTextOrJson(options.format);
-    const ctx = await resolveCommandContext({ interactive: false });
-    const tenantId = options.tenant || ctx.tenantId;
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: false, allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true });
+    const tenantId = ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
 
     const response = await client.listTenantRoleDefinitions(tenantId);
@@ -382,8 +382,8 @@ membership in one V4 flow.
       process.exit(1);
     }
 
-    const ctx = await resolveCommandContext({ interactive: false });
-    const tenantId = options.tenant || ctx.tenantId;
+    const ctx = await resolveCommandContext({ tenantId: options.tenant, interactive: false, allowOutsideProject: true });
+    const tenantId = ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
     const jsonOutput = options.format === 'json';
 
@@ -459,7 +459,8 @@ current signed-in CLI user. It does not test or authorize another app client.
     if (options.json) options.format = 'json';
     assertTextOrJson(options.format);
     const jsonOutput = options.format === 'json';
-    const ctx = await resolveCommandContext({ interactive: false });
+    // Self-provisioning can target a workspace where membership does not exist yet.
+    const ctx = await resolveCommandContext({ interactive: false, allowOutsideProject: true });
     const tenantId = options.tenant || ctx.tenantId;
     const client = new PlatformAPIClient(ctx.publicApiUrl, tenantId);
     const callingApplication = {

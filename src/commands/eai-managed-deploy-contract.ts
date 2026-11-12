@@ -42,6 +42,7 @@ export interface ManagedDeployOptions {
   commit?: string;
   resume?: string;
   retry?: string;
+  recoverFailedReview?: string;
   wait: boolean;
   timeout: string;
   format: string;

@@ -4,7 +4,8 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createMockServer } from '../helpers/mock-server.js';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
-import { matchPublishedType, resourcesCommand } from '../../src/commands/resources.js';
+import { failResourceResponse, matchPublishedType, resourcesCommand } from '../../src/commands/resources.js';
+import { typesCommand } from '../../src/commands/types.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 
 const API_BASE = 'https://test-api.example.com';
@@ -90,6 +91,120 @@ describe('eai resources command guidance', () => {
       process.env.EAI_ACCESS_TOKEN = originalAccessToken;
     }
     await env.cleanup();
+    process.exitCode = undefined;
+  });
+
+  test('action discovery lists role, status and effects in text and JSON', async () => {
+    const actions = [{ name: 'submitForReview', displayName: 'Submit for review', requiredRole: 'tenant-builder',
+      validationRules: { requiredStatus: ['draft'], requiredFields: ['trustName'] }, sideEffects: [{ type: 'set_field', field: 'status', value: 'review' }] }];
+    mockServer.server.use(http.get(`${API_BASE}/v4/data/resources/schema/test-tenant-id`, () => HttpResponse.json({ objectTypes: [{ name: 'Trust', slug: 'trust', actions }] })));
+    const text = vi.spyOn(console, 'log').mockImplementation(() => {});
+    await typesCommand.parseAsync(['actions', 'trust'], { from: 'user' });
+    expect(joinedConsoleOutput(text)).toContain('tenant-builder');
+    expect(joinedConsoleOutput(text)).toContain('draft');
+    expect(joinedConsoleOutput(text)).toContain('set_field status = "review"');
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await typesCommand.parseAsync(['actions', 'trust', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toMatchObject({ type: 'trust', actions });
+  });
+
+  test('action execution uses the encoded route and params envelope', async () => {
+    let body: unknown;
+    let pathname: string | undefined;
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/trust/:id/actions/:action`, async ({ request }) => {
+      pathname = new URL(request.url).pathname;
+      body = await request.json();
+      return HttpResponse.json({ id: 'trust/one', object_type: 'trust', action: 'submit/review', data: { status: 'review' }, version: 2 });
+    }));
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await resourcesCommand.parseAsync(['action', 'trust', 'trust/one', 'submit/review', '--params', '{"comment":"Ready"}', '--format', 'json'], { from: 'user' });
+    expect(pathname).toBe('/v4/data/resources/test-tenant-id/trust/trust%2Fone/actions/submit%2Freview');
+    expect(body).toEqual({ params: { comment: 'Ready' } });
+    expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({ action: 'submit/review', version: 2, request: { tenantId: 'test-tenant-id' } });
+  });
+
+  test('an action policy refusal emits the permission error envelope', async () => {
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/trust/one/actions/approve`, () =>
+      HttpResponse.json({ error: { code: 'FORBIDDEN', message: "Access denied by policy. This action declares requiredRole 'tenant-admin' in this workspace." } }, { status: 403 })));
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await resourcesCommand.parseAsync(['action', 'trust', 'one', 'approve', '--format', 'json'], { from: 'user' });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0][0])).error).toMatchObject({ code: 'E204', exitCode: 1, diagnostics: {
+      status: 403, message: expect.stringContaining("requiredRole 'tenant-admin'"),
+    } });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test('action discovery returns an empty action list for a type without actions', async () => {
+    mockServer.server.use(http.get(`${API_BASE}/v4/data/resources/schema/test-tenant-id`, () =>
+      HttpResponse.json({ objectTypes: [{ name: 'Trust', slug: 'trust', actions: [] }] })));
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await typesCommand.parseAsync(['actions', 'trust', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(String(log.mock.calls.at(-1)?.[0]))).toMatchObject({ type: 'trust', actions: [] });
+  });
+
+  test.each(['[]', 'null', '{invalid'])('rejects non-object action params %s before HTTP', async params => {
+    const fetch = vi.spyOn(globalThis, 'fetch');
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await resourcesCommand.parseAsync(['action', 'trust', 'one', 'approve', '--params', params, '--format', 'json'], { from: 'user' });
+    expect(fetch).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0][0])).error).toMatchObject({ code: 'E302', exitCode: 1 });
+    expect(process.exitCode).toBe(1);
+  });
+
+  test.each(['create', 'update'])('%s preserves safe validation details in exactly one JSON stdout envelope', async operation => {
+    mockServer.server.use(http.all(`${API_BASE}/v4/data/resources/test-tenant-id/trust*`, () => HttpResponse.json({ error: {
+      code: 'VALIDATION_FAILED', message: 'Data validation failed',
+      details: [{ field: 'currency', rule: 'select_option', message: 'Choose a supported currency', allowedValues: ['AUD', 'EUR'], rawValue: 'private', sql: 'private query' }],
+    } }, { status: 400, headers: { 'x-request-id': 'req-validation' } })));
+    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled exit'); }) as never);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    const args = operation === 'create' ? ['create', 'trust'] : ['update', 'trust', 'one', '--version', '1'];
+    await expect(resourcesCommand.parseAsync([...args, '--data', '{"currency":"USD"}', '--format', 'json'], { from: 'user' })).rejects.toThrow('Controlled exit');
+    expect(exit).toHaveBeenCalledWith(1);
+    expect(log).toHaveBeenCalledTimes(1);
+    const payload = JSON.parse(String(log.mock.calls[0][0]));
+    expect(payload.error).toMatchObject({ code: 'E302', message: expect.any(String), suggestion: expect.any(String), exitCode: 1,
+      diagnostics: { status: 400, serverCode: 'VALIDATION_FAILED', requestId: 'req-validation', fields: [{ field: 'currency', rule: 'select_option', message: 'Choose a supported currency', allowedValues: ['AUD', 'EUR'] }] } });
+    expect(JSON.stringify(payload)).not.toContain('private');
+  });
+
+  test('action role/status failures retain field reasons in text and JSON', async () => {
+    mockServer.server.use(http.post(`${API_BASE}/v4/data/resources/test-tenant-id/trust/one/actions/approve`, () => HttpResponse.json({ error: {
+      code: 'ACTION_VALIDATION_FAILED', message: 'Preconditions not met', details: [{ field: 'status', rule: 'status_transition', message: 'Requires review status' }],
+    } }, { status: 400 })));
+    const text = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await resourcesCommand.parseAsync(['action', 'trust', 'one', 'approve'], { from: 'user' });
+    expect(joinedConsoleOutput(text)).toContain('status: Requires review status');
+    const log = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await resourcesCommand.parseAsync(['action', 'trust', 'one', 'approve', '--format', 'json'], { from: 'user' });
+    expect(log).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(log.mock.calls[0][0])).error.diagnostics.fields[0].rule).toBe('status_transition');
+  });
+
+  test('update help states full replacement semantics', () => {
+    const update = resourcesCommand.commands.find(command => command.name() === 'update');
+    expect(update?.helpInformation()).toContain('include every required field');
+    expect(update?.helpInformation()).toMatch(/omitted fields are\s+removed/);
+  });
+
+  test.each(['text', 'json'])('malformed upstream errors reveal no raw response in %s mode', async format => {
+    const text = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await failResourceResponse(new Response('UPSTREAM_INTERNAL_EXCEPTION: database internals', {
+      status: 502, statusText: 'Bad Gateway',
+    }), format, null, 'resources.create');
+    const rendered = joinedConsoleOutput(text, output);
+    expect(rendered).not.toContain('UPSTREAM_INTERNAL_EXCEPTION');
+    expect(rendered).not.toContain('database internals');
+    if (format === 'json') {
+      expect(output).toHaveBeenCalledTimes(1);
+      expect(JSON.parse(String(output.mock.calls[0][0])).error.diagnostics.status).toBe(502);
+    } else {
+      expect(rendered).toContain('502 Bad Gateway');
+    }
   });
 
   test('requires an explicit Object Type selection for an index plan', () => {

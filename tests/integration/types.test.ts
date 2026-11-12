@@ -945,7 +945,7 @@ describe('app object-type publish helpers', () => {
           tenantId: 'parent-1',
           results: [{ name: 'Task', status: 'updated' }],
           verification: { tenantId: 'child-1', requestedTypes: ['Task'], matchedTypes: ['Task'], missingTypes: [], driftedTypes: [], converged: true },
-          resourceApiSchemaSync: { status: 'queued' },
+          resourceApiSchemaSync: { status: 'queued', installId: 'child-install', schemaHash: 'a'.repeat(64) },
         }), { status: 200 });
       },
     } as unknown as PlatformAPIClient;
@@ -966,7 +966,7 @@ describe('app object-type publish helpers', () => {
           tenantId: 'parent-1',
           results: [{ name: 'Task', status: 'updated' }],
           verification: { tenantId: 'child-1', requestedTypes: ['Task'], matchedTypes: ['Task'], missingTypes: [], driftedTypes: [], converged: true },
-          resourceApiSchemaSync: { status: 'queued' },
+          resourceApiSchemaSync: { status: 'queued', installId: 'child-install', schemaHash: 'a'.repeat(64) },
         }), { status: 200 });
       },
       getResourceStorageSchemaStatus: async () => { throw new Error('parent schema must not be read'); },
@@ -974,13 +974,49 @@ describe('app object-type publish helpers', () => {
     const runtimeClient = {
       getResourceStorageSchemaStatus: async () => {
         calls.push('child:schema');
-        return new Response(JSON.stringify({ objectTypeSlugs: ['task'] }), { status: 200 });
+        return new Response(JSON.stringify({ tenantId: 'child-1', installId: 'child-install', available: true, state: 'active', schemaHash: 'a'.repeat(64), objectTypeSlugs: ['task'] }), { status: 200 });
       },
     } as unknown as PlatformAPIClient;
     const type = { name: 'Task', slug: 'task', properties: [], linkTypes: [], actions: [] } as ObjectTypeDefinition;
     const outcome = await publishAppObjectTypesForRuntime(appClient, runtimeClient, 'my-app', 'parent-1', 'child-1', [type]);
     expect(calls).toEqual(['parent:save', 'parent:publish', 'child:schema']);
     expect(outcome.result).toMatchObject({ tenantId: 'child-1', resourceApiSchemaSync: { status: 'synced', schemaVisibilitySource: 'storage.schema-status' } });
+  });
+
+  test.each(['wrapped', 'flat'])('uses the published %s manifest canonical binding for legacy no-hash verification', async shape => {
+    const source: ObjectTypeDefinition = {
+      name: 'Task', slug: 'task', displayName: 'Task', status: 'published', properties: [], linkTypes: [], actions: [],
+      storageBinding: { sql: { databaseAlias: 'tenant-postgres', tenantSchemaStrategy: 'per-tenant-schema', tableName: 'source_tasks' } },
+    };
+    const installed = { ...source, storageBinding: { sql: { ...source.storageBinding!.sql!, tableName: 'canonical_tasks' } } };
+    const data = { config: { objectTypes: [installed] } };
+    const client = {
+      saveAppObjectTypeManifest: async () => new Response('{}'),
+      publishAppObjectTypes: async () => new Response(JSON.stringify({
+        tenantId: 'tenant-1', results: [{ name: 'Task', status: 'updated' }],
+        verification: { tenantId: 'tenant-1', requestedTypes: ['Task'], matchedTypes: ['Task'], missingTypes: [], driftedTypes: [], converged: true },
+        resourceApiSchemaSync: { status: 'queued' }, config: shape === 'wrapped' ? { id: 'config-1', data } : data,
+      })),
+      getResourceStorageSchemaStatus: async () => new Response('{}', { status: 404 }),
+      getSchema: async () => new Response(JSON.stringify({ tenant_id: 'tenant-1', object_types: [installed] })),
+    } as unknown as PlatformAPIClient;
+    const outcome = await publishAppObjectTypesForRuntime(client, client, 'my-app', 'tenant-1', 'tenant-1', [source]);
+    expect(outcome.result?.resourceApiSchemaSync).toMatchObject({ status: 'synced', schemaVerification: 'definitions' });
+  });
+
+  test('does not replace requested feature fields with stale fields in a legacy manifest response', async () => {
+    const source: ObjectTypeDefinition = { name: 'Task', slug: 'task', displayName: 'Task', status: 'published',
+      properties: [{ name: 'owner', type: 'relationship', required: true, targetObjectType: 'party' }], linkTypes: [], actions: [] };
+    const client = {
+      saveAppObjectTypeManifest: async () => new Response('{}'),
+      publishAppObjectTypes: async () => new Response(JSON.stringify({
+        tenantId: 'tenant-1', results: [{ name: 'Task', status: 'updated' }],
+        resourceApiSchemaSync: { status: 'queued' },
+        config: { data: { config: { objectTypes: [{ ...source, properties: [], storageBinding: null }] } } },
+      })),
+    } as unknown as PlatformAPIClient;
+    const outcome = await trySeedViaAppManifestPublish(client, 'my-app', 'tenant-1', [source]);
+    expect(outcome.expectedDefinitions?.[0].properties).toEqual(source.properties);
   });
 
   test('accepts an exact runtime child declared in enrollment metadata', async () => {
@@ -1481,6 +1517,8 @@ describe('verifyTypeSeedConvergenceWithRetry', () => {
 });
 
 describe('waitForResourceApiSchemaVisibility', () => {
+  const customer: ObjectTypeDefinition = { name: 'Customer', slug: 'customer', displayName: 'Customer',
+    properties: [], linkTypes: [], actions: [], status: 'published' };
   test('waits for queued app-manifest ResourceAPI sync to become schema-visible', async () => {
     let schemaCalls = 0;
     const client = {
@@ -1497,7 +1535,7 @@ describe('waitForResourceApiSchemaVisibility', () => {
           statusText: 'OK',
           json: async () => ({
             objectTypes: schemaCalls >= 2
-              ? [{ name: 'Customer', slug: 'customer' }]
+              ? [customer]
               : [],
           }),
         };
@@ -1509,7 +1547,7 @@ describe('waitForResourceApiSchemaVisibility', () => {
       'tenant-1',
       ['Customer'],
       { status: 'queued', objectTypes: ['customer'] },
-      { attempts: 3, delayMs: 0 },
+      { attempts: 3, delayMs: 0, expectedDefinitions: [customer] },
     )).resolves.toMatchObject({
       status: 'synced',
       schemaVisibility: 'visible',
@@ -1517,13 +1555,14 @@ describe('waitForResourceApiSchemaVisibility', () => {
     expect(schemaCalls).toBe(2);
   });
 
-  test('accepts passive storage schema-status objectTypeSlugs as schema-visible', async () => {
+  test('accepts the exact active prepared install/hash with all requested slugs', async () => {
     const client = {
       getResourceStorageSchemaStatus: async () => ({
         ok: true,
         status: 200,
         statusText: 'OK',
         json: async () => ({
+          tenantId: 'tenant-1', installId: 'install-1', available: true, state: 'active', schemaHash: 'a'.repeat(64),
           objectTypeSlugs: ['customer', 'order-line'],
         }),
       }),
@@ -1536,13 +1575,124 @@ describe('waitForResourceApiSchemaVisibility', () => {
       client,
       'tenant-1',
       ['Customer', 'OrderLine'],
-      { status: 'queued', objectTypes: ['customer', 'order-line'] },
+      { status: 'queued', installId: 'install-1', schemaHash: 'a'.repeat(64), objectTypes: ['customer', 'order-line'] },
       { attempts: 3, delayMs: 0 },
     )).resolves.toMatchObject({
       status: 'synced',
       schemaVisibility: 'visible',
       schemaVisibilitySource: 'storage.schema-status',
     });
+  });
+
+  test.each([
+    ['old hash', { schemaHash: 'b'.repeat(64) }],
+    ['missing hash', { schemaHash: undefined }],
+    ['old install', { installId: 'previous-install' }],
+    ['missing install', { installId: undefined }],
+    ['other tenant', { tenantId: 'other-tenant' }],
+    ['unavailable snapshot', { available: false }],
+    ['inactive snapshot', { state: 'pending' }],
+    ['missing requested type', { objectTypeSlugs: [] }],
+  ])('rejects %s even with already-present slugs and matching definitions', async (_label, change) => {
+    const getSchema = vi.fn(async () => new Response(JSON.stringify({ tenant_id: 'tenant-1', object_types: [customer] })));
+    const client = {
+      getResourceStorageSchemaStatus: async () => new Response(JSON.stringify({
+        tenantId: 'tenant-1', installId: 'install-1', available: true, state: 'active', schemaHash: 'a'.repeat(64), objectTypeSlugs: ['customer'], ...change,
+      })),
+      getSchema,
+    } as unknown as PlatformAPIClient;
+    await expect(waitForResourceApiSchemaVisibility(client, 'tenant-1', ['customer'],
+      { status: 'queued', installId: 'install-1', schemaHash: 'a'.repeat(64) },
+      { attempts: 2, delayMs: 0, expectedDefinitions: [customer] },
+    )).resolves.toMatchObject({ status: 'failed', errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT', details: { verificationMode: 'hash' } });
+    expect(getSchema).not.toHaveBeenCalled();
+  });
+
+  const withBehavior: ObjectTypeDefinition = {
+    ...customer,
+    properties: [
+      { name: 'owner', type: 'relationship', required: true, targetObjectType: 'party' },
+      { name: 'status', type: 'text', required: true, defaultValue: 'draft' },
+    ],
+    linkTypes: [{ name: 'orders', targetObjectType: 'order', cardinality: 'one-to-many' }],
+    actions: [{ name: 'approve', displayName: 'Approve', requiredRole: 'tenant-admin',
+      validationRules: { requiredFields: ['owner'], requiredStatus: 'draft' },
+      sideEffects: [{ type: 'set_field', field: 'status', value: 'approved' }] }],
+  };
+
+  test.each([
+    ['added property', { ...withBehavior, properties: withBehavior.properties.slice(0, 1) }],
+    ['removed property', { ...withBehavior, properties: [...withBehavior.properties, { name: 'note', type: 'text', required: false }] }],
+    ['property rule', { ...withBehavior, properties: withBehavior.properties.map(property => ({ ...property, required: false })) }],
+    ['relationship target only', { ...withBehavior, properties: withBehavior.properties.map(property => property.type === 'relationship' ? { ...property, targetObjectType: 'person' } : property) }],
+    ['link target only', { ...withBehavior, linkTypes: [{ ...withBehavior.linkTypes[0], targetObjectType: 'invoice' }] }],
+    ['new action', { ...withBehavior, actions: [] }],
+    ['action role only', { ...withBehavior, actions: [{ ...withBehavior.actions[0], requiredRole: 'tenant-viewer' }] }],
+    ['action precondition only', { ...withBehavior, actions: [{ ...withBehavior.actions[0], validationRules: { requiredStatus: 'open' } }] }],
+    ['action side effect only', { ...withBehavior, actions: [{ ...withBehavior.actions[0], sideEffects: [{ type: 'set_field', field: 'status', value: 'rejected' }] }] }],
+  ])('does not accept stale already-present types after a %s update without a hash', async (_label, installed) => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => new Response(JSON.stringify({ objectTypeSlugs: ['customer'] })),
+      getSchema: async () => new Response(JSON.stringify({ tenant_id: 'tenant-1', object_types: [installed] })),
+    } as unknown as PlatformAPIClient;
+    await expect(waitForResourceApiSchemaVisibility(client, 'tenant-1', ['customer'], { status: 'synced' },
+      { attempts: 1, delayMs: 0, expectedDefinitions: [withBehavior] },
+    )).resolves.toMatchObject({ status: 'failed', details: { driftedTypes: ['customer'], verificationMode: 'definitions' } });
+  });
+
+  test('accepts matching canonical definitions with read-model defaults and normalized action rules', async () => {
+    const installed = { ...withBehavior, id: 'registry-id', publishedAt: '2026-11-11T00:00:00Z',
+      properties: withBehavior.properties.toReversed().map(property => ({ indexed: false, options: null, description: null,
+        defaultValue: null, targetObjectType: null, customizationEligibility: null, ...property })),
+      linkTypes: withBehavior.linkTypes.map(link => ({ cascadeDelete: false, ...link })),
+      actions: withBehavior.actions.map(action => ({ ...action, validationRules: { requiredStatus: ['draft'], requiredFields: ['owner'], custom: [] } })),
+      storageBackend: 'postgresql', schemaVersion: 1, storageMetadataStatus: 'draft', storageBinding: null,
+      authorization: null, provisioningHints: null, indexes: [], description: null,
+    };
+    const client = {
+      getResourceStorageSchemaStatus: async () => new Response('{}', { status: 404 }),
+      getSchema: async () => new Response(JSON.stringify({ tenant_id: 'tenant-1', object_types: [installed] })),
+    } as unknown as PlatformAPIClient;
+    await expect(waitForResourceApiSchemaVisibility(client, 'tenant-1', ['customer'], { status: 'queued' },
+      { attempts: 1, delayMs: 0, expectedDefinitions: [withBehavior] },
+    )).resolves.toMatchObject({ status: 'synced', schemaVisibilitySource: 'schema', schemaVerification: 'definitions' });
+  });
+
+  test.each([
+    ['slug-only schema', { tenant_id: 'tenant-1', object_types: [{ slug: 'customer' }] }, [customer]],
+    ['missing expected definitions', { tenant_id: 'tenant-1', object_types: [customer] }, []],
+    ['wrong runtime schema', { tenant_id: 'other-tenant', object_types: [customer] }, [customer]],
+    ['duplicate installed definitions', { tenant_id: 'tenant-1', object_types: [customer, customer] }, [customer]],
+  ])('rejects insufficient legacy evidence: %s', async (_label, payload, expectedDefinitions) => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => new Response(JSON.stringify({ objectTypeSlugs: ['customer'] })),
+      getSchema: async () => new Response(JSON.stringify(payload)),
+    } as unknown as PlatformAPIClient;
+    await expect(waitForResourceApiSchemaVisibility(client, 'tenant-1', ['customer'], { status: 'queued' },
+      { attempts: 1, delayMs: 0, expectedDefinitions },
+    )).resolves.toMatchObject({ status: 'failed', details: { driftedTypes: ['customer'] } });
+  });
+
+  test.each(['install-1', 'old-install'])('preserves a known install boundary without a hash: observed %s', async installId => {
+    const client = {
+      getResourceStorageSchemaStatus: async () => new Response(JSON.stringify({ tenantId: 'tenant-1', installId, available: true, state: 'active', objectTypeSlugs: ['customer'] })),
+      getSchema: async () => new Response(JSON.stringify({ tenant_id: 'tenant-1', object_types: [customer] })),
+    } as unknown as PlatformAPIClient;
+    await expect(waitForResourceApiSchemaVisibility(client, 'tenant-1', ['customer'], { status: 'queued', installId: 'install-1' },
+      { attempts: 1, delayMs: 0, expectedDefinitions: [customer] },
+    )).resolves.toMatchObject({ status: installId === 'install-1' ? 'synced' : 'failed' });
+  });
+
+  test.each([undefined, {}, { status: 'failed' }, { status: 'skipped' }, { status: 'blocked' }])('does not turn missing/failed sync metadata %j green', async metadata => {
+    const getSchema = vi.fn();
+    const getResourceStorageSchemaStatus = vi.fn();
+    const observed = await waitForResourceApiSchemaVisibility({ getSchema, getResourceStorageSchemaStatus } as unknown as PlatformAPIClient,
+      'tenant-1', ['customer'], metadata, { attempts: 1, delayMs: 0, expectedDefinitions: [customer] });
+    expect(observed).toEqual(metadata);
+    expect(shouldFailTypeSeedRun([{ verification: { tenantId: 'tenant-1', requestedTypes: ['Customer'], matchedTypes: ['Customer'],
+      missingTypes: [], driftedTypes: [], createdCount: 0, updatedCount: 1, failedCount: 0, converged: true }, resourceApiSchemaSync: observed }])).toBe(true);
+    expect(getSchema).not.toHaveBeenCalled();
+    expect(getResourceStorageSchemaStatus).not.toHaveBeenCalled();
   });
 
   test('marks queued app-manifest sync as failed when ResourceAPI schema stays stale', async () => {
@@ -1566,7 +1716,7 @@ describe('waitForResourceApiSchemaVisibility', () => {
       'tenant-1',
       ['Customer'],
       { status: 'queued', objectTypes: ['customer'] },
-      { attempts: 2, delayMs: 0 },
+      { attempts: 2, delayMs: 0, expectedDefinitions: [customer] },
     )).resolves.toMatchObject({
       status: 'failed',
       errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT',
@@ -1580,7 +1730,7 @@ describe('waitForResourceApiSchemaVisibility', () => {
     });
   });
 
-  test('does not poll ResourceAPI schema for terminal sync metadata', async () => {
+  test('does not trust terminal sync metadata without runtime schema visibility', async () => {
     const client = {
       getResourceStorageSchemaStatus: async () => {
         throw new Error('schema status should not be polled for terminal metadata');
@@ -1596,7 +1746,7 @@ describe('waitForResourceApiSchemaVisibility', () => {
       ['Customer'],
       { status: 'synced' },
       { attempts: 1, delayMs: 0 },
-    )).resolves.toEqual({ status: 'synced' });
+    )).resolves.toMatchObject({ status: 'failed', errorCode: 'RESOURCEAPI_SCHEMA_VISIBILITY_TIMEOUT' });
   });
 });
 
@@ -1641,7 +1791,7 @@ describe('shouldFailTypeSeedRun', () => {
     ])).toBe(false);
   });
 
-  test('returns false when every tenant verification converged', () => {
+  test('fails when metadata converged without evidence of runtime schema synchronization', () => {
     expect(shouldFailTypeSeedRun([
       {
         verification: {
@@ -1656,7 +1806,7 @@ describe('shouldFailTypeSeedRun', () => {
           converged: true,
         },
       },
-    ])).toBe(false);
+    ])).toBe(true);
   });
 
   test('returns true when any tenant verification did not converge', () => {
@@ -1698,7 +1848,7 @@ describe('shouldFailTypeSeedRun', () => {
     ])).toBe(true);
   });
 
-  test('returns false when ResourceAPI schema sync is queued after convergence', () => {
+  test('fails when ResourceAPI schema sync is still queued after metadata convergence', () => {
     expect(shouldFailTypeSeedRun([
       {
         verification: {
@@ -1716,10 +1866,10 @@ describe('shouldFailTypeSeedRun', () => {
           status: 'queued',
         },
       },
-    ])).toBe(false);
+    ])).toBe(true);
   });
 
-  test('returns false when ResourceAPI schema sync is pending after convergence', () => {
+  test('fails when ResourceAPI schema sync is still pending after metadata convergence', () => {
     expect(shouldFailTypeSeedRun([
       {
         verification: {
@@ -1737,7 +1887,7 @@ describe('shouldFailTypeSeedRun', () => {
           status: 'pending',
         },
       },
-    ])).toBe(false);
+    ])).toBe(true);
   });
 
   test('returns true when ResourceAPI schema sync is skipped after convergence', () => {

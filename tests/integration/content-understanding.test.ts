@@ -448,6 +448,15 @@ describe('bounded Content Understanding and document PublicAPI commands', () => 
     expect(contextOptions()).not.toHaveProperty('allowOutsideProject');
   });
 
+  test('capabilities defaults to the selected workspace without an app or explicit UUID', async () => {
+    expect(await cu(['capabilities'])).toMatchObject({ ok: true, body: readyCapabilities });
+    expect(resolveCommandContext).toHaveBeenCalledWith(expect.objectContaining({
+      allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true, interactive: false, forceRefresh: true,
+    }));
+    expect(vi.mocked(resolveCommandContext).mock.calls.at(-1)?.[0]).not.toHaveProperty('tenantId');
+    expect(calls[0].init.headers).toMatchObject({ 'X-Tenant-Id': tenantId });
+  });
+
   test('capabilities reads the selected tenant with bounded trusted gateway forwarding', async () => {
     expect(await cu(['capabilities', ...scoped])).toMatchObject({ ok: true, body: readyCapabilities });
     expect(resolveCommandContext).toHaveBeenCalledWith(expect.objectContaining({ tenantId, interactive: false, forceRefresh: true, pinPublicApiUrl: true }));

@@ -215,10 +215,35 @@ export function classifyCliManagedSourceOperation(
 }
 
 /** Publication parsing retains the request deadline through response-body consumption. */
+/** PublicAPI passes only these exact AdminAPI conflicts through (Issues2025#3637). */
+const SAFE_CONFLICT_GUIDANCE: Readonly<Record<string, string>> = {
+  CLI_MANAGED_SOURCE_OPERATION_ACTIVE:
+    "An earlier EAI-maintained publish for this app is still active. Check it with --resume <operation-id>; if its EAI review checks failed, run --recover-failed-review <operation-id>, then publish again. The operation ID is in the earlier publish output and in ~/.eai/managed-deployments.",
+  CLI_MANAGED_SOURCE_PREDECESSOR_AMBIGUOUS:
+    "More than one earlier failed EAI publish could be continued, so EAI cannot choose one safely. Contact EAI support with the app key; no source was uploaded.",
+  CLI_MANAGED_REVIEW_FAILURE_LIMIT:
+    "This app has reached the limit of failed EAI reviews that can be recovered automatically. Contact EAI support with the app key; no source was uploaded.",
+};
+
+/**
+ * Map a parsed 409 server code to fixed guidance; unknown or inherited keys stay generic.
+ * The body is read once by managedSourceResponseError (bounded, deadline-preserving).
+ */
+function safeConflict(status: number, error: ManagedSourceError): ManagedSourceError | undefined {
+  if (status !== 409) return undefined;
+  const code = error.details?.serverCode;
+  return typeof code === "string" && Object.hasOwn(SAFE_CONFLICT_GUIDANCE, code)
+    ? new ManagedSourceError(code, SAFE_CONFLICT_GUIDANCE[code])
+    : undefined;
+}
+
 export async function responseOperation(
   response: Response,
 ): Promise<CliManagedSourceOperation> {
-  if (!response.ok) throw await managedSourceResponseError(response);
+  if (!response.ok) {
+    const error = await managedSourceResponseError(response);
+    throw safeConflict(response.status, error) ?? error;
+  }
   return JSON.parse(await readManagedPublicResponseText(response)) as CliManagedSourceOperation;
 }
 

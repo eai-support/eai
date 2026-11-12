@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { createTestEnvironment, type TestEnvironment } from '../helpers/test-env.js';
 import { clearTokens, storeTokens } from '../../src/lib/auth.js';
 import { userCommand } from '../../src/commands/user.js';
+import { resolveCommandContext } from '../../src/lib/context.js';
+import { findProjectRoot } from '../../src/lib/config.js';
 import {
   DEFAULT_PROD_AUTH_CLIENT_ID,
   DEFAULT_PROD_AUTH_TENANT_ID,
@@ -67,6 +69,9 @@ describe('eai user', () => {
   let originalAccessToken: string | undefined;
 
   beforeEach(async () => {
+    for (const command of [...userCommand.commands, ...userCommand.commands.flatMap(group => group.commands)]) {
+      for (const option of command.options) command.setOptionValue(option.attributeName(), option.defaultValue);
+    }
     originalCwd = process.cwd();
     originalHome = process.env.HOME;
     originalUserProfile = process.env.USERPROFILE;
@@ -102,14 +107,71 @@ describe('eai user', () => {
     await env.cleanup();
   });
 
+  test.each(['list', 'roles', 'invite'])('%s uses an explicit workspace outside an app folder', async command => {
+    await rm(join(env.dir, 'src'), { recursive: true });
+    await rm(join(env.dir, '.env.local'));
+    expect(await findProjectRoot()).toBeNull();
+    const initialFiles = await readdir(env.dir);
+    const target = 'other-workspace';
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url.endsWith('/v4/identity/tenants')) return Response.json({ tenants: [
+        { id: TENANT_ID, displayName: 'Selected', slug: 'selected', isActive: true, roles: ['tenant-admin'], homeRegion: 'au', parentId: null },
+        { id: target, displayName: 'Other', slug: 'other', isActive: true, roles: ['tenant-admin'], homeRegion: 'au', parentId: null },
+      ] });
+      if (url.endsWith('/management')) return Response.json({ id: url.includes(target) ? target : TENANT_ID, homeRegion: 'au', parentTenantId: null });
+      expect(url).toContain(`/v4/platform/tenants/${target}/`);
+      expect(new Headers(init?.headers).get('X-Tenant-Id')).toBe(target);
+      return Response.json(command === 'invite' ? { status: 'invited' } : { data: [], total: 0 });
+    });
+    await userCommand.parseAsync([command, '--workspace', target, '--format', 'json',
+      ...(command === 'invite' ? ['--email', 'member@example.com', '--role', 'tenant-builder'] : [])], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.flat().join(''))).toMatchObject(command === 'invite' ? { status: 'invited' } : { total: 0 });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes(`/tenants/${target}/`))).toBe(true);
+    expect(await readdir(env.dir)).toEqual(initialFiles);
+  });
+
+  test('list uses the selected workspace outside an app folder', async () => {
+    await rm(join(env.dir, 'src'), { recursive: true });
+    await rm(join(env.dir, '.env.local'));
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => String(input).endsWith('/management')
+      ? Response.json({ id: TENANT_ID, homeRegion: 'au' }) : Response.json({ data: [], total: 0 }));
+    await userCommand.parseAsync(['list', '--format', 'json'], { from: 'user' });
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes(`/tenants/${TENANT_ID}/members`))).toBe(true);
+    expect(JSON.parse(output.mock.calls.flat().join(''))).toMatchObject({ total: 0 });
+  });
+
+  test('an unavailable explicit workspace cannot dispatch an invite outside a project', async () => {
+    await rm(join(env.dir, 'src'), { recursive: true });
+    await rm(join(env.dir, '.env.local'));
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => String(input).endsWith('/v4/identity/tenants')
+      ? Response.json({ tenants: [{ id: TENANT_ID, displayName: 'Selected', slug: 'selected', isActive: true,
+        roles: ['tenant-admin'], homeRegion: 'au', parentId: null }] })
+      : Response.json({ id: TENANT_ID, homeRegion: 'au', parentTenantId: null }));
+    await expect(userCommand.parseAsync(['invite', '--workspace', 'unavailable', '--email', 'member@example.com', '--format', 'json'], { from: 'user' }))
+      .rejects.toThrow('is not available in your active workspace admin memberships');
+    expect(fetchMock.mock.calls.every(([, init]) => !init?.method || init.method === 'GET')).toBe(true);
+  });
+
+  test('app commands still require a project when they do not opt into workspace administration', async () => {
+    await rm(join(env.dir, 'src'), { recursive: true });
+    await rm(join(env.dir, '.env.local'));
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('controlled-project-exit'); });
+    await expect(resolveCommandContext({ interactive: false })).rejects.toThrow('controlled-project-exit');
+    expect(errors.mock.calls.flat().join('')).toContain('E001');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   test('provision-me is idempotent when the current CLI user already has direct membership', async () => {
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi.spyOn(globalThis, 'fetch');
 
     await userCommand.parseAsync([
       'provision-me',
-      '--tenant',
-      TENANT_ID,
       '--format',
       'json',
     ], { from: 'user' });
@@ -227,8 +289,6 @@ describe('eai user', () => {
       'invite',
       '--email',
       'poppy@example.com',
-      '--tenant',
-      TENANT_ID,
       '--role',
       'tenant-admin',
       '--first-name',
@@ -278,8 +338,6 @@ describe('eai user', () => {
       'invite',
       '--email',
       'custom@example.com',
-      '--tenant',
-      TENANT_ID,
       '--role-definition-id',
       'custom-role-definition-id',
       '--format',
@@ -315,8 +373,6 @@ describe('eai user', () => {
       'invite',
       '--email',
       'poppy@example.com',
-      '--tenant',
-      TENANT_ID,
       '--role',
       'tenant-admin',
       '--format',
@@ -379,8 +435,6 @@ describe('eai user', () => {
 
     await userCommand.parseAsync([
       'list',
-      '--tenant',
-      TENANT_ID,
       '--search',
       'poppy@example.com',
       '--page',
@@ -420,8 +474,6 @@ describe('eai user', () => {
 
     await userCommand.parseAsync([
       'roles',
-      '--tenant',
-      TENANT_ID,
       '--format',
       'json',
     ], { from: 'user' });
@@ -452,8 +504,6 @@ describe('eai user', () => {
       'set',
       '--email',
       'poppy@example.com',
-      '--tenant',
-      TENANT_ID,
       '--role',
       'tenant-admin',
       '--format',
@@ -490,8 +540,6 @@ describe('eai user', () => {
       'set',
       '--email',
       'new-user@example.com',
-      '--tenant',
-      TENANT_ID,
       '--role',
       'tenant-admin',
       '--first-name',
@@ -536,8 +584,6 @@ describe('eai user', () => {
       'set',
       '--member-id',
       'user-123',
-      '--tenant',
-      TENANT_ID,
       '--role',
       'tenant-admin',
       '--format',

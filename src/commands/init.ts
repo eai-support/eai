@@ -1011,7 +1011,7 @@ Use --no-gofer only when you need a bare app scaffold.
 
     out.blank();
     out.nestedSuccess(
-      `Created ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`,
+      `Created local project ${chalk.bold(initOptions.displayName)} at ${chalk.cyan(targetDir)}`,
     );
     out.blank();
     out.heading("  Next steps:");
@@ -1019,6 +1019,8 @@ Use --no-gofer only when you need a bare app scaffold.
     if (initOptions.tenantId) {
       out.nestedDim(`Main company workspace: ${chalk.cyan(initOptions.parentTenantId)}`);
       out.nestedDim(`Bound to workspace: ${chalk.cyan(initOptions.tenantId)}`);
+      out.nestedDim(`Provision app storage: ${chalk.cyan(buildAppProvisionCommand(initOptions.appKey, initOptions.parentTenantId, initOptions.tenantId))}`);
+      out.nestedDim(`Then publish Object Types: ${chalk.cyan(`eai types seed --tenant-key ${initOptions.name} --tenant-id ${initOptions.tenantId}`)}`);
     }
     if (!entraProvisioned) {
       out.nestedDim(
@@ -1729,6 +1731,19 @@ interface InitTenantAppBinding {
   runtimeTenantHomeRegion?: string | null;
 }
 
+/** Describe the explicit owner/runtime provisioning pair without starting provisioning. */
+export function buildAppProvisionCommand(appKey: string, ownerTenantId: string, runtimeTenantId: string): string {
+  return `eai app provision ${appKey} --tenant-id ${runtimeTenantId}${ownerTenantId !== runtimeTenantId ? ` --app-tenant-id ${ownerTenantId}` : ''}`;
+}
+
+/** Distinguish server enrollment reuse from creating a fresh local scaffold. */
+export function describeAppEnrollmentOutcome(appKey: string, payload: Record<string, unknown>): string {
+  const created = isRecord(payload.created) ? payload.created.app : undefined;
+  const app = isRecord(payload.app) ? payload.app : undefined;
+  const id = typeof app?.id === 'string' ? ` (id ${app.id})` : '';
+  return `${created === false ? 'Reused existing app' : created === true ? 'Created app' : 'Bound app'} ${appKey}${id}`;
+}
+
 async function promptCompanyTenantForInit(
   publicApiUrl: string,
   tenantContext: InitTenantContext,
@@ -2109,6 +2124,10 @@ async function createTenantAppForInit(
     throw error;
   }
   if (receipt) await receipt.acknowledge(acknowledgedCreatedAppBinding(payload, appSeed.slug, companyTenantId, immediateParentTenantId));
+  const enrollmentOutcome = describeAppEnrollmentOutcome(appSeed.slug, payload);
+  if (isRecord(payload.created) && payload.created.app === false) {
+    out.nestedInfo('Another local folder may already be bound to this app; both folders use the same platform enrollment.');
+  }
   const childTenant = payload.childTenant;
   const childTenantId =
     childTenant && typeof childTenant === "object"
@@ -2116,7 +2135,7 @@ async function createTenantAppForInit(
       : "";
   if (!childTenantId) {
     out.nestedInfo(
-      `Created app ${chalk.cyan(appSeed.slug)} under company workspace ${chalk.cyan(immediateParentTenantId)}.`,
+      `${enrollmentOutcome} under company workspace ${chalk.cyan(immediateParentTenantId)}.`,
     );
     return {
       appKey: appSeed.slug,
@@ -2127,7 +2146,7 @@ async function createTenantAppForInit(
   }
 
   out.nestedInfo(
-    `Created app ${chalk.cyan(appSeed.slug)} under company workspace ${chalk.cyan(companyTenantId)} with child workspace ${chalk.cyan(childTenantId)}.`,
+    `${enrollmentOutcome} under company workspace ${chalk.cyan(companyTenantId)} with child workspace ${chalk.cyan(childTenantId)}.`,
   );
   const childTenantHomeRegion =
     childTenant && typeof childTenant === "object"
@@ -2653,6 +2672,8 @@ export interface PropertyDefinition {
   defaultValue?: string | number | boolean;
   options?: SelectOption[];
   description?: string;
+  /** Relationship target: declared Object Type name locally, exact stored slug on the wire. */
+  targetObjectType?: string;
 }
 
 export type Cardinality = 'one-to-one' | 'one-to-many' | 'many-to-one' | 'many-to-many';

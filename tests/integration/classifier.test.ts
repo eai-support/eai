@@ -282,6 +282,7 @@ describe("eai classifier", () => {
       limit: 100,
       sort: "displayName",
     });
+    expect(resolveCommandContext).toHaveBeenCalledWith(expect.objectContaining({ allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true, interactive: false }));
   });
 
   test("preserves the immutable publication pointer when saving revised draft content", async () => {

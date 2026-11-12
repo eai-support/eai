@@ -392,7 +392,7 @@ async function listClassifiers(
   options: ClassifierCommandOptions,
 ): Promise<void> {
   const format = normalizeFormat(options);
-  const context = await resolveCommandContext({ tenantId: options.tenantId });
+  const context = await resolveCommandContext({ tenantId: options.tenantId, interactive: false, allowOutsideProject: true, allowSelectedWorkspaceOutsideProject: true });
   const payload = await requireJson(
     await context.client.listResources(CLASSIFIER_OBJECT_TYPE, {
       limit: 100,

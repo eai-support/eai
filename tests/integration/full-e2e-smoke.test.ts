@@ -793,6 +793,10 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
     expect(audit.commands.find((row: { command: string }) => row.command === created.command).status).toBe('not-run');
     expect(audit.aliasEvidence.find((row: { alias: string }) => row.alias === created.alias).status).toBe('incomplete');
     expect(audit.backendCertified).toBe(false); expect(audit.fullCapabilityQualified).toBe(false);
+    for (const command of ['eai resources action', 'eai types actions']) {
+      expect(audit.commands.find((row: { command: string }) => row.command === command).status).toBe('not-run');
+      expect(saved.coverage.find((row: { command: string }) => row.command === command)).toMatchObject({ plannedCoverage: 'covered-by-cli', status: 'not-run', executions: 0 });
+    }
   });
   test('actual alias-only canonical coverage remains not-run in the producer summary', () => {
     const controlled = harness(), report = controlled.run();
@@ -1777,7 +1781,7 @@ describe('isolated full lifecycle caller (controlled, no live writes)', () => {
 const root = process.cwd();
 const scriptPath = join(root, 'scripts', 'eai-full-e2e-smoke.cjs');
 const cliPath = join(root, 'dist', 'index.js');
-const { runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, candidateEvidence, redact } = createRequire(import.meta.url)(scriptPath);
+const { runOptionalDocumentSmoke, runLiveSmoke, runLocalSmoke, writeSmokeObjectTypes, smokeObjectTypes, coverageEvidence, leafEntries, candidateEvidence, redact, TRACEABILITY } = createRequire(import.meta.url)(scriptPath);
 
 describe('producer execution receipt controls', () => {
   const { producerEvidence } = require('../../scripts/cli-smoke-execution-evidence.cjs');
@@ -1958,6 +1962,10 @@ describe('local CLI qualification', () => {
     expect(audit.commands.find((row: { command: string }) => row.command === 'eai classifier publish').status).toBe('not-run');
     expect(audit.optionEvidence.find((row: { command: string; option: string }) => row.command === 'eai blocks list' && row.option === '--format').status).toBe('passed');
     expect(audit.fullCapabilityQualified).toBe(false); expect(audit.backendCertified).toBe(false);
+    for (const command of ['eai resources action', 'eai types actions']) {
+      expect(audit.commands.find((row: { command: string }) => row.command === command).status).toBe('not-run');
+      expect(report.coverage.find((row: { command: string }) => row.command === command)).toMatchObject({ plannedCoverage: 'covered-by-cli', status: 'not-run', executions: 0 });
+    }
   });
   test('a real failed local assertion stays attached to its invocation and wins over successful exit and later commands', () => {
     let report, summaryPath;
@@ -2181,6 +2189,17 @@ describe('opt-in document lifecycle caller (controlled, no network)', () => {
 });
 
 describe('full e2e smoke traceability', () => {
+  test('new action commands retain controlled ownership without claiming live execution or cleanup', () => {
+    const action = TRACEABILITY.find((row: { command: string }) => row.command === 'eai resources action');
+    const discovery = TRACEABILITY.find((row: { command: string }) => row.command === 'eai types actions');
+    expect(action).toMatchObject({ crud: 'update', coverage: 'covered-by-cli', cleanupVerified: expect.stringContaining('No - live acceptance') });
+    expect(discovery).toMatchObject({ crud: 'read', coverage: 'covered-by-cli' });
+    expect(action.calls[0]).toContain('--params');
+    expect(discovery.calls[0]).toContain('--tenant-id');
+    expect(coverageEvidence([]).filter((row: { command: string }) => [action.command, discovery.command].includes(row.command)))
+      .toEqual([expect.objectContaining({ command: discovery.command, status: 'not-run', executions: 0 }), expect.objectContaining({ command: action.command, status: 'not-run', executions: 0 })]);
+  });
+
   test('covers every public CLI leaf command from --describe', () => {
     const output = execFileSync(process.execPath, [
       scriptPath,

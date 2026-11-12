@@ -719,6 +719,112 @@ describe('eai deploy app --target eai', () => {
     expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
   });
 
+  describe('--recover-failed-review', () => {
+    const reviewOperationId = 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+    const recoveryUrl = 'https://test-admin-portal.myenterprise.ai/api/platform/generated-apps/cli-managed-source/managed-review-failure';
+    const failedCheck = { name: 'Validate generated source', conclusion: 'failure', checkRunId: 1, htmlUrl: 'https://github.com/eai-generated-apps/app/runs/1' };
+
+    beforeEach(async () => { await writeFile(join(projectRoot, 'eai.runtime.json'), '{}'); });
+
+    function stubRecovery(operation: Record<string, unknown>): { requests: Array<{ url: string; init?: RequestInit }> } {
+      const identity = stubManagedOperation(operation).getMockImplementation()!;
+      const requests: Array<{ url: string; init?: RequestInit }> = [];
+      vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+        const url = String(input);
+        requests.push({ url, init });
+        if (url === recoveryUrl) return jsonResponse({
+          operationId: reviewOperationId, status: 'failed',
+          error: { code: 'managed_review_checks_failed', failedChecks: [failedCheck] },
+        });
+        return identity(input);
+      }));
+      return { requests };
+    }
+
+    function recover(extra: string[] = [], format = 'json'): Promise<unknown> {
+      return eaiManagedDeployCommand.parseAsync([
+        'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+        '--recover-failed-review', reviewOperationId, ...extra, '--format', format,
+      ], { from: 'user' });
+    }
+
+    const managedOperation = (environment = 'preview'): Record<string, unknown> => completeUnifiedOperation({
+      operationId: reviewOperationId, sourceMode: 'eai-cli-generated', environment,
+      repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
+    });
+
+    test('reads the exact operation, posts its sealed environment to the Portal and prints the failed checks', async () => {
+      const { requests } = stubRecovery(managedOperation('dev'));
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await recover();
+      const readIndex = requests.findIndex(({ url }) => url.includes(`/managed-deployments/operations/${reviewOperationId}?`));
+      const postIndex = requests.findIndex(({ url }) => url === recoveryUrl);
+      expect(readIndex).toBeGreaterThanOrEqual(0);
+      expect(postIndex).toBeGreaterThan(readIndex);
+      expect(requests[postIndex].init?.method).toBe('POST');
+      expect(JSON.parse(String(requests[postIndex].init?.body))).toEqual({
+        tenantId: TENANT_ID, appKey: 'planning-portal', targetTenantId: TENANT_ID, environment: 'dev', operationId: reviewOperationId,
+      });
+      expect(requests.some(({ url }) => url.includes('/cli-managed-source/operations/'))).toBe(false);
+      const result = JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''));
+      expect(result).toMatchObject({
+        ok: true, operationId: reviewOperationId, status: 'failed',
+        error: { code: 'managed_review_checks_failed', failedChecks: [{ name: failedCheck.name, conclusion: 'failure', htmlUrl: failedCheck.htmlUrl }] },
+      });
+      expect(result.nextAction).toContain(`--environment dev --source eai-managed`);
+      expect(process.exitCode).toBe(0);
+    });
+
+    test('prints the failed checks and next publish command as text', async () => {
+      stubRecovery(managedOperation());
+      const lines: string[] = [];
+      vi.spyOn(console, 'log').mockImplementation((...args: unknown[]) => { lines.push(args.map(String).join(' ')); });
+      vi.spyOn(process.stdout, 'write').mockImplementation((value) => { lines.push(String(value)); return true; });
+      await recover([], 'text');
+      const text = lines.join('\n');
+      expect(text).toContain(`EAI review for ${reviewOperationId} was closed`);
+      expect(text).toContain(`${failedCheck.name}: failure - ${failedCheck.htmlUrl}`);
+      expect(process.exitCode).toBe(0);
+    });
+
+    test('rejects a customer-owned operation before any Portal request', async () => {
+      const { requests } = stubRecovery({ ...managedOperation(), sourceMode: 'source-unknown' });
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await recover();
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'RECOVERY_SOURCE_MISMATCH' } });
+      expect(requests.some(({ url }) => url.includes('/managed-deployments/operations/'))).toBe(true);
+      expect(requests.some(({ url }) => url === recoveryUrl)).toBe(false);
+      expect(process.exitCode).toBe(1);
+    });
+
+    test('rejects an explicit environment that differs from the sealed operation before any Portal request', async () => {
+      const { requests } = stubRecovery(managedOperation('dev'));
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await recover(['--environment', 'prod']);
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ ok: false, error: { code: 'RECOVERY_ENVIRONMENT_MISMATCH' } });
+      expect(requests.some(({ url }) => url === recoveryUrl)).toBe(false);
+    });
+
+    test('accepts an explicit environment that matches the sealed operation', async () => {
+      const { requests } = stubRecovery(managedOperation('dev'));
+      vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await recover(['--environment', 'dev']);
+      expect(requests.some(({ url }) => url === recoveryUrl)).toBe(true);
+      expect(process.exitCode).toBe(0);
+    });
+
+    test.each([
+      ['--source', 'eai-managed'], ['--repo', 'customer/app'], ['--github-link-session', 'github-link-123'],
+      ['--installation-id', '123'], ['--commit', 'a'.repeat(40)],
+    ])('rejects %s before any request', async (flag, value) => {
+      const { requests } = stubRecovery(managedOperation());
+      const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+      await recover([flag, value]);
+      expect(JSON.parse(output.mock.calls.map(([chunk]) => String(chunk)).join(''))).toMatchObject({ ok: false, error: { code: 'RECOVERY_OPTION_CONFLICT' } });
+      expect(requests).toHaveLength(0);
+    });
+  });
+
   test('loads original retry authority independently of the source-operation namespace', async () => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const state = { ...customerRetryState({ publicApiUrl: 'https://test-api.ca.myenterprise.ai/public' }), operationId: 'other-customer-operation' };
