@@ -1005,6 +1005,16 @@ describe('tenant list filtering', () => {
     });
 
     expect(extractCreatedTenantRecord({
+      tenant: {
+        id: 'tenant-3',
+        slug: 'tenant-three',
+      },
+    })).toEqual({
+      id: 'tenant-3',
+      slug: 'tenant-three',
+    });
+
+    expect(extractCreatedTenantRecord({
       id: 'tenant-1',
       slug: 'tenant-one',
     })).toEqual({
@@ -1215,10 +1225,93 @@ describe('child workspace creation admission', () => {
       'create', '--name', 'Child Workspace', '--slug', 'child-workspace', '--parent', 'parent-tenant', '--format', 'json',
     ], { from: 'user' });
 
-    expect(parseJsonOutput(outputSpy)).toContainEqual(expect.objectContaining({ tenant, bootstrap: null, bootstrapError: null }));
+    const [payload] = parseJsonOutput(outputSpy) as Array<Record<string, unknown>>;
+    expect(Object.keys(payload!).slice(0, 2)).toEqual(['id', 'slug']);
+    expect(payload).toMatchObject({
+      id: 'existing-child',
+      slug: 'child-workspace',
+      tenant,
+      bootstrap: null,
+      bootstrapError: null,
+    });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
     expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).has('Prefer')).toBe(false);
+  });
+
+  test('forwards --domain on child workspace creation and places id and slug first in JSON output', async () => {
+    const createCmd = tenantCommand.commands.find(item => item.name() === 'create')!;
+    createCmd.setOptionValue('domain', undefined);
+    const tenant = { id: 'child-domain-id', slug: 'child-domain', domain: 'child.example.com', homeRegion: 'au' };
+    const fetchMock = vi.fn(async (_url: string | URL | Request, _options?: RequestInit) =>
+      new Response(JSON.stringify(tenant), { status: 201 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'child-domain-id', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: true,
+    } });
+    const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    try {
+      await tenantCommand.parseAsync([
+        'create', '--name', 'Child Domain Workspace', '--slug', 'child-domain',
+        '--parent', 'parent-tenant', '--domain', 'child.example.com', '--format', 'json',
+      ], { from: 'user' });
+    } finally {
+      createCmd.setOptionValue('domain', undefined);
+    }
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('https://api.example.test/v4/platform/tenants/parent-tenant/children');
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toMatchObject({
+      displayName: 'Child Domain Workspace',
+      slug: 'child-domain',
+      domain: 'child.example.com',
+      usecase: 'generic',
+    });
+
+    const [payload] = parseJsonOutput(outputSpy) as Array<Record<string, unknown>>;
+    expect(Object.keys(payload!)).toEqual(['id', 'slug', 'tenant', 'bootstrap', 'bootstrapError', 'usability']);
+    expect(payload).toMatchObject({
+      id: 'child-domain-id',
+      slug: 'child-domain',
+      tenant,
+      bootstrap: null,
+      bootstrapError: null,
+    });
+  });
+
+  test('prints ID and Slug first in deterministic order before status lines in text mode', async () => {
+    const createCmd = tenantCommand.commands.find(item => item.name() === 'create')!;
+    createCmd.setOptionValue('format', 'text');
+    createCmd.setOptionValue('json', false);
+    const fetchMock = vi.fn(async () =>
+      new Response(JSON.stringify({ doc: { id: 'child-text-id', slug: 'child-text-slug' } }), { status: 201 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    vi.spyOn(tenantContext, 'refreshTenantUsabilityStatus').mockResolvedValue({ status: {
+      tenantId: 'child-text-id', created: true, bootstrapped: false, membershipConfirmed: true,
+      adminConfirmed: true, usable: true, autoSelected: true,
+    } });
+    const logSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+
+    await tenantCommand.parseAsync([
+      'create', '--name', 'Child Text Workspace', '--slug', 'child-text-slug',
+      '--parent', 'parent-tenant', '--format', 'text',
+    ], { from: 'user' });
+
+    const stdoutLines = logSpy.mock.calls.map(args => args.join(' '));
+    expect(stdoutLines.length).toBeGreaterThanOrEqual(3);
+    expect(stdoutLines[0]).toMatch(/ID\s+child-text-id/);
+    expect(stdoutLines[1]).toMatch(/Slug\s+child-text-slug/);
+    expect(stdoutLines.slice(2).join('\n')).toContain('Ready: workspace admin access confirmed');
+
+    const stderrText = stderrSpy.mock.calls.flat().join('');
+    expect(stderrText).toContain('Created workspace');
+    expect(stderrText.indexOf('child-text-id')).toBeGreaterThanOrEqual(0);
+    expect(stderrText.indexOf('child-text-id')).toBeLessThan(stderrText.indexOf('child-text-slug'));
   });
 });
 
