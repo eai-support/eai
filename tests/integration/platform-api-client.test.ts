@@ -1671,6 +1671,37 @@ describe('PlatformAPIClient', () => {
     })
   })
 
+  test('forwards domain when creating a child tenant', async () => {
+    const fetchMock = vi
+      .spyOn(globalThis, 'fetch')
+      .mockResolvedValue(new Response('{}', { status: 201 }))
+
+    const client = new PlatformAPIClient('https://example.test', 'tenant-parent')
+    await client.createTenant({
+      name: 'Elevate',
+      slug: 'elevate',
+      parent: 'tenant-parent',
+      domain: 'elevate.example.com',
+      usecase: 'generic',
+      industry: 'saas',
+      starterTemplate: 'eai-app-template',
+    })
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+
+    expect(String(url)).toBe('https://example.test/v4/platform/tenants/tenant-parent/children')
+    expect(init?.method).toBe('POST')
+    expect(JSON.parse(String(init?.body))).toEqual({
+      displayName: 'Elevate',
+      slug: 'elevate',
+      domain: 'elevate.example.com',
+      usecase: 'generic',
+      industry: 'saas',
+      starterTemplate: 'eai-app-template',
+    })
+  })
+
   test('sends homeRegion only when creating a root tenant', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

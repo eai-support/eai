@@ -2351,6 +2351,7 @@ export class PlatformAPIClient {
         {
           displayName: data.name,
           slug: data.slug,
+          ...(data.domain ? { domain: data.domain } : {}),
           usecase: data.usecase || 'generic',
           ...(data.industry ? { industry: data.industry } : {}),
           ...(data.starterTemplate ? { starterTemplate: data.starterTemplate } : {}),

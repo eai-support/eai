@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.13** (2026-11-11): CLI and data repairs for issue 3625.
+The current CLI release is **v3.20.14** (2026-11-13): Print workspace id/slug first on create and forward child domain.
