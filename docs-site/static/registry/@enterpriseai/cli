@@ -1,7 +1,7 @@
 {
   "name": "@enterpriseai/cli",
   "dist-tags": {
-    "latest": "3.20.13"
+    "latest": "3.20.14"
   },
   "versions": {
     "3.19.5": {
@@ -363,9 +363,33 @@
         "shasum": "f6705ab3ef2f6de8e07c04c08e59a30dafb51be0",
         "integrity": "sha512-yJvSgnRVZbhKgUnITYCFED/1+H8O/F9CK6QVece9Eo1fC9Eo7EuPEzpt4dQZKPPT1pqFJjUFiVMz65k9l8h58Q=="
       }
+    },
+    "3.20.14": {
+      "name": "@enterpriseai/cli",
+      "version": "3.20.14",
+      "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
+      "bin": {
+        "eai": "dist/index.js"
+      },
+      "engines": {
+        "node": ">=24.0.0"
+      },
+      "dependencies": {
+        "chalk": "5.6.2",
+        "commander": "15.0.0",
+        "dotenv": "17.4.2",
+        "inquirer": "14.0.2",
+        "ora": "9.4.0",
+        "typescript": "6.0.3"
+      },
+      "dist": {
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.14.tgz",
+        "shasum": "33708c85a8ef6f48913008a2b5eabbf022481f0e",
+        "integrity": "sha512-FITi4FJEpeyliKiB8Ac4R98jA+OGzXWR9FJnqnDzcKwhBmU//vSKOPRrA9r7Y7q6WqpmwvJ/jRQeEHLhwQBRaQ=="
+      }
     }
   },
-  "modified": "2026-11-11T12:53:17.590Z",
+  "modified": "2026-11-13T06:15:29.686Z",
   "time": {
     "3.19.5": "2026-10-13T03:33:26.251Z",
     "3.20.0": "2026-10-14T02:38:51.024Z",
@@ -382,6 +406,7 @@
     "3.20.11": "2026-11-10T06:42:54.345Z",
     "3.20.12": "2026-11-11T07:29:41.299Z",
     "3.20.13": "2026-11-11T12:53:17.590Z",
-    "modified": "2026-11-11T12:53:17.590Z"
+    "3.20.14": "2026-11-13T06:15:29.686Z",
+    "modified": "2026-11-13T06:15:29.686Z"
   }
 }
