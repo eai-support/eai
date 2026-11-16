@@ -1,4 +1,4 @@
-import { PlatformAPIClient, awaitManagedRequestDeadline, type CliManagedGithubLinkSession } from "./api.js";
+import { PlatformAPIClient, awaitManagedRequestDeadline, readManagedPublicResponseTextBounded, type CliManagedGithubLinkSession } from "./api.js";
 import { getAccessToken } from "./auth.js";
 import {
   ManagedSourceError,
@@ -76,7 +76,7 @@ export async function recoverAcceptedCliManagedSourceUpload(
       totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256),
       githubLinkSessionId: original.githubLinkSessionId,
-    })),
+    }), original.operationId),
     scope,
     {
       operationId: original.operationId,
@@ -139,7 +139,7 @@ export async function recoverLegacyCliManagedSourceReview(
       fileCount: bundle.files.length, totalBytes: bundle.files.reduce((total, file) => total + file.size, 0),
       idempotencyKey: cliManagedSourceIdempotencyKey(scope, bundle.bundleSha256), githubLinkSessionId: original.githubLinkSessionId,
     },
-  )), scope, { operationId: original.operationId, templateCommitSha: original.templateCommitSha,
+  ), original.operationId), scope, { operationId: original.operationId, templateCommitSha: original.templateCommitSha,
     bundleSha256: original.bundleSha256, configHash: original.configHash, bundleSchemaVersion: bundle.schemaVersion,
     githubLinkSessionId: original.githubLinkSessionId, verifiedGithubUser: original.verifiedGithubUser });
   if (prepared.repository.owner !== original.repository.owner || prepared.repository.name !== original.repository.name
@@ -203,7 +203,7 @@ export async function recoverReviewedCliManagedSourceEvidence(
       idempotencyKey: cliManagedSourceIdempotencyKey(scope, originalBundleSha256),
       githubLinkSessionId: original.githubLinkSessionId,
     },
-  )), scope, { operationId: original.operationId, templateCommitSha: original.templateCommitSha,
+  ), original.operationId), scope, { operationId: original.operationId, templateCommitSha: original.templateCommitSha,
     bundleSha256: bundle.bundleSha256, configHash: original.configHash, bundleSchemaVersion: bundle.schemaVersion,
     githubLinkSessionId: original.githubLinkSessionId, verifiedGithubUser: original.verifiedGithubUser });
   if (prepared.repository.owner !== original.repository.owner || prepared.repository.name !== original.repository.name
@@ -277,7 +277,8 @@ export async function submitCliManagedSource(
   } catch {
     throw new ManagedSourceError(
       "MANAGED_SOURCE_RECOVERY_UNAVAILABLE",
-      `Protected recovery authority could not be saved for ${prepared.operationId}. No source was uploaded; repair the local recovery directory before resubmitting the same exact source.`,
+      `Protected recovery authority could not be saved for ${prepared.operationId}. This invocation did not attempt source upload; repair the local recovery directory and inspect the original operation before resubmitting the same exact source.`,
+      { details: { operationId: prepared.operationId } },
     );
   }
   if (prepared.status !== "accepted" && prepared.status !== "publishing")
@@ -420,39 +421,23 @@ async function uploadCliManagedSource(
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
       `Source upload did not return a confirmed result. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
+      { details: { operationId: prepared.operationId } },
     );
   }
   if (!response.ok) {
-    let portalMessage: string | undefined;
-    if (response.headers.get("content-type")?.toLowerCase().startsWith("application/json")) {
-      try {
-        const body = await awaitManagedRequestDeadline(signal, response.text());
-        if (body.length <= 512) {
-          const parsed: unknown = JSON.parse(body);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-            const error = parsed as { error?: unknown; message?: unknown };
-            if (
-              error.error === "cli_managed_source_upload" &&
-              typeof error.message === "string" &&
-              error.message.length <= 180 &&
-              !/\bBearer\b/i.test(error.message) &&
-              /^[A-Za-z][A-Za-z0-9 .,;:'()/-]*\.?$/.test(error.message)
-            ) portalMessage = error.message;
-          }
-        }
-      } catch (error) {
-        if (signal.aborted || (error instanceof Error && error.name === "AbortError")) {
-          throw new ManagedSourceError(
-            "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
-            `Source upload did not return a confirmed result. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect the same publication; do not create a second publication or use a customer GitHub token.`,
-          );
-        }
-        portalMessage = undefined;
-      }
+    // Preserve the bounded response deadline, but never use provider text as public guidance.
+    try { await awaitManagedRequestDeadline(signal, readManagedPublicResponseTextBounded(response, 512)); }
+    catch {
+      if (signal.aborted) throw new ManagedSourceError(
+        "MANAGED_SOURCE_UPLOAD_UNCERTAIN",
+        `Source upload did not return a confirmed result. Use --retry ${prepared.operationId} to inspect the original publication before sending another upload.`,
+        { details: { operationId: prepared.operationId } },
+      );
     }
     throw new ManagedSourceError(
       "MANAGED_SOURCE_UPLOAD_FAILED",
-      `Source upload returned ${response.status}${portalMessage ? `: ${portalMessage}` : ""}. Use --retry ${prepared.operationId} to load the protected original endpoint and inspect its authoritative status.`,
+      `Source upload returned ${response.status}. Use --retry ${prepared.operationId} to inspect the original publication before sending another upload.`,
+      { details: { httpStatus: response.status, operationId: prepared.operationId } },
     );
   }
   const observed = validateCliManagedSourceOperation(
@@ -464,6 +449,7 @@ async function uploadCliManagedSource(
         scope.targetTenantId,
         scope.environment,
       ),
+      prepared.operationId,
     ),
     scope,
     {

@@ -93,6 +93,12 @@ export function describeAppCreationFailure(error: ParsedApiError): string {
     message: error.message,
   });
 
+  if (error.code === 'TENANT_SLUG_CONFLICT') {
+    return 'App creation failed [TENANT_SLUG_CONFLICT]: the requested workspace slug is unavailable. If this is your existing app, use eai init --company-tenant <owner-id> --app-key <app-key> to reuse its verified enrollment. Otherwise choose a different --child-tenant-slug. Do not delete or adopt an unknown workspace.';
+  }
+  if (error.code === 'CHILD_TENANT_MATCH_AMBIGUOUS') {
+    return 'App creation failed [CHILD_TENANT_MATCH_AMBIGUOUS]: more than one child matches the requested binding. Ask EAI support to repair the parent and child binding before retrying; no workspace was selected.';
+  }
   const headline = error.code === "TENANT_ADMIN_REQUIRED"
     ? "Workspace admin access is required to create this app."
     : error.message;
@@ -2108,7 +2114,7 @@ async function createTenantAppForInit(
   }
 
   if (!res.ok) {
-    const error = await parseApiError(res);
+    const error = await parseApiError(res, { appCreate: true });
     out.error(describeAppCreationFailure(error));
     process.exit(1);
   }

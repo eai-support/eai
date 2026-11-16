@@ -9,9 +9,9 @@
   },
   "appTemplate": {
     "repo": "https://github.com/eai-support/eai-app-template.git",
-    "version": "v1.0.23",
-    "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435",
-    "packageLockSha256": "5b04e0be44ef93a817e4dc5076914d0f0684712b41155ee2934ce42f184df415",
+    "version": "v1.0.25",
+    "commit": "7792d2cbe95b2a068588de7cb5d928550eac03e3",
+    "packageLockSha256": "a10c4ce5b6ede97c22c0d48e3fab606dd7856621f250ca92b1eef6a2dc7d2d49",
     "enterpriseRegistry": "https://enterpriseaigroup.github.io/enterpriseai-packages/registry",
     "enterprisePackageFingerprint": "3286fdf91d6a25a55a4d84de21bf5c592bcf11abffb96dc2be90e93414eeb646",
     "enterprisePackages": {

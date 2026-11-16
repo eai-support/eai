@@ -639,6 +639,11 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --recover-failed-review cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+Managed source failures retain public error codes and an already-known operation
+reference. Preserve the original recovery receipt. An unknown error does not
+confirm whether remote preparation started; inspect that original operation
+before starting another publish. Run eai errors explain managed_source_rejected.
 ```
 
 ## eai app delete --help
@@ -1120,6 +1125,17 @@ eai app provision <app-key> --tenant-id <runtime-child-id> --app-tenant-id <pare
 eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json
 ```
 
+App list and provisioning read the typed binding for the selected runtime. The
+platform resolves authorized lineage; the CLI never scans ancestor enrollment
+collections. `--app-tenant-id` pins the exact enrollment owner and cannot select
+among ambiguous bindings. An owner-only provision command for a child app stops
+with the explicit runtime command instead of switching workspaces.
+
+Successful provisioning persists `EAI_PARENT_TENANT_ID` as the enrollment owner
+and both runtime tenant variables as the selected runtime. Storage readiness
+and browser sign-in readiness are separate: use `eai provision entra` for sign-in
+setup. `--skip-validate` cannot bypass binding verification.
+
 The CLI checks the exact parent/app/child enrollment before publishing through
 the parent app route and reads schema visibility from the child. This mode
 stops if the manifest route or binding is unavailable; it does not switch to
@@ -1498,6 +1514,10 @@ the approved one, the CLI stops before the GitHub link step with
 TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.23 (bdda42e).
 ```
 
+The bundled release can match DEV and TEST while PROD retains its previous
+approved pin during a staged rollout. Match the selected environment's exact
+commit before deploying; a newer CLI bundle does not establish PROD approval.
+
 Updating the CLI does not change an existing project, because the template is
 recorded when the project is created. Install a CLI release that bundles the
 environment's required template (`npm install -g eai-cli@latest` once all
@@ -1547,6 +1567,22 @@ platform-owned files from the approved template when it publishes your source.
 - [Platform Service Patterns](./app-template/service-patterns.md)
 - [V4 Documents And Files](./app-template/documents-and-files.md)
 - [eai-gofer](./eai-gofer.md)
+
+
+Managed source refusals show only published public error codes, verified template
+pins and an already-known operation ID. JSON includes that ID in error details;
+text includes the original recovery command. Unknown provider content uses fixed
+guidance and does not imply that no remote operation was created. Keep the
+original receipt and confirm its outcome before another publish. Use
+`eai errors explain managed_source_rejected --format json` for recovery guidance.
+
+An app can build and render anonymously before Entra sign-in is configured. A
+sign-in request with missing or placeholder settings stays local and instructs
+you to run `eai provision entra`, then restart the app. A failed sign-in user-flow
+binding is reported separately from delegated permission or consent failures.
+After a provider capacity repair, retry the same registration with
+`eai provision entra --force`; use the exact scoped command printed by the CLI
+for an enrolled app. This preserves its registration and current local credential.
 
 ---
 
@@ -3050,6 +3086,10 @@ are explicitly listed, and stop when a stop condition matches.
 | `E254` | `tenant_limit_unconfigured` | The plan has no valid child workspace limit configured. |
 | `E255` | `capability_unavailable` | This capability is not available for the workspace. |
 | `E256` | `child_capacity_unavailable` | Child workspace capacity could not be confirmed. |
+| `E263` | `managed_source_rejected` | The managed source operation needs its original recovery reference. |
+| `E264` | `child_workspace_binding_conflict` | The child workspace request cannot choose an exact binding safely. |
+| `E265` | `template_version_not_approved` | The project template pin is not approved in this environment. |
+| `E266` | `app_registration_cleanup_ownership_required` | The app registration was retained because exact cleanup ownership is required. |
 | `E257` | `no_subscription` | The workspace has no active subscription for this billing action. |
 | `E258` | `workspace_plan_billing_unavailable` | Workspace billing could not be verified, so the plan was not changed. |
 | `E290` | `app_ownership_manifest_not_found` | No app ownership record was found for this app in the selected workspace. |
@@ -3720,7 +3760,8 @@ None.
 ### Why This Might Happen
 
 - The platform checks the workspace subscription status before it allows a capability to be provisioned or enabled.
-- Only an active or trialing subscription passes that check; any other status is refused.
+- An active or trialing subscription must also have a verified supported billing binding. Missing paid billing bindings fail closed.
+- An approved noncharging Enterprise workspace still needs its verified existing subscription binding; the CLI cannot grant Enterprise rights.
 - For child workspace creation the check applies to the parent workspace, not the new child.
 - The CLI cannot renew or change a subscription, so retrying the same command does not change the result.
 
@@ -3731,7 +3772,7 @@ None.
 
 ### Fixes
 
-- `Ask a workspace admin to restore an active subscription for the workspace` (read-only) — Billing is managed outside the CLI; the capability check passes again once the subscription is active.
+- `Ask EAI support to verify and repair the existing workspace billing binding` (read-only) — For a paid workspace or an approved noncharging Enterprise workspace, support verifies the existing subscription and repairs its binding before retrying. No automatic plan grant or free Enterprise conversion is performed.
 
 ### Stop Conditions
 
@@ -3915,6 +3956,145 @@ None.
 - CLI version
 - parent workspace ID
 - command
+
+## E263: The managed source operation needs its original recovery reference.
+
+| Field | Value |
+| --- | --- |
+| Reason | `managed_source_rejected` |
+| Category | `app_provisioning` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- An active publish, ambiguous predecessor, failed review limit or unavailable provider can stop source preparation.
+- Unknown failures do not prove that no remote operation was created. Preserve the original output and recovery receipt.
+- Only published error codes and validated template pins are displayed; provider messages are not recovery authority.
+
+### Diagnostics
+
+- `eai deploy app <app-key> --target eai --tenant-id <owner-id> --target-tenant-id <runtime-id> --source eai-managed --resume <operation-id> --format json` (read-only) — Observe only the original operation using its original scope.
+
+### Fixes
+
+- `Contact EAI support with the original operation reference` (read-only) — Resolve an ambiguous predecessor, exhausted review recovery, or unknown publication outcome before starting another publish.
+
+### Stop Conditions
+
+- The original publication outcome is unknown.
+- The server reports an active publish, ambiguous predecessor or review recovery limit.
+
+### Escalation Evidence
+
+- app key
+- enrollment owner ID
+- runtime ID
+- environment
+- original operation ID if known
+- public error code
+- HTTP status
+- CLI version
+
+## E264: The child workspace request cannot choose an exact binding safely.
+
+| Field | Value |
+| --- | --- |
+| Reason | `child_workspace_binding_conflict` |
+| Category | `tenant_context` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The requested workspace slug is already reserved, or multiple children match the request.
+- A conflict does not grant access to a workspace or permission to delete or adopt it.
+
+### Diagnostics
+
+- `eai workspace list --all --format json` (read-only) — Inspect only workspaces the signed-in account is authorized to see.
+
+### Fixes
+
+- `eai init --company-tenant <owner-id> --app-key <app-key>` (changes state) — Reuse an already verified app enrollment when this request is for your existing app.
+- `Choose a different --child-tenant-slug for a new app` (read-only) — Avoid the reserved slug; ask support to repair ambiguous child matches before retrying.
+
+### Stop Conditions
+
+- The slug remains reserved or more than one child matches.
+- Ownership and the exact app enrollment have not been verified.
+
+### Escalation Evidence
+
+- parent workspace ID
+- requested child slug
+- app key
+- public error code
+- CLI version
+
+## E265: The project template pin is not approved in this environment.
+
+| Field | Value |
+| --- | --- |
+| Reason | `template_version_not_approved` |
+| Category | `project` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- The environment approves an exact template commit; version labels alone cannot establish compatibility.
+- Updating the CLI does not migrate the template pin in an existing project.
+
+### Diagnostics
+
+- `eai template check` (read-only) — Review template drift before changing project files.
+
+### Fixes
+
+- `Install the CLI release that bundles the exact required template, then create a new project or commit the documented template migration` (changes state) — Preserve app code while moving to the environment-approved template commit. See https://eai-support.github.io/eai/docs/eai-app-template#move-an-existing-project-to-the-required-template.
+
+### Stop Conditions
+
+- The project template commit still differs from the environment requirement.
+
+### Escalation Evidence
+
+- CLI version
+- current template commit
+- required template commit
+- environment
+
+## E266: The app registration was retained because exact cleanup ownership is required.
+
+| Field | Value |
+| --- | --- |
+| Reason | `app_registration_cleanup_ownership_required` |
+| Category | `authorization` |
+| Severity | `error` |
+
+### Why This Might Happen
+
+- Registration cleanup requires a reviewed exact app/runtime ownership manifest.
+- A 409 refusal retains the registration and workspace authorization; keep the existing local credentials.
+
+### Diagnostics
+
+- `eai app auth status <app-key> --tenant-id <owner-id> --client-id <client-id> --format json` (read-only) — Read authorization for the existing exact app and runtime without deleting anything.
+
+### Fixes
+
+- `Ask EAI support for the reviewed registration cleanup manifest and exact app/runtime scope` (read-only) — Confirm registration-only cleanup authority before retrying; this refusal does not authorize deleting the app.
+
+### Stop Conditions
+
+- The exact reviewed registration cleanup authority is missing.
+
+### Escalation Evidence
+
+- app key
+- owner workspace ID
+- runtime workspace ID
+- client ID
+- public error code
+- request ID if present
 
 ## E257: The workspace has no active subscription for this billing action.
 
@@ -4257,7 +4437,7 @@ None.
 ### Diagnostics
 
 - `eai types seed --dry-run --format json` (read-only) — Read app enrollment and provisioning readiness without changing platform state.
-- `eai app list --tenant-id <owner-workspace-id> --format json` (read-only) — Confirm that the app is enrolled in the owning workspace.
+- `eai app list --tenant-id <runtime-workspace-id> --format json` (read-only) — Read the exact runtime app binding and its enrollment owner.
 
 ### Fixes
 

@@ -81,6 +81,18 @@ describe('error guidance catalog', () => {
     }
   });
 
+  test('app source and child conflicts resolve fixed public recovery guidance', () => {
+    for (const code of ['CLI_MANAGED_SOURCE_OPERATION_ACTIVE', 'CLI_MANAGED_SOURCE_PREDECESSOR_AMBIGUOUS', 'CLI_MANAGED_REVIEW_FAILURE_LIMIT', 'MANAGED_SOURCE_UNAVAILABLE']) {
+      expect(findGuidanceByIdentifier(code)?.code).toBe('E263');
+    }
+    for (const code of ['TENANT_SLUG_CONFLICT', 'CHILD_TENANT_MATCH_AMBIGUOUS']) {
+      expect(findGuidanceByIdentifier(code)?.code).toBe('E264');
+    }
+    const subscription = findGuidanceByIdentifier('SUBSCRIPTION_INACTIVE')!;
+    expect(subscription.fixes[0].command).toContain('verify and repair the existing workspace billing binding');
+    expect(subscription.retry.allowed).toBe(false);
+  });
+
   test('identifier lookup still resolves guidance codes and reason codes', () => {
     expect(findGuidanceByIdentifier('e101')?.reasonCode).toBe('not_logged_in');
     expect(findGuidanceByIdentifier('not-logged-in')?.code).toBe('E101');

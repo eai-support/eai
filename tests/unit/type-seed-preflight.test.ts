@@ -19,7 +19,7 @@ afterEach(async () => {
   process.exitCode = originalExitCode;
   await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
 });
-const enrollment = (ready = true) => ({ tenantId: owner, appKey: 'my-app', enrollment: {
+const enrollment = (ready = true) => ({ tenantId: owner, targetTenantId: runtime, appKey: 'my-app', enrollment: {
   tenantId: owner, verticalKey: 'my-app', childTenantId: runtime,
   provisioningState: ready ? 'ready' : 'pending',
 } });
@@ -55,6 +55,21 @@ describe('Object Type publication prerequisites', () => {
     const response = enrollment();
     response.enrollment.childTenantId = owner;
     await expect(checkTypeSeedPreflight({ getBoundAppProvisioningJobs: async () => new Response(JSON.stringify(response)) } as PlatformAPIClient, binding)).rejects.toThrow(/exact owner, app, and runtime/);
+  });
+
+  test.each([undefined, owner])('requires targetTenantId to identify the exact requested runtime (%s)', async targetTenantId => {
+    const payload = { ...enrollment(), targetTenantId };
+    await expect(checkTypeSeedPreflight({ getBoundAppProvisioningJobs: async () => new Response(JSON.stringify(payload)) } as PlatformAPIClient, binding)).rejects.toThrow(/exact owner, app, and runtime/);
+  });
+
+  test.each([
+    { provisioningState: 'failed', readiness: { ready: true, status: 'ready' } },
+    { provisioningState: 'ready', readiness: { ready: false, status: 'ready' } },
+    { provisioningState: 'ready', metadata: { appProvisioning: { status: 'running' } } },
+  ])('rejects contradictory readiness before publication (%j)', async patch => {
+    const payload = enrollment();
+    Object.assign(payload.enrollment, patch);
+    await expect(checkTypeSeedPreflight({ getBoundAppProvisioningJobs: async () => new Response(JSON.stringify(payload)) } as PlatformAPIClient, binding)).rejects.toBeInstanceOf(TypeSeedPreflightError);
   });
 
   test.each([true, false])('dry-run reads readiness only; readiness=%s', async ready => {

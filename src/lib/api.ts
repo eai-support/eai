@@ -663,6 +663,11 @@ const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
     fields: ['slug', 'portalSlug'],
     message: 'A child workspace with this slug already exists under this parent. Choose a different slug.',
   },
+  CHILD_TENANT_MATCH_AMBIGUOUS: {
+    status: 409,
+    fields: [],
+    message: 'More than one child workspace matches this request. Ask the platform team to repair the parent and child binding before retrying. No workspace identity was selected.',
+  },
   TENANT_SLUG_INVALID: {
     status: 422,
     fields: ['slug'],
@@ -703,6 +708,7 @@ const CHILD_TENANT_ADMISSION_GUIDANCE: Record<string, {
 /** Request context that lets callers opt in to response guidance specific to one operation. */
 export interface ParseApiErrorContext {
   childTenantCreate?: boolean;
+  appCreate?: boolean;
 }
 
 const CHILD_TENANT_CREATE_PATH = /^\/v4\/platform\/tenants\/[^/?#]+\/children\/?$/;
@@ -728,7 +734,7 @@ function childTenantAdmissionError(status: number, body: unknown): ParsedApiErro
     : undefined;
   const envelope = typeof detail?.error === 'string' ? detail : record;
   const code = typeof envelope.error === 'string' ? envelope.error : undefined;
-  const guidance = code ? CHILD_TENANT_ADMISSION_GUIDANCE[code] : undefined;
+  const guidance = code && Object.hasOwn(CHILD_TENANT_ADMISSION_GUIDANCE, code) ? CHILD_TENANT_ADMISSION_GUIDANCE[code] : undefined;
   if (!guidance || guidance.status !== status) return undefined;
   const details = envelope.details && typeof envelope.details === 'object' && !Array.isArray(envelope.details)
     ? envelope.details as Record<string, unknown>
@@ -1017,7 +1023,7 @@ export async function parseApiError(
       invalidFields?: ValidationFieldIssue[];
     };
 
-    const admissionError = context.childTenantCreate
+    const admissionError = context.childTenantCreate || context.appCreate
       ? childTenantAdmissionError(response.status, body)
       : undefined;
     if (admissionError) return admissionError;
@@ -2120,6 +2126,19 @@ export class PlatformAPIClient {
     );
   }
 
+  /** Complete app projection for the exact selected runtime; lineage resolution belongs to the platform. */
+  async listApps(): Promise<Response> {
+    return this.publicRequest(`${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/bindings`, 'GET');
+  }
+
+  /** Optional owner is an exact pin checked by the server, never a client-side lookup hint. */
+  async getAppBinding(appKey: string, appTenantId?: string): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(appKey)}/binding`,
+      'GET', undefined, appTenantId !== undefined ? { appTenantId } : undefined,
+    );
+  }
+
   async createAppProvisioningJob(verticalKey: string, targetTenantId?: string): Promise<Response> {
     return this.publicRequest(
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/provisioning-jobs`,
@@ -2735,12 +2754,15 @@ export class PlatformAPIClient {
     );
 
     if (!response.ok) {
-      const context = await extractServerErrorContext(response);
+      const payload: unknown = await response.json().catch(() => undefined);
+      const diagnostics = safePlatformDiagnostics(response.status, payload, response.headers);
       throw new PlatformAPIRequestError({
         operation: 'Entra app deprovisioning',
         status: response.status,
         statusText: response.statusText,
-        ...context,
+        serverCode: diagnostics.code,
+        requestId: diagnostics.requestId,
+        supportReference: diagnostics.supportReference,
       });
     }
 
@@ -2801,6 +2823,7 @@ export interface SigninCompletenessSummary {
   publicapiPermsAdded: boolean;
   consentGranted: boolean;
   publicapiPreauthorized: boolean;
+  signinFlowBound: boolean | null;
   signinReady: boolean;
   warnings: string[];
 }
@@ -2832,22 +2855,17 @@ function parseSigninCompleteness(value: unknown): SigninCompletenessSummary | nu
   const warnings = Array.isArray(v.warnings)
     ? v.warnings.filter((w): w is string => typeof w === 'string')
     : [];
+  const graphPermsAdded = (v.graph_perms_added ?? v.graphPermsAdded) === true;
+  const publicapiPermsAdded = (v.publicapi_perms_added ?? v.publicapiPermsAdded) === true;
+  const consentGranted = (v.consent_granted ?? v.consentGranted) === true;
+  const publicapiPreauthorized = (v.publicapi_preauthorized ?? v.publicapiPreauthorized) === true;
+  const flow = v.signin_flow_bound ?? v.signinFlowBound;
+  const signinFlowBound = typeof flow === 'boolean' ? flow : null;
   return {
-    graphPermsAdded: Boolean(v.graph_perms_added ?? v.graphPermsAdded),
-    publicapiPermsAdded: Boolean(v.publicapi_perms_added ?? v.publicapiPermsAdded),
-    consentGranted: Boolean(v.consent_granted ?? v.consentGranted),
-    publicapiPreauthorized: Boolean(v.publicapi_preauthorized ?? v.publicapiPreauthorized),
-    // Older AdminAPI deployments don't emit `signin_ready`; derive it from
-    // the four boolean steps so the CLI behaves identically once each step
-    // is observably True/False.
-    signinReady: typeof (v.signin_ready ?? v.signinReady) === 'boolean'
-      ? Boolean(v.signin_ready ?? v.signinReady)
-      : Boolean(
-        v.graph_perms_added ?? v.graphPermsAdded
-      )
-        && Boolean(v.publicapi_perms_added ?? v.publicapiPermsAdded)
-        && Boolean(v.consent_granted ?? v.consentGranted)
-        && Boolean(v.publicapi_preauthorized ?? v.publicapiPreauthorized),
+    graphPermsAdded, publicapiPermsAdded, consentGranted, publicapiPreauthorized, signinFlowBound,
+    // A summary cannot override a failed step. Missing flow metadata remains compatible with older deployments.
+    signinReady: graphPermsAdded && publicapiPermsAdded && consentGranted && publicapiPreauthorized
+      && signinFlowBound !== false && (v.signin_ready ?? v.signinReady) !== false,
     warnings,
   };
 }

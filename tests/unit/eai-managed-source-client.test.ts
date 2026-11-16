@@ -333,7 +333,7 @@ describe('managed publication authority and readiness', () => {
     expect(uploadDeadline).toHaveBeenCalledExactlyOnceWith();
   });
 
-  test('reports only a bounded structured Portal upload failure for the exact operation', async () => {
+  test('uses fixed upload failure guidance with the exact known operation', async () => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));
     vi.spyOn(auth, 'getAccessToken').mockResolvedValue('fixture-eai-token');
@@ -343,7 +343,8 @@ describe('managed publication authority and readiness', () => {
     }), { status: 409, headers: { 'content-type': 'application/json' } }));
     await expect(submitCliManagedSource(client, scope, session(), bundle, async () => {})).rejects.toMatchObject({
       code: 'MANAGED_SOURCE_UPLOAD_FAILED',
-      message: expect.stringContaining('409: Generated repository has pending or inherited release state.'),
+      message: expect.stringContaining('Source upload returned 409. Use --retry cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'),
+      details: { httpStatus: 409, operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
     });
   });
 
@@ -352,6 +353,7 @@ describe('managed publication authority and readiness', () => {
     { error: 'other', message: untrustedCredentialText },
     { error: 'cli_managed_source_upload', message: `Bearer ${untrustedCredentialText}` },
     { error: 'cli_managed_source_upload', message: 'x'.repeat(181) },
+    { error: 'cli_managed_source_upload', message: 'Private provider registration belongs to another account.' },
   ])('does not echo an untrusted Portal upload error: %j', async failure => {
     const client = new PlatformAPIClient('https://api.example.test/public', scope.tenantId);
     vi.spyOn(client, 'prepareCliManagedSource').mockResolvedValue(response(operation()));

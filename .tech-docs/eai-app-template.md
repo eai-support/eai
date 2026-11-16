@@ -116,6 +116,10 @@ the approved one, the CLI stops before the GitHub link step with
 TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.23 (bdda42e).
 ```
 
+The bundled release can match DEV and TEST while PROD retains its previous
+approved pin during a staged rollout. Match the selected environment's exact
+commit before deploying; a newer CLI bundle does not establish PROD approval.
+
 Updating the CLI does not change an existing project, because the template is
 recorded when the project is created. Install a CLI release that bundles the
 environment's required template (`npm install -g eai-cli@latest` once all
@@ -165,3 +169,19 @@ platform-owned files from the approved template when it publishes your source.
 - [Platform Service Patterns](./app-template/service-patterns.md)
 - [V4 Documents And Files](./app-template/documents-and-files.md)
 - [eai-gofer](./eai-gofer.md)
+
+
+Managed source refusals show only published public error codes, verified template
+pins and an already-known operation ID. JSON includes that ID in error details;
+text includes the original recovery command. Unknown provider content uses fixed
+guidance and does not imply that no remote operation was created. Keep the
+original receipt and confirm its outcome before another publish. Use
+`eai errors explain managed_source_rejected --format json` for recovery guidance.
+
+An app can build and render anonymously before Entra sign-in is configured. A
+sign-in request with missing or placeholder settings stays local and instructs
+you to run `eai provision entra`, then restart the app. A failed sign-in user-flow
+binding is reported separately from delegated permission or consent failures.
+After a provider capacity repair, retry the same registration with
+`eai provision entra --force`; use the exact scoped command printed by the CLI
+for an enrolled app. This preserves its registration and current local credential.

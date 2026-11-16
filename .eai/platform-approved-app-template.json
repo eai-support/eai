@@ -1,10 +1,10 @@
 {
   "schema": "eai.platform_approved_app_template.v1",
-  "description": "Platform-approved generated-app template per Infra2025 environment and region. CI fails when resources/linked-sources.json drifts from these pins. Refresh from Infra2025 whenever either side changes (Issues2025#3574).",
+  "description": "Reviewed Infra2025 source records exact generated-app template pins per environment and region. CI checks compatibility only for bundledTemplateEnvironments; retained PROD pins remain distinct during the DEV/TEST rollout. Publication and effective runtime activation require separate evidence (Issues2025#3574).",
   "source": {
     "repository": "enterpriseaigroup/Infra2025",
-    "ref": "b2ca67cd0d4c39155851208e0f2aee6dbded0052",
-    "verifiedAt": "2026-11-11",
+    "ref": "fe731e3333b9c51a141723701353ef5183443801",
+    "verifiedAt": "2026-11-16",
     "files": [
       "config/app-config/dev-ae.json",
       "config/app-config/test-ae.json",
@@ -22,20 +22,20 @@
   },
   "environments": {
     "dev-ae": {
-      "version": "v1.0.23",
-      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+      "version": "v1.0.25",
+      "commit": "7792d2cbe95b2a068588de7cb5d928550eac03e3"
     },
     "test-ae": {
-      "version": "v1.0.23",
-      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+      "version": "v1.0.25",
+      "commit": "7792d2cbe95b2a068588de7cb5d928550eac03e3"
     },
     "test-cc": {
-      "version": "v1.0.23",
-      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+      "version": "v1.0.25",
+      "commit": "7792d2cbe95b2a068588de7cb5d928550eac03e3"
     },
     "test-gwc": {
-      "version": "v1.0.23",
-      "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
+      "version": "v1.0.25",
+      "commit": "7792d2cbe95b2a068588de7cb5d928550eac03e3"
     },
     "prod-ae": {
       "version": "v1.0.23",
@@ -49,5 +49,11 @@
       "version": "v1.0.23",
       "commit": "bdda42e6c250a40a4a4286ae537f4aa51e3b4435"
     }
-  }
+  },
+  "bundledTemplateEnvironments": [
+    "dev-ae",
+    "test-ae",
+    "test-cc",
+    "test-gwc"
+  ]
 }

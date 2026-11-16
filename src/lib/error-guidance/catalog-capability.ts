@@ -12,7 +12,8 @@ export const capabilityGuidance = [
     publicSafe: true,
     why: [
       'The platform checks the workspace subscription status before it allows a capability to be provisioned or enabled.',
-      'Only an active or trialing subscription passes that check; any other status is refused.',
+      'An active or trialing subscription must also have a verified supported billing binding. Missing paid billing bindings fail closed.',
+      'An approved noncharging Enterprise workspace still needs its verified existing subscription binding; the CLI cannot grant Enterprise rights.',
       'For child workspace creation the check applies to the parent workspace, not the new child.',
       'The CLI cannot renew or change a subscription, so retrying the same command does not change the result.',
     ],
@@ -35,8 +36,8 @@ export const capabilityGuidance = [
     ],
     fixes: [
       {
-        command: 'Ask a workspace admin to restore an active subscription for the workspace',
-        purpose: 'Billing is managed outside the CLI; the capability check passes again once the subscription is active.',
+        command: 'Ask EAI support to verify and repair the existing workspace billing binding',
+        purpose: 'For a paid workspace or an approved noncharging Enterprise workspace, support verifies the existing subscription and repairs its binding before retrying. No automatic plan grant or free Enterprise conversion is performed.',
         mutates: false,
       },
     ],

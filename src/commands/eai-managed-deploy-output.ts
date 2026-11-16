@@ -46,6 +46,7 @@ export function printFailure(format: string, error: unknown): void {
   } else {
     out.error(`${failure.code}: ${failure.message}`);
     out.info(failure.nextAction);
+    if (typeof details?.operationId === "string") out.info(`Operation: ${details.operationId}`);
   }
   process.exitCode = 1;
 }

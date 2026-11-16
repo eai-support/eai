@@ -2108,6 +2108,15 @@ describe("describeCloneFailure", () => {
 });
 
 describe("describeAppCreationFailure", () => {
+  test.each(['TENANT_SLUG_CONFLICT', 'CHILD_TENANT_MATCH_AMBIGUOUS'])('safe %s recovery cannot disclose an upstream workspace identity', code => {
+    const message = describeAppCreationFailure({ status: 409, code, message: 'PRIVATE foreign workspace id' });
+    expect(message).toContain(code);
+    expect(message).not.toContain('PRIVATE');
+    expect(message).not.toContain('foreign workspace id');
+    if (code === 'TENANT_SLUG_CONFLICT') expect(message).toContain('--child-tenant-slug');
+    else expect(message).toContain('repair the parent and child binding');
+  });
+
   test("explains tenant-admin failures and links to setup guidance", () => {
     const message = describeAppCreationFailure({
       status: 403,

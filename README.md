@@ -178,9 +178,10 @@ All commands support these global flags:
 | `eai init [name]` | Low-level backwards-compatible scaffold command |
 | `eai dev` | Start local dev server with connectivity checks |
 
-The bundled default template is pinned to the latest `eai-app-template` `main`
-commit captured when this CLI release was cut. Use `--from` to override it with
-a different repository or a local template path.
+The bundled default template is pinned to an exact published `eai-app-template`
+release tag and commit. Each platform environment approves its own template
+pin, so compatibility can differ during a staged rollout. Use `--from` to
+override the bundle with a different repository or a local template path.
 
 ### Authentication
 
