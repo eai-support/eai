@@ -48,6 +48,7 @@ export async function checkTypeSeedPreflight(client: PlatformAPIClient, binding:
   const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : {};
   const children = [enrollment?.childTenantId, metadata.childTenantId].filter(value => value !== undefined && value !== null);
   if (!isRecord(payload) || payload.tenantId !== binding.ownerTenantId || payload.appKey !== binding.appKey
+    || payload.targetTenantId !== binding.runtimeTenantId
     || !enrollment || (enrollment.tenantId !== undefined && enrollment.tenantId !== binding.ownerTenantId)
     || (enrollment.verticalKey !== undefined && enrollment.verticalKey !== binding.appKey)
     || children.some(value => value !== binding.runtimeTenantId)
@@ -56,7 +57,11 @@ export async function checkTypeSeedPreflight(client: PlatformAPIClient, binding:
   }
   const readiness = isRecord(enrollment.readiness) ? enrollment.readiness : {};
   const provisioning = isRecord(metadata.appProvisioning) ? metadata.appProvisioning : {};
-  if (enrollment.provisioningState !== 'ready' && readiness.ready !== true && readiness.status !== 'ready' && provisioning.status !== 'ready') {
+  const readinessSignals = [enrollment.provisioningState, readiness.status, provisioning.status]
+    .filter(value => value !== undefined && value !== null);
+  const declaredReady = readinessSignals.length > 0 || readiness.ready !== undefined;
+  if (!declaredReady || readinessSignals.some(value => value !== 'ready')
+    || (readiness.ready !== undefined && readiness.ready !== true)) {
     throw new TypeSeedPreflightError(binding, 'App resources must be provisioned before publishing Object Types.');
   }
 }

@@ -22,24 +22,6 @@ export interface ManagedReviewFailureResult {
   readonly failedChecks: readonly ManagedReviewFailedCheck[];
 }
 
-function portalMessage(body: string): string | undefined {
-  if (body.length > 512) return undefined;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return undefined;
-    const { error, message } = parsed as { error?: unknown; message?: unknown };
-    return error === "cli_managed_review_failure" &&
-      typeof message === "string" &&
-      message.length <= 180 &&
-      !/\bBearer\b/i.test(message) &&
-      /^[A-Za-z][A-Za-z0-9 .,;:'()/-]*\.?$/.test(message)
-      ? message
-      : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 // SECURITY: check names come from the app's own workflows; strip C0/DEL/C1 controls (Cc) and
 // bidi/zero-width format characters (Cf) before printing, as readableServerText does.
 const CONTROL_CHARACTERS = /[\p{Cc}\p{Cf}]/gu;
@@ -127,7 +109,8 @@ export async function recoverFailedCliManagedReview(
   if (!response.ok) {
     throw new ManagedSourceError(
       response.status === 409 ? "MANAGED_REVIEW_RECOVERY_REFUSED" : "MANAGED_REVIEW_RECOVERY_UNAVAILABLE",
-      portalMessage(body) ?? `The EAI review could not be recovered (${response.status}). Nothing else was changed.`,
+      `The EAI review recovery did not return a confirmed result (HTTP ${response.status}). Preserve operation ${operationId} and inspect it before starting another publication.`,
+      { details: { httpStatus: response.status, operationId } },
     );
   }
   let parsed: { operationId?: unknown; status?: unknown; error?: { code?: unknown; failedChecks?: unknown } } = {};

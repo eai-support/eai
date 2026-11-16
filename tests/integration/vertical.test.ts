@@ -149,7 +149,7 @@ describe('eai app', () => {
   function inventoryFetch(payload: unknown, status = 200): void {
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
-      if (url.includes('/tenant-vertical-enrollment')) return new Response(JSON.stringify(payload), {
+      if (url === `${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/bindings`) return new Response(JSON.stringify(payload), {
         status, headers: { 'Content-Type': 'application/json', 'x-request-id': 'd681b292-2bfd-4c50-a8ce-392f642b1816' },
       });
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID,
@@ -160,92 +160,38 @@ describe('eai app', () => {
     }));
   }
 
-  const emptyInventory = { docs: [], totalDocs: 0, totalPages: 1, limit: 50, page: 1, pagingCounter: 1,
-    hasPrevPage: false, hasNextPage: false, prevPage: null, nextPage: null };
+  const bindingFixture = (runtimeTenantId = COMPANY_TENANT_ID, owner = COMPANY_TENANT_ID, overrides: Record<string, unknown> = {}) => ({
+    enrollmentId: 'app-1', enrollmentOwnerTenantId: owner, runtimeTenantId, appKey: 'planning-portal',
+    version: 1, bindingVersion: null, bindingStatus: 'resolved', displayName: 'Planning Portal',
+    capabilities: { read: true, configure: true, readiness: true, source: true, deploy: true, delete: true, manageObjectTypes: true },
+    ...overrides,
+  });
+  const inventory = (apps: unknown[] = []) => ({ runtimeTenantId: COMPANY_TENANT_ID, apps, complete: true });
 
-  // Canonical ResourceAPI offset envelopes, with observed app records replaced by owned fixtures.
-  const canonicalEmptyInventory = { docs: [], totalDocs: 0, totalPages: 1, limit: 50, page: 1,
-    hasPrevPage: false, hasNextPage: false, nextCursor: null };
-  const canonicalInventory = { ...canonicalEmptyInventory, totalDocs: 1,
-    docs: [{ id: 'fixture-app', data: { verticalKey: 'fixture-app', displayName: 'Owned inventory fixture' } }] };
-  const canonicalMultiplePages = { ...canonicalInventory, limit: 1, totalDocs: 2, totalPages: 2, hasNextPage: true };
-
-  test.each([
-    { name: 'empty observed v4 envelope', payload: canonicalEmptyInventory },
-    { name: 'nonempty observed v4 envelope', payload: canonicalInventory },
-    { name: 'offset next page with a null cursor', payload: canonicalMultiplePages },
-    { name: 'offset next page with an opaque cursor', payload: { ...canonicalMultiplePages, nextCursor: 'opaque-continuation' } },
-    { name: 'exactly full terminal page', payload: { ...canonicalInventory, limit: 1 } },
-    { name: 'canonical and complete consistent legacy metadata', payload: { ...emptyInventory, ...canonicalInventory } },
-    { name: 'nonempty legacy inventory', payload: { ...emptyInventory, ...canonicalInventory, nextCursor: undefined } },
-    { name: 'multiple-page legacy inventory', payload: { ...emptyInventory, ...canonicalMultiplePages, nextCursor: undefined, nextPage: 2 } },
-  ])('app list accepts $name', async ({ payload }) => {
-    await seedLoggedInTenant(); inventoryFetch(payload);
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
+  test.each([{ apps: [] }, { apps: [bindingFixture()] }, { apps: [bindingFixture(COMPANY_TENANT_ID, 'ancestor-owner')] }])('app list reads the selected runtime projection (%j)', async ({ apps }) => {
+    await seedLoggedInTenant(); inventoryFetch(inventory(apps));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--limit', String(payload.limit), '--format', 'json'], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(args => String(args[0])).join(''))).toEqual({ tenantId: COMPANY_TENANT_ID, apps: payload.docs });
-    expect(exit).not.toHaveBeenCalled();
+    await appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(output.mock.calls.flat().join(''))).toEqual({ tenantId: COMPANY_TENANT_ID, ...inventory(apps) });
+    const urls = vi.mocked(fetch).mock.calls.map(([input]) => requestUrl(input));
+    expect(urls).toContain(`${API_BASE}/v4/platform/tenants/${COMPANY_TENANT_ID}/apps/bindings`);
+    expect(urls.some(url => url.includes('tenant-vertical-enrollment'))).toBe(false);
     expect(vi.mocked(fetch).mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
   });
 
   test.each([
-    { name: 'missing both pagination families', payload: { ...canonicalInventory, nextCursor: undefined } },
-    { name: 'partial legacy paging counter', payload: { ...canonicalInventory, pagingCounter: 1 } },
-    { name: 'partial legacy next page', payload: { ...canonicalInventory, nextPage: null } },
-    { name: 'partial legacy previous page', payload: { ...canonicalInventory, prevPage: null } },
-    { name: 'conflicting legacy counter', payload: { ...emptyInventory, ...canonicalInventory, pagingCounter: 2 } },
-    { name: 'conflicting legacy next page', payload: { ...emptyInventory, ...canonicalInventory, nextPage: 2 } },
-    { name: 'conflicting legacy previous page', payload: { ...emptyInventory, ...canonicalInventory, prevPage: 1 } },
-    { name: 'later page instead of requested first page', payload: { ...canonicalInventory, page: 2, totalDocs: 2, totalPages: 2, limit: 1, hasPrevPage: true } },
-    { name: 'empty beyond-end page instead of requested first page', payload: { ...canonicalEmptyInventory, page: 2, hasPrevPage: true } },
-    { name: 'wrong previous-page flag', payload: { ...canonicalInventory, hasPrevPage: true } },
-    { name: 'wrong next-page flag', payload: { ...canonicalInventory, hasNextPage: true } },
-    { name: 'wrong total-page count', payload: { ...canonicalInventory, totalPages: 2 } },
-    { name: 'zero canonical total pages', payload: { ...canonicalEmptyInventory, totalPages: 0 } },
-    { name: 'wrong document count', payload: { ...canonicalInventory, totalDocs: 0 } },
-    { name: 'missing first-page rows', payload: { ...canonicalInventory, docs: [] } },
-    { name: 'excess first-page rows', payload: { ...canonicalMultiplePages, docs: [...canonicalInventory.docs, ...canonicalInventory.docs] } },
-    { name: 'fractional count', payload: { ...canonicalInventory, totalDocs: 1.5 } },
-    { name: 'unsafe count', payload: { ...canonicalInventory, totalDocs: Number.MAX_SAFE_INTEGER + 1 } },
-    { name: 'negative count', payload: { ...canonicalInventory, totalDocs: -1 } },
-    { name: 'zero limit', payload: { ...canonicalInventory, limit: 0 } },
-    { name: 'string limit', payload: { ...canonicalInventory, limit: '50' } },
-    { name: 'empty cursor', payload: { ...canonicalMultiplePages, nextCursor: '' } },
-    { name: 'nonstring cursor', payload: { ...canonicalMultiplePages, nextCursor: false } },
-    { name: 'cursor without a next page', payload: { ...canonicalInventory, nextCursor: 'opaque-continuation' } },
-    { name: 'missing record identity', payload: { ...canonicalInventory, docs: [{ data: {} }] } },
-    { name: 'empty record identity', payload: { ...canonicalInventory, docs: [{ id: '', data: {} }] } },
-    { name: 'array record data', payload: { ...canonicalInventory, docs: [{ id: 'fixture-app', data: [] }] } },
-    { name: 'null record data', payload: { ...canonicalInventory, docs: [{ id: 'fixture-app', data: null }] } },
-  ])('app list rejects $name without changing workspace state', async ({ payload }) => {
+    {}, { docs: [] }, inventory([{}]), { ...inventory(), complete: false },
+    { ...inventory(), runtimeTenantId: 'foreign-runtime' },
+    inventory([bindingFixture('foreign-runtime')]),
+    inventory([bindingFixture(COMPANY_TENANT_ID, COMPANY_TENANT_ID, { capabilities: { read: true } })]),
+  ])('app list rejects incomplete or mismatched projection (%j)', async payload => {
     await seedLoggedInTenant(); inventoryFetch(payload);
-    const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
     const errors = vi.spyOn(console, 'error');
     await expect(appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--format', 'json'], { from: 'user' })).rejects.toThrow('Controlled inventory exit');
-    expect(exit).toHaveBeenCalledWith(1);
     expect(errors.mock.calls.flat().join(' ')).toContain('invalid response');
     expect(vi.mocked(fetch).mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
   });
-
-  test.each([0, 1])('app list accepts an authoritative empty page with totalPages=%i', async totalPages => {
-    await seedLoggedInTenant(); inventoryFetch({ ...emptyInventory, totalPages });
-    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
-    await appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--format', 'json'], { from: 'user' });
-    expect(JSON.parse(output.mock.calls.map(args => String(args[0])).join(''))).toEqual({ tenantId: COMPANY_TENANT_ID, apps: [] });
-  });
-
-  test.each([{}, { message: 'PRIVATE-response' }, { docs: [] }, { ...emptyInventory, totalDocs: 1 },
-    { ...emptyInventory, hasNextPage: 'false' }, { ...emptyInventory, docs: [{ id: 'app', data: null }] }])
-    ('app list rejects malformed HTTP 200 inventory %j', async payload => {
-      await seedLoggedInTenant(); inventoryFetch(payload);
-      const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('Controlled inventory exit'); }) as never);
-      const errors = vi.spyOn(console, 'error');
-      await expect(appCommand.parseAsync(['list', '--tenant-id', COMPANY_TENANT_ID, '--format', 'json'], { from: 'user' })).rejects.toThrow('Controlled inventory exit');
-      expect(exit).toHaveBeenCalledWith(1);
-      expect(errors.mock.calls.flat().join(' ')).toContain('invalid response');
-      expect(errors.mock.calls.flat().join(' ')).not.toContain('PRIVATE-response');
-    });
 
   test('app list retains published failure identifiers and never echoes upstream content', async () => {
     await seedLoggedInTenant(); inventoryFetch({ detail: { code: 'RESOURCEAPI_UNAVAILABLE',
@@ -1076,12 +1022,58 @@ describe('eai app', () => {
     expect(envFile).toContain('EAI_VERTICAL_KEY=planning-portal');
   });
 
+  test('historical owner-only provision refuses a child app with an actionable exact-runtime command', async () => {
+    await seedLoggedInTenant(); await seedProjectRoot(env.dir);
+    const originalEnv = await readFile(join(env.dir, '.env.local'), 'utf8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }] });
+      if (url.endsWith('/apps/planning-portal/binding')) return jsonResponse({ error: 'APP_BINDING_NOT_FOUND', message: 'PRIVATE foreign-runtime' }, 404);
+      throw new Error('No ancestor or enrollment collection may be read');
+    }));
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID, '--skip-validate', '--format', 'json'], { from: 'user' })).rejects.toThrow('fixture-exit');
+    const output = errors.mock.calls.flat().join('');
+    expect(output).toContain('APP_BINDING_NOT_FOUND');
+    expect(output).toContain('eai app provision planning-portal --tenant-id <runtime-workspace-id> --app-tenant-id <enrollment-owner-id>');
+    expect(output).not.toContain('PRIVATE');
+    expect(output).not.toContain('foreign-runtime');
+    expect(vi.mocked(fetch).mock.calls.filter(([input]) => requestUrl(input).includes('/binding'))).toHaveLength(1);
+    expect(vi.mocked(fetch).mock.calls.some(([input]) => requestUrl(input).includes('/resources/'))).toBe(false);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(originalEnv);
+  });
+
+  test.each(['capability', 'owner-pin', 'ambiguous'])('provision refuses %s before any write or local binding change', async reason => {
+    await seedLoggedInTenant(); await seedProjectRoot(env.dir);
+    const original = await readFile(join(env.dir, '.env.local'), 'utf8');
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
+    vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = requestUrl(input);
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }] });
+      if (new URL(url).pathname.endsWith('/apps/planning-portal/binding')) {
+        expect(new URL(url).searchParams.get('appTenantId')).toBe(reason === 'owner-pin' ? 'wrong-owner' : COMPANY_TENANT_ID);
+        const row = bindingFixture();
+        if (reason === 'capability') row.capabilities.readiness = false;
+        if (reason === 'ambiguous') row.bindingStatus = 'ambiguous';
+        return jsonResponse(row);
+      }
+      throw new Error('A refused binding must not dispatch another API operation');
+    }));
+    await expect(appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+      '--app-tenant-id', reason === 'owner-pin' ? 'wrong-owner' : COMPANY_TENANT_ID, '--skip-validate', '--select', '--format', 'json'], { from: 'user' })).rejects.toThrow('fixture-exit');
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => requestMethod(init) === 'GET')).toBe(true);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(original);
+  });
+
   test('HP004 provisions app resources through the v4 app provisioning job', async () => {
     await seedLoggedInTenant();
     await seedProjectRoot(env.dir);
     const outputSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       const method = requestMethod(init);
 
       if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
@@ -1208,7 +1200,9 @@ describe('eai app', () => {
     const originalEnv = await readFile(envPath, 'utf-8');
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
-      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }] });
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }, { id: 'runtime-child', roles: ['tenant-admin'] }, { id: 'runtime-child-tenant', roles: ['tenant-admin'] }] });
       if (url.includes(`/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)) {
         return jsonResponse({ docs: [{ id: 'app-1', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'planning-portal', childTenantId: childId } }] });
       }
@@ -1226,7 +1220,7 @@ describe('eai app', () => {
       return jsonResponse({ message: `Unexpected request: ${url}` }, 500);
     });
     vi.stubGlobal('fetch', fetchMock);
-    await appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID, '--select', '--format', 'json', ...(dryRun ? ['--dry-run'] : [])], { from: 'user' });
+    await appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', childId, '--app-tenant-id', COMPANY_TENANT_ID, '--select', '--format', 'json', ...(dryRun ? ['--dry-run'] : [])], { from: 'user' });
     const savedEnv = await readFile(envPath, 'utf-8');
     expect(savedEnv).toContain(`EAI_TENANT_ID=${childId}`);
     if (dryRun) expect(savedEnv).toBe(originalEnv);
@@ -1245,8 +1239,10 @@ describe('eai app', () => {
     let reads = 0;
     return vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       const method = requestMethod(init);
-      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }] });
+      if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }, { id: 'runtime-child', roles: ['tenant-admin'] }, { id: 'runtime-child-tenant', roles: ['tenant-admin'] }] });
       if (url.includes(`/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)) {
         return jsonResponse({ docs: [{ id: 'app-1', data: { tenantId: COMPANY_TENANT_ID, verticalKey: 'planning-portal', childTenantId: 'runtime-child' } }] });
       }
@@ -1280,7 +1276,7 @@ describe('eai app', () => {
       : appJobFixture('ready'));
     vi.stubGlobal('fetch', fetchMock);
     vi.useFakeTimers();
-    const completion = appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID,
+    const completion = appCommand.parseAsync(['provision', 'planning-portal', '--tenant-id', 'runtime-child', '--app-tenant-id', COMPANY_TENANT_ID,
       '--job-id', 'app-prov-async', '--format', 'json'], { from: 'user' }).then(() => undefined, error => error);
     await vi.waitFor(() => expect(fetchMock.mock.calls.filter(([input]) =>
       requestUrl(input).includes('/provisioning-jobs/app-prov-async?'))).toHaveLength(1));
@@ -1306,7 +1302,7 @@ describe('eai app', () => {
         provisioningState: status, readiness: { status, ready: status === 'ready' } } };
   }
 
-  const provisionArgs = ['provision', 'planning-portal', '--tenant-id', COMPANY_TENANT_ID, '--select', '--format', 'json'];
+  const provisionArgs = ['provision', 'planning-portal', '--tenant-id', 'runtime-child', '--app-tenant-id', COMPANY_TENANT_ID, '--select', '--format', 'json'];
 
   test('provision polls only its exact asynchronous job and writes runtime files after ready readback', async () => {
     await seedLoggedInTenant();
@@ -1334,7 +1330,7 @@ describe('eai app', () => {
     const savedContract = JSON.parse(await readFile(join(env.dir, '.eai/storage-bindings.json'), 'utf-8'));
     expect(savedContract).toMatchObject({ tenantId: 'runtime-child', source: { provisioningJobId: 'app-prov-async' } });
     const output = JSON.parse(outputSpy.mock.calls.flat().join(''));
-    expect(output).toMatchObject({ tenantId: COMPANY_TENANT_ID, targetTenantId: 'runtime-child', provisioning: { status: 'ready', jobId: 'app-prov-async' } });
+    expect(output).toMatchObject({ tenantId: 'runtime-child', appTenantId: COMPANY_TENANT_ID, targetTenantId: 'runtime-child', provisioning: { status: 'ready', jobId: 'app-prov-async' } });
   });
 
   test.each([
@@ -1640,6 +1636,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-exit'); });
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: COMPANY_TENANT_ID, roles: ['tenant-admin'] }] });
       if (url.includes('/tenant-vertical-enrollment')) return jsonResponse({ docs: [{ data: { verticalKey: 'planning-portal', childTenantId: 'expected-runtime' } }] });
       return jsonResponse({ tenantId: COMPANY_TENANT_ID, enrollment: { childTenantId: 'unexpected-runtime' } });
@@ -1655,6 +1653,8 @@ describe('eai app', () => {
     const childTenantId = 'child-tenant';
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       const method = requestMethod(init);
       if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
         return jsonResponse({ tenants: [
@@ -1687,6 +1687,7 @@ describe('eai app', () => {
     expect(storageContract.storageNamePrefixes.sql).toContain('childtenant_planning_portal_');
     const envFile = await readFile(join(env.dir, '.env.local'), 'utf-8');
     expect(envFile).toContain(`EAI_TENANT_ID=${childTenantId}`);
+    expect(envFile).toContain(`EAI_PARENT_TENANT_ID=${COMPANY_TENANT_ID}`);
     expect(envFile).toContain(`NEXT_PUBLIC_EAI_TENANT_ID=${childTenantId}`);
     expect(fetchMock).not.toHaveBeenCalledWith(expect.stringContaining(`/v4/platform/tenants/${childTenantId}/apps/planning-portal/provisioning-jobs`), expect.anything());
   });
@@ -1697,6 +1698,8 @@ describe('eai app', () => {
     const childTenantId = 'child-tenant';
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [
           { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
@@ -1734,6 +1737,8 @@ describe('eai app', () => {
     const jobStarted = new Promise<void>((resolve) => { signalJobStarted = resolve; });
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [
           { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
@@ -1784,6 +1789,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [
           { id: COMPANY_TENANT_ID, displayName: 'Builder Workspace', isActive: true, roles: ['tenant-admin'] },
@@ -1812,6 +1819,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       const method = requestMethod(init);
       if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {
         return jsonResponse({ tenants: [
@@ -1846,6 +1855,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [{ id: 'child-tenant', displayName: 'App Runtime', slug: 'app-runtime', isActive: true, roles: ['tenant-admin'] }] });
       }
@@ -1887,6 +1898,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
     const fetchMock = vi.fn<typeof fetch>(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture(decodeURIComponent(bindingPath[1]), COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) {
         return jsonResponse({ tenants: [{ id: childTenantId, roles: ['tenant-admin'] }] });
       }
@@ -1914,6 +1927,8 @@ describe('eai app', () => {
     vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('fixture-process-exit'); });
     const fetchMock = vi.fn<typeof fetch>(async (input: Parameters<typeof fetch>[0]) => {
       const url = requestUrl(input);
+      const bindingPath = new URL(url).pathname.match(/\/v4\/platform\/tenants\/([^/]+)\/apps\/planning-portal\/binding$/);
+      if (bindingPath) return jsonResponse(bindingFixture('another-child', COMPANY_TENANT_ID));
       if (url === `${API_BASE}/v4/identity/tenants`) return jsonResponse({ tenants: [{ id: 'child-tenant', roles: ['tenant-admin'] }] });
       if (url.includes(`/v4/data/resources/${COMPANY_TENANT_ID}/tenant-vertical-enrollment`)) {
         return jsonResponse({ docs: [{ data: { verticalKey: 'planning-portal', metadata: { childTenantId: 'another-child' } } }] });
@@ -1934,6 +1949,7 @@ describe('eai app', () => {
     await seedProjectRoot(env.dir);
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
       const url = requestUrl(input);
+      if (new URL(url).pathname.endsWith('/apps/planning-portal/binding')) return jsonResponse(bindingFixture());
       const method = requestMethod(init);
 
       if (url === `${API_BASE}/v4/identity/tenants` && method === 'GET') {

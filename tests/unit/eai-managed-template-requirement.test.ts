@@ -64,7 +64,7 @@ async function caught(promise: Promise<unknown>): Promise<ManagedSourceError> {
   throw new Error("expected a ManagedSourceError");
 }
 
-describe("managed source operation errors keep the server reason (Issues2025#3574)", () => {
+describe("managed source operation errors preserve safe public reasons (Issues2025#3574, #3637)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
   });
@@ -213,82 +213,34 @@ describe("managed source operation errors keep the server reason (Issues2025#357
     expect(error.nextAction).not.toContain("@latest");
   });
 
-  test("older or unknown server codes stay readable instead of a bare status", async () => {
-    const error = await caught(
-      responseOperation(
-        json(
-          {
-            error: "CLI_MANAGED_SOURCE_UPSTREAM_REJECTED",
-            message: "The managed source request was rejected.",
-          },
-          409,
-        ),
-      ),
-    );
-    expect(error.code).toBe("MANAGED_SOURCE_UNAVAILABLE");
-    expect(error.message).toContain(
-      "(409 CLI_MANAGED_SOURCE_UPSTREAM_REJECTED)",
-    );
-    expect(error.message).toContain("The managed source request was rejected.");
-    expect(error.details).toEqual({
-      httpStatus: 409,
-      serverCode: "CLI_MANAGED_SOURCE_UPSTREAM_REJECTED",
-    });
+  test.each([
+    { error: 'CLI_MANAGED_SOURCE_UPSTREAM_REJECTED', message: 'PRIVATE provider token /internal/path' },
+    { detail: 'PRIVATE provider text\u001b[31m' },
+    { detail: { error: 'CLI_MANAGED_SOURCE_DIGEST_MISMATCH', message: 'PRIVATE provider text' } },
+    { detail: 'Rejected\u009b31m by\u202e reversed\u2066 PRIVATE text\u200b' },
+  ])('unknown server content is replaced by fixed guidance (%j)', async body => {
+    const error = await caught(responseOperation(json(body, 409)));
+    expect(error.code).toBe('MANAGED_SOURCE_UNAVAILABLE');
+    expect(error.message).toBe('Managed source operation is unavailable (409). Its remote outcome has not been confirmed.');
+    expect(error.nextAction).toContain('confirm the outcome before starting another publication');
+    expect(error.details).toEqual({ httpStatus: 409 });
+    expect(JSON.stringify(error)).not.toContain('PRIVATE');
+    expect(JSON.stringify(error)).not.toContain('UPSTREAM_REJECTED');
   });
 
-  test("FastAPI detail strings are bounded and stripped of control characters", async () => {
-    const error = await caught(
-      responseOperation(
-        json(
-          {
-            detail: `An earlier\u001b[31m CLI operation is still active.${"x".repeat(400)}`,
-          },
-          409,
-        ),
-      ),
-    );
-    expect(error.code).toBe("MANAGED_SOURCE_UNAVAILABLE");
-    expect(error.message).toContain(
-      "An earlier [31m CLI operation is still active.",
-    );
-    expect(error.message).not.toContain("\u001b");
-    expect(error.message.length).toBeLessThan(500);
+  test('non-JSON bodies still report only the status', async () => {
+    const error = await caught(responseOperation(new Response('<html>PRIVATE bad gateway</html>', { status: 502 })));
+    expect(error.message).toContain('(502)');
+    expect(JSON.stringify(error)).not.toContain('PRIVATE');
   });
 
-  test("C1 controls and bidi/format characters in server text never reach the terminal", async () => {
-    const error = await caught(
-      responseOperation(
-        json(
-          {
-            detail:
-              "Rejected\u009b31m by\u202e reversed\u2066 text\u200b here.",
-          },
-          409,
-        ),
-      ),
-    );
-    expect(error.message).toContain("Rejected 31m by reversed text here.");
-    expect(error.message).not.toMatch(/[\p{Cc}\p{Cf}]/u);
-  });
-
-  test("non-JSON bodies and nested FastAPI errors still report the status", async () => {
-    expect(
-      (
-        await caught(
-          responseOperation(
-            new Response("<html>bad gateway</html>", { status: 502 }),
-          ),
-        )
-      ).message,
-    ).toContain("(502)");
-    const nested = await caught(
-      responseOperation(
-        json({ detail: { error: "CLI_MANAGED_SOURCE_DIGEST_MISMATCH" } }, 502),
-      ),
-    );
-    expect(nested.message).toContain(
-      "(502 CLI_MANAGED_SOURCE_DIGEST_MISMATCH)",
-    );
+  test('known local operation identity survives a rejected read in text and structured details', async () => {
+    const operationId = `cli-managed-${'a'.repeat(32)}`;
+    const error = await managedSourceResponseError(json({ operationId: `cli-managed-${'b'.repeat(32)}`, message: 'PRIVATE' }, 503), operationId);
+    expect(error.details).toEqual({ httpStatus: 503, operationId });
+    expect(error.nextAction).toContain(`--retry ${operationId}`);
+    expect(JSON.stringify(error)).not.toContain('PRIVATE');
+    expect(JSON.stringify(error)).not.toContain('b'.repeat(32));
   });
 
   test("a malformed stale-template body falls back to the readable generic error", async () => {

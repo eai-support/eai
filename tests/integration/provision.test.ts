@@ -52,7 +52,7 @@ const TENANT_AUTH_EXISTING = {
 };
 const SIGNIN_READY = { signin_completeness: {
   graph_perms_added: true, publicapi_perms_added: true, consent_granted: true,
-  publicapi_preauthorized: true, signin_ready: true, warnings: [],
+  publicapi_preauthorized: true, signin_flow_bound: true, signin_ready: true, warnings: [],
 } };
 
 function createJwt(payload: Record<string, string>): string {
@@ -167,18 +167,18 @@ describe('eai provision entra', () => {
 
   async function setupScopedProject(extra = ''): Promise<void> {
     await writeFile(join(env.dir, '.env.local'),
-      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=Display name\nEAI_APP_KEY=my-app\nEAI_PARENT_TENANT_ID=company\nAUTH_URL=http://localhost:3002/my-app\n${extra}`);
+      `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=Display name\nEAI_APP_KEY=my-app\nEAI_PARENT_TENANT_ID=company\nEAI_TENANT_ID=runtime\nAUTH_URL=http://localhost:3002/my-app\n${extra}`);
   }
 
   function mockScopedAccess(options: { runtime?: string; member?: boolean; complete?: boolean } = {}): void {
     const runtime = options.runtime ?? 'runtime';
     mockServer.server.use(
-      http.get(`${API_BASE}/v4/data/resources/company/tenant-vertical-enrollment`, ({ request }) => {
-        expect(JSON.parse(new URL(request.url).searchParams.get('where')!)).toEqual({ verticalKey: 'my-app' });
-        return HttpResponse.json({ docs: [{ id: 'enrollment', data: {
-          tenantId: 'company', verticalKey: 'my-app', childTenantId: runtime,
-        } }], totalDocs: 1, totalPages: options.complete === false ? 2 : 1, page: 1,
-          hasNextPage: false, hasPrevPage: false });
+      http.get(`${API_BASE}/v4/platform/tenants/runtime/apps/my-app/binding`, ({ request }) => {
+        expect(new URL(request.url).searchParams.get('appTenantId')).toBe('company');
+        return options.complete === false ? HttpResponse.json({ error: 'APP_ENROLLMENT_AMBIGUOUS' }, { status: 409 })
+          : HttpResponse.json({ enrollmentId: 'enrollment', enrollmentOwnerTenantId: 'company', runtimeTenantId: runtime,
+            appKey: 'my-app', bindingStatus: 'resolved', version: 1, bindingVersion: null,
+            capabilities: { read: true, configure: true, readiness: true, source: true, deploy: true, delete: true, manageObjectTypes: true } });
       }),
       http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({ tenants: options.member === false ? [] : [{
         id: runtime, displayName: 'App runtime', slug: 'app-runtime', isActive: true,
@@ -512,6 +512,40 @@ describe('eai provision entra', () => {
     expect(exit).toHaveBeenCalledWith(1);
     expect(joinedConsoleOutput(log, error)).toContain('could not confirm complete sign-in');
     expect(joinedConsoleOutput(log, error)).not.toContain('<fixture-preserved-secret>');
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test.each([
+    { label: 'stable user-flow capacity marker', warnings: ['signin_flow_capacity_exceeded'], expected: '50 KB' },
+    { label: 'user-flow capacity', warnings: ['signin_flow_bind_failed: provider exceeded maximum size of 50KB PRIVATE'], expected: '50 KB' },
+    { label: 'user-flow binding', warnings: ['signin_flow_bind_failed: PRIVATE'], expected: 'repair that flow binding' },
+  ])('reports $label without confusing it with delegated permissions or rotating credentials', async ({ warnings, expected }) => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n');
+    mockScopedAccess();
+    let issued = 0;
+    let rechecks = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
+        const complete = rechecks++ > 0;
+        return HttpResponse.json({
+        app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true,
+        ...TENANT_AUTH_EXISTING, signin_completeness: complete ? SIGNIN_READY.signin_completeness : { ...SIGNIN_READY.signin_completeness, signin_flow_bound: false, signin_ready: false, warnings },
+      }); }),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--force'], { from: 'user' })).rejects.toThrow('process.exit called');
+    const output = joinedConsoleOutput(log, warn, error);
+    expect(output).toContain(expected);
+    expect(output).toContain('eai provision entra --company-tenant company --app-key my-app --tenant-id runtime --force');
+    expect(output).not.toContain('AADSTS650057');
+    expect(output).not.toContain('PRIVATE');
+    await provisionCommand.parseAsync([...scopedArgs, '--force'], { from: 'user' });
+    expect(rechecks).toBe(2);
+    expect(issued).toBe(0);
     expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
   });
 
@@ -1440,6 +1474,27 @@ describe('eai provision entra', () => {
     const output = joinedConsoleOutput(errSpy, logSpy);
     expect(output).toContain('Refusing to deauthorize without explicit confirmation');
     expect(output).toContain('eai provision entra --deauthorize --force');
+  });
+
+  test('retains local credentials and explains exact ownership refusal without suggesting app deletion', async () => {
+    await setupProject(env.dir);
+    await writeFile(join(env.dir, '.env.local'), `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=my-app\nENTRA_CLIENT_ID=client-1\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n`);
+    await storeTestTokens(env.dir);
+    const original = await readFile(join(env.dir, '.env.local'), 'utf8');
+    mockServer.server.use(http.delete(`${API_BASE}/v4/platform/provisioning/entra-apps/client-1`, () => HttpResponse.json({
+      detail: { error: 'APP_REGISTRATION_CLEANUP_OWNERSHIP_REQUIRED', message: 'PRIVATE provider identity' },
+    }, { status: 409 })));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(['entra', '--deauthorize', '--force'], { from: 'user' })).rejects.toThrow('process.exit called');
+    const output = joinedConsoleOutput(log, error);
+    expect(output).toContain('registration and workspace authorization were retained');
+    expect(output).toContain('Keep your local credentials');
+    expect(output).toContain('reviewed registration cleanup manifest');
+    expect(output).not.toContain('eai app delete');
+    expect(output).not.toContain('PRIVATE provider identity');
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(original);
   });
 
   test('deauthorize deletes the app registration and removes local Entra credentials', { timeout: 10000 }, async () => {

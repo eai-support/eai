@@ -16,7 +16,7 @@ export const typesProvisioningGuidance: ErrorGuidance = {
   evidenceToCheck: ['App key, owning company workspace and runtime workspace printed by the seed preflight.', 'The exact recovery command returned by types seed.'],
   diagnostics: [
     { command: 'eai types seed --dry-run --format json', purpose: 'Read app enrollment and provisioning readiness without changing platform state.', mutates: false },
-    { command: 'eai app list --tenant-id <owner-workspace-id> --format json', purpose: 'Confirm that the app is enrolled in the owning workspace.', mutates: false },
+    { command: 'eai app list --tenant-id <runtime-workspace-id> --format json', purpose: 'Read the exact runtime app binding and its enrollment owner.', mutates: false },
   ],
   fixes: [{ command: 'eai app provision <app-key> --tenant-id <runtime-workspace-id> --app-tenant-id <owner-workspace-id> --select --format json', purpose: 'Provision the exact enrollment and runtime binding shown by preflight; omit --app-tenant-id when both workspaces are the same.', mutates: true }],
   retry: { allowed: true, maxAttempts: 1, stopWhen: ['App provisioning is not ready or the enrollment/runtime binding does not match.'] },

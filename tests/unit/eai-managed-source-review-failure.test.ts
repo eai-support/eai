@@ -47,19 +47,20 @@ describe('EAI-managed review failure recovery', () => {
     expect(init!.redirect).toBe('error');
   });
 
-  test('shows the Portal refusal reason without echoing anything unsafe', async () => {
+  test('replaces Portal refusal text with fixed guidance and the known operation', async () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(
       { error: 'cli_managed_review_failure', message: 'EAI review checks are still running; try again when they finish.' }, 409,
     ));
     await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
       code: 'MANAGED_REVIEW_RECOVERY_REFUSED',
-      message: 'EAI review checks are still running; try again when they finish.',
+      message: `The EAI review recovery did not return a confirmed result (HTTP 409). Preserve operation ${operationId} and inspect it before starting another publication.`,
+      details: { httpStatus: 409, operationId },
     });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(json(
       { error: 'cli_managed_review_failure', message: 'Bearer abc leaked' }, 409,
     ));
     await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
-      message: 'The EAI review could not be recovered (409). Nothing else was changed.',
+      message: `The EAI review recovery did not return a confirmed result (HTTP 409). Preserve operation ${operationId} and inspect it before starting another publication.`,
     });
   });
 
@@ -130,7 +131,7 @@ describe('EAI-managed review failure recovery', () => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response('x'.repeat(1024 * 1024), { status: 409 }));
     await expect(recoverFailedCliManagedReview(client(), scope, operationId, portal)).rejects.toMatchObject({
       code: 'MANAGED_REVIEW_RECOVERY_REFUSED',
-      message: 'The EAI review could not be recovered (409). Nothing else was changed.',
+      message: `The EAI review recovery did not return a confirmed result (HTTP 409). Preserve operation ${operationId} and inspect it before starting another publication.`,
     });
   });
 
@@ -171,7 +172,8 @@ describe('safe managed-source conflicts (Issues2025#3637)', () => {
   ])('maps %s to fixed support guidance', async (code, text) => {
     await expect(responseOperation(json({ error: code, message: 'Upstream detail.' }, 409))).rejects.toMatchObject({
       code,
-      message: expect.stringMatching(new RegExp(`${text}.*Contact EAI support with the app key; no source was uploaded\\.$`)),
+      message: expect.stringContaining(text),
+      nextAction: expect.stringContaining('confirm the outcome'),
     });
   });
 
@@ -189,18 +191,30 @@ describe('safe managed-source conflicts (Issues2025#3637)', () => {
   });
 
   test('keeps the managed request timeout when a 409 body read expires', async () => {
+    const deadline = new AbortController();
+    const timeout = vi.spyOn(AbortSignal, 'timeout').mockReturnValue(deadline.signal);
+    let reading!: () => void;
+    const bodyReadStarted = new Promise<void>(resolve => { reading = resolve; });
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (_input, init) => {
       const signal = init!.signal!;
-      const body = new ReadableStream<Uint8Array>({ start(controller) {
-        const alive = setInterval(() => {}, 1000);
-        signal.addEventListener('abort', () => { clearInterval(alive); controller.error(signal.reason); }, { once: true });
-      } });
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          signal.addEventListener('abort', () => controller.error(signal.reason), { once: true });
+        },
+        pull() { reading(); },
+      }, { highWaterMark: 0 });
       return new Response(body, { status: 409 });
     });
     const response = await new PlatformAPIClient('https://example.test', 'tenant-parent')
       .getAppProvisioningJob('planning-portal', 'app-prov-owned', 'runtime-child', 25);
-    let error: unknown;
-    try { await responseOperation(response); } catch (caught) { error = caught; }
+    const failure = responseOperation(response).catch((error: unknown) => error);
+    // Expire only after the body reader starts; CPU contention cannot move this timeout before response headers.
+    await bodyReadStarted;
+    const reason = new DOMException('Fixture managed deadline', 'TimeoutError');
+    deadline.abort(reason);
+    expect(timeout).toHaveBeenCalledWith(25);
+    const error = await failure;
+    expect(error).toBe(reason);
     expect(isManagedPublicRequestTimeout(error)).toBe(true);
   });
 });

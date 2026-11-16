@@ -78,6 +78,17 @@ eai app provision <app-key> --tenant-id <runtime-child-id> --app-tenant-id <pare
 eai types seed --tenant-key <app-key> --tenant-id <runtime-child-id> --app-tenant-id <parent-id> --format json
 ```
 
+App list and provisioning read the typed binding for the selected runtime. The
+platform resolves authorized lineage; the CLI never scans ancestor enrollment
+collections. `--app-tenant-id` pins the exact enrollment owner and cannot select
+among ambiguous bindings. An owner-only provision command for a child app stops
+with the explicit runtime command instead of switching workspaces.
+
+Successful provisioning persists `EAI_PARENT_TENANT_ID` as the enrollment owner
+and both runtime tenant variables as the selected runtime. Storage readiness
+and browser sign-in readiness are separate: use `eai provision entra` for sign-in
+setup. `--skip-validate` cannot bypass binding verification.
+
 The CLI checks the exact parent/app/child enrollment before publishing through
 the parent app route and reads schema visibility from the child. This mode
 stops if the manifest route or binding is unavailable; it does not switch to

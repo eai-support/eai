@@ -8,6 +8,7 @@ import {
   readManagedPublicResponseTextBounded,
 } from "./api.js";
 import { ManagedSourceError } from "./eai-managed-source.js";
+import { CLI_MANAGED_SOURCE_OPERATION_ID } from "./eai-managed-identifiers.js";
 import type { CliManagedSourceScope } from "./eai-managed-source-client-types.js";
 
 /** Stable server code for a project whose template commit is not the environment's approved pin. */
@@ -19,7 +20,15 @@ const COMMIT = /^[a-f0-9]{40}$/;
 const VERSION = /^v\d{1,4}\.\d{1,4}\.\d{1,4}$/;
 export const MAX_TEMPLATE_RESPONSE_BYTES = 8_192;
 export const MAX_PROJECT_MANIFEST_BYTES = 64 * 1024;
-const MAX_SERVER_MESSAGE_CHARS = 240;
+const SOURCE_CONFLICT_GUIDANCE: Readonly<Record<string, string>> = {
+  CLI_MANAGED_SOURCE_OPERATION_ACTIVE:
+    "An earlier EAI-maintained publish for this app is still active. Check it with --resume <operation-id>; if its EAI review checks failed, run --recover-failed-review <operation-id>. Find the original operation ID in the earlier output or ~/.eai/managed-deployments.",
+  CLI_MANAGED_SOURCE_PREDECESSOR_AMBIGUOUS:
+    "More than one earlier failed EAI publish could be continued. Contact EAI support with the app key and original operation reference before publishing again.",
+  CLI_MANAGED_REVIEW_FAILURE_LIMIT:
+    "This app has reached the limit of failed EAI reviews that can be recovered automatically. Contact EAI support with the app key and original operation reference.",
+};
+const PUBLIC_SOURCE_CODES = new Set([TEMPLATE_VERSION_NOT_APPROVED, ...Object.keys(SOURCE_CONFLICT_GUIDANCE)]);
 const require = createRequire(import.meta.url);
 
 /** The exact pins compared by AdminAPI; versions are display labels only. */
@@ -74,23 +83,8 @@ export function templateVersionNotApprovedError(
   );
 }
 
-function readableServerText(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  // SECURITY: strip C0/DEL/C1 (Cc, e.g. U+009B CSI) and bidi/zero-width format controls (Cf) from server text before terminal output.
-  const text = value
-    .replace(/[\p{Cc}\p{Cf}]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-  if (!text) return undefined;
-  return text.length > MAX_SERVER_MESSAGE_CHARS
-    ? `${text.slice(0, MAX_SERVER_MESSAGE_CHARS - 1)}…`
-    : text;
-}
-
 function serverCode(value: unknown): string | undefined {
-  return typeof value === "string" && /^[A-Z][A-Z0-9_]{2,79}$/.test(value)
-    ? value
-    : undefined;
+  return typeof value === "string" && PUBLIC_SOURCE_CODES.has(value) ? value : undefined;
 }
 
 function templateVersion(value: unknown): string | undefined {
@@ -131,6 +125,7 @@ function templateComparison(
  */
 export async function managedSourceResponseError(
   response: Response,
+  knownOperationId?: string,
 ): Promise<ManagedSourceError> {
   let body: unknown;
   try {
@@ -152,27 +147,27 @@ export async function managedSourceResponseError(
     detail && typeof detail === "object" && !Array.isArray(detail)
       ? (detail as Record<string, unknown>)
       : {};
-  const code = serverCode(record.error) ?? serverCode(nested.error);
+  const code = serverCode(record.error) ?? serverCode(record.code) ?? serverCode(nested.error) ?? serverCode(nested.code);
+  // Only the already-known local request identity is eligible; an error body cannot nominate another operation.
+  const operationId = typeof knownOperationId === "string" && CLI_MANAGED_SOURCE_OPERATION_ID.test(knownOperationId)
+    ? knownOperationId : undefined;
+  const details = { httpStatus: response.status, ...(code ? { serverCode: code } : {}), ...(operationId ? { operationId } : {}) };
   if (code === TEMPLATE_VERSION_NOT_APPROVED) {
     const comparison = templateComparison(record.details ?? nested.details);
     if (comparison)
       return templateVersionNotApprovedError(comparison, {
-        httpStatus: response.status,
+        ...details,
       });
   }
-  const message =
-    readableServerText(record.message) ??
-    readableServerText(nested.message) ??
-    readableServerText(detail);
+  const guidance = response.status === 409 && code && Object.hasOwn(SOURCE_CONFLICT_GUIDANCE, code)
+    ? SOURCE_CONFLICT_GUIDANCE[code] : undefined;
+  const nextAction = operationId
+    ? `Keep the original recovery receipt and inspect operation ${operationId} with --retry ${operationId}; do not start another publication while its outcome is unknown.`
+    : "Check the earlier publish output and saved recovery receipt for an operation reference. Ask EAI support to confirm the outcome before starting another publication.";
   return new ManagedSourceError(
-    "MANAGED_SOURCE_UNAVAILABLE",
-    `Managed source operation is unavailable (${response.status}${code ? ` ${code}` : ""})${message ? `: ${message}` : "."} Repair the platform operation or app-source access, then retry the exact operation.`,
-    {
-      details: {
-        httpStatus: response.status,
-        ...(code ? { serverCode: code } : {}),
-      },
-    },
+    guidance && code ? code : "MANAGED_SOURCE_UNAVAILABLE",
+    guidance ?? `Managed source operation is unavailable (${response.status}${code ? ` ${code}` : ""}). Its remote outcome has not been confirmed.`,
+    { nextAction, details },
   );
 }
 

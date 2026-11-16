@@ -16,6 +16,7 @@ import {
   MANAGED_PUBLIC_REQUEST_TIMEOUT_MS,
   isManagedPublicRequestTimeout,
   readManagedPublicResponseText,
+  parseApiError,
   type SourceUnknownAppRegistrationRequest,
   type SourceUnknownDeploymentRequest,
   type SourceUnknownSchemaProvenance,
@@ -29,6 +30,7 @@ import {
   type PublicApiRequestPolicy,
 } from '../lib/tenant-context.js';
 import { findProjectRoot, loadEnvFile, patchEnvFile } from '../lib/config.js';
+import { isAppBinding, resolveAppBinding } from '../lib/app-binding.js';
 import { loadRuntimeContract } from '../lib/runtime-contract.js';
 import {
   errMsg,
@@ -804,29 +806,6 @@ function extractDocs(payload: unknown): Array<{ id?: string; data?: Record<strin
   }));
 }
 
-/** Verify an authoritative first page before displaying an empty or partial app inventory. */
-function isValidAppInventory(payload: unknown): boolean {
-  if (!isRecord(payload) || !Array.isArray(payload.docs) || !payload.docs.every(doc => isRecord(doc)
-    && typeof doc.id === 'string' && doc.id.length > 0 && isRecord(doc.data))) return false;
-  const count = payload.totalDocs;
-  const limit = payload.limit;
-  if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0
-    || typeof limit !== 'number' || !Number.isSafeInteger(limit) || limit < 1
-    || payload.page !== 1) return false;
-  const hasCursor = Object.hasOwn(payload, 'nextCursor');
-  const legacyFields = ['pagingCounter', 'prevPage', 'nextPage'];
-  const hasLegacy = legacyFields.some(key => Object.hasOwn(payload, key));
-  if (!hasCursor && !hasLegacy || hasLegacy && !legacyFields.every(key => Object.hasOwn(payload, key))) return false;
-  const pages = Math.max(1, Math.ceil(count / limit));
-  const hasNextPage = pages > 1;
-  if (!(payload.totalPages === pages || !hasCursor && count === 0 && payload.totalPages === 0)
-    || payload.docs.length !== Math.min(count, limit) || payload.hasPrevPage !== false
-    || payload.hasNextPage !== hasNextPage) return false;
-  if (hasCursor && (payload.nextCursor !== null && (typeof payload.nextCursor !== 'string' || !payload.nextCursor.length)
-    || !hasNextPage && payload.nextCursor !== null)) return false;
-  return !hasLegacy || payload.pagingCounter === 1 && payload.prevPage === null && payload.nextPage === (hasNextPage ? 2 : null);
-}
-
 async function readResponsePayload(res: Response): Promise<unknown> {
   const text = await readManagedPublicResponseText(res);
   if (!text) return {};
@@ -975,22 +954,17 @@ export const verticalCommand = appCommand;
 
 verticalCommand
   .command('list')
-  .description('List apps for the active company workspace')
-  .option('--tenant-id <id>', 'Run against a specific company workspace')
-  .option('--limit <n>', 'Items per page', '50')
+  .description('List apps for the selected runtime workspace')
+  .option('--tenant-id <id>', 'Exact runtime workspace to inspect')
+  .option('--limit <n>', 'Display at most this many apps from the complete inventory', '50')
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
   .action(async (options) => {
     const ctx = await resolveAppManagementContext({ tenantId: options.tenantId, interactive: !options.tenantId });
-    const companyTenantId = await resolveAppManagementCompanyTenantId(ctx, options.tenantId);
-    const client = createAppManagementClient(ctx, companyTenantId);
+    const client = createAppManagementClient(ctx, ctx.tenantId);
     const format = normalizeFormat(options);
     const spinner = makeSpinner(format, 'Listing apps...');
-
-    const res = await client.listResources(VERTICAL_ENROLLMENT_TYPE, {
-      limit: Number.parseInt(options.limit, 10),
-      sort: 'verticalKey',
-    });
+    const res = await client.listApps();
     const payload = await readResponsePayload(res);
 
     if (!res.ok) {
@@ -998,14 +972,17 @@ verticalCommand
       fail(formatSafePlatformFailure('App inventory', safePlatformDiagnostics(res.status, payload, res.headers)));
     }
 
-    if (!isValidAppInventory(payload)) {
+    if (!isRecord(payload) || payload.runtimeTenantId !== ctx.tenantId || payload.complete !== true
+      || !Array.isArray(payload.apps) || !payload.apps.every(app => isAppBinding(app, ctx.tenantId))) {
       spinner?.fail('Failed to list apps');
       fail('App inventory returned an invalid response. Existing workspace state has not changed.');
     }
 
-    const docs = extractDocs(payload);
+    const limit = Number.parseInt(options.limit, 10);
+    if (!Number.isSafeInteger(limit) || limit < 1) fail('--limit must be a positive integer.');
+    const docs = payload.apps.slice(0, limit);
     if (format === 'json') {
-      out.json({ tenantId: companyTenantId, apps: docs });
+      out.json({ tenantId: ctx.tenantId, runtimeTenantId: ctx.tenantId, apps: docs, complete: docs.length === payload.apps.length });
       return;
     }
 
@@ -1015,8 +992,7 @@ verticalCommand
       return;
     }
     for (const doc of docs) {
-      const data = doc.data ?? {};
-      out.info(`${chalk.cyan(String(data.verticalKey ?? doc.id ?? 'unknown'))} — ${String(data.displayName ?? 'Untitled')} (${String(data.status ?? 'unknown')})`);
+      out.info(`${chalk.cyan(doc.appKey)} — ${String(doc.displayName ?? 'Untitled')} (${doc.bindingStatus === 'ambiguous' ? 'ambiguous binding' : String(doc.status ?? 'unknown')})`);
     }
   });
 
@@ -1349,7 +1325,8 @@ verticalCommand
 
     if (!res.ok) {
       spinner?.fail('Failed to create app');
-      fail(isRecord(payload) && typeof payload.message === 'string' ? payload.message : `${res.status} ${res.statusText}`);
+      const parsed = await parseApiError(new Response(JSON.stringify(payload), { status: res.status }), { appCreate: true });
+      fail(`${parsed.code ? `[${parsed.code}] ` : ''}${parsed.message}`, { format });
     }
 
     if (format === 'json') {
@@ -1862,7 +1839,7 @@ verticalCommand
     }
 
     if (!options.skipValidate) {
-      await validateVerticalEnrollment(verticalKey, ctx.client);
+      await resolveAppBinding(ctx.client, verticalKey, ctx.tenantId);
     }
 
     await patchEnvFile(ctx.root, {
@@ -1892,7 +1869,7 @@ verticalCommand
   .option('--backend <backend>', 'postgresql|mongodb|documentdb|blob|search|all', 'all')
   .option('--dry-run', 'Plan actions without applying changes', false)
   .option('--rebuild-search', 'Request search projection rebuild after provisioning', false)
-  .option('--skip-validate', 'Skip app lookup', false)
+  .option('--skip-validate', 'Deprecated; exact server binding is always verified', false)
   .option('--select', 'Write EAI_APP_KEY after successful provisioning', false)
   .option('--format <format>', 'Output format (text|json)', 'text')
   .option('--json', 'Output raw JSON (deprecated, use --format json)', false)
@@ -1919,32 +1896,19 @@ verticalCommand
     const ctx = await resolveCommandContext({ tenantId: options.tenantId, interactive: !options.tenantId });
     const format = normalizeFormat(options);
     const verticalKey = key.trim();
-    const appTenantId = options.appTenantId || ctx.tenantId;
-    const appClient = appTenantId === ctx.tenantId
-      ? ctx.client
-      : new PlatformAPIClient(ctx.publicApiUrl, appTenantId);
-
-    if (!verticalKey) {
-      fail('App key is required.');
+    if (!verticalKey) fail('App key is required.');
+    let binding;
+    try { binding = await resolveAppBinding(ctx.client, verticalKey, ctx.tenantId, options.appTenantId); }
+    catch (error) { fail(`${errMsg(error)} Select the app runtime explicitly: eai app provision ${verticalKey} --tenant-id <runtime-workspace-id> --app-tenant-id <enrollment-owner-id> --select --format json`, { format }); }
+    const appTenantId = binding.enrollmentOwnerTenantId;
+    const runtimeTenantId = binding.runtimeTenantId;
+    const appClient = appTenantId === ctx.tenantId ? ctx.client : new PlatformAPIClient(ctx.publicApiUrl, appTenantId);
+    const runtimeClient = ctx.client;
+    if (!options.dryRun && binding.capabilities.readiness !== true) {
+      fail('This app binding does not permit provisioning. Ask an administrator of the enrollment owner workspace to provision the exact runtime.');
     }
-
-    const spinner = makeSpinner(
-      format,
-      options.dryRun
-        ? `Planning app storage readiness for ${verticalKey}...`
-        : `Provisioning app ${verticalKey}...`,
-    );
-    const enrollment = options.skipValidate ? undefined : await validateVerticalEnrollment(verticalKey, appClient);
-    const declaredRuntime = enrollmentRuntimeTenantId(enrollment);
-    if (options.appTenantId && declaredRuntime !== undefined && declaredRuntime !== ctx.tenantId) {
-      fail('The app enrollment is bound to a different runtime workspace.');
-    }
-    // An explicit parent/runtime pair pins the requested child. Existing company
-    // commands continue to retain their enrollment's exact child binding.
-    const runtimeTenantId = options.appTenantId ? ctx.tenantId
-      : typeof declaredRuntime === 'string' ? declaredRuntime : ctx.tenantId;
-    const runtimeClient = runtimeTenantId === ctx.tenantId
-      ? ctx.client : new PlatformAPIClient(ctx.publicApiUrl, runtimeTenantId);
+    const spinner = makeSpinner(format, options.dryRun
+      ? `Planning app storage readiness for ${verticalKey}...` : `Provisioning app ${verticalKey}...`);
     const res = options.dryRun
       ? await runtimeClient.provisionStorage({
         backend: options.backend,
@@ -1958,9 +1922,7 @@ verticalCommand
 
     if (!res.ok && !(options.jobId && isAppProvisioningReadUnavailable(res, responsePayload))) {
       spinner?.fail('Failed to prepare app storage');
-      fail(isRecord(responsePayload) && typeof responsePayload.message === 'string'
-        ? responsePayload.message
-        : `${res.status} ${res.statusText}`);
+      fail(formatSafePlatformFailure('App provisioning', safePlatformDiagnostics(res.status, responsePayload, res.headers)));
     }
 
     let completedPayload: unknown = responsePayload;
@@ -1992,6 +1954,7 @@ verticalCommand
         EAI_TENANT_ID: runtimeTenantId,
         NEXT_PUBLIC_EAI_TENANT_ID: runtimeTenantId,
         NEXT_PUBLIC_EAI_APP_KEY: verticalKey,
+        EAI_PARENT_TENANT_ID: appTenantId,
       };
       if (typeof storagePrefixes.sql === 'string') {
         envPatches.EAI_STORAGE_TABLE_PREFIX = storagePrefixes.sql;
@@ -2022,7 +1985,8 @@ verticalCommand
       return;
     }
 
-    spinner?.succeed(options.dryRun ? 'App storage readiness plan complete' : 'App provisioning complete');
+    spinner?.succeed(options.dryRun ? 'App storage readiness plan complete' : 'App storage provisioning complete');
+    if (!options.dryRun) out.info('Browser sign-in is a separate setup step. Run eai provision entra if app sign-in is not configured.');
     out.info(`App ${chalk.cyan(verticalKey)} is linked under the selected company workspace.`);
     if (isRecord(payload) && Array.isArray(payload.results)) {
       for (const result of payload.results.filter(isRecord)) {

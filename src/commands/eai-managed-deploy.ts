@@ -120,6 +120,11 @@ Examples:
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --resume source-unknown-abc123 --wait --format json
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --retry source-unknown-abc123 --wait
   $ eai deploy app planning-portal --target eai --tenant-id tenant-1 --target-tenant-id tenant-1 --recover-failed-review cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+
+Managed source failures retain public error codes and an already-known operation
+reference. Preserve the original recovery receipt. An unknown error does not
+confirm whether remote preparation started; inspect that original operation
+before starting another publish. Run eai errors explain managed_source_rejected.
 `,
   )
   .action(async (appKeyValue: string, options: ManagedDeployOptions, command: Command) => {

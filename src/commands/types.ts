@@ -1286,7 +1286,7 @@ export async function trySeedViaAppManifestPublish(
     const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : null;
     const childTenantIds = [enrollment?.childTenantId, metadata?.childTenantId]
       .filter((value) => value !== undefined && value !== null);
-    if (!isRecord(binding) || binding.tenantId !== tenantId
+    if (!isRecord(binding) || binding.tenantId !== tenantId || binding.targetTenantId !== runtimeTenantId
       || binding.appKey !== tenantKey || childTenantIds.length === 0
       || childTenantIds.some((value) => value !== runtimeTenantId)) {
       throw new Error('app enrollment binding preflight did not match the exact parent, app, and runtime tenant');

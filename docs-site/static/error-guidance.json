@@ -1362,7 +1362,8 @@
       ],
       "why": [
         "The platform checks the workspace subscription status before it allows a capability to be provisioned or enabled.",
-        "Only an active or trialing subscription passes that check; any other status is refused.",
+        "An active or trialing subscription must also have a verified supported billing binding. Missing paid billing bindings fail closed.",
+        "An approved noncharging Enterprise workspace still needs its verified existing subscription binding; the CLI cannot grant Enterprise rights.",
         "For child workspace creation the check applies to the parent workspace, not the new child.",
         "The CLI cannot renew or change a subscription, so retrying the same command does not change the result."
       ],
@@ -1385,8 +1386,8 @@
       ],
       "fixes": [
         {
-          "command": "Ask a workspace admin to restore an active subscription for the workspace",
-          "purpose": "Billing is managed outside the CLI; the capability check passes again once the subscription is active.",
+          "command": "Ask EAI support to verify and repair the existing workspace billing binding",
+          "purpose": "For a paid workspace or an approved noncharging Enterprise workspace, support verifies the existing subscription and repairs its binding before retrying. No automatic plan grant or free Enterprise conversion is performed.",
           "mutates": false
         }
       ],
@@ -1727,6 +1728,248 @@
       },
       "safety": {
         "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E263",
+      "reasonCode": "managed_source_rejected",
+      "title": "The managed source operation needs its original recovery reference.",
+      "category": "app_provisioning",
+      "severity": "error",
+      "appliesTo": [
+        "deploy.app"
+      ],
+      "why": [
+        "An active publish, ambiguous predecessor, failed review limit or unavailable provider can stop source preparation.",
+        "Unknown failures do not prove that no remote operation was created. Preserve the original output and recovery receipt.",
+        "Only published error codes and validated template pins are displayed; provider messages are not recovery authority."
+      ],
+      "evidenceToCheck": [
+        "Public error code, HTTP status, and the original operation ID when one was already known.",
+        "The exact app, enrollment owner, runtime and environment from the original command."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai deploy app <app-key> --target eai --tenant-id <owner-id> --target-tenant-id <runtime-id> --source eai-managed --resume <operation-id> --format json",
+          "purpose": "Observe only the original operation using its original scope.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Contact EAI support with the original operation reference",
+          "purpose": "Resolve an ambiguous predecessor, exhausted review recovery, or unknown publication outcome before starting another publish.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The original publication outcome is unknown.",
+          "The server reports an active publish, ambiguous predecessor or review recovery limit."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The exact publication cannot be observed or recovered safely."
+        ],
+        "include": [
+          "app key",
+          "enrollment owner ID",
+          "runtime ID",
+          "environment",
+          "original operation ID if known",
+          "public error code",
+          "HTTP status",
+          "CLI version"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E264",
+      "reasonCode": "child_workspace_binding_conflict",
+      "title": "The child workspace request cannot choose an exact binding safely.",
+      "category": "tenant_context",
+      "severity": "error",
+      "appliesTo": [
+        "workspace.create",
+        "app.create",
+        "init"
+      ],
+      "why": [
+        "The requested workspace slug is already reserved, or multiple children match the request.",
+        "A conflict does not grant access to a workspace or permission to delete or adopt it."
+      ],
+      "evidenceToCheck": [
+        "The parent workspace and requested child slug in your command.",
+        "TENANT_SLUG_CONFLICT or CHILD_TENANT_MATCH_AMBIGUOUS."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai workspace list --all --format json",
+          "purpose": "Inspect only workspaces the signed-in account is authorized to see.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "eai init --company-tenant <owner-id> --app-key <app-key>",
+          "purpose": "Reuse an already verified app enrollment when this request is for your existing app.",
+          "mutates": true,
+          "writesSecrets": true
+        },
+        {
+          "command": "Choose a different --child-tenant-slug for a new app",
+          "purpose": "Avoid the reserved slug; ask support to repair ambiguous child matches before retrying.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The slug remains reserved or more than one child matches.",
+          "Ownership and the exact app enrollment have not been verified."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "Multiple child matches need repair or the authorized existing app cannot be reused."
+        ],
+        "include": [
+          "parent workspace ID",
+          "requested child slug",
+          "app key",
+          "public error code",
+          "CLI version"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": true,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E265",
+      "reasonCode": "template_version_not_approved",
+      "title": "The project template pin is not approved in this environment.",
+      "category": "project",
+      "severity": "error",
+      "appliesTo": [
+        "deploy.app"
+      ],
+      "why": [
+        "The environment approves an exact template commit; version labels alone cannot establish compatibility.",
+        "Updating the CLI does not migrate the template pin in an existing project."
+      ],
+      "evidenceToCheck": [
+        "Current and required template commits in the CLI error.",
+        "The template commit bundled by the installed CLI and recorded in .eai-manifest.json."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai template check",
+          "purpose": "Review template drift before changing project files.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Install the CLI release that bundles the exact required template, then create a new project or commit the documented template migration",
+          "purpose": "Preserve app code while moving to the environment-approved template commit. See https://eai-support.github.io/eai/docs/eai-app-template#move-an-existing-project-to-the-required-template.",
+          "mutates": true
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The project template commit still differs from the environment requirement."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "No available CLI candidate bundles the exact required template or environment pins disagree."
+        ],
+        "include": [
+          "CLI version",
+          "current template commit",
+          "required template commit",
+          "environment"
+        ]
+      },
+      "safety": {
+        "mutatesState": true,
+        "mayWriteSecrets": false,
+        "mayDeleteData": false,
+        "publicSafe": true
+      }
+    },
+    {
+      "code": "E266",
+      "reasonCode": "app_registration_cleanup_ownership_required",
+      "title": "The app registration was retained because exact cleanup ownership is required.",
+      "category": "authorization",
+      "severity": "error",
+      "appliesTo": [
+        "provision.entra.deauthorize"
+      ],
+      "why": [
+        "Registration cleanup requires a reviewed exact app/runtime ownership manifest.",
+        "A 409 refusal retains the registration and workspace authorization; keep the existing local credentials."
+      ],
+      "evidenceToCheck": [
+        "The public APP_REGISTRATION_CLEANUP_OWNERSHIP_REQUIRED code and HTTP409 status.",
+        "The intended registration client ID, app key, enrollment owner and runtime workspace."
+      ],
+      "diagnostics": [
+        {
+          "command": "eai app auth status <app-key> --tenant-id <owner-id> --client-id <client-id> --format json",
+          "purpose": "Read authorization for the existing exact app and runtime without deleting anything.",
+          "mutates": false
+        }
+      ],
+      "fixes": [
+        {
+          "command": "Ask EAI support for the reviewed registration cleanup manifest and exact app/runtime scope",
+          "purpose": "Confirm registration-only cleanup authority before retrying; this refusal does not authorize deleting the app.",
+          "mutates": false
+        }
+      ],
+      "retry": {
+        "allowed": false,
+        "stopWhen": [
+          "The exact reviewed registration cleanup authority is missing."
+        ]
+      },
+      "escalation": {
+        "audience": "platform-support",
+        "neededWhen": [
+          "The registration needs cleanup but its exact ownership manifest is unavailable."
+        ],
+        "include": [
+          "app key",
+          "owner workspace ID",
+          "runtime workspace ID",
+          "client ID",
+          "public error code",
+          "request ID if present"
+        ]
+      },
+      "safety": {
+        "mutatesState": false,
         "mayWriteSecrets": false,
         "mayDeleteData": false,
         "publicSafe": true
@@ -2336,8 +2579,8 @@
           "mutates": false
         },
         {
-          "command": "eai app list --tenant-id <owner-workspace-id> --format json",
-          "purpose": "Confirm that the app is enrolled in the owning workspace.",
+          "command": "eai app list --tenant-id <runtime-workspace-id> --format json",
+          "purpose": "Read the exact runtime app binding and its enrollment owner.",
           "mutates": false
         }
       ],

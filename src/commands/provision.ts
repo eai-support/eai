@@ -21,7 +21,7 @@ import { ErrorCode, exitWithError } from '../lib/error-codes.js';
 import { buildPassiveResourceApiBundle, extractObjectTypesForPassiveBundle } from '../lib/resourceapi-bundle.js';
 import { findGuidanceByCode } from '../lib/error-guidance/catalog.js';
 import { formatGuidanceText } from '../lib/error-guidance/render.js';
-import { acknowledgedSelectedAppBinding } from '../lib/init-app-binding.js';
+import { resolveAppBinding } from '../lib/app-binding.js';
 import { pullCloudEnvValues } from '../lib/cloud-env.js';
 import { createLocalAppCredential, LocalAppCredentialError } from '../lib/local-app-credential.js';
 
@@ -55,12 +55,10 @@ async function scopedEntraBinding(
     || (process.getuid && file.uid !== process.getuid())) {
     throw new Error('App sign-in setup requires a private local environment file.');
   }
-  const client = new PlatformAPIClient(publicApiUrl, options.companyTenant);
-  const response = await client.listResources('tenant-vertical-enrollment', {
-    limit: 50, where: { verticalKey: options.appKey },
-  });
-  if (!response.ok) throw new Error('The existing app enrollment could not be verified.');
-  const binding = acknowledgedSelectedAppBinding(await response.json(), options.appKey, options.companyTenant);
+  const runtimeTenantId = env.EAI_TENANT_ID || env.NEXT_PUBLIC_EAI_TENANT_ID;
+  if (!runtimeTenantId) throw new Error('App sign-in setup requires the exact runtime workspace in .env.local.');
+  const client = new PlatformAPIClient(publicApiUrl, runtimeTenantId);
+  const binding = await resolveAppBinding(client, options.appKey, runtimeTenantId, options.companyTenant);
   if (options.tenantId && options.tenantId !== binding.runtimeTenantId)
     throw new Error('The requested app sign-in workspace differs from its enrolled runtime.');
   await chmod(envPath, 0o600);
@@ -262,6 +260,11 @@ function handleDeprovisionError(err: unknown, diag: DiagnosticsContext): never {
   out.error('Entra app deprovisioning failed.');
   printServerDetail(ctx, diag);
   out.info('Reference: EAI-PROVISION-DEAUTHORIZE-FAILED');
+  if (ctx.status === 409 && ctx.serverCode === 'APP_REGISTRATION_CLEANUP_OWNERSHIP_REQUIRED') {
+    out.info('The app registration and workspace authorization were retained because an exact owned registration cleanup manifest was not supplied.');
+    out.info('Keep your local credentials. Ask EAI support for the reviewed registration cleanup manifest and exact app/runtime scope before retrying this registration cleanup.');
+    process.exit(1);
+  }
   out.info('Confirm you have workspace admin access and the client id belongs to the active workspace.');
   process.exit(1);
 }
@@ -418,6 +421,7 @@ Diagnostics:
     }
 
     const diag: DiagnosticsContext = { tenantSlug, tenantId, userOid, debug: Boolean(options.debug) };
+    const retryCommand = scoped ? `eai provision entra --company-tenant ${options.companyTenant} --app-key ${options.appKey} --tenant-id ${tenantId} --force` : 'eai provision entra --force';
 
     const client = new PlatformAPIClient(publicApiUrl, tenantId);
 
@@ -595,7 +599,7 @@ Diagnostics:
       out.info(`App registration already exists for ${chalk.cyan(appName)}.`);
       if (scoped && !hasUsableLocalEntraSecret(env)) {
         if (options.createLocalSecret) {
-          reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, true);
+          reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, true, retryCommand);
           if (result.tenantId !== tenantId) {
             out.error('App credential setup did not return the verified workspace.');
             process.exit(1);
@@ -650,7 +654,7 @@ Diagnostics:
       } else {
         out.warn('Platform response did not include scopes/redirect URIs — set ENTRA_SCOPES manually.');
       }
-      reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped);
+      reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped, retryCommand);
       return;
     }
 
@@ -702,7 +706,7 @@ Diagnostics:
     // platform API from a user session — sign-in then fails with AADSTS650057
     // the moment the app's BFF proxy makes its first call. Refusing to
     // exit 0 here turns that silent failure into a loud, actionable one.
-    reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped);
+    reportAppSignin(result.tenantAuthorization, result.signinCompleteness, result.clientId, scoped, retryCommand);
   });
 
 // ─── eai provision resourceapi-refresh ──────────────────────────────────
@@ -871,19 +875,20 @@ function resolveAuthRuntime(env: Record<string, string>): { authUrl: string; sit
 }
 
 function reportAppSignin(authorization: TenantAuthorizationSummary | null, signin: SigninCompletenessSummary | null,
-  clientId: string, scoped: boolean): void {
+  clientId: string, scoped: boolean, retryCommand: string): void {
   if (scoped && (!authorization || !signin)) {
     out.error('App sign-in setup could not confirm complete sign-in and workspace access.');
     out.info('Your existing app, credentials and project are preserved. Retry this setup step when workspace access is available.');
     process.exit(1);
   }
   reportTenantAuthorization(authorization, clientId);
-  reportSigninCompleteness(signin, clientId);
+  reportSigninCompleteness(signin, clientId, retryCommand);
 }
 
 function reportSigninCompleteness(
   summary: SigninCompletenessSummary | null,
   clientId: string,
+  retryCommand: string,
 ): void {
   if (!summary) {
     // Older PublicAPI deployments don't relay this field. We can't tell
@@ -896,8 +901,7 @@ function reportSigninCompleteness(
   }
   // Not ready — emit a structured error block and exit non-zero so
   // onboarding scripts fail fast instead of producing a broken app.
-  out.error('Sign-in wiring incomplete — provisioning succeeded but the new app reg cannot reach PublicAPI from a user session.');
-  out.warn('  ✗ Without the steps below, browser sign-in will fail with AADSTS650057 the moment the BFF proxy calls PublicAPI.');
+  out.error('Sign-in wiring incomplete. The app registration is preserved, but browser sign-in is not ready.');
   const stepRow = (label: string, ok: boolean): [string, string] => [
     label,
     ok ? chalk.green('✓ done') : chalk.red('✗ missing'),
@@ -907,19 +911,22 @@ function reportSigninCompleteness(
     stepRow('PublicAPI delegated perms', summary.publicapiPermsAdded),
     stepRow('Admin consent', summary.consentGranted),
     stepRow('preAuthorizedApplications', summary.publicapiPreauthorized),
+    ...(summary.signinFlowBound === null ? [] : [stepRow('Sign-in user flow binding', summary.signinFlowBound)]),
   ]);
-  if (summary.warnings.length > 0) {
-    out.warn('Reasons:');
-    for (const w of summary.warnings) {
-      out.warn(`  - ${w}`);
-    }
+  const permissionsReady = summary.graphPermsAdded && summary.publicapiPermsAdded
+    && summary.consentGranted && summary.publicapiPreauthorized;
+  if (summary.signinFlowBound === false) {
+    const capacity = summary.warnings.some(warning => /\bsignin_flow_capacity_exceeded\b/i.test(warning)
+      || (/signin_flow_bind_failed/i.test(warning) && /50\s*(?:kb|kilobytes)|51200/i.test(warning)));
+    out.warn(capacity
+      ? 'The sign-in user flow reached its provider capacity limit (50 KB). Ask the platform team to free capacity or configure another supported user flow.'
+      : 'The registration could not join its configured sign-in user flow. Ask the platform team to repair that flow binding.');
   }
-  out.warn('Remediation:');
-  out.warn(`  1. Azure portal → Microsoft Entra ID → App registrations → ${chalk.cyan(clientId)}`);
-  out.warn('  2. API permissions → Add a permission → APIs my organization uses → select PublicAPI → Delegated permissions → access_token → Add');
-  out.warn('  3. Grant admin consent for the Entra directory');
-  out.warn('  4. Re-run sign-in (clear localhost cookie / use Incognito)');
-  out.warn('Or: ask your platform team to review the public provisioning support reference for this workspace.');
+  if (!permissionsReady) {
+    out.warn(`Ask the platform team to repair the missing delegated permissions or consent for app registration ${clientId}.`);
+  }
+  out.info(`After the platform repair, retry the same registration with: ${retryCommand}`);
+  out.info('This retry preserves the existing registration and local credential; no additional secret rotation is needed.');
   process.exit(1);
 }
 
