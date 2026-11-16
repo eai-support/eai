@@ -116,6 +116,10 @@ the approved one, the CLI stops before the GitHub link step with
 TEMPLATE_VERSION_NOT_APPROVED: Your project uses app template v1.0.7 (3af817f); this environment requires v1.0.23 (bdda42e).
 ```
 
+The bundled release can match DEV and TEST while PROD retains its previous
+approved pin during a staged rollout. Match the selected environment's exact
+commit before deploying; a newer CLI bundle does not establish PROD approval.
+
 Updating the CLI does not change an existing project, because the template is
 recorded when the project is created. Install a CLI release that bundles the
 environment's required template (`npm install -g eai-cli@latest` once all
