@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.13 |
-| Released | 2026-11-11 |
-| Last Material Change | CLI and data repairs for issue 3625 |
-| Source Commit | `51718a71545ade57079c2d78f6eb976e1c04b8f0` |
+| Version | 3.20.16 |
+| Released | 2026-11-17 |
+| Last Material Change | Private DEV source candidate for exact current-enrollment sign-in, credential custody and safe identity recovery; public distribution remains user-owned. |
+| Source Commit | `e191902f1a50cec7d6866f7a69285fe73ec9847a` |
 
 
 ## Install

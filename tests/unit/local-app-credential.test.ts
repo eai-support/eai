@@ -112,3 +112,41 @@ test.each(['ENTRA_CLIENT_ID', 'ENTRA_CLIENT_SECRET', 'EAI_TENANT_ID'])('duplicat
   expect(actual.ENTRA_CLIENT_SECRET).toBe('issued-secret');
   expect(actual.EAI_TENANT_ID).toBe('runtime');
 }));
+
+const scopedBinding = { ...binding, registrationId: '11111111-1111-4111-8111-111111111111',
+  localSigninBinding: { runtimeTenantId: 'runtime', enrollmentOwnerTenantId: 'company', enrollmentId: 'enrollment', appKey: 'app' } };
+const credentialKeyId = '22222222-2222-4222-8222-222222222222';
+
+test('scoped one-time custody retains the actual native issued-key acknowledgement and exact enrollment', async () => fixture(async root => {
+  await createLocalAppCredential({ ...options(root, async () => 'unused'), binding: scopedBinding,
+    issue: async () => ({ clientSecret: 'scoped-fixture-secret', credentialKeyId }) });
+  const journal = JSON.parse(await readFile(join(root, '.env.credential.local'), 'utf8'));
+  expect(journal).toMatchObject({ ...scopedBinding, credentialKeyId, phase: 'complete' });
+  expect(journal.secret).toBeUndefined();
+}));
+
+test('scoped private issued-secret recovery requires the same fresh native key and never calls the issuer again', async () => fixture(async root => {
+  const before = await readFile(join(root, '.env.local'), 'utf8');
+  let calls = 0;
+  const scoped = { ...options(root, async () => 'unused'), binding: scopedBinding,
+    issue: async () => { calls++; await writeFile(join(root, '.env.local'), 'changed=true\n'); return { clientSecret: 'recovered-scoped-secret', credentialKeyId }; } };
+  await expect(createLocalAppCredential(scoped)).rejects.toThrow('retained privately');
+  await writeFile(join(root, '.env.local'), before);
+  await expect(createLocalAppCredential({ ...scoped, currentCredentialKeyId: '33333333-3333-4333-8333-333333333333' })).rejects.toThrow('native credential');
+  await expect(createLocalAppCredential(scoped)).rejects.toThrow('native credential');
+  await createLocalAppCredential({ ...scoped, currentCredentialKeyId: credentialKeyId });
+  expect(calls).toBe(1);
+  expect(await readFile(join(root, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=recovered-scoped-secret');
+}));
+
+test.each(['registration', 'enrollment', 'owner', 'runtime'])('scoped pending custody cannot cross its exact %s even with explicit reissue', async field => fixture(async root => {
+  await expect(createLocalAppCredential({ ...options(root, async () => { throw new Error('lost'); }), binding: scopedBinding })).rejects.toThrow('lost');
+  const crossed = { ...scopedBinding, localSigninBinding: { ...scopedBinding.localSigninBinding } };
+  if (field === 'registration') crossed.registrationId = '33333333-3333-4333-8333-333333333333';
+  else if (field === 'enrollment') crossed.localSigninBinding.enrollmentId = 'other-enrollment';
+  else if (field === 'owner') crossed.localSigninBinding.enrollmentOwnerTenantId = 'other-company';
+  else crossed.localSigninBinding.runtimeTenantId = 'other-runtime';
+  let calls = 0;
+  await expect(createLocalAppCredential({ ...options(root, async () => { calls++; return 'never'; }, true), binding: crossed })).rejects.toThrow('different selected app');
+  expect(calls).toBe(0);
+}));

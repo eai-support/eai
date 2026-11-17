@@ -2441,6 +2441,134 @@ describe('PlatformAPIClient', () => {
     expect(result.clientSecret).toBe('<fixture-client-secret>')
   })
 
+  const localSigninBinding = { runtimeTenantId: 'runtime', enrollmentOwnerTenantId: 'company', enrollmentId: 'enrollment', appKey: 'my-app' }
+  const nativeLocalSignin = { registrationId: '11111111-1111-4111-8111-111111111111', version: 1, stage: 'ready' }
+  const issuedKey = '22222222-2222-4222-8222-222222222222'
+
+  test.each([false, true])('scoped identity errors retain only the actual canonical native reference (nested %s)', async nested => {
+    const safe = { error: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', message: 'PRIVATE provider credential /internal/graph',
+      details: { registrationId: nativeLocalSignin.registrationId, supportReference: issuedKey, secret: 'PRIVATE' } }
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(nested ? { detail: safe } : safe), { status: 409 }))
+    const error = await new PlatformAPIClient('https://example.test', 'runtime').provisionEntraApp({
+      tenantId: 'runtime', appName: 'my-app', redirectUris: [], localSigninBinding,
+    }).catch(value => value)
+    expect(error).toMatchObject({ serverCode: safe.error, registrationId: nativeLocalSignin.registrationId, supportReference: issuedKey })
+    expect(error.rawBody).toBeUndefined()
+    expect(error.serverMessage).toBeUndefined()
+    expect(JSON.stringify(error)).not.toContain('PRIVATE')
+  })
+
+  test.each([undefined, null, 123, 'req-invented', 'https://private.example/PRIVATE', 'ABCDEFAB-1234-4ABC-8DEF-ABCDEFABCDEF'])
+  ('scoped identity errors do not invent or normalize a native registration reference: %j', async registrationId => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ error: 'APP_LOCAL_SECRET_OUTCOME_UNKNOWN',
+      message: 'PRIVATE provider data', details: { registrationId } }), { status: 503 }))
+    const error = await new PlatformAPIClient('https://example.test', 'runtime').rotateEntraAppSecret({
+      tenantId: 'runtime', appName: 'my-app', clientId: 'native-client', localSigninBinding, reissue: false,
+    }).catch(value => value)
+    expect(error.serverCode).toBe('APP_LOCAL_SECRET_OUTCOME_UNKNOWN')
+    expect(error.registrationId).toBeUndefined()
+    expect(JSON.stringify(error)).not.toContain('PRIVATE')
+  })
+
+  test('scoped Entra provision carries every native enrollment pin without requesting a credential', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      appName: 'my-app', tenantId: 'runtime', clientId: 'native-client', objectId: '33333333-3333-4333-8333-333333333333',
+      clientSecret: null, existing: false, localSignin: nativeLocalSignin,
+    }), { status: 200 }))
+    const result = await new PlatformAPIClient('https://example.test', 'runtime').provisionEntraApp({
+      tenantId: 'runtime', appName: 'my-app', redirectUris: [], idempotent: true, localSigninBinding,
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toMatchObject({
+      tenant_id: 'runtime', app_name: 'my-app', require_app_binding: true, localSigninBinding,
+    })
+    expect(result).toMatchObject({ localSignin: nativeLocalSignin, objectId: '33333333-3333-4333-8333-333333333333', clientSecret: null })
+  })
+
+  test.each([
+    { stage: 'blocked', version: 2, providerOperation: 'credential-issue', failureCode: 'APP_IDENTITY_PROVIDER_REJECTED' },
+    { stage: 'blocked', version: 3, providerOperation: 'credential-reissue', failureCode: 'APP_IDENTITY_PROVIDER_REJECTED', credentialKeyId: issuedKey },
+  ])('scoped Entra provision preserves a positively rejected credential attempt without inventing a key: %j', async receipt => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      appName: 'my-app', tenantId: 'runtime', clientId: 'native-client', objectId: '33333333-3333-4333-8333-333333333333',
+      clientSecret: null, localSignin: { ...nativeLocalSignin, ...receipt },
+    }), { status: 200 }))
+    const result = await new PlatformAPIClient('https://example.test', 'runtime').provisionEntraApp({
+      tenantId: 'runtime', appName: 'my-app', redirectUris: [], localSigninBinding,
+    })
+    expect(result.localSignin).toEqual({ ...nativeLocalSignin, ...receipt })
+  })
+
+  test.each([
+    { ...localSigninBinding, runtimeTenantId: 'crossed' },
+    { ...localSigninBinding, appKey: 'crossed' },
+    { ...localSigninBinding, enrollmentId: '' },
+    { ...localSigninBinding, enrollmentOwnerTenantId: '' },
+  ])('scoped Entra provisioning refuses incomplete/crossed pins before fetch: %j', async pins => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    await expect(new PlatformAPIClient('https://example.test', 'runtime').provisionEntraApp({
+      tenantId: 'runtime', appName: 'my-app', redirectUris: [], localSigninBinding: pins,
+    })).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test.each([
+    { stage: 'ready', version: 0 },
+    { stage: 'ready', version: Number.MAX_SAFE_INTEGER + 1 },
+    { stage: 'configuring', version: 1 },
+    { stage: 'credential-issued', version: 1 },
+    { stage: 'ready', version: 1, credentialKeyId: issuedKey },
+    { stage: 'blocked', version: 1, failureCode: 'APP_IDENTITY_OUTCOME_UNKNOWN', providerOperation: 'credential-issue' },
+    { stage: 'blocked', version: 1, failureCode: 'APP_IDENTITY_PROVIDER_REJECTED', providerOperation: 'application-create' },
+  ])('scoped Entra provision rejects incomplete/uncertain native identity receipts: %j', async receipt => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      appName: 'my-app', tenantId: 'runtime', clientId: 'native-client', objectId: '33333333-3333-4333-8333-333333333333',
+      clientSecret: null, localSignin: { ...nativeLocalSignin, ...receipt },
+    }), { status: 200 }))
+    await expect(new PlatformAPIClient('https://example.test', 'runtime').provisionEntraApp({
+      tenantId: 'runtime', appName: 'my-app', redirectUris: [], localSigninBinding,
+    })).rejects.toMatchObject({ statusText: 'Invalid provisioning response' })
+  })
+
+  test('scoped Entra rotation carries the fresh native expected key and preserves the issued key receipt', async () => {
+    const nextKey = '44444444-4444-4444-8444-444444444444'
+    const receipt = { ...nativeLocalSignin, version: 2, stage: 'credential-issued', credentialKeyId: nextKey }
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      app_name: 'my-app', tenant_id: 'runtime', client_id: 'native-client', client_secret: '<fixture-once>',
+      credentialKeyId: nextKey, localSignin: receipt,
+    }), { status: 200 }))
+    const result = await new PlatformAPIClient('https://example.test', 'runtime').rotateEntraAppSecret({
+      tenantId: 'runtime', appName: 'my-app', clientId: 'native-client', localSigninBinding,
+      reissue: true, expectedCredentialKeyId: issuedKey,
+    })
+    expect(JSON.parse(String(fetchMock.mock.calls[0][1]?.body))).toEqual({
+      tenant_id: 'runtime', app_name: 'my-app', localSigninBinding, reissue: true, expectedCredentialKeyId: issuedKey,
+    })
+    expect(result).toMatchObject({ credentialKeyId: nextKey, localSignin: receipt })
+  })
+
+  test.each([
+    { reissue: true },
+    { reissue: false, expectedCredentialKeyId: issuedKey },
+    { reissue: true, expectedCredentialKeyId: 'guessed-key' },
+    { reissue: false, localSigninBinding: { ...localSigninBinding, runtimeTenantId: 'crossed' } },
+  ])('invalid scoped Entra rotation authority refuses before fetch: %j', async override => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+    await expect(new PlatformAPIClient('https://example.test', 'runtime').rotateEntraAppSecret({
+      tenantId: 'runtime', appName: 'my-app', clientId: 'native-client', localSigninBinding, ...override,
+    })).rejects.toThrow()
+    expect(fetchMock).not.toHaveBeenCalled()
+  })
+
+  test('scoped Entra rotation refuses a secret without a matching native issued-key ACK', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      app_name: 'my-app', tenant_id: 'runtime', client_id: 'native-client', client_secret: '<fixture-once>',
+      credentialKeyId: issuedKey, localSignin: { ...nativeLocalSignin, stage: 'credential-issued', credentialKeyId: '44444444-4444-4444-8444-444444444444' },
+    }), { status: 200 }))
+    await expect(new PlatformAPIClient('https://example.test', 'runtime').rotateEntraAppSecret({
+      tenantId: 'runtime', appName: 'my-app', clientId: 'native-client', localSigninBinding, reissue: false,
+    })).rejects.toMatchObject({ statusText: 'Invalid secret rotation response' })
+  })
+
   test('passes an existing Entra client id when provisioning should reconcile a local registration', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

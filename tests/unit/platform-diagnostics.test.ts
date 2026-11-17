@@ -56,6 +56,22 @@ describe('product-safe platform diagnostics', () => {
     expect(safePlatformDiagnostics(409, { error: 'APP_OWNERSHIP_SCOPE_' })).toEqual({ status: 409 });
   });
 
+  test('native sign-in diagnostics accept only canonical details references and never provider text', () => {
+    const diagnostics = safePlatformDiagnostics(409, { error: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED',
+      message: 'PRIVATE provider token', details: { registrationId: supportReference, supportReference: requestId,
+        secret: 'PRIVATE', ref: 'req-unrelated' } });
+    expect(diagnostics).toEqual({ status: 409, code: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', registrationId: supportReference, supportReference: requestId });
+    expect(JSON.stringify(diagnostics)).not.toContain('PRIVATE');
+  });
+
+  test.each([
+    { status: 409, payload: { error: 'APP_IDENTITY_PROVIDER_UNCERTAIN', details: { registrationId: supportReference } } },
+    { status: 409, payload: { error: 'APP_IDENTITY_PRIVATE_UNRECOGNIZED', details: { registrationId: supportReference } } },
+    { status: 409, payload: { error: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', detail: { error: 'APP_LOCAL_SECRET_OUTCOME_UNKNOWN', details: { registrationId: supportReference } } } },
+  ])('native identity code/reference require the actual unambiguous allowed envelope and status: %j', ({ status, payload }) => {
+    expect(safePlatformDiagnostics(status, payload)).toEqual({ status });
+  });
+
   test.each([null, 'PRIVATE', [], { error: null }, { detail: { detail: { detail: { detail: { code: 'ENTRA_ROTATION_FAILED' } } } } }])
     ('handles malformed or overly nested envelopes without echoing their content', payload => {
       expect(safePlatformDiagnostics(503, payload)).toEqual({ status: 503 });

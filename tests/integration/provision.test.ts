@@ -170,7 +170,7 @@ describe('eai provision entra', () => {
       `BASE_URL_PUBLIC_API=${API_BASE}\nNEXT_PUBLIC_APP_NAME=Display name\nEAI_APP_KEY=my-app\nEAI_PARENT_TENANT_ID=company\nEAI_TENANT_ID=runtime\nAUTH_URL=http://localhost:3002/my-app\n${extra}`);
   }
 
-  function mockScopedAccess(options: { runtime?: string; member?: boolean; complete?: boolean } = {}): void {
+  function mockScopedAccess(options: { runtime?: string; member?: boolean; complete?: boolean; binding?: Record<string, unknown> } = {}): void {
     const runtime = options.runtime ?? 'runtime';
     mockServer.server.use(
       http.get(`${API_BASE}/v4/platform/tenants/runtime/apps/my-app/binding`, ({ request }) => {
@@ -178,7 +178,7 @@ describe('eai provision entra', () => {
         return options.complete === false ? HttpResponse.json({ error: 'APP_ENROLLMENT_AMBIGUOUS' }, { status: 409 })
           : HttpResponse.json({ enrollmentId: 'enrollment', enrollmentOwnerTenantId: 'company', runtimeTenantId: runtime,
             appKey: 'my-app', bindingStatus: 'resolved', version: 1, bindingVersion: null,
-            capabilities: { read: true, configure: true, readiness: true, source: true, deploy: true, delete: true, manageObjectTypes: true } });
+            capabilities: { read: true, configure: true, readiness: true, source: true, deploy: true, delete: true, manageObjectTypes: true }, ...options.binding });
       }),
       http.get(`${API_BASE}/v4/identity/tenants`, () => HttpResponse.json({ tenants: options.member === false ? [] : [{
         id: runtime, displayName: 'App runtime', slug: 'app-runtime', isActive: true,
@@ -188,6 +188,317 @@ describe('eai provision entra', () => {
   }
 
   const scopedArgs = ['entra', '--company-tenant', 'company', '--app-key', 'my-app'];
+  const localSigninBinding = { runtimeTenantId: 'runtime', enrollmentOwnerTenantId: 'company', enrollmentId: 'enrollment', appKey: 'my-app' };
+  const registrationId = '11111111-1111-4111-8111-111111111111';
+  const credentialKeyId = '22222222-2222-4222-8222-222222222222';
+  const nextCredentialKeyId = '44444444-4444-4444-8444-444444444444';
+  const readyReceipt = { registrationId, version: 1, stage: 'ready' };
+  const issuedReceipt = { registrationId, version: 2, stage: 'credential-issued', credentialKeyId };
+  function nativeProvisionResponse(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return { app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', client_secret: null, existing: true,
+      objectId: '33333333-3333-4333-8333-333333333333', localSignin: readyReceipt, tenant_authorization: null, ...SIGNIN_READY, ...extra };
+  }
+  function nativeCredentialResponse(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return { app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', client_secret: '<fixture-native-secret>',
+      credentialKeyId, localSignin: issuedReceipt, ...extra };
+  }
+
+  const nativeFailureCases = [
+    { code: 'APP_SIGNIN_NOT_CONFIGURED', status: 422, guidance: 'not configured' },
+    { code: 'APP_SIGNIN_CALLBACKS_INVALID', status: 422, guidance: 'callback' },
+    { code: 'APP_SIGNIN_BINDING_MISMATCH', status: 409, guidance: 'binding' },
+    { code: 'APP_SIGNIN_BINDING_NOT_FOUND', status: 409, guidance: 'binding' },
+    { code: 'APP_IDENTITY_REGISTRATION_UNVERIFIED', status: 409, guidance: 'verified' },
+    { code: 'APP_IDENTITY_PROVIDER_UNCERTAIN', status: 503, guidance: 'uncertain' },
+    { code: 'APP_IDENTITY_CONFIGURATION_INCOMPLETE', status: 409, guidance: 'configuration' },
+    { code: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', status: 409, guidance: '50 KB' },
+    { code: 'APP_LOCAL_SECRET_OUTCOME_UNKNOWN', status: 503, guidance: 'uncertain' },
+    { code: 'APP_LOCAL_SECRET_ALREADY_ISSUED', status: 409, guidance: 'already issued' },
+    { code: 'APP_LOCAL_SECRET_REISSUE_CONFLICT', status: 409, guidance: 'current credential' },
+    { code: 'APP_IDENTITY_OWNERSHIP_REQUIRED', status: 409, guidance: 'binding' },
+  ];
+
+  test.each(nativeFailureCases)('native $code displays static scoped recovery and the real registration reference', async ({ code, status, guidance }) => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n'); mockScopedAccess();
+    const before = await readFile(join(env.dir, '.env.local'), 'utf8'); let rotations = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json({ error: code,
+        message: 'PRIVATE_PROVIDER_SECRET /internal/graph', details: { registrationId } }, { status })),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { rotations++; return HttpResponse.json({}); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {}); const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    const output = joinedConsoleOutput(log, warn, error);
+    expect(output).toContain(code); expect(output.toLowerCase()).toContain(guidance.toLowerCase());
+    expect(output).toContain(`Registration reference: ${registrationId}`);
+    expect(output).not.toContain('PRIVATE'); expect(output).not.toContain('/internal/graph');
+    expect(output).not.toContain('maximum number of app registrations');
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(before); expect(rotations).toBe(0);
+    if (code === 'CIAM_USER_FLOW_CAPACITY_EXCEEDED') { expect(output).toContain('without rotating'); expect(output).toContain('stale'); }
+  });
+
+  test.each([undefined, 'not-a-uuid', 'req-invented', 'https://private.example/PRIVATE', 123])
+  ('native capacity error never invents a registration reference from %j', async reference => {
+    await setupScopedProject(); mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json({ detail: {
+      error: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', message: 'PRIVATE provider raw body', details: { registrationId: reference },
+    } }, { status: 409 })));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {}); const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    const output = joinedConsoleOutput(log, error);
+    expect(output).toContain('CIAM_USER_FLOW_CAPACITY_EXCEEDED'); expect(output).not.toContain('Registration reference:'); expect(output).not.toContain('PRIVATE');
+  });
+
+  test('native credential uncertainty preserves the local journal and its real registration reference without another issuance', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n'); mockScopedAccess();
+    const before = await readFile(join(env.dir, '.env.local'), 'utf8'); let rotations = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ localSignin: issuedReceipt }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { rotations++; return HttpResponse.json({
+        error: 'APP_LOCAL_SECRET_OUTCOME_UNKNOWN', message: 'PRIVATE provider detail', details: { registrationId },
+      }, { status: 503 }); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {}); const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--rotate-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(rotations).toBe(1); expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(before);
+    expect(JSON.parse(await readFile(join(env.dir, '.env.credential.local'), 'utf8')).phase).toBe('pending');
+    expect(joinedConsoleOutput(log, error)).toContain('APP_LOCAL_SECRET_OUTCOME_UNKNOWN');
+    expect(joinedConsoleOutput(log, error)).toContain(`Registration reference: ${registrationId}`);
+    expect(joinedConsoleOutput(log, error)).not.toContain('PRIVATE');
+  });
+
+  test('unknown identity code cannot nominate a registration reference or inject provider guidance', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json({
+      error: 'APP_IDENTITY_UNRECOGNIZED_PRIVATE', message: 'PRIVATE provider body', details: { registrationId },
+    }, { status: 409 })));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {}); const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--debug'], { from: 'user' })).rejects.toThrow('process.exit called');
+    const output = joinedConsoleOutput(log, error);
+    expect(output).toContain('conflicted'); expect(output).not.toContain('Registration reference:'); expect(output).not.toContain('PRIVATE');
+    expect(output).not.toContain('maximum number of app registrations');
+  });
+
+  test.each([false, true])('every current-enrollment provision carries native pins without a credential opt-in (implicit %s)', async implicit => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n');
+    mockScopedAccess();
+    let calls = 0;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+      calls++;
+      expect(await request.json()).toMatchObject({ tenant_id: 'runtime', app_name: 'my-app', require_app_binding: true, localSigninBinding });
+      return HttpResponse.json(nativeProvisionResponse());
+    }));
+    await provisionCommand.parseAsync(implicit ? ['entra'] : scopedArgs, { from: 'user' });
+    expect(calls).toBe(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test('scoped sign-in setup needs no parent configure, source, deploy or cleanup capability', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n');
+    mockScopedAccess({ binding: { capabilities: { read: true, configure: false, readiness: false, source: false,
+      deploy: false, delete: false, manageObjectTypes: false } } });
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse())));
+    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test.each([
+    { label: 'empty current app key', extra: 'EAI_APP_KEY=\n', args: ['entra'] },
+    { label: 'empty current owner', extra: 'EAI_PARENT_TENANT_ID=\n', args: ['entra'] },
+    { label: 'empty explicit scope selectors', extra: '', args: ['entra', '--company-tenant', '', '--app-key', ''] },
+  ])('$label cannot fall back to legacy provisioning', async ({ extra, args }) => {
+    await setupProject(env.dir);
+    await writeFile(join(env.dir, '.env.local'), `${await readFile(join(env.dir, '.env.local'), 'utf8')}${extra}`);
+    let mutations = 0;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
+      mutations++; return HttpResponse.json({ client_id: 'fixture-legacy-client', client_secret: '<fixture-legacy-secret>' });
+    }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(args, { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(mutations).toBe(0);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
+  });
+
+  test('an empty explicit runtime pin is refused before any scoped mutation', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n'); mockScopedAccess();
+    let mutations = 0;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => { mutations++; return HttpResponse.json(nativeProvisionResponse()); }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--tenant-id', ''], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(mutations).toBe(0);
+  });
+
+  test('a current enrolled app resolves its native identity without a legacy display-name variable', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n'); mockScopedAccess();
+    const path = join(env.dir, '.env.local');
+    await writeFile(path, (await readFile(path, 'utf8')).replace(/^NEXT_PUBLIC_APP_NAME=.*\n/m, ''));
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
+      expect(await request.json()).toMatchObject({ app_name: 'my-app', localSigninBinding });
+      return HttpResponse.json(nativeProvisionResponse());
+    }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    await provisionCommand.parseAsync(['entra'], { from: 'user' });
+    expect(await readFile(path, 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test.each([
+    { label: 'missing enrollment', binding: { enrollmentId: undefined } },
+    { label: 'crossed owner', binding: { enrollmentOwnerTenantId: 'other-company' } },
+    { label: 'crossed app', binding: { appKey: 'other-app' } },
+    { label: 'ambiguous', binding: { bindingStatus: 'ambiguous' } },
+    { label: 'deleting', binding: { bindingStatus: 'deleting' } },
+  ])('current native $label binding refuses every scoped mutation', async ({ binding }) => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n');
+    mockScopedAccess({ binding });
+    let mutations = 0;
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/*`, () => { mutations++; return HttpResponse.json({}); }));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--rotate-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(mutations).toBe(0);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-preserved-secret>');
+  });
+
+  test('a newly created scoped registration uses explicit local custody after the native journal ACK', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ existing: false }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async ({ request }) => {
+        issued++;
+        expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app', localSigninBinding, reissue: false });
+        return HttpResponse.json(nativeCredentialResponse());
+      }),
+    );
+    await provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' });
+    expect(issued).toBe(1);
+    const journal = JSON.parse(await readFile(join(env.dir, '.env.credential.local'), 'utf8'));
+    expect(journal).toMatchObject({ localSigninBinding, registrationId, credentialKeyId, phase: 'complete' });
+    expect(journal.secret).toBeUndefined();
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-native-secret>');
+  });
+
+  test.each([
+    ...['graph_perms_added', 'publicapi_perms_added', 'consent_granted', 'publicapi_preauthorized', 'signin_flow_bound', 'signin_ready']
+      .map(field => ({ field, value: false, label: `false ${field}` })),
+    { field: 'signin_flow_bound', value: undefined, label: 'missing native flow confirmation' },
+    { field: 'signin_ready', value: undefined, label: 'missing native readiness confirmation' },
+  ])('native sign-in setup refuses $label before credential issuance', async ({ field, value }) => {
+    await setupScopedProject(); mockScopedAccess();
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({
+        ...TENANT_AUTH_EXISTING, signin_completeness: { ...SIGNIN_READY.signin_completeness, [field]: value },
+      }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json(nativeCredentialResponse()); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(issued).toBe(0);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
+  });
+
+  test('scoped rotation uses the current native issued key rather than a stale local custody key', async () => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-old-secret>\n'); mockScopedAccess();
+    await writeFile(join(env.dir, '.env.credential.local'), JSON.stringify({ schema: 'eai.local_app_credential.v2', phase: 'complete',
+      tenantId: 'runtime', appName: 'my-app', clientId: 'app-client', localSigninBinding, registrationId,
+      credentialKeyId: '55555555-5555-4555-8555-555555555555', baseSha256: 'a'.repeat(64) }), { mode: 0o600 });
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ localSignin: issuedReceipt }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async ({ request }) => {
+        issued++;
+        expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app', localSigninBinding, reissue: true, expectedCredentialKeyId: credentialKeyId });
+        return HttpResponse.json(nativeCredentialResponse({ credentialKeyId: nextCredentialKeyId,
+          localSignin: { ...issuedReceipt, version: 3, credentialKeyId: nextCredentialKeyId } }));
+      }),
+    );
+    await provisionCommand.parseAsync([...scopedArgs, '--rotate-secret'], { from: 'user' });
+    expect(issued).toBe(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-native-secret>');
+  });
+
+  test('a fresh scoped registration without local opt-in requests explicit custody instead of reporting a missing server secret', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ existing: false }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(scopedArgs, { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(issued).toBe(0);
+    expect(joinedConsoleOutput(log, error)).toContain('--create-local-secret');
+    expect(joinedConsoleOutput(log, error)).not.toContain('Platform returned a registration but no clientSecret');
+  });
+
+  test('missing local ACK for a native issued credential never causes an automatic additional credential', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ localSignin: issuedReceipt }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(issued).toBe(0);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
+  });
+
+  test('an explicit retry after a positively rejected first issue uses no invented expected key', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({
+        localSignin: issued ? { ...readyReceipt, version: 2, stage: 'blocked', providerOperation: 'credential-issue', failureCode: 'APP_IDENTITY_PROVIDER_REJECTED' } : readyReceipt,
+      }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async ({ request }) => {
+        expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app', localSigninBinding, reissue: false });
+        if (++issued === 1) return HttpResponse.json({ detail: { error: 'APP_IDENTITY_PROVIDER_REJECTED' } }, { status: 502 });
+        return HttpResponse.json(nativeCredentialResponse({ localSignin: { ...issuedReceipt, version: 3 } }));
+      }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(issued).toBe(1);
+    await provisionCommand.parseAsync([...scopedArgs, '--create-local-secret', '--reissue-local-secret'], { from: 'user' });
+    expect(issued).toBe(2);
+  });
+
+  test('private scoped issued-secret recovery validates the fresh receipt and never issues another password', async () => {
+    await setupScopedProject(); mockScopedAccess();
+    const before = await readFile(join(env.dir, '.env.local'), 'utf8');
+    let issued = 0;
+    mockServer.server.use(
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => HttpResponse.json(nativeProvisionResponse({ localSignin: issued ? issuedReceipt : readyReceipt }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async () => {
+        issued++;
+        await writeFile(join(env.dir, '.env.local'), 'ENTRA_CLIENT_SECRET=<fixture-concurrent-secret>\n');
+        return HttpResponse.json(nativeCredentialResponse());
+      }),
+    );
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
+    await writeFile(join(env.dir, '.env.local'), before);
+    await provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' });
+    expect(issued).toBe(1);
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-native-secret>');
+  });
 
   const invalidReturnedScopes = [
     { label: 'newline injection', scopes: ['openid\nINJECTED_SCOPE=true'] },
@@ -226,9 +537,7 @@ describe('eai provision entra', () => {
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
         calls++;
         expect(await request.json()).toMatchObject({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true });
-        return HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client',
-          existing: branch !== 'new', client_secret: branch === 'new' ? '<fixture-new-secret>' : null,
-          scopes, ...TENANT_AUTH_ADDED, ...SIGNIN_READY });
+        return HttpResponse.json(nativeProvisionResponse({ existing: branch !== 'new', scopes, ...TENANT_AUTH_ADDED }));
       }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => {
         issued++;
@@ -264,9 +573,9 @@ describe('eai provision entra', () => {
       ? 'ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-original-secret>\n' : ''}`);
     mockScopedAccess();
     mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-      HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client',
-        existing, client_secret: existing ? null : '<fixture-new-secret>', scopes, ...TENANT_AUTH_ADDED, ...SIGNIN_READY })));
-    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+      HttpResponse.json(nativeProvisionResponse({ existing, scopes, ...TENANT_AUTH_ADDED }))),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => HttpResponse.json(nativeCredentialResponse({ client_secret: '<fixture-new-secret>' }))));
+    await provisionCommand.parseAsync(existing ? scopedArgs : [...scopedArgs, '--create-local-secret'], { from: 'user' });
     const text = await readFile(join(env.dir, '.env.local'), 'utf8');
     const parsed = parseDotenv(text);
     const expected = scopes?.length ? scopes.join(' ') : 'openid legacy_scope';
@@ -295,12 +604,11 @@ describe('eai provision entra', () => {
     let issued = 0;
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true,
-          scopes: ['openid', 'fixture_scope#literal'], ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
+        HttpResponse.json(nativeProvisionResponse({ scopes: ['openid', 'fixture_scope#literal'], localSignin: issued ? issuedReceipt : readyReceipt }))),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async ({ request }) => {
         issued++;
-        expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app' });
-        return HttpResponse.json({ app_name: 'my-app', client_id: 'app-client', tenant_id: 'runtime', client_secret: '<fixture-private-local-secret>' });
+        expect(await request.json()).toEqual({ tenant_id: 'runtime', app_name: 'my-app', localSigninBinding, reissue: false });
+        return HttpResponse.json(nativeCredentialResponse({ client_secret: '<fixture-private-local-secret>' }));
       }),
     );
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -334,8 +642,8 @@ describe('eai provision entra', () => {
     const before = await readFile(join(env.dir, '.env.local'), 'utf8');
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
-      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => HttpResponse.json(response)),
+        HttpResponse.json(nativeProvisionResponse())),
+      http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => HttpResponse.json({ credentialKeyId, localSignin: issuedReceipt, ...response })),
     );
     vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -347,11 +655,13 @@ describe('eai provision entra', () => {
 
   test.each(['missing scope', 'missing issuer tenant', 'missing app proof', 'crossed app proof', 'incomplete sign-in', 'local drift'])('scoped local credential setup refuses %s before issuance', async (failure) => {
     await setupScopedProject(); mockScopedAccess();
+    if (failure === 'missing scope') await setupProject(env.dir);
     let issued = 0;
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async () => {
         if (failure === 'local drift') await writeFile(join(env.dir, '.env.local'), 'ENTRA_CLIENT_SECRET=<fixture-concurrent-secret>\n');
         return HttpResponse.json({ ...(failure === 'missing app proof' ? {} : { app_name: failure === 'crossed app proof' ? 'other-app' : 'my-app' }), ...(failure === 'missing issuer tenant' ? {} : { tenant_id: 'runtime' }), client_id: 'app-client', existing: true,
+          objectId: '33333333-3333-4333-8333-333333333333', localSignin: readyReceipt,
           ...TENANT_AUTH_EXISTING, ...(failure === 'incomplete sign-in' ? {} : SIGNIN_READY) });
       }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
@@ -370,10 +680,10 @@ describe('eai provision entra', () => {
     await setupScopedProject(); mockScopedAccess();
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
+        HttpResponse.json(nativeProvisionResponse())),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, async () => {
         await writeFile(join(env.dir, '.env.local'), 'ENTRA_CLIENT_SECRET=<fixture-concurrent-secret>\n');
-        return HttpResponse.json({ app_name: 'my-app', client_id: 'app-client', tenant_id: 'runtime', client_secret: '<fixture-issued-secret>' });
+        return HttpResponse.json(nativeCredentialResponse({ client_secret: '<fixture-issued-secret>' }));
       }),
     );
     vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
@@ -388,7 +698,7 @@ describe('eai provision entra', () => {
     let calls = 0;
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })),
+        HttpResponse.json(nativeProvisionResponse())),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => {
         calls++; return HttpResponse.json({ detail: 'unavailable' }, { status });
       }),
@@ -400,17 +710,19 @@ describe('eai provision entra', () => {
     expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toBe(before);
   });
 
-  test('scoped local setup uses the first registration credential without another issuance', async () => {
+  test('scoped setup refuses a provider secret without the native credential journal acknowledgement', async () => {
     await setupScopedProject(); mockScopedAccess();
     let issued = 0;
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-        HttpResponse.json({ app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', client_secret: '<fixture-first-secret>', existing: false, ...TENANT_AUTH_ADDED, ...SIGNIN_READY })),
+        HttpResponse.json(nativeProvisionResponse({ client_secret: '<fixture-first-secret>', existing: false }))),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
     );
-    await provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' });
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    vi.spyOn(console, 'log').mockImplementation(() => {}); vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' })).rejects.toThrow('process.exit called');
     expect(issued).toBe(0);
-    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).toContain('ENTRA_CLIENT_SECRET=<fixture-first-secret>');
+    expect(await readFile(join(env.dir, '.env.local'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
   });
 
   test('scoped setup binds the enrolled runtime and callback despite a different cached workspace', async () => {
@@ -419,11 +731,11 @@ describe('eai provision entra', () => {
     let requestBody: unknown;
     mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, async ({ request }) => {
       requestBody = await request.json();
-      return HttpResponse.json({ client_id: 'app-client', client_secret: '<fixture-new-app-secret>', existing: false, ...TENANT_AUTH_ADDED, ...SIGNIN_READY });
-    }));
-    await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
+      return HttpResponse.json(nativeProvisionResponse({ existing: false }));
+    }), http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => HttpResponse.json(nativeCredentialResponse({ client_secret: '<fixture-new-app-secret>' }))));
+    await provisionCommand.parseAsync([...scopedArgs, '--create-local-secret'], { from: 'user' });
     expect(requestBody).toEqual({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true,
-      redirect_uris: ['http://localhost:3002/my-app/api/auth/callback/microsoft-entra-id'] });
+      redirect_uris: ['http://localhost:3002/my-app/api/auth/callback/microsoft-entra-id'], require_app_binding: true, localSigninBinding });
     const content = await readFile(join(env.dir, '.env.local'), 'utf8');
     expect(content).toContain('ENTRA_CLIENT_ID=app-client');
     expect(content).toContain('ENTRA_CLIENT_SECRET=<fixture-new-app-secret>');
@@ -440,7 +752,7 @@ describe('eai provision entra', () => {
       const body = await request.json();
       expect(body).toMatchObject({ tenant_id: 'runtime', app_name: 'my-app', idempotent: true });
       expect(body).not.toHaveProperty('rotate_secret');
-      return HttpResponse.json({ client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY });
+      return HttpResponse.json(nativeProvisionResponse());
     }));
     const cloud = vi.spyOn(cloudEnv, 'pullCloudEnvValues');
     await provisionCommand.parseAsync(scopedArgs, { from: 'user' });
@@ -452,7 +764,7 @@ describe('eai provision entra', () => {
     await setupScopedProject();
     mockScopedAccess();
     mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-      HttpResponse.json({ client_id: 'app-client', existing: true, ...TENANT_AUTH_EXISTING, ...SIGNIN_READY })));
+      HttpResponse.json(nativeProvisionResponse())));
     vi.spyOn(cloudEnv, 'pullCloudEnvValues').mockResolvedValue({ store: 'configured-store', secretRefs: [],
       patches: { ENTRA_CLIENT_ID: matches ? 'app-client' : 'different-client', ENTRA_CLIENT_SECRET: '<fixture-stored-secret>', AUTH_URL: 'https://unrelated.example' } });
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
@@ -471,7 +783,7 @@ describe('eai provision entra', () => {
     ['missing scope pair', ['entra', '--company-tenant', 'company'], {}],
     ['foreign app', [...scopedArgs.slice(0, -1), 'foreign-app'], {}],
     ['foreign runtime', [...scopedArgs, '--tenant-id', 'foreign-runtime'], {}],
-    ['rotation', [...scopedArgs, '--rotate-secret'], {}],
+    ['deauthorization', [...scopedArgs, '--deauthorize', '--force'], {}],
     ['missing membership', scopedArgs, { member: false }],
     ['incomplete enrollment', scopedArgs, { complete: false }],
   ])('scoped setup refuses %s before any provisioning mutation', async (_case, args, access) => {
@@ -500,11 +812,11 @@ describe('eai provision entra', () => {
     expect(await readFile(join(env.dir, 'foreign-env'), 'utf8')).not.toContain('ENTRA_CLIENT_SECRET=');
   });
 
-  test.each([TENANT_AUTH_ADDED, SIGNIN_READY])('scoped setup retains new credentials but fails incomplete sign-in status %#', async (summary) => {
-    await setupScopedProject();
+  test.each([undefined, null])('scoped setup retains the existing local credential but fails missing native sign-in status %#', async (summary) => {
+    await setupScopedProject('ENTRA_CLIENT_ID=app-client\nENTRA_CLIENT_SECRET=<fixture-preserved-secret>\n');
     mockScopedAccess();
     mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
-      HttpResponse.json({ client_id: 'app-client', client_secret: '<fixture-preserved-secret>', existing: false, ...summary })));
+      HttpResponse.json(nativeProvisionResponse({ signin_completeness: summary }))));
     const exit = vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
     const log = vi.spyOn(console, 'log').mockImplementation(() => {});
     const error = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -527,10 +839,9 @@ describe('eai provision entra', () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () => {
         const complete = rechecks++ > 0;
-        return HttpResponse.json({
-        app_name: 'my-app', tenant_id: 'runtime', client_id: 'app-client', existing: true,
-        ...TENANT_AUTH_EXISTING, signin_completeness: complete ? SIGNIN_READY.signin_completeness : { ...SIGNIN_READY.signin_completeness, signin_flow_bound: false, signin_ready: false, warnings },
-      }); }),
+        return HttpResponse.json(nativeProvisionResponse({
+        signin_completeness: complete ? SIGNIN_READY.signin_completeness : { ...SIGNIN_READY.signin_completeness, signin_flow_bound: false, signin_ready: false, warnings },
+      })); }),
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps/app-client/rotate-secret`, () => { issued++; return HttpResponse.json({}); }),
     );
     vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
@@ -1811,7 +2122,7 @@ describe('eai provision entra', () => {
     expect(errSpy.mock.calls.flat().join(' ')).toContain('Permission denied');
   });
 
-  test('HTTP 409: exits with code 1 and reports quota exceeded', { timeout: 10000 }, async () => {
+  test('an untyped HTTP409 is a preserved-state conflict and never an assumed registration quota', { timeout: 10000 }, async () => {
     mockServer.server.use(
       http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
         HttpResponse.json({ error: 'conflict' }, { status: 409 }),
@@ -1828,7 +2139,17 @@ describe('eai provision entra', () => {
     ).rejects.toThrow('process.exit called');
 
     expect(exitSpy).toHaveBeenCalledWith(1);
-    expect(errSpy.mock.calls.flat().join(' ')).toContain('maximum number of app registrations');
+    expect(errSpy.mock.calls.flat().join(' ')).not.toContain('maximum number of app registrations');
+  });
+
+  test('only a positive published workspace-quota code receives quota guidance', async () => {
+    mockServer.server.use(http.post(`${API_BASE}/v4/platform/provisioning/entra-apps`, () =>
+      HttpResponse.json({ error: 'TENANT_QUOTA_EXCEEDED', message: 'PRIVATE provider message' }, { status: 409 })));
+    vi.spyOn(process, 'exit').mockImplementation((() => { throw new Error('process.exit called'); }) as never);
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {}); const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await expect(provisionCommand.parseAsync(['entra'], { from: 'user' })).rejects.toThrow('process.exit called');
+    expect(joinedConsoleOutput(log, error)).toContain('workspace quota');
+    expect(joinedConsoleOutput(log, error)).not.toContain('PRIVATE');
   });
 
   test('HTTP 404: exits with code 1 and reports product-safe diagnostics', { timeout: 10000 }, async () => {
