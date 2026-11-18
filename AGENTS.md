@@ -60,10 +60,12 @@ TypeScript (strict, ESM), Node, Commander.js, npm, Vitest. Do not use the worksp
 - Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`, `src/commands/update.ts`,
   `src/lib/update-check.ts` and `README.md` aligned. Each release refreshes `docs-site/static/llms.txt`,
   `llms-full.txt` and `cli-help.txt`.
-- npmjs is the primary channel (`npm install -g eai-cli`; canonical `@enterpriseai/cli`); the GitHub Pages
-  registry `https://eai-support.github.io/eai/registry/` is the fallback. Before changing release behavior,
-  verify both: `npm view eai-cli version --registry=https://registry.npmjs.org/` and
-  `curl https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
+- npmjs is the primary channel; the GitHub Pages registry is the fallback. Installs: recommended
+  `npm install -g eai-cli`; canonical `npm install -g @enterpriseai/cli`; static fallback
+  `npm install -g @enterpriseai/cli --@enterpriseai:registry=https://eai-support.github.io/eai/registry/`.
+  Before changing release behavior verify both: `npm view eai-cli version --registry=https://registry.npmjs.org/`
+  and `curl https://eai-support.github.io/eai/registry/@enterpriseai/cli`. `scripts/verify-registry.sh` checks
+  that this file keeps those three commands.
 - `eai update` upgrades only the CLI package. `eai gofer refresh --check`, `eai doctor --check-updates` and
   `eai template check` are read-only previews; template/UI drift is reviewed and copied manually.
 - Core release flow: `enterpriseaigroup/eai-stack` `docs/interim-cicd-runbook.md`. This repo's release workflow keeps its own style.
