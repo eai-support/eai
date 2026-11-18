@@ -500,8 +500,7 @@ See [README.md](README.md#releasing) for full release process.
 ## Documentation
 
 - **README.md** - User-facing documentation (installation, commands, architecture)
-- **CLAUDE.md** - Workflow instructions for AI agents
-- **AGENTS.md** - Project conventions and patterns
+- **AGENTS.md** - Agent instructions, project conventions and patterns (`CLAUDE.md` is a symlink to it)
 - **CODEBASE.md** - This file (comprehensive technical reference)
 - **docs/** - Full documentation site (93 pages, Starlight/Astro)
 
