@@ -129,4 +129,12 @@ describe('exact-commit command execution', () => {
     expect(printed).toHaveBeenLastCalledWith(expect.objectContaining({ sourceProvenance: provenance,
       customerAuthorization: publication.customerAuthorization, githubApprovedReviewClaim: false }));
   });
+  test.each(['mergedCommitSha', 'mergedSha'] as const)('refuses %s when it conflicts with customer commit provenance', async (field) => {
+    const publication = { ...operation(), status: 'completed' as const, review: { [field]: 'f'.repeat(40) } };
+    vi.mocked(pollExactOperation).mockResolvedValue({ environment: 'preview', configHash: publication.configHash,
+      sourceMode: 'eai-cli-generated', status: 'active', sourceRevision: { repoOwner: 'customer', repoName: 'app', commitSha: provenance.commitSha } } as Awaited<ReturnType<typeof pollExactOperation>>);
+    await expect(printManagedSourceCompletion(new PlatformAPIClient('https://test-api.au.myenterprise.ai/public', 'parent'), scope,
+      publication, false, 10, 'json')).rejects.toMatchObject({ code: 'MANAGED_SOURCE_BINDING_MISMATCH' });
+    expect(printed).not.toHaveBeenCalled();
+  });
 });
