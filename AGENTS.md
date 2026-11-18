@@ -54,9 +54,9 @@ TypeScript (strict, ESM), Node, Commander.js, npm, Vitest. Do not use the worksp
 ## Workflow & Release
 
 - Feature PRs link an `enterpriseaigroup/Issues2025` issue and add `specs/<issue>-<slug>.md` (<=60 lines,
-  #3688). The PR body also carries a `Plan:` line for the advisory `plan-gate` workflow (`Plan: exempt —
-  <reason>` or a `.specify(-pro)/specs/<feature>/plan.md` path) until spec-check replaces it. Conventional
-  commits; feature branches; never push to `main` directly.
+  #3688). Migration exception: the advisory `plan-gate` workflow still reads a PR-body `Plan:` line until
+  `spec-check` replaces it; write `Plan: exempt — <reason>` and do not create new `.specify` plans.
+  Conventional commits; feature branches; never push to `main` directly.
 - Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`, `src/commands/update.ts`,
   `src/lib/update-check.ts` and `README.md` aligned. Each release refreshes `docs-site/static/llms.txt`,
   `llms-full.txt` and `cli-help.txt`.
