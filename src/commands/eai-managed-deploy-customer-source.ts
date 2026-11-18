@@ -14,12 +14,14 @@ import {
 import {
   apiMessage,
   fail,
+  ManagedDeployFailure,
   repositoryNextAction,
   requireApiSuccess,
   type ManagedDeployExecutionContext,
 } from "./eai-managed-deploy-contract.js";
 import {
   dispatchWorkflow,
+  missingCustomerWorkflowScopeAdvice,
   verifyGitHubAccess,
   verifyLocalSource,
 } from "./eai-managed-deploy-github.js";
@@ -70,10 +72,14 @@ export async function startCustomerSource(
       install.pendingUpdates.length > 0
         ? ` Review candidates: ${install.pendingUpdates.join(", ")}.`
         : "";
+    const scopeAdvice = link.verifiedGithubUser
+      ? await missingCustomerWorkflowScopeAdvice(context.root, link.verifiedGithubUser)
+      : undefined;
     fail(
       "CANONICAL_WORKFLOW_UPDATE_REQUIRED",
       `${installed}${pending}`.trim(),
-      "Review each candidate without losing local edits. Apply it to the canonical path, remove the candidate, then commit and push through the repository branch rules before retrying.",
+      "Review each candidate without losing local edits. Apply it to the canonical path, remove the candidate, then commit and push through the repository branch rules before retrying."
+        + (scopeAdvice ? ` ${scopeAdvice}` : ""),
     );
   }
   const source = await verifyLocalSource(
@@ -91,13 +97,22 @@ export async function startCustomerSource(
       "Start the deployment again and complete GitHub browser linking.",
     );
   }
-  await verifyGitHubAccess(
-    repository.slug,
-    source.branch,
-    source.commitSha,
-    undefined,
-    verifiedGithubUser,
-  );
+  try {
+    await verifyGitHubAccess(
+      repository.slug,
+      source.branch,
+      source.commitSha,
+      undefined,
+      verifiedGithubUser,
+    );
+  } catch (error) {
+    if (error instanceof ManagedDeployFailure &&
+      ["GITHUB_BRANCH_UNAVAILABLE", "GITHUB_SHA_MISMATCH"].includes(error.code)) {
+      const advice = await missingCustomerWorkflowScopeAdvice(context.root, verifiedGithubUser);
+      if (advice) fail(error.code, error.message, `${error.nextAction} ${advice}`);
+    }
+    throw error;
+  }
   const configHash = await buildManagedDeployConfigHash(context.root, rootBinding);
   const ref = `refs/heads/${source.branch}`;
   const localE2eTunnel = /^https:\/\/[a-z0-9-]+-8000\.[a-z0-9-]+\.devtunnels\.ms$/.test(context.publicApiUrl);

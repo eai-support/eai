@@ -18,6 +18,36 @@ interface GitHubRepoView {
   isPrivate?: boolean;
 }
 
+/** SECURITY: attribute workflow-scope advice only to the linked customer's HTTPS gh credential. */
+export async function missingCustomerWorkflowScopeAdvice(
+  root: string,
+  expectedActor: VerifiedGitHubActor,
+  runCommand: ManagedDeployCommandRunner = run,
+): Promise<string | undefined> {
+  try {
+    if (process.env.GH_TOKEN || process.env.GITHUB_TOKEN) return undefined;
+    const origin = await runCommand("git", ["remote", "get-url", "origin"], root);
+    if (!/^https:\/\/github\.com\//i.test(origin)) return undefined;
+    const helper = await runCommand(
+      "git", ["config", "--get-urlmatch", "credential.helper", "https://github.com"], root,
+    );
+    if (!helper.includes("gh auth git-credential")) return undefined;
+    const response = await runCommand("gh", ["api", "-i", "user", "--jq", "{id,login}"]);
+    const scopes = /^x-oauth-scopes:[ \t]*([^\r\n]*)/im.exec(response)?.[1];
+    if (scopes === undefined || !scopes.trim()) return undefined;
+    const actorLine = response.split(/\r?\n/).reverse().find(line => line.startsWith("{"));
+    if (!actorLine) return undefined;
+    const actor = JSON.parse(actorLine) as { id?: unknown; login?: unknown };
+    if (actor.id !== expectedActor.id ||
+      String(actor.login || "").toLowerCase() !== expectedActor.login.toLowerCase()) return undefined;
+    if (scopes.split(",").some(scope => scope.trim().toLowerCase() === "workflow")) return undefined;
+    return `GitHub CLI is configured for HTTPS pushes as ${expectedActor.login}, but its OAuth credential lacks the workflow scope needed to add or change .github/workflows files. If GitHub rejected that workflow-file push, run \`gh auth refresh --scopes workflow\` in the same GitHub CLI profile, confirm \`gh auth status\` still shows ${expectedActor.login}, then retry the exact push. This does not change the EAI GitHub App installation.`;
+  } catch {
+    // INVARIANT: An unreadable OAuth probe cannot justify advice for another credential type.
+    return undefined;
+  }
+}
+
 /** Authenticate first, then overlap the independent repository-policy and immutable-ref reads. */
 export async function verifyGitHubAccess(
   repo: string,
