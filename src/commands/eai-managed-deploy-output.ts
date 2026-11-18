@@ -52,11 +52,15 @@ export function printFailure(format: string, error: unknown): void {
 }
 
 function managedSourceCommit(operation: CliManagedSourceOperation): string | undefined {
-  const { mergedCommitSha, mergedSha } = operation.review ?? {};
-  if (mergedCommitSha !== undefined && mergedSha !== undefined && mergedCommitSha !== mergedSha) {
-    return undefined;
-  }
-  return operation.sourceProvenance?.commitSha ?? mergedCommitSha ?? mergedSha;
+  const references = [
+    operation.sourceProvenance?.commitSha,
+    operation.review?.mergedCommitSha,
+    operation.review?.mergedSha,
+  ];
+  const commit = references.find(reference => reference !== undefined);
+  return references.every(reference => reference === undefined || reference === commit)
+    ? commit
+    : undefined;
 }
 
 export function printManagedSourceOperation(
