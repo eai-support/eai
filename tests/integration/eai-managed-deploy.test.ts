@@ -884,14 +884,18 @@ describe('eai deploy app --target eai', () => {
     expect(process.exitCode).toBe(0);
   });
 
-  test('reports EAI-maintained success only from exact unified source and doctor evidence', async () => {
+  test.each([
+    ['legacy', { mergedSha: 'a'.repeat(40) }],
+    ['native', { mergedCommitSha: 'a'.repeat(40) }],
+    ['matching aliases', { mergedSha: 'a'.repeat(40), mergedCommitSha: 'a'.repeat(40) }],
+  ] as const)('reports EAI-maintained success from %s merge evidence and exact unified doctor proof', async (_label, review) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const identity = stubManagedOperation().getMockImplementation()!;
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);
       requests.push(url);
-      if (url.includes('/cli-managed-source/operations/')) return jsonResponse(completedManagedPublication());
+      if (url.includes('/cli-managed-source/operations/')) return jsonResponse({ ...completedManagedPublication(), review });
       if (url.includes('/managed-deployments/operations/')) return jsonResponse(completeUnifiedOperation({
         operationId: 'cli-managed-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', sourceMode: 'eai-cli-generated',
         repoOwner: 'eai-generated-apps', repoName: 'app', configHash: `sha256:${'c'.repeat(64)}`,
@@ -916,14 +920,15 @@ describe('eai deploy app --target eai', () => {
   });
 
   test.each([
-    ['missing', undefined],
-    ['malformed', 'not-a-commit'],
-    ['mismatched', 'd'.repeat(40)],
-  ] as const)('rejects %s EAI-maintained merged commit evidence', async (_label, mergedSha) => {
+    ['missing', {}],
+    ['malformed legacy', { mergedSha: 'not-a-commit' }],
+    ['mismatched native', { mergedCommitSha: 'd'.repeat(40) }],
+    ['conflicting aliases', { mergedSha: 'a'.repeat(40), mergedCommitSha: 'd'.repeat(40) }],
+  ] as const)('rejects %s EAI-maintained merged commit evidence', async (_label, review) => {
     await writeFile(join(projectRoot, 'eai.runtime.json'), '{}');
     const identity = stubManagedOperation().getMockImplementation()!;
     const publication = completedManagedPublication();
-    publication.review = mergedSha === undefined ? {} : { mergedSha };
+    publication.review = review;
     vi.stubGlobal('fetch', vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);
       if (url.includes('/cli-managed-source/operations/')) return jsonResponse(publication);

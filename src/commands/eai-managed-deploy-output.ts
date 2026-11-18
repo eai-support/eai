@@ -51,6 +51,14 @@ export function printFailure(format: string, error: unknown): void {
   process.exitCode = 1;
 }
 
+function managedSourceCommit(operation: CliManagedSourceOperation): string | undefined {
+  const { mergedCommitSha, mergedSha } = operation.review ?? {};
+  if (mergedCommitSha !== undefined && mergedSha !== undefined && mergedCommitSha !== mergedSha) {
+    return undefined;
+  }
+  return operation.sourceProvenance?.commitSha ?? mergedCommitSha ?? mergedSha;
+}
+
 export function printManagedSourceOperation(
   format: string,
   operation: CliManagedSourceOperation,
@@ -79,8 +87,7 @@ export function printManagedSourceOperation(
     configHash: operation.configHash,
     sourceBinding: {
       repository: `${operation.repository.owner}/${operation.repository.name}`,
-      commitSha:
-        operation.sourceProvenance?.commitSha ?? operation.review?.mergedSha,
+      commitSha: managedSourceCommit(operation),
     },
     review: operation.review,
     ...(operation.sourceProvenance
@@ -137,8 +144,7 @@ export async function printManagedSourceCompletion(
   const revision = isRecord(operation.sourceRevision)
     ? operation.sourceRevision
     : undefined;
-  const mergedSha =
-    publication.sourceProvenance?.commitSha ?? publication.review?.mergedSha;
+  const mergedSha = managedSourceCommit(publication);
   const hasExactMergedSha =
     typeof mergedSha === "string" && /^[a-f0-9]{40}$/.test(mergedSha);
   if (

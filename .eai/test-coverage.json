@@ -561,7 +561,7 @@
         },
         {
           "id": "eai-cli-exact-runtime-app-readiness",
-          "description": "Selected-runtime app list and exact server binding keep owner/runtime separate with explicit owner pin and fail ambiguous/capability refusals before writes; persist owner plus runtime IDs. Type publication requires targetTenantId and consistent readiness, then bounded exact install/hash visibility. Entra flow-capacity recovery preserves registration/credential. Managed source errors expose only public codes and known operation references with fixed guidance.",
+          "description": "Selected-runtime app list and exact server binding keep owner/runtime separate with explicit owner pin and fail ambiguous/capability refusals before writes; persist owner plus runtime IDs. Type publication requires targetTenantId and consistent readiness, then bounded exact install/hash visibility. Entra flow-capacity recovery preserves registration/credential. Managed source errors expose only public codes and known operation references with fixed guidance. Managed hosting completion accepts the native merged commit field and the consistent legacy alias while refusing conflicts.",
           "owned_paths": [
             "src/lib/app-binding.ts",
             "src/lib/api.ts",
@@ -586,7 +586,8 @@
             "tests/integration/error-guidance.test.ts",
             "tests/unit/eai-managed-template-requirement.test.ts",
             "tests/unit/eai-managed-source-client.test.ts",
-            "tests/unit/eai-managed-source-review-failure.test.ts"
+            "tests/unit/eai-managed-source-review-failure.test.ts",
+            "tests/integration/eai-managed-deploy.test.ts"
           ],
           "required_ci_checks": [
             "ci/eai-cli-tests"
