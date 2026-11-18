@@ -68,5 +68,10 @@ TypeScript (strict, ESM), Node, Commander.js, npm, Vitest. Do not use the worksp
   that this file keeps those three commands.
 - `eai update` upgrades only the CLI package. `eai gofer refresh --check`, `eai doctor --check-updates` and
   `eai template check` are read-only previews; template/UI drift is reviewed and copied manually.
+- **App-template pin release order (`#3639`)**: Never publish a CLI release that advances `resources/linked-sources.json`
+  `appTemplate` until `enterpriseaigroup/Infra2025` (`config/feature-flags.json` + `deploy-config.yml`
+  `publication_scope=template-pins-preview` -> `template-pins-only`) has promoted and verified that exact
+  `eai-support/eai-app-template` version/SHA across `DEV`, `TEST`, and all 3 `PROD` regions (`ae`, `cc`, `gwc`),
+  and `.eai/platform-approved-app-template.json` matches (`tests/unit/platform-approved-template.test.ts`).
 - Core release flow: `enterpriseaigroup/eai-stack` `docs/interim-cicd-runbook.md`. This repo's release workflow keeps its own style.
 - `CLAUDE.md` is a symlink to this file; edit only `AGENTS.md`.
