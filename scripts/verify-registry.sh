@@ -21,7 +21,6 @@ README="$ROOT/README.md"
 SETUP_MD="$ROOT/.github/SETUP.md"
 AGENTS_MD="$ROOT/AGENTS.md"
 CLAUDE_MD="$ROOT/CLAUDE.md"
-COPILOT_MD="$ROOT/.github/copilot-instructions.md"
 START_HERE_DOC="$ROOT/.tech-docs/start-here.md"
 API_REFERENCE_DOC="$ROOT/.tech-docs/api-reference.md"
 EAI_CLI_DOC="$ROOT/.tech-docs/eai-cli.md"
@@ -218,7 +217,7 @@ for required in \
 done
 
 section "Human-facing docs and agent guidance"
-for file in "$README" "$SETUP_MD" "$AGENTS_MD" "$CLAUDE_MD" "$COPILOT_MD" "$START_HERE_DOC" "$API_REFERENCE_DOC" "$EAI_CLI_DOC"; do
+for file in "$README" "$SETUP_MD" "$AGENTS_MD" "$CLAUDE_MD" "$START_HERE_DOC" "$API_REFERENCE_DOC" "$EAI_CLI_DOC"; do
   label="$(basename "$file")"
   for required in "$RECOMMENDED_INSTALL_CMD" "$CANONICAL_INSTALL_CMD" "$STATIC_FALLBACK_CMD"; do
     if contains "$file" "$required"; then
