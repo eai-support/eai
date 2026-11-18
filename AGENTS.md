@@ -53,9 +53,10 @@ TypeScript (strict, ESM), Node, Commander.js, npm, Vitest. Do not use the worksp
 
 ## Workflow & Release
 
-- Link an `enterpriseaigroup/Issues2025` issue and a `specs/<issue>-<slug>.md` (<=60 lines) for features. PR
-  bodies carry `Plan: <path>` or `Plan: exempt — <reason>`. Conventional commits; feature branches; never push
-  to `main` directly.
+- Feature PRs link an `enterpriseaigroup/Issues2025` issue and add `specs/<issue>-<slug>.md` (<=60 lines,
+  #3688). The PR body also carries a `Plan:` line for the advisory `plan-gate` workflow (`Plan: exempt —
+  <reason>` or a `.specify(-pro)/specs/<feature>/plan.md` path) until spec-check replaces it. Conventional
+  commits; feature branches; never push to `main` directly.
 - Keep `release.sh`, `.github/workflows/release.yml`, `.github/workflows/docs.yml`, `src/commands/update.ts`,
   `src/lib/update-check.ts` and `README.md` aligned. Each release refreshes `docs-site/static/llms.txt`,
   `llms-full.txt` and `cli-help.txt`.
@@ -65,5 +66,5 @@ TypeScript (strict, ESM), Node, Commander.js, npm, Vitest. Do not use the worksp
   `curl https://eai-support.github.io/eai/registry/@enterpriseai/cli`.
 - `eai update` upgrades only the CLI package. `eai gofer refresh --check`, `eai doctor --check-updates` and
   `eai template check` are read-only previews; template/UI drift is reviewed and copied manually.
-- Core release flow: eai-stack `docs/interim-cicd-runbook.md`. This repo's release workflow keeps its own style.
+- Core release flow: `enterpriseaigroup/eai-stack` `docs/interim-cicd-runbook.md`. This repo's release workflow keeps its own style.
 - `CLAUDE.md` is a symlink to this file; edit only `AGENTS.md`.
