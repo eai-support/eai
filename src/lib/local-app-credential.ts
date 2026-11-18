@@ -2,15 +2,35 @@ import { lstat, open, readFile, rename, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { loadEnvFile } from './config.js';
+import type { LocalSigninBinding } from './api.js';
+import { isManagedScopeIdentifier } from './eai-managed-identifiers.js';
 
 export class LocalAppCredentialError extends Error {}
 
-interface CredentialBinding { tenantId: string; appName: string; clientId: string }
+interface CredentialBinding {
+  tenantId: string;
+  appName: string;
+  clientId: string;
+  localSigninBinding?: LocalSigninBinding;
+  registrationId?: string;
+}
 interface CredentialJournal extends CredentialBinding {
-  schema: 'eai.local_app_credential.v1';
+  schema: 'eai.local_app_credential.v1' | 'eai.local_app_credential.v2';
   phase: 'pending' | 'issued' | 'complete';
   baseSha256: string;
   secret?: string;
+  credentialKeyId?: string;
+}
+
+const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+const PIN_FIELDS = ['runtimeTenantId', 'enrollmentOwnerTenantId', 'enrollmentId', 'appKey'] as const;
+
+function scopedBinding(binding: CredentialBinding): boolean {
+  const pins = binding.localSigninBinding;
+  return typeof binding.registrationId === 'string' && UUID.test(binding.registrationId)
+    && pins !== undefined && pins !== null && typeof pins === 'object' && !Array.isArray(pins) && Object.keys(pins).length === PIN_FIELDS.length
+    && PIN_FIELDS.every(key => isManagedScopeIdentifier(pins[key]))
+    && pins.runtimeTenantId === binding.tenantId && pins.appKey === binding.appName;
 }
 
 function assignmentKey(line: string): string | undefined {
@@ -30,11 +50,15 @@ async function readJournal(path: string): Promise<CredentialJournal | undefined>
     throw error;
   }
   const value = JSON.parse(await readFile(path, 'utf8')) as CredentialJournal;
-  if (value.schema !== 'eai.local_app_credential.v1'
+  if (!['eai.local_app_credential.v1', 'eai.local_app_credential.v2'].includes(value.schema)
     || !['pending', 'issued', 'complete'].includes(value.phase)
     || !['tenantId', 'appName', 'clientId', 'baseSha256'].every(key => typeof value[key as keyof CredentialJournal] === 'string')
     || !/^[a-f0-9]{64}$/.test(value.baseSha256)
-    || Object.keys(value).some(key => !['schema', 'phase', 'tenantId', 'appName', 'clientId', 'baseSha256', 'secret'].includes(key))
+    || Object.keys(value).some(key => !['schema', 'phase', 'tenantId', 'appName', 'clientId', 'baseSha256', 'secret', 'localSigninBinding', 'registrationId', 'credentialKeyId'].includes(key))
+    || (value.schema === 'eai.local_app_credential.v1' && [value.localSigninBinding, value.registrationId, value.credentialKeyId].some(field => field !== undefined))
+    || (value.schema === 'eai.local_app_credential.v2' && (!scopedBinding(value)
+      || (value.phase === 'pending' && value.credentialKeyId !== undefined)
+      || (value.phase !== 'pending' && (typeof value.credentialKeyId !== 'string' || !UUID.test(value.credentialKeyId)))))
     || (value.phase !== 'issued' && value.secret !== undefined)
     || (value.phase === 'issued' && (typeof value.secret !== 'string' || !value.secret || /[\r\n]/.test(value.secret))))
     throw new LocalAppCredentialError('App credential recovery record is invalid.');
@@ -103,8 +127,14 @@ export async function createLocalAppCredential(options: {
   patches: Record<string, string>;
   expectedEnv?: Record<string, string>;
   reissue: boolean;
-  issue: () => Promise<string>;
+  currentCredentialKeyId?: string;
+  issue: () => Promise<string | { clientSecret: string; credentialKeyId: string }>;
 }): Promise<string> {
+  const scoped = options.binding.localSigninBinding !== undefined || options.binding.registrationId !== undefined;
+  if (scoped && (!scopedBinding(options.binding)
+    || (options.currentCredentialKeyId !== undefined && !UUID.test(options.currentCredentialKeyId)))) {
+    throw new LocalAppCredentialError('App credential recovery belongs to a different selected app or invalid native credential.');
+  }
   const envPath = join(options.root, '.env.local');
   const journalPath = join(options.root, '.env.credential.local');
   const lockPath = join(options.root, '.env.credential-lock.local');
@@ -126,25 +156,31 @@ export async function createLocalAppCredential(options: {
     const digest = createHash('sha256').update(before).digest('hex');
     let journal = await readJournal(journalPath);
     if (journal && (journal.tenantId !== options.binding.tenantId || journal.appName !== options.binding.appName
-      || journal.clientId !== options.binding.clientId))
+      || journal.clientId !== options.binding.clientId || journal.registrationId !== options.binding.registrationId
+      || PIN_FIELDS.some(key => journal?.localSigninBinding?.[key] !== options.binding.localSigninBinding?.[key])))
       throw new LocalAppCredentialError('App credential recovery belongs to a different selected app.');
+    if (scoped && journal?.phase === 'issued' && journal.credentialKeyId !== options.currentCredentialKeyId)
+      throw new LocalAppCredentialError('The retained secret does not match the fresh native credential acknowledgement. No new credential was requested.');
     if (journal?.phase === 'issued' && journal.baseSha256 !== digest)
       throw new LocalAppCredentialError('Local app configuration changed after issuance. Restore its previous configuration before recovering this credential.');
     if (journal && journal.phase !== 'issued' && !options.reissue)
       throw new LocalAppCredentialError('A previous credential request may have succeeded. No additional credential was requested. Restore the credential or explicitly rerun this scoped command with --reissue-local-secret.');
     if (!journal || journal.phase !== 'issued') {
-      journal = { schema: 'eai.local_app_credential.v1', phase: 'pending', ...options.binding, baseSha256: digest };
+      journal = { schema: scoped ? 'eai.local_app_credential.v2' : 'eai.local_app_credential.v1', phase: 'pending', ...options.binding, baseSha256: digest };
       await atomicPrivateWrite(journalPath, JSON.stringify(journal));
-      let secret: string;
-      try { secret = await options.issue(); }
+      let issued: Awaited<ReturnType<typeof options.issue>>;
+      try { issued = await options.issue(); }
       catch (error) {
         const status = (error as { status?: number }).status;
         if (status !== undefined && [400, 401, 403, 404, 422].includes(status)) await unlink(journalPath);
         throw error;
       }
-      if (typeof secret !== 'string' || !secret.trim() || /[\r\n]/.test(secret))
+      const secret = typeof issued === 'string' ? issued : issued?.clientSecret;
+      const credentialKeyId = typeof issued === 'object' ? issued?.credentialKeyId : undefined;
+      if (typeof secret !== 'string' || !secret.trim() || /[\r\n]/.test(secret)
+        || (scoped && (typeof credentialKeyId !== 'string' || !UUID.test(credentialKeyId))))
         throw new LocalAppCredentialError('Invalid credential response; no automatic reissue is permitted.');
-      journal = { ...journal, phase: 'issued', secret };
+      journal = { ...journal, phase: 'issued', secret, ...(scoped ? { credentialKeyId } : {}) };
       await atomicPrivateWrite(journalPath, JSON.stringify(journal));
     }
     const secret = journal.secret!;
@@ -163,7 +199,8 @@ export async function createLocalAppCredential(options: {
     // Atomic replacement prevents partial readers. Uncooperative external editors must still be detected by the final read above.
     await atomicPrivateWrite(envPath, `${lines.join('\n')}\n`);
     await atomicPrivateWrite(journalPath, JSON.stringify({ ...options.binding,
-      schema: 'eai.local_app_credential.v1', phase: 'complete', baseSha256: digest }));
+      schema: scoped ? 'eai.local_app_credential.v2' : 'eai.local_app_credential.v1', phase: 'complete', baseSha256: digest,
+      ...(scoped ? { credentialKeyId: journal.credentialKeyId } : {}) }));
     return secret;
   } finally {
     await releaseSetupLock(lockPath, lock);

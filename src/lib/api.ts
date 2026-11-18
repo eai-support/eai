@@ -624,6 +624,75 @@ export interface RotateEntraSecretResult {
   clientSecret: string;
   tenantId: string;
   expiresAt: string | null;
+  credentialKeyId?: string;
+  localSignin?: LocalSigninReceipt;
+}
+
+/** Current native enrollment authority; names and client IDs never replace these pins. */
+export interface LocalSigninBinding {
+  runtimeTenantId: string;
+  enrollmentOwnerTenantId: string;
+  enrollmentId: string;
+  appKey: string;
+}
+
+/** A credential key is returned only after the native durable credential-issued acknowledgement. */
+export interface LocalSigninReceipt {
+  registrationId: string;
+  version: number;
+  stage: 'ready' | 'credential-issued' | 'blocked';
+  credentialKeyId?: string;
+  providerOperation?: 'credential-issue' | 'credential-reissue';
+  failureCode?: 'APP_IDENTITY_PROVIDER_REJECTED';
+}
+
+export interface ProvisionEntraAppResult {
+  appName: string | null;
+  clientId: string;
+  clientSecret: string | null;
+  existing: boolean;
+  scopes: string[];
+  redirectUris: string[];
+  environment: string | null;
+  tenantId: string | null;
+  tenantAuthorization: TenantAuthorizationSummary | null;
+  signinCompleteness: SigninCompletenessSummary | null;
+  objectId?: string;
+  localSignin?: LocalSigninReceipt;
+}
+
+const CREDENTIAL_UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+
+function localSigninReceipt(value: unknown): LocalSigninReceipt | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+  const receipt = value as Record<string, unknown>;
+  if (typeof receipt.registrationId !== 'string' || !CREDENTIAL_UUID.test(receipt.registrationId)
+    || !Number.isSafeInteger(receipt.version) || Number(receipt.version) < 1
+    || typeof receipt.stage !== 'string' || !['ready', 'credential-issued', 'blocked'].includes(receipt.stage)
+    || Object.keys(receipt).some(key => !['registrationId', 'version', 'stage', 'credentialKeyId', 'providerOperation', 'failureCode'].includes(key))
+    || (receipt.stage !== 'blocked' && receipt.failureCode !== undefined)
+    || (receipt.stage === 'ready' && receipt.providerOperation !== undefined && receipt.providerOperation !== 'signin-configure')
+    || (receipt.stage === 'credential-issued' && receipt.providerOperation !== undefined
+      && receipt.providerOperation !== 'credential-issue' && receipt.providerOperation !== 'credential-reissue')
+    || (receipt.credentialKeyId !== undefined && (typeof receipt.credentialKeyId !== 'string' || !CREDENTIAL_UUID.test(receipt.credentialKeyId)))
+    || (receipt.stage === 'credential-issued' && receipt.credentialKeyId === undefined)
+    || (receipt.stage === 'blocked' && (receipt.failureCode !== 'APP_IDENTITY_PROVIDER_REJECTED'
+      || (receipt.providerOperation !== 'credential-issue' && receipt.providerOperation !== 'credential-reissue')
+      || (receipt.providerOperation === 'credential-issue' && receipt.credentialKeyId !== undefined)
+      || (receipt.providerOperation === 'credential-reissue' && receipt.credentialKeyId === undefined)))) return undefined;
+  return { registrationId: receipt.registrationId, version: Number(receipt.version),
+    stage: receipt.stage as LocalSigninReceipt['stage'],
+    ...(typeof receipt.credentialKeyId === 'string' ? { credentialKeyId: receipt.credentialKeyId } : {}),
+    ...(receipt.stage === 'blocked' ? { providerOperation: receipt.providerOperation as LocalSigninReceipt['providerOperation'],
+      failureCode: 'APP_IDENTITY_PROVIDER_REJECTED' as const } : {}) };
+}
+
+function assertLocalSigninBinding(binding: LocalSigninBinding, tenantId: string, appName?: string): void {
+  if (!binding || Object.keys(binding).length !== 4
+    || ![binding.runtimeTenantId, binding.enrollmentOwnerTenantId, binding.enrollmentId, binding.appKey].every(isManagedScopeIdentifier)
+    || binding.runtimeTenantId !== tenantId || binding.appKey !== appName) {
+    throw new Error('Local sign-in requires the exact current runtime, enrollment owner, enrollment and app binding.');
+  }
 }
 
 export interface TenantDeauthorizationSummary {
@@ -822,6 +891,7 @@ export interface PlatformAPIRequestErrorOptions {
   rawBody?: string;
   supportReference?: string;
   rotationFailure?: SafeRotationFailure;
+  registrationId?: string;
 }
 
 function formatApiRequestErrorMessage(options: PlatformAPIRequestErrorOptions): string {
@@ -838,6 +908,7 @@ export class PlatformAPIRequestError extends Error {
   readonly rawBody?: string;
   readonly supportReference?: string;
   readonly rotationFailure?: SafeRotationFailure;
+  readonly registrationId?: string;
 
   constructor(options: PlatformAPIRequestErrorOptions) {
     super(formatApiRequestErrorMessage(options));
@@ -851,6 +922,7 @@ export class PlatformAPIRequestError extends Error {
     this.rawBody = options.rawBody;
     this.supportReference = options.supportReference;
     this.rotationFailure = options.rotationFailure;
+    this.registrationId = options.registrationId;
   }
 }
 
@@ -2584,25 +2656,20 @@ export class PlatformAPIClient {
     existingClientId?: string;
     idempotent?: boolean;
     requireAppBinding?: boolean;
-  }): Promise<{
-    appName: string | null;
-    clientId: string;
-    clientSecret: string | null;
-    existing: boolean;
-    scopes: string[];
-    redirectUris: string[];
-    environment: string | null;
-    tenantId: string | null;
-    tenantAuthorization: TenantAuthorizationSummary | null;
-    signinCompleteness: SigninCompletenessSummary | null;
-  }> {
+    localSigninBinding?: LocalSigninBinding;
+  }): Promise<ProvisionEntraAppResult> {
+    if (request.localSigninBinding !== undefined) assertLocalSigninBinding(request.localSigninBinding, request.tenantId, request.appName);
+    if (request.requireAppBinding && !request.localSigninBinding) {
+      throw new Error('Scoped sign-in provisioning requires the current native enrollment binding.');
+    }
+    const binding = request.localSigninBinding ? { ...request.localSigninBinding } : undefined;
     const body = {
       tenant_id: request.tenantId,
       app_name: request.appName,
       redirect_uris: request.redirectUris,
       ...(request.existingClientId ? { existing_client_id: request.existingClientId } : {}),
       idempotent: request.idempotent ?? false,
-      ...(request.requireAppBinding ? { require_app_binding: true } : {}),
+      ...(binding ? { require_app_binding: true, localSigninBinding: binding } : {}),
     };
 
     const endpoint = `${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps`;
@@ -2615,11 +2682,19 @@ export class PlatformAPIClient {
 
     if (!res.ok) {
       const ctx = await extractServerErrorContext(res);
+      let payload: unknown;
+      try { payload = JSON.parse(ctx.rawBody) as unknown; } catch { payload = undefined; }
+      const diagnostics = safePlatformDiagnostics(res.status, payload, res.headers);
       throw new PlatformAPIRequestError({
         operation: 'Entra app provisioning',
         status: res.status,
         statusText: res.statusText,
         ...ctx,
+        ...(binding ? { serverMessage: undefined, rawBody: undefined } : {}),
+        serverCode: diagnostics.code,
+        requestId: diagnostics.requestId,
+        supportReference: diagnostics.supportReference,
+        registrationId: diagnostics.registrationId,
       });
     }
 
@@ -2639,10 +2714,20 @@ export class PlatformAPIClient {
       tenantAuthorization?: unknown;
       signin_completeness?: unknown;
       signinCompleteness?: unknown;
+      objectId?: unknown;
+      object_id?: unknown;
+      localSignin?: unknown;
+      local_signin?: unknown;
     };
     const clientId = data.clientId ?? data.client_id;
+    const objectId = data.objectId ?? data.object_id;
+    const nativeReceipt = localSigninReceipt(data.localSignin ?? data.local_signin);
 
-    if (typeof clientId !== 'string' || clientId.trim() === '') {
+    if (typeof clientId !== 'string' || clientId.trim() === ''
+      || (request.localSigninBinding && (!nativeReceipt || typeof objectId !== 'string' || !CREDENTIAL_UUID.test(objectId)
+        || (data.clientSecret ?? data.client_secret ?? null) !== null
+        || readStringField(data as Record<string, unknown>, 'appName', 'app_name') !== request.appName
+        || readStringField(data as Record<string, unknown>, 'tenantId', 'tenant_id') !== request.tenantId))) {
       throw new PlatformAPIRequestError({
         operation: 'Entra app provisioning',
         status: res.status,
@@ -2675,7 +2760,9 @@ export class PlatformAPIClient {
         ? (data.tenantId ?? data.tenant_id) as string
         : null,
       tenantAuthorization: parseTenantAuthorization(data.tenantAuthorization ?? data.tenant_authorization),
-      signinCompleteness: parseSigninCompleteness(data.signinCompleteness ?? data.signin_completeness),
+      signinCompleteness: parseSigninCompleteness(data.signinCompleteness ?? data.signin_completeness, Boolean(binding)),
+      ...(typeof objectId === 'string' ? { objectId } : {}),
+      ...(nativeReceipt ? { localSignin: nativeReceipt } : {}),
     };
   }
 
@@ -2683,13 +2770,29 @@ export class PlatformAPIClient {
     tenantId: string;
     clientId: string;
     appName?: string;
+    localSigninBinding?: LocalSigninBinding;
+    reissue?: boolean;
+    expectedCredentialKeyId?: string;
   }): Promise<RotateEntraSecretResult> {
+    if (request.localSigninBinding !== undefined) {
+      assertLocalSigninBinding(request.localSigninBinding, request.tenantId, request.appName);
+      if ((request.reissue !== undefined && typeof request.reissue !== 'boolean')
+        || (request.reissue === true ? typeof request.expectedCredentialKeyId !== 'string'
+          || !CREDENTIAL_UUID.test(request.expectedCredentialKeyId) : request.expectedCredentialKeyId !== undefined)) {
+        throw new Error('Credential reissue requires the fresh native issued-key receipt; first issuance must not provide an expected key.');
+      }
+    } else if (request.reissue !== undefined || request.expectedCredentialKeyId !== undefined) {
+      throw new Error('Credential reissue requires the exact current enrollment binding.');
+    }
+    const binding = request.localSigninBinding ? { ...request.localSigninBinding } : undefined;
     const response = await this.fetchPublic(
       `${this.baseUrl}${PUBLIC_PLATFORM_PATH}/provisioning/entra-apps/${encodeURIComponent(request.clientId)}/rotate-secret`,
       {
         method: 'POST',
         headers: await this.headers(),
-        body: JSON.stringify({ tenant_id: request.tenantId, ...(request.appName ? { app_name: request.appName } : {}) }),
+        body: JSON.stringify({ tenant_id: request.tenantId, ...(request.appName ? { app_name: request.appName } : {}),
+          ...(binding ? { localSigninBinding: binding, reissue: request.reissue ?? false,
+            ...(request.expectedCredentialKeyId ? { expectedCredentialKeyId: request.expectedCredentialKeyId } : {}) } : {}) }),
       },
     );
 
@@ -2703,10 +2806,12 @@ export class PlatformAPIClient {
         status: response.status,
         statusText: response.statusText,
         ...context,
+        ...(binding ? { serverMessage: undefined, rawBody: undefined } : {}),
         serverCode: diagnostics.code,
         requestId: diagnostics.requestId,
         supportReference: diagnostics.supportReference,
         rotationFailure: diagnostics.rotationFailure,
+        registrationId: diagnostics.registrationId,
       });
     }
 
@@ -2722,8 +2827,12 @@ export class PlatformAPIClient {
     const clientSecret = readStringField(data, 'clientSecret', 'client_secret');
     const tenantId = readStringField(data, 'tenantId', 'tenant_id');
     const appName = readStringField(data, 'appName', 'app_name');
+    const credentialKeyId = readStringField(data, 'credentialKeyId', 'credential_key_id');
+    const nativeReceipt = localSigninReceipt(data.localSignin ?? data.local_signin);
     if (!clientId || !clientSecret || clientId !== request.clientId || tenantId !== request.tenantId
-      || (request.appName !== undefined && appName !== request.appName)) {
+      || (request.appName !== undefined && appName !== request.appName)
+      || (request.localSigninBinding && (!credentialKeyId || !CREDENTIAL_UUID.test(credentialKeyId)
+        || !nativeReceipt || nativeReceipt.stage !== 'credential-issued' || nativeReceipt.credentialKeyId !== credentialKeyId))) {
       throw invalidRotation();
     }
 
@@ -2733,6 +2842,8 @@ export class PlatformAPIClient {
       clientSecret,
       tenantId,
       expiresAt: readStringField(data, 'expiresAt', 'expires_at'),
+      ...(credentialKeyId ? { credentialKeyId } : {}),
+      ...(nativeReceipt ? { localSignin: nativeReceipt } : {}),
     };
   }
 
@@ -2847,7 +2958,7 @@ function parseTenantAuthorization(value: unknown): TenantAuthorizationSummary | 
   };
 }
 
-function parseSigninCompleteness(value: unknown): SigninCompletenessSummary | null {
+function parseSigninCompleteness(value: unknown, native = false): SigninCompletenessSummary | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return null;
   }
@@ -2863,9 +2974,10 @@ function parseSigninCompleteness(value: unknown): SigninCompletenessSummary | nu
   const signinFlowBound = typeof flow === 'boolean' ? flow : null;
   return {
     graphPermsAdded, publicapiPermsAdded, consentGranted, publicapiPreauthorized, signinFlowBound,
-    // A summary cannot override a failed step. Missing flow metadata remains compatible with older deployments.
+    // Native setup confirms all six exact booleans; legacy deployments retain their historical optional metadata.
     signinReady: graphPermsAdded && publicapiPermsAdded && consentGranted && publicapiPreauthorized
-      && signinFlowBound !== false && (v.signin_ready ?? v.signinReady) !== false,
+      && (native ? signinFlowBound === true && (v.signin_ready ?? v.signinReady) === true
+        : signinFlowBound !== false && (v.signin_ready ?? v.signinReady) !== false),
     warnings,
   };
 }

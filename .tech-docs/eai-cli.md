@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.13 |
-| Released | 2026-11-11 |
-| Last Material Change | CLI and data repairs for issue 3625 |
-| Source Commit | `51718a71545ade57079c2d78f6eb976e1c04b8f0` |
+| Version | 3.20.18 |
+| Released | 2026-11-18 |
+| Last Material Change | Private unreleased DEV candidate correcting generated assignee schema while retaining native lifecycle receipts; public distribution remains user-owned. |
+| Source Commit | `ece6d08d5e85040838427d5c25ff9a69f3a8fc26` |
 
 
 ## Install

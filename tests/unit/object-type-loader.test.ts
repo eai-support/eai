@@ -2,7 +2,8 @@ import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, test } from 'vitest';
-import { loadObjectTypes, canonicalizeObjectTypeRelationshipTargets } from '../../src/lib/config.js';
+import { loadObjectTypes, canonicalizeObjectTypeRelationshipTargets, validateObjectTypeDefinitions } from '../../src/lib/config.js';
+import { generateObjectTypesScaffold } from '../../src/commands/init.js';
 
 const roots: string[] = [];
 async function project(source: string, alias = false): Promise<string> {
@@ -20,6 +21,33 @@ async function project(source: string, alias = false): Promise<string> {
   return root;
 }
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+
+describe.each([false, true])('native generated app definitions with documents=%s', includeDocs => {
+  test('3625-cli-scaffold-assignee:AC-1: compile and validate the actual init output before publication', async () => {
+    const root = await project(generateObjectTypesScaffold({
+      name: 'binding-sample', appKey: 'binding-sample', displayName: 'Binding sample',
+      description: 'Generated contract fixture',
+      parentTenantId: '11111111-1111-4111-8111-111111111111',
+      tenantId: '22222222-2222-4222-8222-222222222222',
+      includeChat: false, includeDocs, authProvider: 'ciam', packageProfile: 'external',
+    }));
+    const definitions = await loadObjectTypes(root);
+    expect(() => validateObjectTypeDefinitions(definitions)).not.toThrow();
+    const canonical = canonicalizeObjectTypeRelationshipTargets(definitions);
+    const record = canonical['binding-sample'].find(type => type.slug === 'record');
+    expect(record?.properties.find(field => field.name === 'assignedTo')).toMatchObject({
+      type: 'text', required: false,
+    });
+    expect(record?.actions.find(action => action.name === 'submit')?.sideEffects).toContainEqual({
+      type: 'set_user', field: 'assignedTo',
+    });
+    if (includeDocs) {
+      expect(record?.linkTypes).toContainEqual(expect.objectContaining({
+        name: 'documents', targetObjectType: 'document',
+      }));
+    }
+  });
+});
 
 describe.each(['directory', 'symlink'] as const)('Object Type compiler loading through a %s root', rootKind => {
   const fixture = (source: string): Promise<string> => project(source, rootKind === 'symlink');
