@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.17 |
-| Released | 2026-11-17 |
-| Last Material Change | Private unreleased DEV candidate accepting actual native/Admin/Public success-operation and retained-credential receipts; public distribution remains user-owned. |
-| Source Commit | `617e7c56df6721e1286c43d22d9482e7999c175c` |
+| Version | 3.20.18 |
+| Released | 2026-11-18 |
+| Last Material Change | Private unreleased DEV candidate correcting generated assignee schema while retaining native lifecycle receipts; public distribution remains user-owned. |
+| Source Commit | `ece6d08d5e85040838427d5c25ff9a69f3a8fc26` |
 
 
 ## Install

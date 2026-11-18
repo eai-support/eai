@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.17. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.18. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -1010,7 +1010,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.17** (2026-11-17): Private unreleased DEV candidate accepting actual native/Admin/Public success-operation and retained-credential receipts; public distribution remains user-owned..
+The current CLI release is **v3.20.18** (2026-11-18): Private unreleased DEV candidate correcting generated assignee schema while retaining native lifecycle receipts; public distribution remains user-owned..
 
 ---
 
@@ -1061,10 +1061,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.17 |
-| Released | 2026-11-17 |
-| Last Material Change | Private unreleased DEV candidate accepting actual native/Admin/Public success-operation and retained-credential receipts; public distribution remains user-owned. |
-| Source Commit | `617e7c56df6721e1286c43d22d9482e7999c175c` |
+| Version | 3.20.18 |
+| Released | 2026-11-18 |
+| Last Material Change | Private unreleased DEV candidate correcting generated assignee schema while retaining native lifecycle receipts; public distribution remains user-owned. |
+| Source Commit | `ece6d08d5e85040838427d5c25ff9a69f3a8fc26` |
 
 
 ## Install
@@ -3052,7 +3052,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.17. The same catalog powers human stderr output, JSON output for AI
+v3.20.18. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

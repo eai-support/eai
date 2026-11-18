@@ -2551,7 +2551,8 @@ AUTH_TRUST_HOST=true
 `;
 }
 
-function generateObjectTypesScaffold(opts: InitOptions): string {
+/** Build the app's domain definitions without making provider or workspace requests. */
+export function generateObjectTypesScaffold(opts: InitOptions): string {
   const tenantKey = opts.name;
   const recordsTableName = appOwnedSqlTableName(opts, "records");
   const documentsTableName = appOwnedSqlTableName(opts, "documents");
@@ -2815,10 +2816,10 @@ export const objectTypes: Record<string, ObjectTypeDefinition[]> = {
         },
         {
           name: 'assignedTo',
-          type: 'relationship' as const,
+          type: 'text' as const,
           required: false,
           indexed: true,
-          description: 'User ID of the assignee',
+          description: 'Identity user ID of the assignee',
         },
       ],
 ${documentLinkBlock}
