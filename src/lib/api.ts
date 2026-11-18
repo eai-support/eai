@@ -670,9 +670,11 @@ function localSigninReceipt(value: unknown): LocalSigninReceipt | undefined {
     || !Number.isSafeInteger(receipt.version) || Number(receipt.version) < 1
     || typeof receipt.stage !== 'string' || !['ready', 'credential-issued', 'blocked'].includes(receipt.stage)
     || Object.keys(receipt).some(key => !['registrationId', 'version', 'stage', 'credentialKeyId', 'providerOperation', 'failureCode'].includes(key))
-    || (receipt.stage !== 'blocked' && (receipt.failureCode !== undefined || receipt.providerOperation !== undefined))
+    || (receipt.stage !== 'blocked' && receipt.failureCode !== undefined)
+    || (receipt.stage === 'ready' && receipt.providerOperation !== undefined && receipt.providerOperation !== 'signin-configure')
+    || (receipt.stage === 'credential-issued' && receipt.providerOperation !== undefined
+      && receipt.providerOperation !== 'credential-issue' && receipt.providerOperation !== 'credential-reissue')
     || (receipt.credentialKeyId !== undefined && (typeof receipt.credentialKeyId !== 'string' || !CREDENTIAL_UUID.test(receipt.credentialKeyId)))
-    || (receipt.stage === 'ready' && receipt.credentialKeyId !== undefined)
     || (receipt.stage === 'credential-issued' && receipt.credentialKeyId === undefined)
     || (receipt.stage === 'blocked' && (receipt.failureCode !== 'APP_IDENTITY_PROVIDER_REJECTED'
       || (receipt.providerOperation !== 'credential-issue' && receipt.providerOperation !== 'credential-reissue')

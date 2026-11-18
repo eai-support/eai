@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "eai.local_signin_actual_public_receipts.v1",
+  "provenance": {
+    "native": {
+      "repository": "enterpriseaigroup/Configurator",
+      "baseHead": "34dddaecb84459a90b7704e0fc986c48b0c6a96f",
+      "sourceHashes": {
+        "src/services/AppIdentityRegistration.ts": "5eff8391aafefc5bcaa81fe68ed5740e82e23a7bbd4a894825c6b8a2ea6099f8",
+        "src/services/AppIdentityRegistrationCommand.ts": "d8207cb811d711fefb072e381f16d060cba0310fd9b85ade4ffb3b9718404dab"
+      },
+      "transitionFunctionSha256": "791fd472561df95a39be8b2a11ba6e0559fb93b73cd13ec2e26559733cb00e67",
+      "nativeTranscriptSha256": "1926e78dea0785d8354144ac2d03e8366c71eec9e855df7ec35b300bde270e77",
+      "generator": "Actual native TypeScript transitions; no Python state-machine reconstruction or provider requests."
+    },
+    "admin": {
+      "repository": "enterpriseaigroup/AdminAPI",
+      "baseHead": "caf292e533ea7a5e5a85f813e0b1af60c452cf81",
+      "sourceHashes": {
+        "src/services/local_signin.py": "53e3ef06a1f896cfdbaba903882063e24f4e97e961012488dd5744566a37b4b3",
+        "src/services/app_identity_journal.py": "a9156c7b779ada5ed227bf20c8b245a82ecf7442653a4da0a599983069514115"
+      },
+      "producer": "actual local_signin_receipt(IdentityRegistration.model_validate(actual native TypeScript transition))"
+    },
+    "public": {
+      "repository": "enterpriseaigroup/PublicAPI",
+      "baseHead": "e26924d8794f7bc43ad6b55365924bc38fb9e578",
+      "sourcePath": "src/app/models/app_identity_registration.py",
+      "sourceSha256": "9e38e99eaaabb840b43d531e7bfdddd0c0d9039f0453f1a885de9ae14518fad4",
+      "producer": "actual LocalSigninReceipt.model_validate(Admin receipt).model_dump(mode=json,by_alias=True)"
+    },
+    "scope": "Controlled producer/consumer wire evidence only; no real authentication, provider request, deployment or feature acceptance."
+  },
+  "cases": [
+    {
+      "id": "base.ready",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 5,
+        "stage": "ready",
+        "providerOperation": "signin-configure"
+      }
+    },
+    {
+      "id": "base.credential-issued",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 7,
+        "stage": "credential-issued",
+        "credentialKeyId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "providerOperation": "credential-issue"
+      }
+    },
+    {
+      "id": "explicit-reissue.credential-issued",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 9,
+        "stage": "credential-issued",
+        "credentialKeyId": "ffffffff-ffff-4fff-8fff-ffffffffffff",
+        "providerOperation": "credential-reissue"
+      }
+    },
+    {
+      "id": "rejected-credential-retry.blocked",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 7,
+        "stage": "blocked",
+        "providerOperation": "credential-issue",
+        "failureCode": "APP_IDENTITY_PROVIDER_REJECTED"
+      }
+    },
+    {
+      "id": "rejected-reissue-retry.blocked",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 9,
+        "stage": "blocked",
+        "credentialKeyId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "providerOperation": "credential-reissue",
+        "failureCode": "APP_IDENTITY_PROVIDER_REJECTED"
+      }
+    },
+    {
+      "id": "issued-callback-reconfigure.ready",
+      "clientId": "88888888-8888-4888-8888-88888888888a",
+      "objectId": "77777777-7777-4777-8777-777777777777",
+      "localSignin": {
+        "registrationId": "55555555-5555-4555-8555-555555555555",
+        "version": 9,
+        "stage": "ready",
+        "credentialKeyId": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        "providerOperation": "signin-configure"
+      }
+    }
+  ],
+  "binding": {
+    "runtimeTenantId": "22222222-2222-4222-8222-222222222222",
+    "enrollmentOwnerTenantId": "11111111-1111-4111-8111-111111111111",
+    "enrollmentId": "33333333-3333-4333-8333-333333333333",
+    "appKey": "owned-app"
+  }
+}

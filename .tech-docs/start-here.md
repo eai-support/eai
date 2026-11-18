@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.16** (2026-11-17): Private DEV source candidate for exact current-enrollment sign-in, credential custody and safe identity recovery; public distribution remains user-owned..
+The current CLI release is **v3.20.17** (2026-11-17): Private unreleased DEV candidate accepting actual native/Admin/Public success-operation and retained-credential receipts; public distribution remains user-owned..

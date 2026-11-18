@@ -1,7 +1,7 @@
 {
   "name": "@enterpriseai/cli",
   "dist-tags": {
-    "latest": "3.20.16"
+    "latest": "3.20.17"
   },
   "versions": {
     "3.19.5": {
@@ -364,9 +364,9 @@
         "integrity": "sha512-XPRTWkq0w7qtWrqOKM2t5Qe1NJRugr1sk28dhXd9mDbzuleiVXJYOrjg718w3VNXVAvkzJMPhw5+7KFWnwrtnA=="
       }
     },
-    "3.20.16": {
+    "3.20.17": {
       "name": "@enterpriseai/cli",
-      "version": "3.20.16",
+      "version": "3.20.17",
       "description": "EnterpriseAI CLI for app setup, validation, deployment readiness, and platform operations",
       "bin": {
         "eai": "dist/index.js"
@@ -383,13 +383,13 @@
         "typescript": "6.0.3"
       },
       "dist": {
-        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.16.tgz",
-        "shasum": "0cf069714d63480a87f66cc050df380f58fa89f3",
-        "integrity": "sha512-I7dETQwVT2jPmr2j9Fc6axNogA6lNYEwfmzmVFYls/FamTKJnJAiPZcuOi0kSvnILJ5jjk89BHV1p35dnAUgOw=="
+        "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.17.tgz",
+        "shasum": "eb46619e69aa0bc4d50d739ff8100e4707809b53",
+        "integrity": "sha512-FhVG4dGl6QWis9e2YzV2r+Pn5Hl8D8GOKTmTTx5/E1OJXstx13Uxez5FnqczETBuk2AdNrAzm++XMshcWXkPSA=="
       }
     }
   },
-  "modified": "2026-11-17T21:59:30.750Z",
+  "modified": "2026-11-17T23:59:57.254Z",
   "time": {
     "3.19.5": "2026-10-13T03:33:26.251Z",
     "3.20.0": "2026-10-14T02:38:51.024Z",
@@ -406,7 +406,7 @@
     "3.20.11": "2026-11-10T06:42:54.345Z",
     "3.20.12": "2026-11-11T07:29:41.299Z",
     "3.20.13": "2026-11-16T05:43:37.331Z",
-    "3.20.16": "2026-11-17T21:59:30.750Z",
-    "modified": "2026-11-17T21:59:30.750Z"
+    "3.20.17": "2026-11-17T23:59:57.254Z",
+    "modified": "2026-11-17T23:59:57.254Z"
   }
 }

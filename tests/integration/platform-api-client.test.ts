@@ -2445,6 +2445,47 @@ describe('PlatformAPIClient', () => {
   const nativeLocalSignin = { registrationId: '11111111-1111-4111-8111-111111111111', version: 1, stage: 'ready' }
   const issuedKey = '22222222-2222-4222-8222-222222222222'
 
+  const serverReceipts = createRequire(import.meta.url)('../fixtures/local-signin-server-receipts.json') as {
+    binding: { runtimeTenantId: string; enrollmentOwnerTenantId: string; enrollmentId: string; appKey: string };
+    cases: { id: string; clientId: string; objectId: string; localSignin: Record<string, unknown> }[];
+  }
+
+  test.each(serverReceipts.cases)('accepts actual native/Admin/Public serialized receipt $id', async row => {
+    const pins = serverReceipts.binding
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      app_name: pins.appKey, tenant_id: pins.runtimeTenantId, client_id: row.clientId, objectId: row.objectId,
+      client_secret: null, existing: true, localSignin: row.localSignin,
+      signin_completeness: { graph_perms_added: true, publicapi_perms_added: true, consent_granted: true,
+        publicapi_preauthorized: true, signin_flow_bound: true, signin_ready: true },
+    }), { status: 200 }))
+    const result = await new PlatformAPIClient('https://example.test', pins.runtimeTenantId).provisionEntraApp({
+      tenantId: pins.runtimeTenantId, appName: pins.appKey, redirectUris: [], localSigninBinding: pins,
+    })
+    const { providerOperation: _operation, ...acknowledgement } = row.localSignin
+    expect(result.localSignin).toEqual(row.localSignin.stage === 'blocked' ? row.localSignin : acknowledgement)
+    expect(result.clientSecret).toBeNull()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
+  test.each(serverReceipts.cases.filter(row => row.localSignin.stage === 'credential-issued'))(
+    'accepts actual native/Admin/Public credential acknowledgement $id', async row => {
+      const pins = serverReceipts.binding
+      const reissue = row.localSignin.providerOperation === 'credential-reissue'
+      const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+        app_name: pins.appKey, tenant_id: pins.runtimeTenantId, client_id: row.clientId,
+        client_secret: '<controlled-once-wire-fixture>', credentialKeyId: row.localSignin.credentialKeyId,
+        localSignin: row.localSignin,
+      }), { status: 200 }))
+      const result = await new PlatformAPIClient('https://example.test', pins.runtimeTenantId).rotateEntraAppSecret({
+        tenantId: pins.runtimeTenantId, appName: pins.appKey, clientId: row.clientId, localSigninBinding: pins,
+        reissue, ...(reissue ? { expectedCredentialKeyId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee' } : {}),
+      })
+      expect(result.localSignin?.credentialKeyId).toBe(row.localSignin.credentialKeyId)
+      expect(result.clientSecret).toBe('<controlled-once-wire-fixture>')
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+    },
+  )
+
   test.each([false, true])('scoped identity errors retain only the actual canonical native reference (nested %s)', async nested => {
     const safe = { error: 'CIAM_USER_FLOW_CAPACITY_EXCEEDED', message: 'PRIVATE provider credential /internal/graph',
       details: { registrationId: nativeLocalSignin.registrationId, supportReference: issuedKey, secret: 'PRIVATE' } }
@@ -2516,7 +2557,10 @@ describe('PlatformAPIClient', () => {
     { stage: 'ready', version: Number.MAX_SAFE_INTEGER + 1 },
     { stage: 'configuring', version: 1 },
     { stage: 'credential-issued', version: 1 },
-    { stage: 'ready', version: 1, credentialKeyId: issuedKey },
+    { stage: 'ready', version: 1, credentialKeyId: issuedKey, providerOperation: 'credential-issue' },
+    { stage: 'ready', version: 1, credentialKeyId: 'malformed-key' },
+    { stage: 'ready', version: 1, providerOperation: null },
+    { stage: 'credential-issued', version: 7, credentialKeyId: issuedKey, providerOperation: 'signin-configure' },
     { stage: 'blocked', version: 1, failureCode: 'APP_IDENTITY_OUTCOME_UNKNOWN', providerOperation: 'credential-issue' },
     { stage: 'blocked', version: 1, failureCode: 'APP_IDENTITY_PROVIDER_REJECTED', providerOperation: 'application-create' },
   ])('scoped Entra provision rejects incomplete/uncertain native identity receipts: %j', async receipt => {
