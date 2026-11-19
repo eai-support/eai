@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.18 |
-| Released | 2026-11-18 |
-| Last Material Change | Private unreleased DEV candidate correcting generated assignee schema while retaining native lifecycle receipts; public distribution remains user-owned. |
-| Source Commit | `ece6d08d5e85040838427d5c25ff9a69f3a8fc26` |
+| Version | 3.20.19 |
+| Released | 2026-11-19 |
+| Last Material Change | Print workspace ID/slug first on create and forward child domain |
+| Source Commit | `06b8106a51db93597ab2c3075c934d8cd4a798a6` |
 
 
 ## Install
