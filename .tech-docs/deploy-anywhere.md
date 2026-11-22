@@ -5,17 +5,49 @@ title: Deploy An EAI App Anywhere
 
 # Deploy An EAI App Anywhere
 
-EAI apps declare a provider-neutral runtime contract in `eai.runtime.json`.
-Hosting-specific tooling should translate that contract into provider env vars,
-secret settings, callback URLs, and smoke checks. The app contract stays the
-same whether the host is Vercel, Docker, AWS, Azure, Kubernetes, a VM, or an
-internal demo environment.
+Start with EAI-managed container hosting when you want EAI to host your app.
+You can also deploy the same app to another supported provider. The app keeps
+the same runtime contract across hosting options.
+
+## Hosting Options
+
+### EAI-Managed Containers
+
+Choose EAI-managed containers first for an EAI-hosted app. Use the EAI CLI
+deployment flow to publish and check the app.
+
+Validate the app source, then deploy it to EAI-managed containers:
+
+```bash
+eai deploy source validate --format json
+eai deploy app <app-key> \
+  --target eai \
+  --tenant-id <tenant-id> \
+  --target-tenant-id <runtime-tenant-id> \
+  --environment preview \
+  --source eai-managed \
+  --wait
+```
+
+Use the tenant that owns the app for `--tenant-id`. Set
+`--target-tenant-id` to the workspace where the app will run. If both are the
+same workspace, use the same ID for both options.
+
+### Other Hosting Providers
+
+You can also host the app with Vercel, Docker, AWS, Azure, Kubernetes, a VM, or
+another provider. You or your hosting provider manage that hosting environment.
+The EAI CLI prepares the required environment settings and checks the deployed
+app.
+
+```bash
+eai deploy env --provider vercel
+```
 
 ## Local Contract Validation
 
 ```bash
 eai runtime validate
-eai deploy env --provider generic
 ```
 
 The validator checks that required env names and secrets are declared, tenant
