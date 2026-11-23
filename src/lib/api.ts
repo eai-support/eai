@@ -1637,6 +1637,7 @@ export class PlatformAPIClient {
 
   async getPublishedObjectTypes(options?: {
     name?: string;
+    matching?: ReadonlyArray<{ name: string; slug?: string }>;
     limit?: number;
     sort?: string;
     page?: number;
@@ -1648,16 +1649,25 @@ export class PlatformAPIClient {
     if (options?.name) {
       filters.name = options.name;
     }
+    const params = buildPayloadEqualsParams(options?.matching?.length ? {} : filters, {
+      limit: Math.min(options?.limit ?? 100, 100),
+      sort: options?.sort ?? 'name',
+      ...(options?.page === undefined ? {} : { page: options.page }),
+    });
+    if (options?.matching?.length) {
+      const names = options.matching.map(type => type.name);
+      const slugs = options.matching.flatMap(type => type.slug ? [type.slug] : []);
+      params.where = JSON.stringify({ and: [
+        ...Object.entries(filters).map(([field, value]) => ({ [field]: { equals: value } })),
+        { or: [{ name: { in: names } }, { slug: { in: slugs } }] },
+      ] });
+    }
 
     return this.publicRequest(
       `${PUBLIC_DATA_RESOURCES_PATH}/object-types`,
       'GET',
       undefined,
-      buildPayloadEqualsParams(filters, {
-        limit: Math.min(options?.limit ?? 100, 100),
-        sort: options?.sort ?? 'name',
-        ...(options?.page === undefined ? {} : { page: options.page }),
-      }),
+      params,
       undefined,
       undefined,
       options?.timeoutMs,

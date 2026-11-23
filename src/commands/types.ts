@@ -1057,40 +1057,57 @@ class PublishedBindingReviewError extends Error {
   }
 }
 
-async function checkPublishedPostgresBindings(
+async function readPublicationCatalog(
   client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[],
-): Promise<void> {
-  const response = await client.getResourceStorageStatus();
-  if (!response.ok) {
-    throw new Error(`Could not verify published storage bindings in the runtime workspace (HTTP ${response.status}).`);
+): Promise<RemoteObjectTypeDocument[]> {
+  // Bound the name and slug lists in the encoded regional catalog query.
+  const batches: ObjectTypeDefinition[][] = [];
+  let batch: ObjectTypeDefinition[] = [];
+  let size = 0;
+  for (const type of types) {
+    const entrySize = type.name.length + (type.slug?.length ?? 0) + 20;
+    if (batch.length && size + entrySize > 1200) {
+      batches.push(batch);
+      batch = [];
+      size = 0;
+    }
+    batch.push(type);
+    size += entrySize;
   }
-  const status: unknown = await response.json();
-  if (!isRecord(status) || status.tenantId !== binding.runtimeTenantId || !Array.isArray(status.objectTypes)) {
-    throw new Error("Storage status did not identify the selected runtime workspace and its Object Types.");
+  if (batch.length) batches.push(batch);
+
+  const records = new Map<string, Record<string, unknown>>();
+  for (const matching of batches) {
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await readConsistentObjectTypes({
+        getPublishedObjectTypes: options => client.getPublishedObjectTypes({ ...options, matching }),
+      }, binding.runtimeTenantId);
+    } catch {
+      throw new Error("Could not verify the published Object Type catalog for the runtime workspace.");
+    }
+    for (const row of rows) records.set(String(row.id), row);
   }
-  const requested = new Set(types.map(type => type.slug));
+  const docs = extractRemoteObjectTypeDocs({ docs: [...records.values()] })
+    .filter(doc => types.some(type => matchesRequestedType(doc, type)));
   const prefix = appOwnedSqlTablePrefix(binding.runtimeTenantId, binding.appKey);
   const protectedSlugs = new Set<string>();
-  for (const row of status.objectTypes) {
-    if (!isRecord(row) || typeof row.objectType !== "string") {
-      throw new Error("Storage status contains an unidentified Object Type.");
-    }
-    if (!requested.has(row.objectType)) continue;
-    if (typeof row.backend !== "string" || typeof row.metadataStatus !== "string") {
-      throw new Error(`Storage status is incomplete for ${row.objectType}.`);
-    }
-    if (row.backend !== "postgresql" || row.metadataStatus !== "ready") continue;
-    const sql = getStorageBindingScope(row.binding, "sql");
+  for (const doc of docs) {
+    if (!doc.status) throw new Error(`The runtime catalog is missing the status for ${doc.name}.`);
+    if (doc.status !== "published" || (doc.storageBackend ?? "postgresql") !== "postgresql"
+      || doc.storageMetadataStatus !== "ready") continue;
+    const sql = getStorageBindingScope(doc.storageBinding, "sql");
     if (!sql || typeof sql.tableName !== "string" || !sql.tableName
       || typeof sql.databaseAlias !== "string" || typeof sql.tenantSchemaStrategy !== "string") {
-      throw new Error(`Storage status is missing the published SQL binding for ${row.objectType}.`);
+      throw new Error(`The runtime catalog is missing the published SQL binding for ${doc.name}.`);
     }
     if (sql.databaseAlias === APP_SQL_DATABASE_ALIAS && sql.tenantSchemaStrategy === "per-tenant-database"
       && !sql.tableName.startsWith(prefix)) {
-      protectedSlugs.add(row.objectType);
+      protectedSlugs.add(doc.slug ?? doc.name);
     }
   }
   if (protectedSlugs.size) throw new PublishedBindingReviewError([...protectedSlugs]);
+  return docs;
 }
 
 function appOwnedStoragePublishGuidance(
@@ -1382,6 +1399,7 @@ export async function trySeedViaAppManifestPublish(
       toAppManifestObjectTypes(types, "name-derived-slug"),
       splitTenantScope ? runtimeTenantId : undefined,
     );
+    await throwIfTypePublicationBlocked(nameDerivedResponse, provisioningBinding);
     if (nameDerivedResponse.ok) {
       manifestResponse = nameDerivedResponse;
       appManifestRequestShape = "name-derived-slug";
@@ -2218,7 +2236,7 @@ Examples:
         client = new PlatformAPIClient(publicApiUrl, tenantId);
         appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
         await checkTypeSeedPreflight(appClient, binding);
-        if (dedicatedPostgres) await checkPublishedPostgresBindings(client, binding, types);
+        await readPublicationCatalog(client, binding, types);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (options.format !== 'json') out.error(message);
@@ -2289,7 +2307,7 @@ Examples:
       let created = 0,
         updated = 0,
         failed = 0;
-      let remoteDocs: RemoteObjectTypeDocument[] = [];
+      let remoteDocs: RemoteObjectTypeDocument[];
       let appManifestFallbackReason: string | undefined;
 
       try {
@@ -2376,18 +2394,13 @@ Examples:
       }
 
       try {
-        const remoteRes = await client.getPublishedObjectTypes({ limit: 200 });
-        if (!remoteRes.ok) {
-          throw new Error(
-            `remote lookup failed: ${await describeFailedPlatformResponse(remoteRes)}`,
-          );
-        }
-        remoteDocs = extractRemoteObjectTypeDocs(await remoteRes.json());
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err);
-        if (options.format !== "json") {
-          out.warn(`Pre-flight lookup failed: ${message}`);
-        }
+        remoteDocs = await readPublicationCatalog(client, binding, types);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (options.format !== "json") out.error(message);
+        jsonResults.push({ tenantKey, tenantId, created: 0, updated: 0, failed: types.length, error: message,
+          ...(error instanceof PublishedBindingReviewError ? { errorCode: error.code } : {}) });
+        continue;
       }
 
       for (const type of types) {

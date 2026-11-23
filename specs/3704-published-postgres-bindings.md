@@ -5,9 +5,9 @@ A published Object Type can already use a dedicated PostgreSQL table label with 
 ## Draft behavior
 
 - Resolve the exact app enrollment and runtime workspace before evaluating tenant-specific names.
-- For a manifest declaring ready, dedicated `tenant-postgres` storage, read the runtime workspace's storage status once. If an affected type already has a different prefix, report its slug and ask for ownership verification.
+- Read the matching definitions from the regional runtime catalog by name or slug. Compare complete bounded results across two scans per batch. If a published, ready, dedicated `tenant-postgres` definition uses a different prefix, report its slug and ask for ownership verification. Apply the same check when the proposed backend changes.
 - Preview and seed stop the entire batch on this finding. An incomplete workspace response stops the check. A new dedicated definition still requires the runtime prefix.
-- A server binding conflict on save or publish stops the command. Keep the binding provided in the manifest and surface the conflict without a direct write or provisioning retry.
+- A server binding conflict on save, compatibility retry or publish stops the command. Any eligible direct-write fallback repeats the catalog check before its first write.
 
 ## Qualification
 
