@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.19 |
-| Released | 2026-11-19 |
-| Last Material Change | Print workspace ID/slug first on create and forward child domain |
-| Source Commit | `06b8106a51db93597ab2c3075c934d8cd4a798a6` |
+| Version | 3.20.20 |
+| Released | 2026-11-23 |
+| Last Material Change | Verify published relationships and storage before seeding Object Types. |
+| Source Commit | `c603dfcec2ebb6de15e9a31b05a32f89802fc5c6` |
 
 
 ## Install

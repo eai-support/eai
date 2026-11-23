@@ -1,5 +1,5 @@
 # EAI CLI — Full Documentation
-> Source documentation bundle for `@enterpriseai/cli` package source v3.20.19. This snapshot does not certify release-channel publication.
+> Source documentation bundle for `@enterpriseai/cli` package source v3.20.20. This snapshot does not certify release-channel publication.
 > Generated from the public documentation set plus current CLI help output.
 
 ## Install
@@ -1010,7 +1010,7 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.19** (2026-11-19): Print workspace ID/slug first on create and forward child domain.
+The current CLI release is **v3.20.20** (2026-11-23): Verify published relationships and storage before seeding Object Types..
 
 ---
 
@@ -1061,10 +1061,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.19 |
-| Released | 2026-11-19 |
-| Last Material Change | Print workspace ID/slug first on create and forward child domain |
-| Source Commit | `06b8106a51db93597ab2c3075c934d8cd4a798a6` |
+| Version | 3.20.20 |
+| Released | 2026-11-23 |
+| Last Material Change | Verify published relationships and storage before seeding Object Types. |
+| Source Commit | `c603dfcec2ebb6de15e9a31b05a32f89802fc5c6` |
 
 
 ## Install
@@ -3052,7 +3052,7 @@ Acceptance is not completion. A job with failed stages or `completed_with_errors
 # Error Guidance
 
 This page lists the public-safe error guidance bundled with `@enterpriseai/cli`
-v3.20.19. The same catalog powers human stderr output, JSON output for AI
+v3.20.20. The same catalog powers human stderr output, JSON output for AI
 agents, and `eai errors explain`.
 
 Agents should run read-only diagnostics first, run mutating fixes only when they

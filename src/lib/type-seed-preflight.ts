@@ -47,6 +47,9 @@ export async function checkTypeSeedPreflight(client: PlatformAPIClient, binding:
   const enrollment = isRecord(payload) && isRecord(payload.enrollment) ? payload.enrollment : undefined;
   const metadata = enrollment && isRecord(enrollment.metadata) ? enrollment.metadata : {};
   const children = [enrollment?.childTenantId, metadata.childTenantId].filter(value => value !== undefined && value !== null);
+  if (isRecord(payload) && payload.targetTenantId == null) {
+    throw new Error('The regional provisioning response omitted targetTenantId. It cannot verify the exact owner, app, and runtime workspace. Ask Platform Ops to check the regional response before publishing.');
+  }
   if (!isRecord(payload) || payload.tenantId !== binding.ownerTenantId || payload.appKey !== binding.appKey
     || payload.targetTenantId !== binding.runtimeTenantId
     || !enrollment || (enrollment.tenantId !== undefined && enrollment.tenantId !== binding.ownerTenantId)

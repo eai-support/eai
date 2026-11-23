@@ -12,8 +12,8 @@ import { Command } from "commander";
 import ora from "ora";
 import chalk from "chalk";
 import inquirer from "inquirer";
+import { isDeepStrictEqual } from 'node:util';
 import {
-  canonicalizeObjectTypeRelationshipTargets,
   findProjectRoot,
   loadObjectTypes,
   validateObjectTypeDefinitions,
@@ -924,9 +924,13 @@ export function diffObjectTypesForTenant(
     );
 
     const changedProperties = localType.properties.filter(property => {
-      if (property.type !== 'relationship') return false;
+      if (property.type !== 'relationship' && property.type !== 'select') return false;
       const remoteProperty = remote.properties.find(value => isRecord(value) && value.name === property.name);
-      return isRecord(remoteProperty) && remoteProperty.targetObjectType !== property.targetObjectType;
+      if (!isRecord(remoteProperty)) return false;
+      if (property.type === 'relationship') return (remoteProperty.targetObjectType ?? null) !== (property.targetObjectType ?? null);
+      const options = Array.isArray(remoteProperty.options) ? remoteProperty.options : [];
+      return !isDeepStrictEqual(options.map(option => [option?.label, option?.value]),
+        (property.options ?? []).map(option => [option.label, option.value]));
     }).map(property => property.name);
     if (changedProperties.length) {
       entry.changedProperties = changedProperties;
@@ -1057,8 +1061,41 @@ class PublishedBindingReviewError extends Error {
   }
 }
 
+function hasLegacyRelationship(type: ObjectTypeDefinition): boolean {
+  return type.properties.some(field => field.type === 'relationship' && field.targetObjectType == null);
+}
+
+function publishedPropertyShape(field: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(field).filter(([key, value]) => {
+    if (key === 'options' && Array.isArray(value) && value.length === 0) return false;
+    if (['required', 'indexed', 'serverOnly'].includes(key) && value === false) return false;
+    return !(value == null && ['targetObjectType', 'options', 'defaultValue', 'description', 'label', 'customizationEligibility'].includes(key));
+  }));
+}
+
+function verifyPublishedRelationships(types: ObjectTypeDefinition[], records: Record<string, unknown>[], tenantId: string): void {
+  for (const type of types.filter(hasLegacyRelationship)) {
+    const matches = records.filter(row => row.name === type.name || row.slug === type.slug);
+    const [row] = matches;
+    const tenant = isRecord(row?.tenant) ? row.tenant.id : row?.tenant;
+    const uniqueRequest = types.filter(local => local.name === type.name || local.slug === type.slug).length === 1;
+    const published = uniqueRequest && matches.length === 1 && row.name === type.name && row.slug === type.slug
+      && typeof row.id === 'string' && row.id.length > 0 && row.status === 'published' && row.scope === 'tenant'
+      && tenant === tenantId && Array.isArray(row.properties) ? row.properties.filter(isRecord) : [];
+    for (const field of type.properties.filter(field => field.type === 'relationship' && field.targetObjectType == null)) {
+      const existing = published.filter(stored => stored.name === field.name);
+      if (existing.length === 1 && type.properties.filter(local => local.name === field.name).length === 1) {
+        const stored = { ...existing[0] };
+        delete stored.id;
+        if (isDeepStrictEqual(publishedPropertyShape(stored), publishedPropertyShape(field))) continue;
+      }
+      throw new Error(`OBJECT_TYPE_LINK_TARGET_UNRESOLVED: ${type.name}.${field.name} requires a target unless the identical relationship is already published in this workspace.`);
+    }
+  }
+}
+
 async function readPublicationCatalog(
-  client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[],
+  client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[], appClient: PlatformAPIClient,
 ): Promise<RemoteObjectTypeDocument[]> {
   // Bound the name and slug lists in the encoded regional catalog query.
   const batches: ObjectTypeDefinition[][] = [];
@@ -1088,7 +1125,9 @@ async function readPublicationCatalog(
     }
     for (const row of rows) records.set(String(row.id), row);
   }
-  const docs = extractRemoteObjectTypeDocs({ docs: [...records.values()] })
+  const rows = [...records.values()];
+  verifyPublishedRelationships(types, rows, binding.runtimeTenantId);
+  const docs = extractRemoteObjectTypeDocs({ docs: rows })
     .filter(doc => types.some(type => matchesRequestedType(doc, type)));
   const prefix = appOwnedSqlTablePrefix(binding.runtimeTenantId, binding.appKey);
   const protectedSlugs = new Set<string>();
@@ -1101,12 +1140,48 @@ async function readPublicationCatalog(
       || typeof sql.databaseAlias !== "string" || typeof sql.tenantSchemaStrategy !== "string") {
       throw new Error(`The runtime catalog is missing the published SQL binding for ${doc.name}.`);
     }
-    if (sql.databaseAlias === APP_SQL_DATABASE_ALIAS && sql.tenantSchemaStrategy === "per-tenant-database"
-      && !sql.tableName.startsWith(prefix)) {
+    if (sql.databaseAlias !== APP_SQL_DATABASE_ALIAS || sql.tenantSchemaStrategy !== 'per-tenant-database') continue;
+    const requested = types.filter(type => matchesRequestedType(doc, type));
+    const changedBinding = requested.some(type => {
+      const next = type.storageBinding?.sql;
+      return (type.storageBackend ?? 'postgresql') !== 'postgresql' || type.storageMetadataStatus !== 'ready'
+        || !next || next.databaseAlias !== sql.databaseAlias || next.tenantSchemaStrategy !== sql.tenantSchemaStrategy
+        || (next.schemaName ?? null) !== (sql.schemaName ?? null) || next.tableName !== sql.tableName;
+    });
+    if (changedBinding || !sql.tableName.startsWith(prefix)) {
       protectedSlugs.add(doc.slug ?? doc.name);
     }
   }
   if (protectedSlugs.size) throw new PublishedBindingReviewError([...protectedSlugs]);
+  if (types.some(hasLegacyRelationship)) {
+    const { ownerTenantId, runtimeTenantId, appKey } = binding;
+    const response = await appClient.getAppDeletionPlan(ownerTenantId, appKey, runtimeTenantId);
+    const plan: unknown = response.ok ? await response.json() : null;
+    const claimedRows = rows.filter(row => types.some(type => type.name === row.name || type.slug === row.slug));
+    const conflict = new PublishedBindingReviewError(claimedRows.map(row => String(row.slug)));
+    if (!isRecord(plan) || plan.tenantId !== ownerTenantId || plan.targetTenantId !== runtimeTenantId || plan.appKey !== appKey
+      || plan.status !== 'planned' || plan.deletionComplete !== false || !isRecord(plan.enrollmentOwner)
+      || plan.enrollmentOwner.tenantId !== ownerTenantId || typeof plan.enrollmentOwner.installId !== 'string'
+      || !plan.enrollmentOwner.installId || !Array.isArray(plan.installIds) || !plan.installIds.includes(plan.enrollmentOwner.installId)
+      || !Array.isArray(plan.resourcePartitions) || !Array.isArray(plan.tenantObjectTypeDocumentIds)
+      || !Array.isArray(plan.retainedSharedObjectTypes)) throw conflict;
+    const scopes: Record<string, unknown>[] = [];
+    for (const part of plan.resourcePartitions) {
+      if (!isRecord(part) || !Array.isArray(part.resourceScopes)) throw conflict;
+      if (part.tenantId !== runtimeTenantId) continue;
+      if (!plan.installIds.includes(part.installId) || !part.resourceScopes.every(isRecord)) throw conflict;
+      scopes.push(...part.resourceScopes);
+    }
+    for (const row of claimedRows) {
+      const matches = types.filter(type => type.name === row.name || type.slug === row.slug);
+      const modes = scopes.filter(scope => scope.objectType === row.slug);
+      if (matches.length !== 1 || matches[0].name !== row.name || matches[0].slug !== row.slug
+        || rows.filter(other => other.name === row.name || other.slug === row.slug).length !== 1
+        || (isRecord(row.tenant) ? row.tenant.id : row.tenant) !== runtimeTenantId || row.scope !== 'tenant' || row.status !== 'published'
+        || !plan.tenantObjectTypeDocumentIds.includes(row.id) || plan.retainedSharedObjectTypes.includes(row.slug)
+        || !modes.length || modes.some(scope => scope.ownershipMode !== 'exclusive')) throw conflict;
+    }
+  }
   return docs;
 }
 
@@ -2114,8 +2189,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
-      validateObjectTypeDefinitions(objectTypes);
-      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
+      objectTypes = validateObjectTypeDefinitions(objectTypes, 'verify-published');
       const totalTypes = Object.values(objectTypes).reduce(
         (sum, types) => sum + types.length,
         0,
@@ -2236,7 +2310,7 @@ Examples:
         client = new PlatformAPIClient(publicApiUrl, tenantId);
         appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
         await checkTypeSeedPreflight(appClient, binding);
-        await readPublicationCatalog(client, binding, types);
+        await readPublicationCatalog(client, binding, types, appClient);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (options.format !== 'json') out.error(message);
@@ -2318,7 +2392,7 @@ Examples:
           binding.ownerTenantId,
           tenantId,
           types,
-          !binding.appBound && !dedicatedPostgres,
+          !binding.appBound && !dedicatedPostgres && !types.some(hasLegacyRelationship),
         );
         if (appPublishOutcome.result) {
           if (options.format !== "json") {
@@ -2394,7 +2468,7 @@ Examples:
       }
 
       try {
-        remoteDocs = await readPublicationCatalog(client, binding, types);
+        remoteDocs = await readPublicationCatalog(client, binding, types, appClient);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (options.format !== "json") out.error(message);
@@ -2678,8 +2752,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
-      validateObjectTypeDefinitions(objectTypes);
-      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
+      objectTypes = validateObjectTypeDefinitions(objectTypes);
       spinner.succeed("Loaded Object Types");
     } catch (err) {
       spinner.fail("Failed to load Object Types");
@@ -2918,8 +2991,7 @@ Examples:
     let objectTypes: Record<string, ObjectTypeDefinition[]>;
     try {
       objectTypes = await loadObjectTypes(root);
-      validateObjectTypeDefinitions(objectTypes);
-      objectTypes = canonicalizeObjectTypeRelationshipTargets(objectTypes);
+      objectTypes = validateObjectTypeDefinitions(objectTypes, 'verify-published');
       spinner?.succeed("Loaded local types");
     } catch (err) {
       spinner?.fail("Failed to load local types");
@@ -3003,9 +3075,15 @@ Examples:
       const remoteSpinner = jsonOutput ? null : ora("  Fetching remote types...").start();
 
       try {
-        const res = await client.getPublishedObjectTypes({ limit: 100 });
-
-        const remoteDocs = extractRemoteObjectTypeDocs(await res.json());
+        let remoteDocs: RemoteObjectTypeDocument[];
+        if (localTypes.some(hasLegacyRelationship)) {
+          const docs = await readConsistentObjectTypes(client, tenantId);
+          verifyPublishedRelationships(localTypes, docs, tenantId);
+          remoteDocs = extractRemoteObjectTypeDocs({ docs });
+        } else {
+          const res = await client.getPublishedObjectTypes({ limit: 100 });
+          remoteDocs = extractRemoteObjectTypeDocs(await res.json());
+        }
         remoteSpinner?.succeed(`  ${remoteDocs.length} remote types`);
 
         const result = diffObjectTypesForTenant(

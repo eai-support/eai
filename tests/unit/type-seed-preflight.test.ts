@@ -42,6 +42,59 @@ async function fixture(tableName = 't111111111111_my_app_records', strategy = 'p
 }
 
 describe('Object Type publication prerequisites', () => {
+  test('diff reports a select choice change even when the property name stays the same', async () => {
+    const root = await fixture();
+    const [template] = (await loadObjectTypes(root))['my-app'];
+    const original = { label: 'Draft', value: 'draft' };
+    const field = { name: 'stage', type: 'select' as const, required: false, options: [original] };
+    const local = { ...template, properties: [{ ...field, options: [original, { label: 'Ready', value: 'ready' }] }] };
+    const published = { ...template, properties: [{ ...field, options: [{ ...original, id: 'catalog-row' }] }] };
+    expect(diffObjectTypesForTenant('my-app', runtime, 'option', [local], [published]).changed[0]?.changedProperties).toEqual(['stage']);
+    expect(diffObjectTypesForTenant('my-app', runtime, 'option', [{ ...template, properties: [field] }], [published]).changed).toEqual([]);
+  });
+
+  test.each(['unchanged', 'unclaimed', 'diff', 'new type', 'changed description', 'new property', 'different target', 'ambiguous', 'duplicate request', 'missing scope'])('seed checks a legacy relationship against the published runtime: %s', async scenario => {
+    const root = await fixture();
+    const field = { name: 'clientId', type: 'relationship', description: 'Parent client', required: true, indexed: true };
+    const [definition] = (await loadObjectTypes(root))['my-app'];
+    const desired = { ...definition, properties: [field, { name: 'notes', type: 'text' }] };
+    const requested = scenario === 'duplicate request' ? [desired, desired] : [desired];
+    await writeFile(join(root, 'src/eai.config/object-types.ts'), 'export const objectTypes = ' + JSON.stringify({ 'my-app': requested }) + ';');
+    const stored = { id: 'published-child', tenant: runtime, scope: scenario === 'missing scope' ? undefined : 'tenant',
+      ...definition, properties: [{ ...field, id: 'catalog-field-id', options: [],
+        ...(scenario === 'changed description' ? { description: 'Another client' } : {}),
+        ...(scenario === 'new property' ? { name: 'previousId' } : {}),
+        ...(scenario === 'different target' ? { targetObjectType: 'client' } : {}) }] };
+    const docs = scenario === 'new type' ? [] : scenario === 'ambiguous' ? [stored, { ...stored, id: 'other-copy' }] : [stored];
+    vi.spyOn(PlatformAPIClient.prototype, 'getBoundAppProvisioningJobs').mockResolvedValue(Response.json(enrollment()));
+    vi.mocked(PlatformAPIClient.prototype.getPublishedObjectTypes).mockImplementation(async () => catalogPage(docs));
+    const ownership = vi.spyOn(PlatformAPIClient.prototype, 'getAppDeletionPlan').mockResolvedValue(Response.json({
+      tenantId: owner, targetTenantId: runtime, appKey: 'my-app', status: 'planned', deletionComplete: false,
+      enrollmentOwner: { tenantId: owner, installId: 'owner-install' }, installIds: ['owner-install', 'child-install'],
+      retainedSharedObjectTypes: [], ownershipManifestHash: '1'.repeat(64), tenantObjectTypeDocumentIds: [stored.id],
+      resourcePartitions: [{ tenantId: runtime, installId: 'child-install', resourceScopes: scenario === 'unclaimed' ? []
+        : [{ objectType: 'record', ownershipMode: 'exclusive' }] }],
+    }));
+    const save = vi.spyOn(PlatformAPIClient.prototype, 'saveAppObjectTypeManifest');
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    vi.spyOn(process, 'exit').mockImplementation(() => { throw new Error('unexpected offline rejection'); });
+    if (scenario === 'diff') {
+      await typesCommand.parseAsync(['diff', '--tenant-key', 'my-app', '--tenant-id', runtime, '--format', 'json'], { from: 'user' });
+      const report = JSON.parse(String(output.mock.calls.at(-1)?.[0]));
+      expect(report.tenants[0].changed[0].addedProperties).toEqual(['notes']);
+      expect(ownership).not.toHaveBeenCalled();
+    } else {
+      await typesCommand.parseAsync(['seed', '--dry-run', '--format', 'json'], { from: 'user' });
+      const result = JSON.parse(String(output.mock.calls.at(-1)?.[0])).tenants[0];
+      if (scenario === 'unchanged') {
+        expect(result.preflight?.ready).toBe(true);
+        expect(ownership).toHaveBeenCalledExactlyOnceWith(owner, 'my-app', runtime);
+      } else if (scenario === 'unclaimed') expect(result.errorCode).toBe('EAI_PUBLISHED_BINDING_REVIEW_REQUIRED');
+      else expect(result.error).toContain('clientId');
+    }
+    expect(save).not.toHaveBeenCalled();
+  });
+
   test('resolves the company/runtime hint and corroborates it with one read', async () => {
     const root = await fixture();
     expect(await resolveTypeSeedBinding(root, 'template', runtime)).toEqual(binding);
@@ -66,6 +119,14 @@ describe('Object Type publication prerequisites', () => {
   test.each([undefined, owner])('requires targetTenantId to identify the exact requested runtime (%s)', async targetTenantId => {
     const payload = { ...enrollment(), targetTenantId };
     await expect(checkTypeSeedPreflight({ getBoundAppProvisioningJobs: async () => new Response(JSON.stringify(payload)) } as PlatformAPIClient, binding)).rejects.toThrow(/exact owner, app, and runtime/);
+  });
+
+  test('identifies a missing runtime in the regional response even when owner and runtime are the same', async () => {
+    const sameWorkspace = { ...binding, ownerTenantId: runtime };
+    const payload = { ...enrollment(), tenantId: runtime, targetTenantId: undefined,
+      enrollment: { verticalKey: binding.appKey, tenantId: runtime, provisioningState: 'ready' } };
+    const client = { getBoundAppProvisioningJobs: async () => Response.json(payload) } as PlatformAPIClient;
+    await expect(checkTypeSeedPreflight(client, sameWorkspace)).rejects.toThrow('targetTenantId');
   });
 
   test.each([
@@ -186,6 +247,21 @@ describe('Object Type publication prerequisites', () => {
     expect(JSON.parse(String(output.mock.calls.at(-1)?.[0])).tenants[0].errorCode).toBe('EAI_PUBLISHED_BINDING_REVIEW_REQUIRED');
     expect(update).not.toHaveBeenCalled();
     expect(create).not.toHaveBeenCalled();
+  });
+
+  test('preview cannot rename an existing dedicated table even when both names have the current prefix', async () => {
+    const root = await fixture('t111111111111_my_app_replacement', 'per-tenant-database');
+    const [current] = (await loadObjectTypes(root))['my-app'];
+    const sql = { ...current.storageBinding!.sql!, tableName: 't111111111111_my_app_original' };
+    vi.spyOn(PlatformAPIClient.prototype, 'getBoundAppProvisioningJobs').mockResolvedValue(Response.json(enrollment()));
+    vi.mocked(PlatformAPIClient.prototype.getPublishedObjectTypes).mockImplementation(async () => catalogPage([{
+      ...current, id: 'dedicated-copy', scope: 'tenant', tenant: runtime, storageBinding: { sql },
+    }]));
+    const save = vi.spyOn(PlatformAPIClient.prototype, 'saveAppObjectTypeManifest');
+    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+    await typesCommand.parseAsync(['seed', '--dry-run', '--format', 'json'], { from: 'user' });
+    expect(JSON.parse(String(output.mock.calls.at(-1)?.[0])).tenants[0].errorCode).toBe('EAI_PUBLISHED_BINDING_REVIEW_REQUIRED');
+    expect(save).not.toHaveBeenCalled();
   });
 
   test.each(['failed', 'synced'])('seed overall convergence reflects runtime sync %s', async status => {
