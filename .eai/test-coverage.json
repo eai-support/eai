@@ -568,6 +568,7 @@
             "src/commands/vertical.ts",
             "src/commands/provision.ts",
             "src/commands/types.ts",
+            "specs/3704-published-postgres-bindings.md",
             "src/commands/init.ts",
             "src/lib/type-seed-preflight.ts",
             "src/lib/eai-managed-template-requirement.ts",

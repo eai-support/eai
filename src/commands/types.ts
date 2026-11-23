@@ -588,7 +588,7 @@ export function validateObjectTypeAppOwnedStorageMetadata(
     const expectedPrefix = appOwnedSqlTablePrefix(tenantId, tenantKey);
     if (!tableName.startsWith(expectedPrefix)) {
       issues.push(
-        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}". Run eai app provision, then update Object Type storage bindings before publishing.`,
+        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}" for a new type. For a published type, keep its binding and verify app ownership in the runtime workspace.`,
       );
     }
     return issues;
@@ -1048,11 +1048,55 @@ export async function describeFailedPlatformResponse(
   return `${status} - ${code}${truncatedDetail}${requestId}`;
 }
 
+class PublishedBindingReviewError extends Error {
+  readonly code = "EAI_PUBLISHED_BINDING_REVIEW_REQUIRED";
+
+  constructor(slugs: string[]) {
+    const affected = slugs.length ? ` (${slugs.join(", ")})` : "";
+    super(`Keep the published PostgreSQL binding${affected}. Ask Platform Ops to verify this app enrollment's ownership of each definition in the runtime workspace.`);
+  }
+}
+
+async function checkPublishedPostgresBindings(
+  client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[],
+): Promise<void> {
+  const response = await client.getResourceStorageStatus();
+  if (!response.ok) {
+    throw new Error(`Could not verify published storage bindings in the runtime workspace (HTTP ${response.status}).`);
+  }
+  const status: unknown = await response.json();
+  if (!isRecord(status) || status.tenantId !== binding.runtimeTenantId || !Array.isArray(status.objectTypes)) {
+    throw new Error("Storage status did not identify the selected runtime workspace and its Object Types.");
+  }
+  const requested = new Set(types.map(type => type.slug));
+  const prefix = appOwnedSqlTablePrefix(binding.runtimeTenantId, binding.appKey);
+  const protectedSlugs = new Set<string>();
+  for (const row of status.objectTypes) {
+    if (!isRecord(row) || typeof row.objectType !== "string") {
+      throw new Error("Storage status contains an unidentified Object Type.");
+    }
+    if (!requested.has(row.objectType)) continue;
+    if (typeof row.backend !== "string" || typeof row.metadataStatus !== "string") {
+      throw new Error(`Storage status is incomplete for ${row.objectType}.`);
+    }
+    if (row.backend !== "postgresql" || row.metadataStatus !== "ready") continue;
+    const sql = getStorageBindingScope(row.binding, "sql");
+    if (!sql || typeof sql.tableName !== "string" || !sql.tableName
+      || typeof sql.databaseAlias !== "string" || typeof sql.tenantSchemaStrategy !== "string") {
+      throw new Error(`Storage status is missing the published SQL binding for ${row.objectType}.`);
+    }
+    if (sql.databaseAlias === APP_SQL_DATABASE_ALIAS && sql.tenantSchemaStrategy === "per-tenant-database"
+      && !sql.tableName.startsWith(prefix)) {
+      protectedSlugs.add(row.objectType);
+    }
+  }
+  if (protectedSlugs.size) throw new PublishedBindingReviewError([...protectedSlugs]);
+}
+
 function appOwnedStoragePublishGuidance(
   message: string,
   tenantKey: string,
   tenantId: string,
-  appTenantId: string = tenantId,
 ): string {
   if (
     !/databaseAlias|storageBinding|app-owned prefix|not authorized|tableName/i.test(
@@ -1065,7 +1109,7 @@ function appOwnedStoragePublishGuidance(
   return [
     "",
     "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
-    `Next steps: run eai app provision ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`} --select --format json, update src/eai.config/object-types.ts to use tenant-postgres and app-owned table names, then rerun eai types validate --tenant-key ${tenantKey} --tenant-id ${tenantId} and eai types seed --tenant-key ${tenantKey} --tenant-id ${tenantId}${appTenantId === tenantId ? '' : ` --app-tenant-id ${appTenantId}`}.`,
+    `Inspect the current binding with eai resources storage status --tenant-id ${tenantId} --format json. Keep a published binding and verify its ownership for ${tenantKey} before retrying.`,
   ].join("\n");
 }
 
@@ -1300,7 +1344,7 @@ export async function trySeedViaAppManifestPublish(
     splitTenantScope ? runtimeTenantId : undefined,
   );
   const provisioningBinding: TypeSeedBinding = { appKey: tenantKey, ownerTenantId: tenantId, runtimeTenantId, appBound: !allowDirectFallback || splitTenantScope };
-  await throwIfTypeProvisioningRequired(manifestResponse, provisioningBinding);
+  await throwIfTypePublicationBlocked(manifestResponse, provisioningBinding);
   const manifestFallbackReason = await appObjectTypePublishFallbackReason(
     manifestResponse,
     "save",
@@ -1359,14 +1403,14 @@ export async function trySeedViaAppManifestPublish(
   if (!manifestResponse.ok) {
     const detail = await describeFailedPlatformResponse(manifestResponse);
     throw new Error(
-      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
+      `app manifest save failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId)}`,
     );
   }
 
   const publishResponse = await client.publishAppObjectTypes(
     tenantKey, splitTenantScope ? runtimeTenantId : undefined,
   );
-  await throwIfTypeProvisioningRequired(publishResponse, provisioningBinding);
+  await throwIfTypePublicationBlocked(publishResponse, provisioningBinding);
   const publishFallbackReason = await appObjectTypePublishFallbackReason(
     publishResponse,
     "publish",
@@ -1380,7 +1424,7 @@ export async function trySeedViaAppManifestPublish(
   if (!publishResponse.ok) {
     const detail = await describeFailedPlatformResponse(publishResponse);
     throw new Error(
-      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId, tenantId)}`,
+      `app manifest publish failed: ${detail}${appOwnedStoragePublishGuidance(detail, tenantKey, runtimeTenantId)}`,
     );
   }
 
@@ -1416,12 +1460,19 @@ export async function trySeedViaAppManifestPublish(
   return { result, expectedDefinitions };
 }
 
-async function throwIfTypeProvisioningRequired(response: Response, binding: TypeSeedBinding): Promise<void> {
+async function throwIfTypePublicationBlocked(response: Response, binding: TypeSeedBinding): Promise<void> {
   if (response.status !== 409) return;
   const payload: unknown = await response.clone().json().catch(() => undefined);
   const detail = isRecord(payload) ? payload.detail ?? payload.error : undefined;
   const code = isRecord(detail) ? detail.error ?? detail.code : undefined;
   const message = isRecord(detail) ? detail.message : detail;
+  if (code === "EAI_PUBLISHED_BINDING_REVIEW_REQUIRED") {
+    const issues = isRecord(detail) && isRecord(detail.details) ? detail.details.objectTypes : undefined;
+    const slugs = Array.isArray(issues)
+      ? issues.flatMap(issue => isRecord(issue) && typeof issue.slug === "string" ? [issue.slug] : [])
+      : [];
+    throw new PublishedBindingReviewError(slugs);
+  }
   if (code === 'EAI_PROVISION_REQUIRED_FOR_TYPES'
     || (typeof message === 'string' && /^App resources must be provisioned before publishing object types\.?$/i.test(message))) {
     throw new TypeSeedPreflightError(binding, 'App resources must be provisioned before publishing Object Types.');
@@ -2095,7 +2146,9 @@ Examples:
       process.exit(1);
     }
 
-    const storageIssues = collectTypeStorageValidationIssues(objectTypes);
+    const storageIssues = Object.entries(objectTypes).flatMap(([tenantKey, types]) =>
+      types.flatMap(type => validateObjectTypeStorageMetadata(type).map(issue => ({ tenantKey, typeName: type.name, issue }))),
+    );
     if (storageIssues.length > 0) {
       if (options.format === "json") {
         out.json({
@@ -2146,9 +2199,37 @@ Examples:
         continue;
       }
 
+      if (options.format !== "json") {
+        out.heading(
+          `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
+        );
+      }
+
+      const dedicatedPostgres = types.some(type =>
+        (type.storageBackend ?? "postgresql") === "postgresql" && type.storageMetadataStatus === "ready"
+        && type.storageBinding?.sql?.databaseAlias === APP_SQL_DATABASE_ALIAS
+        && type.storageBinding.sql.tenantSchemaStrategy === "per-tenant-database",
+      );
+      let binding: TypeSeedBinding;
+      let client: PlatformAPIClient;
+      let appClient: PlatformAPIClient;
+      try {
+        binding = await resolveTypeSeedBinding(root, tenantKey, tenantId, options.appTenantId);
+        client = new PlatformAPIClient(publicApiUrl, tenantId);
+        appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
+        await checkTypeSeedPreflight(appClient, binding);
+        if (dedicatedPostgres) await checkPublishedPostgresBindings(client, binding, types);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (options.format !== 'json') out.error(message);
+        jsonResults.push({ tenantKey, tenantId, dryRun: options.dryRun === true, created: 0, updated: 0, failed: types.length,
+          error: message, ...(error instanceof TypeSeedPreflightError || error instanceof PublishedBindingReviewError ? { errorCode: error.code } : {}) });
+        continue;
+      }
+
       const tenantScopedStorageIssues = collectTypeStorageValidationIssues(
-        { [tenantKey]: types },
-        { tenantIdsByKey: { [tenantKey]: tenantId } },
+        { [binding.appKey]: types },
+        { tenantIdsByKey: { [binding.appKey]: tenantId } },
       );
       if (tenantScopedStorageIssues.length > 0) {
         const message = "Object Type app-owned storage binding validation failed";
@@ -2158,12 +2239,13 @@ Examples:
             out.error(`  [${issue.tenantKey}/${issue.typeName}] ${issue.issue}`);
           }
           out.info(
-            `Run ${chalk.cyan(`eai app provision ${tenantKey} --tenant-id ${tenantId} --select --format json`)} to confirm the app storage contract, then update ${chalk.cyan("src/eai.config/object-types.ts")}.`,
+            `Inspect the runtime binding with ${chalk.cyan(`eai resources storage status --tenant-id ${tenantId} --format json`)}.`,
           );
         }
         jsonResults.push({
           tenantKey,
           tenantId,
+          dryRun: options.dryRun === true,
           created: 0,
           updated: 0,
           failed: types.length,
@@ -2181,28 +2263,6 @@ Examples:
             converged: false,
           },
         });
-        continue;
-      }
-
-      if (options.format !== "json") {
-        out.heading(
-          `Tenant: ${tenantKey} → ${chalk.dim(tenantId)} ${chalk.dim(`(${describeTenantResolutionSource(resolution.source)})`)}`,
-        );
-      }
-
-      let binding: TypeSeedBinding;
-      let client: PlatformAPIClient;
-      let appClient: PlatformAPIClient;
-      try {
-        binding = await resolveTypeSeedBinding(root, tenantKey, tenantId, options.appTenantId);
-        client = new PlatformAPIClient(publicApiUrl, tenantId);
-        appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
-        await checkTypeSeedPreflight(appClient, binding);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        if (options.format !== 'json') out.error(message);
-        jsonResults.push({ tenantKey, tenantId, dryRun: options.dryRun === true, created: 0, updated: 0, failed: types.length,
-          error: message, ...(error instanceof TypeSeedPreflightError ? { errorCode: error.code } : {}) });
         continue;
       }
 
@@ -2240,7 +2300,7 @@ Examples:
           binding.ownerTenantId,
           tenantId,
           types,
-          !binding.appBound,
+          !binding.appBound && !dedicatedPostgres,
         );
         if (appPublishOutcome.result) {
           if (options.format !== "json") {
@@ -2299,7 +2359,7 @@ Examples:
           failed: types.length,
           publishingMode: "app-manifest",
           error: message,
-          ...(err instanceof TypeSeedPreflightError ? { errorCode: err.code } : {}),
+          ...(err instanceof TypeSeedPreflightError || err instanceof PublishedBindingReviewError ? { errorCode: err.code } : {}),
           verification: {
             tenantId,
             requestedTypes: types.map((type) => type.name),
