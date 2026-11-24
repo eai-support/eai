@@ -588,7 +588,7 @@ export function validateObjectTypeAppOwnedStorageMetadata(
     const expectedPrefix = appOwnedSqlTablePrefix(tenantId, tenantKey);
     if (!tableName.startsWith(expectedPrefix)) {
       issues.push(
-        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}" for a new type. For a published type, keep its binding and verify app ownership in the runtime workspace.`,
+        `PostgreSQL storageBinding tableName "${tableName}" must start with app-owned prefix "${expectedPrefix}" for a new type. For a published type, keep its binding and verify the app’s schema-update permission in the runtime workspace.`,
       );
     }
     return issues;
@@ -1057,7 +1057,7 @@ class PublishedBindingReviewError extends Error {
 
   constructor(slugs: string[]) {
     const affected = slugs.length ? ` (${slugs.join(", ")})` : "";
-    super(`Keep the published PostgreSQL binding${affected}. Ask Platform Ops to verify this app enrollment's ownership of each definition in the runtime workspace.`);
+    super(`Keep the published PostgreSQL binding${affected}. The app needs verified permission to add fields and choices to each named child definition. Existing storage and ownership are preserved.`);
   }
 }
 
@@ -1095,8 +1095,8 @@ function verifyPublishedRelationships(types: ObjectTypeDefinition[], records: Re
 }
 
 async function readPublicationCatalog(
-  client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[], appClient: PlatformAPIClient,
-): Promise<RemoteObjectTypeDocument[]> {
+  client: PlatformAPIClient, binding: TypeSeedBinding, types: ObjectTypeDefinition[], appClient: PlatformAPIClient, enrollmentId?: string,
+): Promise<{docs:RemoteObjectTypeDocument[]; verified:Set<string>}> {
   // Bound the name and slug lists in the encoded regional catalog query.
   const batches: ObjectTypeDefinition[][] = [];
   let batch: ObjectTypeDefinition[] = [];
@@ -1148,16 +1148,64 @@ async function readPublicationCatalog(
         || !next || next.databaseAlias !== sql.databaseAlias || next.tenantSchemaStrategy !== sql.tenantSchemaStrategy
         || (next.schemaName ?? null) !== (sql.schemaName ?? null) || next.tableName !== sql.tableName;
     });
-    if (changedBinding || !sql.tableName.startsWith(prefix)) {
-      protectedSlugs.add(doc.slug ?? doc.name);
+    if (changedBinding) throw new PublishedBindingReviewError([doc.slug ?? doc.name]);
+    if (!sql.tableName.startsWith(prefix)) protectedSlugs.add(doc.slug ?? doc.name);
+  }
+  if (protectedSlugs.size) {
+    const conflict = new PublishedBindingReviewError([...protectedSlugs]);
+    if (!enrollmentId) throw conflict;
+    const matched = rows.filter((row) => protectedSlugs.has(String(row.slug)));
+    if (
+      matched.length !== protectedSlugs.size ||
+      matched.some(
+        (row) =>
+          !row.id ||
+          typeof row.updatedAt !== 'string' ||
+          !row.updatedAt ||
+          row.scope !== 'tenant' ||
+          (isRecord(row.tenant) ? row.tenant.id : row.tenant) !== binding.runtimeTenantId,
+      )
+    )
+      throw conflict;
+    const response = await appClient.previewAppObjectTypeManifest(
+      binding.appKey,
+      toAppManifestObjectTypes(types),
+      binding.runtimeTenantId,
+    );
+    if (!response.ok) throw conflict;
+    const result: unknown = await response.json();
+    if (
+      !isRecord(result) ||
+      result.mode !== 'preview' ||
+      result.tenantId !== binding.ownerTenantId ||
+      result.targetTenantId !== binding.runtimeTenantId ||
+      result.appKey !== binding.appKey ||
+      typeof result.enrollmentId !== 'string' ||
+      result.enrollmentId !== enrollmentId ||
+      !Array.isArray(result.objectTypes) ||
+      result.objectTypes.length !== matched.length
+    )
+      throw conflict;
+    const permissions = result.objectTypes.filter(isRecord);
+    for (const row of matched) {
+      const pins = permissions.filter(
+        (pin) =>
+          pin.slug === row.slug &&
+          pin.id === row.id &&
+          pin.version === row.updatedAt &&
+          typeof pin.grantId === 'string' &&
+          pin.grantId &&
+          typeof pin.changed === 'boolean',
+      );
+      if (pins.length !== 1) throw conflict;
     }
   }
-  if (protectedSlugs.size) throw new PublishedBindingReviewError([...protectedSlugs]);
-  if (types.some(hasLegacyRelationship)) {
+  const ordinaryTypes = types.filter(type => !protectedSlugs.has(type.slug ?? deriveObjectTypeSlugV1(type.name)));
+  if (ordinaryTypes.some(hasLegacyRelationship)) {
     const { ownerTenantId, runtimeTenantId, appKey } = binding;
     const response = await appClient.getAppDeletionPlan(ownerTenantId, appKey, runtimeTenantId);
     const plan: unknown = response.ok ? await response.json() : null;
-    const claimedRows = rows.filter(row => types.some(type => type.name === row.name || type.slug === row.slug));
+    const claimedRows = rows.filter(row => ordinaryTypes.some(type => type.name === row.name || type.slug === row.slug));
     const conflict = new PublishedBindingReviewError(claimedRows.map(row => String(row.slug)));
     if (!isRecord(plan) || plan.tenantId !== ownerTenantId || plan.targetTenantId !== runtimeTenantId || plan.appKey !== appKey
       || plan.status !== 'planned' || plan.deletionComplete !== false || !isRecord(plan.enrollmentOwner)
@@ -1182,7 +1230,7 @@ async function readPublicationCatalog(
         || !modes.length || modes.some(scope => scope.ownershipMode !== 'exclusive')) throw conflict;
     }
   }
-  return docs;
+  return {docs,verified:protectedSlugs};
 }
 
 function appOwnedStoragePublishGuidance(
@@ -1201,7 +1249,7 @@ function appOwnedStoragePublishGuidance(
   return [
     "",
     "Why this can happen: workspace app Object Types must use app-owned storage bindings. Shared platform aliases and generic table names are rejected by the platform.",
-    `Inspect the current binding with eai resources storage status --tenant-id ${tenantId} --format json. Keep a published binding and verify its ownership for ${tenantKey} before retrying.`,
+    `Inspect the current binding with eai resources storage status --tenant-id ${tenantId} --format json. Keep the published binding and verify schema-update permission for ${tenantKey} before retrying.`,
   ].join("\n");
 }
 
@@ -2305,22 +2353,34 @@ Examples:
       let binding: TypeSeedBinding;
       let client: PlatformAPIClient;
       let appClient: PlatformAPIClient;
+      let verified: Set<string>;
       try {
         binding = await resolveTypeSeedBinding(root, tenantKey, tenantId, options.appTenantId);
         client = new PlatformAPIClient(publicApiUrl, tenantId);
-        appClient = binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
-        await checkTypeSeedPreflight(appClient, binding);
-        await readPublicationCatalog(client, binding, types, appClient);
+        appClient =
+          binding.ownerTenantId === tenantId ? client : new PlatformAPIClient(publicApiUrl, binding.ownerTenantId);
+        const enrollmentId = await checkTypeSeedPreflight(appClient, binding);
+        ({ verified } = await readPublicationCatalog(client, binding, types, appClient, enrollmentId));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (options.format !== 'json') out.error(message);
-        jsonResults.push({ tenantKey, tenantId, dryRun: options.dryRun === true, created: 0, updated: 0, failed: types.length,
-          error: message, ...(error instanceof TypeSeedPreflightError || error instanceof PublishedBindingReviewError ? { errorCode: error.code } : {}) });
+        jsonResults.push({
+          tenantKey,
+          tenantId,
+          dryRun: options.dryRun === true,
+          created: 0,
+          updated: 0,
+          failed: types.length,
+          error: message,
+          ...(error instanceof TypeSeedPreflightError || error instanceof PublishedBindingReviewError
+            ? { errorCode: error.code }
+            : {}),
+        });
         continue;
       }
 
       const tenantScopedStorageIssues = collectTypeStorageValidationIssues(
-        { [binding.appKey]: types },
+        { [binding.appKey]: types.filter(type=>!verified.has(type.slug ?? deriveObjectTypeSlugV1(type.name))) },
         { tenantIdsByKey: { [binding.appKey]: tenantId } },
       );
       if (tenantScopedStorageIssues.length > 0) {
@@ -2468,7 +2528,9 @@ Examples:
       }
 
       try {
-        remoteDocs = await readPublicationCatalog(client, binding, types, appClient);
+        const reviewed = await readPublicationCatalog(client, binding, types, appClient);
+        if (reviewed.verified.size) throw new PublishedBindingReviewError([...reviewed.verified]);
+        remoteDocs = reviewed.docs;
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         if (options.format !== "json") out.error(message);

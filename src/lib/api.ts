@@ -1686,6 +1686,19 @@ export class PlatformAPIClient {
     );
   }
 
+  async previewAppObjectTypeManifest(
+    verticalKey: string,
+    objectTypes: Record<string, unknown>[],
+    targetTenantId: string,
+  ): Promise<Response> {
+    return this.publicRequest(
+      `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(this.tenantId)}/apps/${encodeURIComponent(verticalKey)}/object-types/preview`,
+      'POST',
+      { objectTypes },
+      { targetTenantId },
+    );
+  }
+
   async saveAppObjectTypeManifest(
     verticalKey: string,
     objectTypes: Record<string, unknown>[],

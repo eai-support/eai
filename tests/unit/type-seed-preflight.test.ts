@@ -161,6 +161,53 @@ describe('Object Type publication prerequisites', () => {
     }
   });
 
+  test.each(["verified","wrong definition","wrong enrollment"])(
+    'uses only an exact server preview for an inherited binding (%s)',
+    async (scenario) => {
+      const root = await fixture('template_my_app_records', 'per-tenant-database');
+      const [type] = (await loadObjectTypes(root))['my-app'];
+      const stored = { ...type, id: 'child-copy', scope: 'tenant', tenant: runtime, updatedAt: 'revision' };
+      vi.mocked(PlatformAPIClient.prototype.getPublishedObjectTypes).mockImplementation(async () =>
+        catalogPage([stored]),
+      );
+      vi.spyOn(PlatformAPIClient.prototype, 'getBoundAppProvisioningJobs').mockImplementation(async () =>
+        Response.json({ ...enrollment(), enrollmentId: 'install' }),
+      );
+      const review = vi
+        .spyOn(PlatformAPIClient.prototype, 'previewAppObjectTypeManifest')
+        .mockImplementation(async () =>
+          Response.json({
+            mode: 'preview',
+            tenantId: owner,
+            targetTenantId: runtime,
+            appKey: 'my-app',
+            enrollmentId: scenario === 'wrong enrollment' ? 'other-install' : 'install',
+            objectTypes: [
+              {
+                id: scenario === 'wrong definition' ? 'another-copy' : 'child-copy',
+                slug: type.slug,
+                version: 'revision',
+                grantId: 'a-grant',
+                changed: true,
+              },
+            ],
+          }),
+        );
+      const save = vi.spyOn(PlatformAPIClient.prototype, 'saveAppObjectTypeManifest');
+      const direct = vi.spyOn(PlatformAPIClient.prototype, 'updateObjectType');
+      const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
+      await typesCommand.parseAsync(
+        ['seed', '--tenant-key', 'my-app', '--tenant-id', runtime, '--dry-run', '--format', 'json'],
+        { from: 'user' },
+      );
+      const result = JSON.parse(String(output.mock.calls.at(-1)?.[0])).tenants[0];
+      expect(review).toHaveBeenCalledOnce();
+      expect(result.preflight?.ready === true).toBe(scenario === 'verified');
+      expect(save).not.toHaveBeenCalled();
+      expect(direct).not.toHaveBeenCalled();
+    },
+  );
+
   test('a bound app refuses direct fallback after a manifest route failure', async () => {
     await fixture();
     vi.spyOn(PlatformAPIClient.prototype, 'getBoundAppProvisioningJobs').mockImplementation(async () => new Response(JSON.stringify(enrollment())));

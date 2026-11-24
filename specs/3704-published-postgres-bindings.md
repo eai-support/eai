@@ -1,20 +1,9 @@
 # Protect existing storage during type seed
 
-A published Object Type can already use a dedicated PostgreSQL table label with a different prefix from the runtime workspace's current naming rule. Reprovisioning or renaming that binding can affect existing records.
+An inherited SQL label can refer to records in the child's dedicated database. Use the published binding for updates and the runtime prefix for new definitions.
 
-## Draft behavior
+- AC-1. Read the exact app, owner and runtime workspace and check provisioning before saving or publishing. Conflicting readiness or an incomplete catalog blocks a seed.
+- AC-2. For an inherited binding, preview the whole manifest through regional PublicAPI. Match each child ID, revision and grant to its bound, ready enrollment. Dry-run performs no schema or record writes. A missing grant or changed binding stops the batch.
+- AC-3. A verified grant covers added optional fields and dropdown choices. Preserve existing choices and legacy relationships. Ordinary legacy publications still require their existing exclusive claim. Direct CRUD fallback cannot publish an inherited type.
 
-- Resolve the exact app enrollment and runtime workspace before evaluating tenant-specific names.
-- Read the matching definitions from the regional runtime catalog by name or slug. Compare complete bounded results across two scans per batch. If a published, ready, dedicated `tenant-postgres` definition uses a different prefix, report its slug and ask for ownership verification. Apply the same check when the proposed backend changes.
-- Preview and seed stop the entire batch on this finding. An incomplete workspace response stops the check. A new dedicated definition still requires the runtime prefix.
-- A server binding conflict on save, compatibility retry or publish stops the command. Any eligible direct-write fallback repeats the catalog check before its first write.
-- Online seed and diff can carry forward a relationship without a declared target only when the entire field matches a unique published definition in the runtime catalog. This case requires manifest publication. Standalone validation and new or changed relationships require an explicit target.
-- Seed checks the existing app's exclusive runtime ownership and definition IDs before carrying those fields forward. A current-prefix dedicated table cannot be renamed. Diff reports changes to existing select choices.
-
-## Qualification
-
-Permission to publish an additive change requires a server decision backed by the exact published definition and enrollment. Storage readiness alone cannot establish ownership.
-
-## Verification
-
-`npm test -- tests/integration/types.test.ts tests/unit/type-seed-preflight.test.ts`
+Run `npm test -- tests/integration/types.test.ts tests/unit/type-seed-preflight.test.ts`.
