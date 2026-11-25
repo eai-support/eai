@@ -456,12 +456,12 @@
       },
       "dist": {
         "tarball": "https://eai-support.github.io/eai/registry/-/@enterpriseai/cli-3.20.20.tgz",
-        "shasum": "2adc2e91b9cf6c23169f9e8fcc3a8ac86208dd39",
-        "integrity": "sha512-12h1ci7JVUQ38vcqXTZo+3ENTD7edHZ5fXcBAgHUuEXOYTWxe6yQTi23RhH4T2b/4K3354mIb8nl68GFprZo9g=="
+        "shasum": "ac0c054d994040a1f65ec6afb074b43d776c17d3",
+        "integrity": "sha512-skFmrrXUHMfTP4yPTC/9MiXtl2tb3M5QpSlV5WvBQr1rmW5UMSI1hWvp/TEQPseCTHr9A/WciMfv7xa8TdoDbw=="
       }
     }
   },
-  "modified": "2026-11-24T00:47:38.943Z",
+  "modified": "2026-11-25T06:46:57.201Z",
   "time": {
     "3.19.5": "2026-10-13T03:33:26.251Z",
     "3.20.0": "2026-10-14T02:38:51.024Z",
@@ -481,7 +481,7 @@
     "3.20.17": "2026-11-17T23:59:57.254Z",
     "3.20.18": "2026-11-18T14:05:49.237Z",
     "3.20.19": "2026-11-19T01:48:10.090Z",
-    "3.20.20": "2026-11-24T00:47:38.943Z",
-    "modified": "2026-11-24T00:47:38.943Z"
+    "3.20.20": "2026-11-25T06:46:57.201Z",
+    "modified": "2026-11-25T06:46:57.201Z"
   }
 }
