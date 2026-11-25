@@ -2380,7 +2380,7 @@ export class PlatformAPIClient {
     );
   }
 
-  /** Prepare source-bound runtime identity before the workflow can request handoff. */
+  /** Set up the source-bound runtime identity; the service accepts this only after build evidence. */
   async bootstrapSourceUnknownRuntime(
     tenantId: string,
     appKey: string,

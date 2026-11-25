@@ -19,36 +19,20 @@ import {
 } from "./eai-managed-deploy-contract.js";
 import { managedDeployPollDelayMs } from "./eai-managed-deploy-github.js";
 
-export async function prepareRuntime(
-  client: PlatformAPIClient,
-  state: ManagedDeployState,
-): Promise<void> {
-  const result = await requireApiSuccess(
-    await client.bootstrapSourceUnknownRuntime(
-      state.tenantId,
-      state.appKey,
-      state.environment,
-      state.operationId,
-      state.targetTenantId,
-    ),
-    "RUNTIME_BOOTSTRAP_FAILED",
-    () =>
-      `Repair runtime identity provisioning, then retry the exact operation ${state.operationId}; no workflow has been dispatched.`,
-  );
-  if (
-    result.status !== "configured" ||
-    result.sourceOperationId !== state.operationId ||
-    result.tenantId !== state.tenantId ||
-    result.targetTenantId !== state.targetTenantId ||
-    result.appKey !== state.appKey ||
-    result.environment !== state.environment
-  ) {
-    fail(
-      "RUNTIME_BOOTSTRAP_BINDING_MISMATCH",
-      "PublicAPI did not confirm configured runtime identity for the exact operation and target.",
-      "Stop and inspect the PublicAPI runtime-bootstrap response before dispatching.",
-    );
-  }
+// TenantInfra registers the deployment when build evidence arrives, then holds it under this
+// status until the runtime identity exists.
+const HELD_FOR_RUNTIME_STATUS = "awaiting-runtime";
+// A customer-owned deployment reports these until its runtime identity exists; only --retry moves it on.
+const BEFORE_RUNTIME_STATUSES = new Set(["issued", "handoff_pending", HELD_FOR_RUNTIME_STATUS]);
+
+function operationStatus(operation: ManagedDeploymentOperationResponse): string {
+  return String(operation.status || "").toLowerCase();
+}
+
+export function isHeldForRuntime(
+  operation: ManagedDeploymentOperationResponse,
+): boolean {
+  return operationStatus(operation) === HELD_FOR_RUNTIME_STATUS;
 }
 
 async function readBoundExactOperation(
@@ -138,6 +122,7 @@ export async function pollExactOperation(
   wait: boolean,
   timeoutSeconds: number,
   expectedSourceMode: ManagedDeploymentOperationResponse["sourceMode"] = "source-unknown",
+  keepWaiting?: (pending: ManagedDeploymentOperationResponse) => Promise<boolean>,
 ): Promise<ManagedDeploymentOperationResponse> {
   const deadline = Date.now() + timeoutSeconds * 1_000;
   let lastPendingStatus: string | undefined;
@@ -172,6 +157,7 @@ export async function pollExactOperation(
     }
     const classification = classifyManagedOperationStatus(operation);
     if (!wait || classification !== "pending") return operation;
+    if (keepWaiting && !(await keepWaiting(operation))) return operation;
     if (Date.now() >= deadline) {
       failOperationReadTimeout(state.operationId, `Operation ${state.operationId} is still ${operation.status}.`);
     }
@@ -255,7 +241,10 @@ export function printOperation(
       ? `Run \`eai deploy doctor --operation-id ${operation.operationId} --app-key ${operation.appKey} --tenant-id ${operation.appScopeTenantId} --target-tenant-id ${targetTenantId} --evidence-out .eai/deploy-doctor.json --format json\`.`
       : classification === "failed"
         ? `Inspect the exact operation and workflow evidence, then run \`${exactCommand} --retry ${operation.operationId} --wait --format json\`.`
-        : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; source ${operation.sourceStatus} and deployment ${operation.status} do not yet have complete exact evidence.`;
+        : operation.sourceMode === "source-unknown" &&
+            BEFORE_RUNTIME_STATUSES.has(operationStatus(operation))
+          ? `Run \`${exactCommand} --retry ${operation.operationId} --wait --format json\` to follow the build and set up the runtime identity once its evidence is accepted; --resume only observes.`
+          : `Resume with \`${exactCommand} --resume ${operation.operationId} --wait --format json\`; source ${operation.sourceStatus} and deployment ${operation.status} do not yet have complete exact evidence.`;
   const result = {
     tenantId: operation.appScopeTenantId,
     targetTenantId,

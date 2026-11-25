@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Fix `eai deploy app --source customer-owned`: dispatch the workflow first and
+  set up the runtime identity once the service holds the deployment for it.
+  The earlier order was refused before any workflow ran. `--resume` stays
+  read-only and names the `--retry` command when a deployment is held.
+
 - Prepare 3.20.11 with template v1.0.23 and its exact managed deployment
   producer. Linked-source refresh captures the producer, Gofer version and
   complete bundle identity together; scheduled validation prepares matching

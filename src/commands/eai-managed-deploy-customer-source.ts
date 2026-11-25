@@ -24,11 +24,10 @@ import {
   verifyLocalSource,
 } from "./eai-managed-deploy-github.js";
 import {
-  pollExactOperation,
-  prepareRuntime,
   printOperation,
   readExactOperation,
 } from "./eai-managed-deploy-operation.js";
+import { pollCustomerSourceOperation } from "./eai-managed-deploy-runtime.js";
 
 /** SECURITY: bind reviewed customer source, its original profile and one-use nonce before dispatch. */
 export async function startCustomerSource(
@@ -219,11 +218,9 @@ export async function startCustomerSource(
     );
   }
   await rootBinding.assert();
-  await prepareRuntime(client, state);
-  await rootBinding.assert();
   await dispatchWorkflow(state, context.publicApiUrl, context.root);
 
-  const operation = await pollExactOperation(
+  const operation = await pollCustomerSourceOperation(
     client,
     state,
     options.wait,
