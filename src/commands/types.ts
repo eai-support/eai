@@ -924,10 +924,12 @@ export function diffObjectTypesForTenant(
     );
 
     const changedProperties = localType.properties.filter(property => {
-      if (property.type !== 'relationship' && property.type !== 'select') return false;
       const remoteProperty = remote.properties.find(value => isRecord(value) && value.name === property.name);
       if (!isRecord(remoteProperty)) return false;
+      const requiredChanged = (remoteProperty.required ?? false) !== (property.required ?? false);
+      if (remoteProperty.type !== property.type || requiredChanged) return true;
       if (property.type === 'relationship') return (remoteProperty.targetObjectType ?? null) !== (property.targetObjectType ?? null);
+      if (property.type !== 'select') return false;
       const options = Array.isArray(remoteProperty.options) ? remoteProperty.options : [];
       return !isDeepStrictEqual(options.map(option => [option?.label, option?.value]),
         (property.options ?? []).map(option => [option.label, option.value]));
@@ -3179,7 +3181,9 @@ Examples:
           for (const property of entry.removedProperties) {
             out.info(`    ${out.symbols.removed} ${property}`);
           }
-          for (const property of entry.changedProperties ?? []) out.info(`    ${out.symbols.changed} ${property} — relationship target changed`);
+          for (const property of entry.changedProperties ?? []) {
+            out.info(`    ${out.symbols.changed} ${property} — field definition changed`);
+          }
           if (entry.unchangedProperties.length > 0) {
             out.dim(`    ${entry.unchangedProperties.length} unchanged`);
           }
