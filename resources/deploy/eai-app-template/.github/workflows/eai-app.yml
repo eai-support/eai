@@ -1427,6 +1427,12 @@ jobs:
           }
           const body = readBoundedJson('.eai-build/evidence/workflow-evidence-response.json');
           const evidence = readBoundedJson('.eai-build/evidence/source-unknown-deployment-evidence.json');
+          const artifactId = evidence.imageArtifact?.id;
+          const numericArtifactId = typeof artifactId === 'string' ? Number(artifactId) : NaN;
+          if (typeof artifactId !== 'string' || !/^[1-9][0-9]*$/.test(artifactId) ||
+              !Number.isSafeInteger(numericArtifactId) || String(numericArtifactId) !== artifactId) {
+            throw new Error('Build evidence image artifact ID is invalid.');
+          }
           const [owner, name] = (process.env.GITHUB_REPOSITORY || '').split('/');
           const expected = {
             sourceMode: process.env.SOURCE_MODE,
@@ -1447,7 +1453,7 @@ jobs:
             imageDigest: evidence.imageDigest,
             repositoryId: Number(process.env.GITHUB_REPOSITORY_ID),
             repo: { owner, name },
-            imageArtifact: evidence.imageArtifact,
+            imageArtifact: { ...evidence.imageArtifact, id: numericArtifactId },
           };
           const result = validateHandoffReceipt(body, expected);
           if (result.status === 'handoff_pending') {

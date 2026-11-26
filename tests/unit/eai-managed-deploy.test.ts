@@ -752,13 +752,13 @@ describe('EAI managed deployment helpers', () => {
         commit: templateCommit,
         evidenceTest: {
           path: 'tests/source-unknown-deployment-evidence.test.mjs',
-          sha256: 'sha256:245546a3cbf8451cf7b822edcd879225061902763cc034ec068c3e6206585e1e',
+          sha256: 'sha256:d674031af58c265339ddab0f9084370f7c355ba3df087239f999cbf47bae5cfd',
         },
       },
       githubProducerIdentity: {
         profile: 'github-environment-v1',
         templateCommitSha: templateCommit,
-        workflowSha256: 'sha256:74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5',
+        workflowSha256: 'sha256:b7ac4161edf235bbcf6bc31bd74891dbd13908a9e6a15029ea5448d16a34b77d',
       },
       releaseGate: {
         status: 'released',

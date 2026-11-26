@@ -35,7 +35,7 @@ const currentWorkflowFixtureRelativePath =
 const canonicalDigest =
   'bce4e34fe5c47377e6a679966a37257d944cd00ccf3c15b4ba437f144ed559ed';
 const currentWorkflowDigest =
-  '74ede3c4e1de12fa5f63135349e61365bd845443dbb4dbe51573d8c490baa1d5';
+  'b7ac4161edf235bbcf6bc31bd74891dbd13908a9e6a15029ea5448d16a34b77d';
 const generatedDigest =
   '77d4951b3e6852ead73cef8b9e8901e3de774f9aca70f71cc0c932c13903ff32';
 const digest = (bytes) => createHash('sha256').update(bytes).digest('hex');
@@ -5553,7 +5553,7 @@ test('clean handoff validates bounded responses without a repository checkout', 
     responseDirectory,
     'workflow-evidence-response.json',
   );
-  const binding = handoffBinding();
+  const binding = handoffBinding('eai-cli-generated');
   const bindingEnv = { SOURCE_MODE: binding.sourceMode, TENANT_ID: binding.tenantId,
     TARGET_TENANT_ID: binding.targetTenantId, APP_KEY: binding.appKey,
     DEPLOY_ENVIRONMENT: binding.environment, OPERATION_ID: binding.operationId,
@@ -5568,12 +5568,19 @@ test('clean handoff validates bounded responses without a repository checkout', 
     });
   try {
     mkdirSync(responseDirectory, { recursive: true });
-    writeFileSync(join(responseDirectory, 'source-unknown-deployment-evidence.json'), JSON.stringify(binding));
+    const evidencePath = join(responseDirectory, 'source-unknown-deployment-evidence.json');
+    const buildEvidence = { ...binding, imageArtifact: { ...binding.imageArtifact, id: String(binding.imageArtifact.id) } };
+    writeFileSync(evidencePath, JSON.stringify(buildEvidence));
     for (const response of [handoffReceipt('accepted', binding), { response: handoffReceipt('awaiting-runtime', binding) }]) {
       writeFileSync(responsePath, JSON.stringify(response));
       const result = run(); assert.equal(result.status, 0, result.stderr);
       assert.match(result.stdout, /runtime readiness remains a separate check/);
     }
+    for (const badId of ['088', '88e0', ' 88', '9007199254740993', 88]) {
+      writeFileSync(evidencePath, JSON.stringify({ ...buildEvidence, imageArtifact: { ...buildEvidence.imageArtifact, id: badId } }));
+      assert.equal(run().status, 1, String(badId));
+    }
+    writeFileSync(evidencePath, JSON.stringify(buildEvidence));
     const pending = handoffReceipt('handoff_pending', binding);
     writeFileSync(responsePath, JSON.stringify(pending));
     const deferred = run(); assert.equal(deferred.status, 1);
