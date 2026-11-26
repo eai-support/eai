@@ -53,11 +53,12 @@ describe('Object Type publication prerequisites', () => {
     expect(diffObjectTypesForTenant('my-app', runtime, 'option', [{ ...template, properties: [field] }], [published]).changed).toEqual([]);
   });
 
-  test.each(['unchanged', 'unclaimed', 'diff', 'new type', 'changed description', 'new property', 'different target', 'ambiguous', 'duplicate request', 'missing scope'])('seed checks a legacy relationship against the published runtime: %s', async scenario => {
+  test.each(['unchanged', 'unclaimed', 'diff', 'changed required', 'new type', 'changed description', 'new property', 'different target', 'ambiguous', 'duplicate request', 'missing scope'])('checks a legacy relationship against the published runtime: %s', async scenario => {
     const root = await fixture();
     const field = { name: 'clientId', type: 'relationship', description: 'Parent client', required: true, indexed: true };
     const [definition] = (await loadObjectTypes(root))['my-app'];
-    const desired = { ...definition, properties: [field, { name: 'notes', type: 'text' }] };
+    const desiredField = ['diff', 'changed required'].includes(scenario) ? { ...field, required: false } : field;
+    const desired = { ...definition, properties: [desiredField, { name: 'notes', type: 'text' }] };
     const requested = scenario === 'duplicate request' ? [desired, desired] : [desired];
     await writeFile(join(root, 'src/eai.config/object-types.ts'), 'export const objectTypes = ' + JSON.stringify({ 'my-app': requested }) + ';');
     const stored = { id: 'published-child', tenant: runtime, scope: scenario === 'missing scope' ? undefined : 'tenant',
@@ -81,7 +82,9 @@ describe('Object Type publication prerequisites', () => {
     if (scenario === 'diff') {
       await typesCommand.parseAsync(['diff', '--tenant-key', 'my-app', '--tenant-id', runtime, '--format', 'json'], { from: 'user' });
       const report = JSON.parse(String(output.mock.calls.at(-1)?.[0]));
-      expect(report.tenants[0].changed[0].addedProperties).toEqual(['notes']);
+      expect(report.tenants[0].error).toBeUndefined();
+      expect(report.tenants[0].changed).toMatchObject([{ changedProperties: ['clientId'], addedProperties: ['notes'] }]);
+      expect(process.exitCode ?? 0).toBe(0);
       expect(ownership).not.toHaveBeenCalled();
     } else {
       await typesCommand.parseAsync(['seed', '--dry-run', '--format', 'json'], { from: 'user' });

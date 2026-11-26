@@ -1003,7 +1003,7 @@ describe('eai deploy app --target eai', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'uncertain-dispatch', 'lost-response'] as const)('bootstraps runtime before immutable dispatch: %s', async (bootstrap) => {
+  test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'dispatched-awaiting-runtime', 'uncertain-dispatch', 'lost-response', 'no-wait', 'slow-runtime'] as const)('sets up the runtime identity only after dispatch and accepted build evidence (3764-customer-deploy-runtime-after-evidence:AC-1, AC-2, AC-4): %s', async (bootstrap) => {
     const targetTenantId = bootstrap === 'cross-tenant' ? 'runtime-child' : TENANT_ID;
     await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true, mode: 0o700 });
     await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n', { mode: 0o644 });
@@ -1077,11 +1077,18 @@ fi
       publicApiUrl: API_BASE,
       ...ACTOR_BINDING,
     };
-    const retryMode = ['retry', 'crash-before-claim', 'already-dispatched', 'uncertain-dispatch'].includes(bootstrap);
-    if (bootstrap === 'already-dispatched') retryState.dispatchedAt = new Date().toISOString();
+    const dispatchedEarlier = bootstrap === 'already-dispatched' || bootstrap === 'dispatched-awaiting-runtime';
+    const retryMode = dispatchedEarlier || ['retry', 'crash-before-claim', 'uncertain-dispatch'].includes(bootstrap);
+    if (dispatchedEarlier) retryState.dispatchedAt = new Date().toISOString();
     if (bootstrap === 'crash-before-claim' || bootstrap === 'uncertain-dispatch') retryState.dispatchStartedAt = new Date().toISOString();
     if (retryMode) await saveManagedDeployState(retryState);
     if (bootstrap === 'uncertain-dispatch') await claimManagedDeployDispatch(retryState);
+    // This fake follows the service's order: the workflow's build evidence exists only after dispatch,
+    // the deployment is then held until a runtime identity exists, and an earlier request is refused.
+    const evidenceAccepted = async (): Promise<boolean> => dispatchedEarlier
+      || (await readFile(ghLog, 'utf8').catch(() => '')).includes('workflow run');
+    let runtimeConfigured = bootstrap === 'already-dispatched';
+    let refusedRuntimeRequests = 0;
     let operationReads = 0;
     const requests: Array<{ url: string; method: string; body?: Record<string, unknown> }> = [];
     const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
@@ -1101,16 +1108,45 @@ fi
         return jsonResponse({ status: 'issued', operationId: 'source-unknown-abc123', nonce: 'one-time-nonce' });
       }
       if (url.endsWith('/environments/preview/runtime-bootstrap')) {
-        return bootstrap === 'failed' ? jsonResponse({ message: 'runtime setup unavailable' }, 503) : jsonResponse({
-          status: 'configured', sourceOperationId: 'source-unknown-abc123', appKey: 'planning-portal',
-          tenantId: TENANT_ID, targetTenantId: bootstrap === 'wrong-target' ? 'different-child' : targetTenantId, environment: 'preview',
+        if (!(await evidenceAccepted())) {
+          refusedRuntimeRequests += 1;
+          return jsonResponse({ detail: {
+            error: 'SOURCE_OPERATION_NOT_EVIDENCE_AUTHORIZED',
+            message: 'Runtime bootstrap requires accepted workflow evidence for this operation.',
+          } }, 409);
+        }
+        if (bootstrap === 'failed') return jsonResponse({ message: 'runtime setup unavailable' }, 503);
+        if (bootstrap === 'slow-runtime') {
+          // First-time runtime setup can outlast the client; the request ends only when its deadline does.
+          const signal = init!.signal!;
+          return new Promise<Response>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+        }
+        runtimeConfigured = bootstrap !== 'wrong-target';
+        // PublicAPI's own reply shape: `tenantId` is the runtime tenant and there is no `targetTenantId`.
+        return jsonResponse({
+          status: 'configured', sourceOperationId: 'source-unknown-abc123', environment: 'preview',
+          tenantId: bootstrap === 'wrong-target' ? 'different-child' : targetTenantId, appKey: 'planning-portal',
+          clientId: '33333333-3333-4333-8333-333333333333', runtimeUrl: 'https://planning.example.com',
+          authCallbackUrl: 'https://planning.example.com/api/auth/callback/entra',
+          identityCreated: true, authSecretCreated: true,
         });
       }
       if (url.endsWith(`/managed-deployments/operations/source-unknown-abc123?targetTenantId=${targetTenantId}`)) {
-        if ((retryMode || bootstrap === 'lost-response') && operationReads++ === 0) return jsonResponse({
+        const issued = {
           appScopeTenantId: TENANT_ID, targetTenantId, appKey: retryState.appKey, operationId: retryState.operationId, environment: retryState.environment,
           sourceMode: 'source-unknown', sourceStatus: 'issued', status: 'issued',
-          setup: { ...retryState, nonceSha256: managedDeployNonceSha256(retryState.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true },
+          setup: {
+            ...retryState, nonceSha256: managedDeployNonceSha256(retryState.nonce), repo: { owner: 'enterprise', name: 'planning-portal' }, deployOnSuccess: true,
+            ...(bootstrap === 'source-mismatch' ? { commitSha: 'f'.repeat(40) } : {}),
+          },
+        };
+        // A retry first sees the operation as it was when the earlier command stopped.
+        const firstRetryRead = dispatchedEarlier && operationReads === 0;
+        operationReads += 1;
+        if (firstRetryRead || !(await evidenceAccepted())) return jsonResponse(issued);
+        if (!runtimeConfigured) return jsonResponse({
+          ...issued, sourceStatus: 'handoff_pending', status: 'awaiting-runtime',
+          deployment: { deploymentId: 'dep-1', status: 'awaiting-runtime' },
         });
 
         return jsonResponse({
@@ -1120,7 +1156,7 @@ fi
             repo: { owner: 'enterprise', name: 'planning-portal' },
             workflowPath: '.github/workflows/eai-app.yml',
             ref: 'refs/heads/main',
-            commitSha: bootstrap === 'source-mismatch' ? 'f'.repeat(40) : commitSha,
+            commitSha,
             sourceCommitSha: commitSha, repositoryId: 123, installationId: 12345,
             configHash,
             environment: 'preview',
@@ -1146,10 +1182,12 @@ fi
       '--source', 'customer-owned', '--repo', 'enterprise/planning-portal',
       '--installation-id', '12345',
       ...(retryMode ? ['--retry', retryState.operationId] : []),
-      '--wait',
+      bootstrap === 'no-wait' ? '--no-wait' : '--wait',
+      ...(bootstrap === 'slow-runtime' ? ['--timeout', '1'] : []),
       '--format', 'json',
     ], { from: 'user' });
 
+    expect(refusedRuntimeRequests).toBe(0);
     const registration = requests.find((request) => request.url.endsWith('/source-unknown/register'));
     const setup = requests.find((request) => request.url.endsWith('/source-unknown/workflow-setup'));
     if (retryMode) {
@@ -1194,16 +1232,37 @@ fi
       expect(process.exitCode).toBe(1);
       return;
     }
-    const bootstrapIndex = requests.findIndex(request => request.url.endsWith('/runtime-bootstrap'));
-    expect(bootstrapIndex).toBeGreaterThan(requests.findIndex(request => request.url.endsWith('/workflow-setup')));
-    expect(requests[bootstrapIndex]?.body).toEqual({
+    if (bootstrap === 'no-wait') {
+      expect(await readFile(ghLog, 'utf8')).toContain('workflow run');
+      expect(requests.some(request => request.url.endsWith('/runtime-bootstrap'))).toBe(false);
+      const pending = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
+      expect(pending).toMatchObject({ classification: 'pending', status: 'awaiting-runtime' });
+      expect(String(pending.nextAction)).toContain('--retry source-unknown-abc123 --wait');
+      expect(String(pending.nextAction)).not.toContain('--resume source-unknown-abc123');
+      expect(process.exitCode).toBe(0);
+      return;
+    }
+    const runtimeRequests = requests.filter(request => request.url.endsWith('/runtime-bootstrap'));
+    expect(runtimeRequests).toHaveLength(1);
+    expect(runtimeRequests[0]?.body).toEqual({
       sourceOperationId: 'source-unknown-abc123', targetTenantId, sourceMode: 'source-unknown',
     });
-    if (bootstrap === 'failed' || bootstrap === 'wrong-target') {
-      expect(await readFile(ghLog, 'utf8')).not.toContain('workflow run');
-      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-        ok: false, error: { code: bootstrap === 'failed' ? 'RUNTIME_BOOTSTRAP_FAILED' : 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH' },
-      });
+    if (bootstrap === 'dispatched-awaiting-runtime') {
+      const linkCheckIndex = requests.findIndex(request => request.url.includes('/cli-managed-source/github-link-sessions/github-link-123?'));
+      expect(linkCheckIndex).toBeGreaterThan(-1);
+      expect(linkCheckIndex).toBeLessThan(requests.findIndex(request => request.url.endsWith('/runtime-bootstrap')));
+      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({ classification: 'succeeded' });
+      await expect(readFile(ghLog, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(process.exitCode).toBe(0);
+      return;
+    }
+    if (bootstrap === 'failed' || bootstrap === 'wrong-target' || bootstrap === 'slow-runtime') {
+      expect(await readFile(ghLog, 'utf8')).toContain('workflow run');
+      const stopped = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as { ok: boolean; error: { code: string; nextAction: string } };
+      expect(stopped).toMatchObject({ ok: false, error: { code: {
+        failed: 'RUNTIME_BOOTSTRAP_FAILED', 'wrong-target': 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH', 'slow-runtime': 'RUNTIME_BOOTSTRAP_TIMEOUT',
+      }[bootstrap] } });
+      if (bootstrap !== 'wrong-target') expect(stopped.error.nextAction).toContain('--retry source-unknown-abc123');
       expect(process.exitCode).toBe(1);
       return;
     }
@@ -1244,6 +1303,27 @@ fi
       },
     });
     expect(String(result.nextAction)).toContain('eai deploy doctor --operation-id source-unknown-abc123');
+    expect(process.exitCode).toBe(0);
+  });
+
+  test('resume stops observing a deployment held for its runtime identity and points to retry (3764-customer-deploy-runtime-after-evidence:AC-3)', async () => {
+    await writeFile(join(projectRoot, 'eai.runtime.json'), '{"schemaVersion":"1"}\n');
+    const fetchMock = stubManagedOperation({
+      appScopeTenantId: TENANT_ID, targetTenantId: TENANT_ID, appKey: 'planning-portal',
+      operationId: 'source-unknown-abc123', sourceMode: 'source-unknown',
+      sourceStatus: 'handoff_pending', status: 'awaiting-runtime',
+      setup: customerOperationSetup(customerRetryState()),
+      deployment: { deploymentId: 'dep-1', status: 'awaiting-runtime' },
+    });
+    const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    await eaiManagedDeployCommand.parseAsync([
+      'planning-portal', '--target', 'eai', '--tenant-id', TENANT_ID, '--target-tenant-id', TENANT_ID,
+      '--resume', 'source-unknown-abc123', '--wait', '--format', 'json',
+    ], { from: 'user' });
+    expect(fetchMock.mock.calls.every(([, init]) => String(init?.method || 'GET').toUpperCase() === 'GET')).toBe(true);
+    const held = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as Record<string, unknown>;
+    expect(held).toMatchObject({ classification: 'pending', status: 'awaiting-runtime' });
+    expect(String(held.nextAction)).toContain('--retry source-unknown-abc123 --wait');
     expect(process.exitCode).toBe(0);
   });
 

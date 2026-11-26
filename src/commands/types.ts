@@ -3142,7 +3142,6 @@ Examples:
         let remoteDocs: RemoteObjectTypeDocument[];
         if (localTypes.some(hasLegacyRelationship)) {
           const docs = await readConsistentObjectTypes(client, tenantId);
-          verifyPublishedRelationships(localTypes, docs, tenantId);
           remoteDocs = extractRemoteObjectTypeDocs({ docs });
         } else {
           const res = await client.getPublishedObjectTypes({ limit: 100 });
