@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Bundle the template v1.0.27 deployment workflow, which repairs the evidence
+  check that failed customer-owned deployments. DEV and TEST select v1.0.27;
+  PROD stays on v1.0.23, so no release is published from this change.
+
 - Fix `eai deploy app --source customer-owned`: dispatch the workflow first and
   set up the runtime identity once the service holds the deployment for it.
   The earlier order was refused before any workflow ran. `--resume` stays
