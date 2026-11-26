@@ -19,12 +19,13 @@ import {
 } from "./eai-managed-deploy-github.js";
 import {
   hasAcceptedWorkflowEvidence,
+  isHeldForRuntime,
   pollExactOperation,
-  prepareRuntime,
   printOperation,
   readExactOperation,
   requiresNewSourceOperation,
 } from "./eai-managed-deploy-operation.js";
+import { pollCustomerSourceOperation } from "./eai-managed-deploy-runtime.js";
 
 function requireRetryServerBinding(
   state: ManagedDeployState,
@@ -131,6 +132,9 @@ export async function resumeCustomerSource(
         },
         options.wait,
         timeoutSeconds,
+        "source-unknown",
+        // Resume only observes, and a deployment held for its runtime identity moves only on --retry.
+        async (pending) => !isHeldForRuntime(pending),
       );
   spinner?.stop();
   printOperation(format, operation);
@@ -261,14 +265,17 @@ export async function retryCustomerSource(
         `Check out ${state.commitSha}, then retry the same operation.`,
       );
     }
-    await prepareRuntime(retryClient, state);
     await dispatchWorkflow(state, state.publicApiUrl, context.root);
   }
-  const operation = await pollExactOperation(
+  const operation = await pollCustomerSourceOperation(
     retryClient,
     state,
     options.wait,
     timeoutSeconds,
+    // A retry that dispatched just now has already checked the GitHub proof.
+    wasDispatched
+      ? () => requireRetryGithubBinding(retryClient, state)
+      : undefined,
   );
   spinner?.stop();
   printOperation(
