@@ -14,10 +14,10 @@ and gofer asset refresh.
 
 | Field | Value |
 | --- | --- |
-| Version | 3.20.19 |
-| Released | 2026-11-19 |
-| Last Material Change | Print workspace ID/slug first on create and forward child domain |
-| Source Commit | `06b8106a51db93597ab2c3075c934d8cd4a798a6` |
+| Version | 3.20.20 |
+| Released | 2026-11-23 |
+| Last Material Change | Verify published relationships and storage before seeding Object Types. |
+| Source Commit | `c603dfcec2ebb6de15e9a31b05a32f89802fc5c6` |
 
 
 ## Install
@@ -158,12 +158,15 @@ A relationship property declares its target type explicitly:
 { name: 'trustId', type: 'relationship', required: true, targetObjectType: 'trust' }
 ```
 
-Resource writes validate that the target exists in that exact type and workspace.
-New or republished definitions require the target. Existing definitions remain
-readable; inspect `eai resources schema --format json` for relationship properties
-without `targetObjectType`, review each intended target, then update and republish
-the definitions. Link names and property names do not establish this mapping.
-This migration does not repair or delete existing records automatically.
+Resource writes validate the target in the selected workspace. New or changed
+relationships require an explicit target. Inspect `eai resources schema --format json`
+to review a legacy relationship with a missing target.
+
+For a published starter copy, keep the child's existing SQL binding. Run
+`eai types seed --dry-run` with the same workspace and app as the intended publish.
+The regional preview verifies the exact enrollment, definition revision and permission
+to add optional fields or dropdown choices. Existing legacy fields keep their targets.
+The child keeps its records and the copy stays outside the app's uninstall scope.
 
 Discover and execute the actions installed in the selected workspace:
 

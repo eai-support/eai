@@ -510,14 +510,14 @@ describe('app object-type publish helpers', () => {
         {
           name: 'Workflow',
           slug: 'workflow',
-          properties: [{ name: 'title' }, { name: 'oldField' }],
+          properties: [{ name: 'title', type: 'text', required: true }, { name: 'oldField' }],
           linkTypes: [],
           actions: [],
         },
         {
           name: 'Unchanged',
           slug: 'unchanged',
-          properties: [{ name: 'title' }],
+          properties: [{ name: 'title', type: 'text', required: true }],
           linkTypes: [],
           actions: [],
         },
@@ -550,6 +550,27 @@ describe('app object-type publish helpers', () => {
         unchangedProperties: ['title'],
       },
     ]);
+  });
+
+  test.each([
+    [{ type: 'date' }, false],
+    [{ type: 'date', required: false }, false],
+    [{ type: 'text' }, true],
+    [{ type: 'date', required: true }, true],
+    [{}, true],
+  ] as const)('diff compares the type and optionality of a published field %j', (remoteField, changed) => {
+    const local: ObjectTypeDefinition = {
+      name: 'Lesson',
+      displayName: 'Lesson',
+      status: 'published',
+      properties: [{ name: 'reviewedAt', type: 'date', required: false }],
+      linkTypes: [],
+      actions: [],
+    };
+    const remote = { ...local, properties: [{ name: 'reviewedAt', ...remoteField }] };
+    const report = diffObjectTypesForTenant('molt', 'child', 'option', [local], [remote]);
+    expect(report.changed.map(entry => entry.changedProperties)).toEqual(changed ? [['reviewedAt']] : []);
+    expect(report.unchanged).toHaveLength(changed ? 0 : 1);
   });
 
   test('marks manifest object types as published when status is omitted', () => {

@@ -88,4 +88,4 @@ subscription, and organisation policy are confirmed by the provider.
 
 ## Current Release
 
-The current CLI release is **v3.20.19** (2026-11-19): Print workspace ID/slug first on create and forward child domain.
+The current CLI release is **v3.20.20** (2026-11-23): Verify published relationships and storage before seeding Object Types..

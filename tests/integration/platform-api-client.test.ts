@@ -1152,6 +1152,21 @@ describe('PlatformAPIClient', () => {
     expect(provider).toEqual({ status: 422, code: 'PROVIDER_VALIDATION_FAILED', message: 'Request validation failed' })
     expect(JSON.stringify(provider)).not.toContain('tax-file-secret')
   })
+  test('scope a publication catalog query to the runtime workspace and exact names or slugs', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({}))
+    const client = new PlatformAPIClient('https://example.test', 'runtime-1')
+    await client.getPublishedObjectTypes({ matching: [{name: 'BoardAppUser', slug: 'boardappuser'}, {name: 'Topic', slug: 'topic'}], page: 1 })
+    const [url, init] = fetchMock.mock.calls[0]
+    const parsed = new URL(String(url))
+    expect(parsed.pathname).toBe('/v4/data/resources/object-types')
+    expect(JSON.parse(parsed.searchParams.get('where')!)).toEqual({and: [
+      {tenant: {equals: 'runtime-1'}},
+      {or: [{ name: {in: ['BoardAppUser', 'Topic']} }, {slug: {in: ['boardappuser', 'topic']}}]},
+    ]})
+    expect(init?.method).toBe('GET')
+    expect(init?.body).toBeUndefined()
+  })
+
   test('caps published object type preflight lookups at the orchestrator limit', async () => {
     const fetchMock = vi
       .spyOn(globalThis, 'fetch')

@@ -137,6 +137,7 @@ export interface ObjectTypeDefinition {
  */
 export function canonicalizeObjectTypeRelationshipTargets(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
+  missingTarget: 'require' | 'verify-published' = 'require',
 ): Record<string, ObjectTypeDefinition[]> {
   return Object.fromEntries(
     Object.entries(objectTypes).map(([tenantKey, types]) => {
@@ -163,6 +164,7 @@ export function canonicalizeObjectTypeRelationshipTargets(
         types.map((type) => ({
           ...type,
           properties: type.properties.map((property) => property.type === 'relationship'
+            && !(missingTarget === 'verify-published' && property.targetObjectType == null)
             ? { ...property, targetObjectType: targetSlug(property.targetObjectType, type.name, property.name) }
             : { ...property }),
           linkTypes: type.linkTypes.map((link) => {
@@ -187,7 +189,8 @@ export function canonicalizeObjectTypeRelationshipTargets(
 /** Validate new local source definitions before any CLI write or provision action. */
 export function validateObjectTypeDefinitions(
   objectTypes: Record<string, ObjectTypeDefinition[]>,
-): void {
+  missingTarget: 'require' | 'verify-published' = 'require',
+): Record<string, ObjectTypeDefinition[]> {
   for (const [tenantKey, types] of Object.entries(objectTypes)) {
     for (const type of types) {
       try {
@@ -207,7 +210,7 @@ export function validateObjectTypeDefinitions(
     }
   }
 
-  canonicalizeObjectTypeRelationshipTargets(objectTypes);
+  return canonicalizeObjectTypeRelationshipTargets(objectTypes, missingTarget);
 }
 
 /**
