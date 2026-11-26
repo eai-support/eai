@@ -1,6 +1,7 @@
-import type {
-  ManagedDeploymentOperationResponse,
-  PlatformAPIClient,
+import {
+  isManagedPublicRequestTimeout,
+  type ManagedDeploymentOperationResponse,
+  type PlatformAPIClient,
 } from "../lib/api.js";
 import type { ManagedDeployState } from "../lib/eai-managed-deploy.js";
 import { fail, requireApiSuccess } from "./eai-managed-deploy-contract.js";
@@ -13,23 +14,36 @@ export async function prepareRuntime(
   client: PlatformAPIClient,
   state: ManagedDeployState,
 ): Promise<void> {
-  const result = await requireApiSuccess(
-    await client.bootstrapSourceUnknownRuntime(
-      state.tenantId,
-      state.appKey,
-      state.environment,
-      state.operationId,
-      state.targetTenantId,
-    ),
-    "RUNTIME_BOOTSTRAP_FAILED",
-    () =>
-      `Repair runtime identity provisioning, then run --retry ${state.operationId}; the accepted build is kept and no new workflow is needed.`,
-  );
+  let result: Record<string, unknown>;
+  try {
+    result = await requireApiSuccess(
+      await client.bootstrapSourceUnknownRuntime(
+        state.tenantId,
+        state.appKey,
+        state.environment,
+        state.operationId,
+        state.targetTenantId,
+      ),
+      "RUNTIME_BOOTSTRAP_FAILED",
+      () =>
+        `Repair runtime identity provisioning, then run --retry ${state.operationId}; the accepted build is kept and no new workflow is needed.`,
+    );
+  } catch (error) {
+    if (!isManagedPublicRequestTimeout(error)) throw error;
+    // The service keeps working after the client gives up, and a retry reuses what it finished.
+    fail(
+      "RUNTIME_BOOTSTRAP_TIMEOUT",
+      "Runtime identity setup did not answer in time.",
+      `Run --retry ${state.operationId} --wait; the accepted build is kept and the setup already started is reused.`,
+    );
+  }
+  // PublicAPI names the runtime tenant `tenantId`; it sends no separate target field.
   if (
     result.status !== "configured" ||
     result.sourceOperationId !== state.operationId ||
-    result.tenantId !== state.tenantId ||
-    result.targetTenantId !== state.targetTenantId ||
+    result.tenantId !== state.targetTenantId ||
+    (result.targetTenantId !== undefined &&
+      result.targetTenantId !== state.targetTenantId) ||
     result.appKey !== state.appKey ||
     result.environment !== state.environment
   ) {

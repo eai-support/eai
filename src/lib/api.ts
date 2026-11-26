@@ -44,6 +44,8 @@ const PUBLIC_WORKFLOWS_PATH = '/v4/workflows';
 export const PUBLIC_API_REACHABILITY_PATH = `${PUBLIC_DATA_RESOURCES_PATH}/health`;
 export const MANAGED_PUBLIC_REQUEST_TIMEOUT_MS = 30_000;
 export const MANAGED_SOURCE_UPLOAD_TIMEOUT_MS = 180_000;
+// The first runtime setup for a workspace registers its sign-in app; hosted Test took about 60 seconds.
+export const MANAGED_RUNTIME_SETUP_TIMEOUT_MS = 180_000;
 export const INIT_APP_CREATE_REQUEST_TIMEOUT_MS = 90_000;
 const managedResponseSignals = new WeakMap<Response, AbortSignal>();
 const managedTimeoutReasons = new WeakSet<object>();
@@ -1427,11 +1429,13 @@ export class PlatformAPIClient {
     path: string,
     method: PlatformMethod = 'GET',
     body?: unknown,
-    options?: { timeoutMs?: number; bearerToken?: string },
+    options?: { timeoutMs?: number; bearerToken?: string; ceilingMs?: number },
   ): Promise<Response> {
     this.assertProfileAuthority();
     const baseUrl = requireManagedPublicApiUrl(this.baseUrl);
-    const signal = this.managedRequestSignal(options?.timeoutMs);
+    const signal = this.boundedManagedRequestSignal(
+      options?.ceilingMs ?? MANAGED_PUBLIC_REQUEST_TIMEOUT_MS, options?.timeoutMs,
+    );
     const headers = await awaitManagedRequestDeadline(signal, this.headers());
     signal.throwIfAborted();
     if (options?.bearerToken !== undefined) headers.Authorization = `Bearer ${options.bearerToken}`;
@@ -2392,6 +2396,7 @@ export class PlatformAPIClient {
       `${PUBLIC_PLATFORM_PATH}/tenants/${encodeURIComponent(tenantId)}/apps/${encodeURIComponent(appKey)}/environments/${encodeURIComponent(environment)}/runtime-bootstrap`,
       'POST',
       { sourceOperationId, targetTenantId, sourceMode: 'source-unknown' },
+      { ceilingMs: MANAGED_RUNTIME_SETUP_TIMEOUT_MS },
     );
   }
 

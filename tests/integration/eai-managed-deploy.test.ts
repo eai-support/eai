@@ -1003,7 +1003,7 @@ describe('eai deploy app --target eai', () => {
     expect(process.exitCode).toBe(1);
   });
 
-  test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'dispatched-awaiting-runtime', 'uncertain-dispatch', 'lost-response', 'no-wait'] as const)('sets up the runtime identity only after dispatch and accepted build evidence (3764-customer-deploy-runtime-after-evidence:AC-1, AC-2): %s', async (bootstrap) => {
+  test.each(['configured', 'install-commit-retry', 'cross-tenant', 'failed', 'wrong-target', 'retry', 'crash-before-claim', 'source-mismatch', 'already-dispatched', 'dispatched-awaiting-runtime', 'uncertain-dispatch', 'lost-response', 'no-wait', 'slow-runtime'] as const)('sets up the runtime identity only after dispatch and accepted build evidence (3764-customer-deploy-runtime-after-evidence:AC-1, AC-2, AC-4): %s', async (bootstrap) => {
     const targetTenantId = bootstrap === 'cross-tenant' ? 'runtime-child' : TENANT_ID;
     await mkdir(join(projectRoot, 'src', 'eai.config'), { recursive: true, mode: 0o700 });
     await writeFile(join(projectRoot, 'src', 'eai.config', 'object-types.ts'), 'export const objectTypes = {};\n', { mode: 0o644 });
@@ -1116,10 +1116,19 @@ fi
           } }, 409);
         }
         if (bootstrap === 'failed') return jsonResponse({ message: 'runtime setup unavailable' }, 503);
+        if (bootstrap === 'slow-runtime') {
+          // First-time runtime setup can outlast the client; the request ends only when its deadline does.
+          const signal = init!.signal!;
+          return new Promise<Response>((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+        }
         runtimeConfigured = bootstrap !== 'wrong-target';
+        // PublicAPI's own reply shape: `tenantId` is the runtime tenant and there is no `targetTenantId`.
         return jsonResponse({
-          status: 'configured', sourceOperationId: 'source-unknown-abc123', appKey: 'planning-portal',
-          tenantId: TENANT_ID, targetTenantId: bootstrap === 'wrong-target' ? 'different-child' : targetTenantId, environment: 'preview',
+          status: 'configured', sourceOperationId: 'source-unknown-abc123', environment: 'preview',
+          tenantId: bootstrap === 'wrong-target' ? 'different-child' : targetTenantId, appKey: 'planning-portal',
+          clientId: '33333333-3333-4333-8333-333333333333', runtimeUrl: 'https://planning.example.com',
+          authCallbackUrl: 'https://planning.example.com/api/auth/callback/entra',
+          identityCreated: true, authSecretCreated: true,
         });
       }
       if (url.endsWith(`/managed-deployments/operations/source-unknown-abc123?targetTenantId=${targetTenantId}`)) {
@@ -1174,6 +1183,7 @@ fi
       '--installation-id', '12345',
       ...(retryMode ? ['--retry', retryState.operationId] : []),
       bootstrap === 'no-wait' ? '--no-wait' : '--wait',
+      ...(bootstrap === 'slow-runtime' ? ['--timeout', '1'] : []),
       '--format', 'json',
     ], { from: 'user' });
 
@@ -1246,11 +1256,13 @@ fi
       expect(process.exitCode).toBe(0);
       return;
     }
-    if (bootstrap === 'failed' || bootstrap === 'wrong-target') {
+    if (bootstrap === 'failed' || bootstrap === 'wrong-target' || bootstrap === 'slow-runtime') {
       expect(await readFile(ghLog, 'utf8')).toContain('workflow run');
-      expect(JSON.parse(output.mock.calls.map(([value]) => String(value)).join(''))).toMatchObject({
-        ok: false, error: { code: bootstrap === 'failed' ? 'RUNTIME_BOOTSTRAP_FAILED' : 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH' },
-      });
+      const stopped = JSON.parse(output.mock.calls.map(([value]) => String(value)).join('')) as { ok: boolean; error: { code: string; nextAction: string } };
+      expect(stopped).toMatchObject({ ok: false, error: { code: {
+        failed: 'RUNTIME_BOOTSTRAP_FAILED', 'wrong-target': 'RUNTIME_BOOTSTRAP_BINDING_MISMATCH', 'slow-runtime': 'RUNTIME_BOOTSTRAP_TIMEOUT',
+      }[bootstrap] } });
+      if (bootstrap !== 'wrong-target') expect(stopped.error.nextAction).toContain('--retry source-unknown-abc123');
       expect(process.exitCode).toBe(1);
       return;
     }

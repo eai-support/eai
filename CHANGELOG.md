@@ -6,6 +6,8 @@
   set up the runtime identity once the service holds the deployment for it.
   The earlier order was refused before any workflow ran. `--resume` stays
   read-only and names the `--retry` command when a deployment is held.
+  Runtime setup now allows 180 seconds, reports a timeout with the retry
+  command, and accepts PublicAPI's reply shape.
 
 - Prepare 3.20.11 with template v1.0.23 and its exact managed deployment
   producer. Linked-source refresh captures the producer, Gofer version and

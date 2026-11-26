@@ -26,6 +26,10 @@ the held deployment is released.
 - AC-3. `--resume` stays read-only. It stops waiting when the deployment is
   held for its runtime identity and names the `--retry` command that moves it
   on. `--no-wait` prints the same `--retry` command.
+- AC-4. The runtime request fits the service: it allows first-time setup up
+  to 180 seconds, a timeout stops with `RUNTIME_BOOTSTRAP_TIMEOUT` and the
+  `--retry` command, and PublicAPI's reply is accepted when its `tenantId` is
+  the target tenant (it sends no `targetTenantId`).
 
 ## Out of scope
 
